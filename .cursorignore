@@ -1,0 +1,45 @@
+﻿# --- Build outputs (CMake/MSBuild/VS) ---
+**/bin/**
+**/obj/**
+**/CMakeFiles/**
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/compile_commands.json
+
+**/.vs/**
+**/.idea/**
+**/.vscode/**/.browse.VC.db
+**/*.VC.db
+**/*.VC.opendb
+**/*.suo
+**/*.user
+
+# --- C/C++ intermediate artifacts ---
+**/*.obj
+**/*.pdb
+**/*.ilk
+**/*.ipch
+**/*.pch
+**/*.idb
+**/*.tlog
+**/*.log
+
+# --- Package/deps caches ---
+**/node_modules/**
+**/.npm/**
+
+**/vcpkg_installed/**
+**/_deps/**
+
+**/.conan/**
+**/.pytest_cache/**
+**/__pycache__/**
+**/*.pyc
+
+# --- Secrets / env ---
+**/.env
+**/.env.*
+**/*secret*
+**/*apikey*
+**/*token*
+**/*password*

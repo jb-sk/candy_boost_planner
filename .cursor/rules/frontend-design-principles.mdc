@@ -1,0 +1,66 @@
+---
+description: "Frontend Design System（原則）: AIっぽい汎用UIを避け、独自性と品質を上げる（cc-frontend-skills移植）"
+globs: "**/*.{html,css,scss,sass,less,js,ts,jsx,tsx,vue,svelte}"
+alwaysApply: true
+---
+
+# Frontend Design System (Principles)
+
+このプロジェクトでフロントエンドUIを作る/直すときは、次の原則に従ってください。
+
+## 目的
+- 「AIっぽい」量産デザインを避け、**洗練・独自性・プロダクション品質**のUIを作る
+- UX（読みやすさ/操作性/一貫性）を優先し、見た目のための見た目にしない
+
+## Anti-Patterns（避ける）
+### Typography
+- Inter / Roboto / Open Sans を“とりあえず”で採用しない
+- 見出しも本文も同じフォント/同じウェイトだけで済ませない
+
+### Colors
+- 紫→ピンクの安直なグラデーションにしない
+- 量産の青/緑アクセント、デフォルトTailwindパレット丸出しを避ける
+- 彩度高すぎネオンの乱用を避ける
+
+### Layout
+- 「左テキスト・右画像」のテンプレヒーローを避ける
+- 3カラム均等グリッドの“いつもの機能カード”を避ける
+- 中央揃えの単調カード地獄を避ける
+
+### Effects
+- blur / glassmorphism を乱用しない
+- 全要素をアニメーションさせない
+
+## Best Practices（推奨）
+### Typography
+- 見出しと本文は**別フォント**（セリフ×サンセリフ等）で階層を作る
+- ウェイトのバリエーション（例: 300/400/600/800）を使い、視覚的階層を作る
+- letter-spacing/line-heightで“締まり”と“読みやすさ”を調整する
+
+**フォントペア（即決）**
+- モダン・クリーン: Space Grotesk + Inter
+- エレガント・高級: Playfair Display + Lato
+- テック・スタートアップ: Syne + Outfit
+- 温かみ: Fraunces + Work Sans
+- 大胆・クリエイティブ: DM Serif Display + DM Sans
+
+### Colors
+- 5色以上の調和したパレット（Primary/Secondary/Accent/Neutrals + Semantic）を作る
+- HSLで微妙なズレを作り“既視感”を消す
+- ダークモードは彩度を落とし、明度中心で調整する
+
+### Layout
+- 非対称（例: 35/65、5:7、2:3）を検討する
+- オーバーラップ/ネガティブマージンで“奥行き”を作る
+- 大胆な余白（ホワイトスペース）で密度差を作る
+
+### Motion
+- 1〜2個の「高影響」アニメに集中する（ロード、状態変化、操作フィードバック）
+- 目安: micro 150–300ms / transition 300–500ms / complex 500–800ms
+
+## 実装チェックリスト（最低限）
+- [ ] 見出し/本文のフォント分離と階層化
+- [ ] 5色以上のパレット（ダークモード含む）
+- [ ] 非対称/独自グリッド or オーバーラップ要素
+- [ ] 高影響アニメ1–2個（やり過ぎない）
+- [ ] a11y（コントラスト、フォーカス、セマンティック）
