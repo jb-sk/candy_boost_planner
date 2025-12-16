@@ -73,6 +73,7 @@ function normalizeEntry(x: any): PokemonBoxEntryV1 {
     source,
     rawText: typeof x.rawText === "string" ? x.rawText : "",
     label: typeof x.label === "string" ? x.label : "",
+    favorite: !!x.favorite,
     derived,
     planner,
     createdAt: typeof x.createdAt === "string" ? x.createdAt : now,

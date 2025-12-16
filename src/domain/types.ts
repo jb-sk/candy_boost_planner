@@ -20,6 +20,8 @@ export type PokemonBoxEntryV1 = {
   rawText: string;
   /** 表示名（nickname or 手入力名など） */
   label: string;
+  /** お気に入り（★） */
+  favorite?: boolean;
   /** にとよんrawから最小限デコードできた情報（表示・初期値用） */
   derived?: {
     pokedexId: number;

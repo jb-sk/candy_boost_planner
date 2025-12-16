@@ -36,138 +36,291 @@
 
     <section class="panel" v-if="activeTab === 'calc'">
       <div class="panel__head">
-        <h2 class="panel__title">計算機（MVP）: 入力 → 即時計算</h2>
-        <div class="panel__side" v-if="selectedBox">
+        <h2 class="panel__title">計算機: 複数ポケモン（目標Lvベース）</h2>
+        <div class="panel__side" v-if="activeCalcRow && activeCalcRow.boxId">
           <div class="chip">
-            <span class="chip__k">選択中</span>
-            <span class="chip__v">{{ displayBoxTitle(selectedBox) }}</span>
+            <span class="chip__k">編集中</span>
+            <span class="chip__v">{{ activeCalcRow.title }}</span>
           </div>
-          <button class="btn" type="button" @click="applyCalculatorToBox" title="現在の入力をボックスへ保存">
-            計算機→ボックスへ反映
+          <button class="btn" type="button" @click="applyCalculatorToBox" title="編集内容（現在Lv/あとEXP/EXPタイプ/性格補正）をボックスへ保存">
+            ボックスへ反映
           </button>
         </div>
       </div>
-      <div class="grid">
-        <label class="field">
-          <span class="field__label">現在Lv</span>
-          <input v-model.number="srcLevel" type="number" min="1" max="65" class="field__input" />
-        </label>
-        <label class="field">
-          <span class="field__label">目標Lv</span>
-          <input v-model.number="dstLevel" type="number" min="1" max="65" class="field__input" />
-        </label>
-        <label class="field">
-          <span class="field__label">あとEXP（次Lvまで）</span>
-          <input
-            v-model.number="expRemaining"
-            type="number"
-            min="0"
-            class="field__input"
-            @input="onExpRemainingInput"
-          />
-        </label>
-        <label class="field">
-          <span class="field__label">アメブだけで到達Lv（アメブLv）</span>
-          <input
-            v-model.number="boostReachLevel"
-            type="number"
-            :min="srcLevel"
-            :max="dstLevel"
-            class="field__input"
-            @input="onBoostLevelInput"
-          />
-          <span class="field__sub">
-            基本はここを決める（例：目標Lv60 / アメブLv50）。細かい調整は割合/個数で。
-          </span>
-        </label>
-        <label class="field">
-          <span class="field__label">アメブ割合（必要EXPに対して）</span>
-          <input
-            v-model.number="boostRatioPct"
-            type="range"
-            min="0"
-            max="100"
-            step="1"
-            class="field__range"
-            @input="onRatioInput"
-          />
-          <span class="field__sub">{{ boostRatioPct }}%</span>
-        </label>
-        <label class="field">
-          <span class="field__label">EXPタイプ</span>
-          <select v-model.number="expType" class="field__input">
-            <option :value="600">600</option>
-            <option :value="900">900</option>
-            <option :value="1080">1080</option>
-            <option :value="1320">1320</option>
-          </select>
-        </label>
-        <label class="field">
-          <span class="field__label">性格（EXP補正）</span>
-          <select v-model="nature" class="field__input">
-            <option value="normal">通常</option>
-            <option value="up">EXP↑</option>
-            <option value="down">EXP↓</option>
-          </select>
-        </label>
-        <label class="field">
-          <span class="field__label">アメブ種別</span>
-          <select v-model="boostKind" class="field__input">
-            <option value="full">{{ fullLabel }}</option>
-            <option value="mini">{{ miniLabel }}</option>
-          </select>
-        </label>
-        <label class="field">
-          <span class="field__label">アメブ個数（表示・手入力）</span>
-          <input
-            v-model.number="boostCandyInput"
-            type="number"
-            min="0"
-            class="field__input"
-            @input="onCandyInput"
-          />
-          <span class="field__sub">スライダーは経験値割合。個数を直接入力すると割合も追従します。</span>
-        </label>
+      <div class="calcTop">
+        <div class="calcTop__grid">
+          <label class="field">
+            <span class="field__label">最大かけら（上限チェック）</span>
+            <input v-model.number="totalShards" type="number" min="0" class="field__input" />
+            <span class="field__sub">超過しても計算は継続し、超過分を赤字で表示します。</span>
+          </label>
+          <label class="field">
+            <span class="field__label">アメブ種別</span>
+            <select v-model="boostKind" class="field__input">
+              <option value="full">{{ fullLabel }}</option>
+              <option value="mini">{{ miniLabel }}</option>
+            </select>
+          </label>
+        </div>
+        <div class="calcTop__summary">
+          <div class="calcSum">
+            <div class="calcSum__k">合計かけら</div>
+            <div class="calcSum__v">{{ calcTotalShardsUsed.toLocaleString() }}</div>
+          </div>
+          <div class="calcSum" :class="{ 'calcSum--danger': calcShardsOver > 0 }">
+            <div class="calcSum__k">{{ calcShardsOver > 0 ? "超過" : "残り" }}</div>
+            <div class="calcSum__v">{{ (calcShardsOver > 0 ? calcShardsOver : -calcShardsOver).toLocaleString() }}</div>
+          </div>
+        </div>
       </div>
 
-      <div class="result">
-        <div class="result__row result__row--major">
-          <span class="result__k">必要EXP</span>
-          <span class="result__v">{{ requiredExp.exp.toLocaleString() }}</span>
-        </div>
-        <div class="result__row result__row--major">
-          <span class="result__k">必要アメ（合計）</span>
-          <span class="result__v">{{ (mixed.normalCandy + mixed.boostCandy).toLocaleString() }}</span>
-        </div>
-        <div class="result__row result__row--major">
-          <span class="result__k">必要かけら</span>
-          <span class="result__v">{{ mixed.shards.toLocaleString() }}</span>
-        </div>
-        <div class="result__divider" />
-        <div class="result__row">
-          <span class="result__k">通常アメ</span>
-          <span class="result__v">{{ mixed.normalCandy.toLocaleString() }}</span>
-        </div>
-        <div class="result__row">
-          <span class="result__k">アメブ（使用）</span>
-          <span class="result__v">{{ mixed.boostCandy.toLocaleString() }}</span>
-        </div>
-        <div class="result__row">
-          <span class="result__k">かけら内訳</span>
-          <span class="result__v">
-            通常 {{ mixed.shardsNormal.toLocaleString() }} / アメブ {{ mixed.shardsBoost.toLocaleString() }}
-          </span>
-        </div>
-        <div class="result__row">
-          <span class="result__k">アメブだけで到達Lv</span>
-          <span class="result__v">{{ boostOnlyFromCandyInput.level }}（expGot {{ boostOnlyFromCandyInput.expGot.toLocaleString() }}）</span>
-        </div>
-        <div class="result__hint">
-          ※ 「あとEXP」はゲーム画面の表示（次Lvまでの残り）を想定し、内部の expGot（獲得済みEXP）に換算しています。
-          ※ 計算は nitoyon さんの最新仕様（レベル帯でアメEXPが変化）に合わせています。
-          ※ 混在時は「低レベル側から優先的にアメブを使う」前提（MVP）です。
+      <p class="calcHint">
+        追加方法: ポケモンボックスの詳細で <strong>「計算機に追加（反映）」</strong> を押すと、このリストに追加されます。
+      </p>
+
+      <div class="calcRows" v-if="calcRowsView.length">
+        <div
+          v-for="r in calcRowsView"
+          :key="r.id"
+          class="calcRow"
+          :class="{
+            'calcRow--active': r.id === activeCalcRowId,
+            'calcRow--dragOver': r.id === dragOverRowId,
+            'calcRow--dragging': r.id === dragRowId,
+          }"
+          @click="activeCalcRowId = r.id"
+          @dragover.prevent="onCalcRowDragOver(r.id)"
+          @drop.prevent="onCalcRowDrop(r.id)"
+          @dragleave="onCalcRowDragLeave(r.id)"
+        >
+          <div class="calcRow__head">
+            <div class="calcRow__headLeft">
+              <button
+                class="btn btn--ghost btn--xs calcRow__dragHandle"
+                type="button"
+                title="ドラッグして並び替え"
+                aria-label="ドラッグして並び替え"
+                draggable="true"
+                @dragstart="onCalcRowDragStart(r.id, $event)"
+                @dragend="onCalcRowDragEnd"
+                @click.stop
+              >
+                ⋮⋮
+              </button>
+              <div class="calcRow__title">{{ r.title }}</div>
+            </div>
+            <div class="calcRow__headRight">
+              <button class="btn btn--ghost btn--xs" type="button" @click.stop="moveCalcRowUp(r.id)" :disabled="!canMoveCalcRowUp(r.id)">
+                ↑
+              </button>
+              <button class="btn btn--ghost btn--xs" type="button" @click.stop="moveCalcRowDown(r.id)" :disabled="!canMoveCalcRowDown(r.id)">
+                ↓
+              </button>
+              <button class="btn btn--danger btn--xs" type="button" @click.stop="removeCalcRow(r.id)">削除</button>
+            </div>
+          </div>
+
+          <div class="calcRow__grid">
+            <label class="field field--sm">
+              <span class="field__label">現在Lv</span>
+              <div class="levelPick">
+                <button
+                  type="button"
+                  class="field__input field__input--button levelPick__button"
+                  @click.stop="openSrcLevelPick(r.id)"
+                  aria-haspopup="dialog"
+                  :aria-expanded="openLevelPickRowId === r.id && openLevelPickKind === 'src'"
+                >
+                  {{ r.srcLevel }}
+                </button>
+
+                <div
+                  v-if="openLevelPickRowId === r.id && openLevelPickKind === 'src'"
+                  class="levelPick__popover"
+                  role="dialog"
+                  aria-label="現在Lvの選択"
+                >
+                  <div class="levelPick__top">
+                    <div class="levelPick__title">現在Lv</div>
+                    <button class="btn btn--ghost btn--xs" type="button" @click="closeLevelPick">閉じる</button>
+                  </div>
+
+                  <div class="levelPick__sliderRow">
+                    <button class="btn btn--ghost btn--xs" type="button" @click="nudgeSrcLevel(r.id, -1)" :disabled="r.srcLevel <= 1">
+                      ◀
+                    </button>
+                    <input
+                      class="levelPick__range"
+                      type="range"
+                      min="1"
+                      :max="r.dstLevel"
+                      step="1"
+                      :value="r.srcLevel"
+                      @input="setSrcLevel(r.id, ($event.target as HTMLInputElement).value)"
+                    />
+                    <button class="btn btn--ghost btn--xs" type="button" @click="nudgeSrcLevel(r.id, 1)" :disabled="r.srcLevel >= r.dstLevel">
+                      ▶
+                    </button>
+                  </div>
+
+                  <div class="levelPick__chips">
+                    <button
+                      v-for="lv in levelPresets"
+                      :key="`src_${lv}`"
+                      type="button"
+                      class="levelChip"
+                      :class="{ 'levelChip--on': lv === r.srcLevel }"
+                      @click="setSrcLevel(r.id, lv)"
+                      :disabled="lv < 1 || lv > r.dstLevel"
+                    >
+                      {{ lv }}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </label>
+            <label class="field field--sm">
+              <span class="field__label">目標Lv</span>
+              <div class="levelPick">
+                <button
+                  type="button"
+                  class="field__input field__input--button levelPick__button"
+                  @click.stop="openDstLevelPick(r.id)"
+                  aria-haspopup="dialog"
+                  :aria-expanded="openLevelPickRowId === r.id && openLevelPickKind === 'dst'"
+                >
+                  {{ r.dstLevel }}
+                </button>
+
+                <div
+                  v-if="openLevelPickRowId === r.id && openLevelPickKind === 'dst'"
+                  class="levelPick__popover"
+                  role="dialog"
+                  aria-label="目標Lvの選択"
+                >
+                  <div class="levelPick__top">
+                    <div class="levelPick__title">Lv{{ r.srcLevel }} → Lv{{ r.dstLevel }}</div>
+                    <button class="btn btn--ghost btn--xs" type="button" @click="closeLevelPick">閉じる</button>
+                  </div>
+
+                  <div class="levelPick__sliderRow">
+                    <button class="btn btn--ghost btn--xs" type="button" @click="nudgeDstLevel(r.id, -1)" :disabled="r.dstLevel <= r.srcLevel">
+                      ◀
+                    </button>
+                    <input
+                      class="levelPick__range"
+                      type="range"
+                      :min="r.srcLevel"
+                      max="65"
+                      step="1"
+                      :value="r.dstLevel"
+                      @input="setDstLevel(r.id, ($event.target as HTMLInputElement).value)"
+                    />
+                    <button class="btn btn--ghost btn--xs" type="button" @click="nudgeDstLevel(r.id, 1)" :disabled="r.dstLevel >= 65">
+                      ▶
+                    </button>
+                  </div>
+
+                  <div class="levelPick__chips">
+                    <button
+                      v-for="lv in levelPresets"
+                      :key="lv"
+                      type="button"
+                      class="levelChip"
+                      :class="{ 'levelChip--on': lv === r.dstLevel }"
+                      @click="setDstLevel(r.id, lv)"
+                      :disabled="lv < r.srcLevel"
+                    >
+                      {{ lv }}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </label>
+            <label class="field field--sm">
+              <span class="field__label">あとEXP（次Lvまで）</span>
+              <input
+                :value="r.expRemaining"
+                type="number"
+                min="0"
+                class="field__input"
+                @input="onCalcRowExpRemaining(r.id, ($event.target as HTMLInputElement).value)"
+              />
+            </label>
+            <label class="field field--sm">
+              <span class="field__label">EXPタイプ</span>
+              <select :value="r.expType" class="field__input" @change="onCalcRowExpType(r.id, ($event.target as HTMLSelectElement).value)">
+                <option :value="600">600</option>
+                <option :value="900">900</option>
+                <option :value="1080">1080</option>
+                <option :value="1320">1320</option>
+              </select>
+            </label>
+            <label class="field field--sm">
+              <span class="field__label">性格（EXP補正）</span>
+              <select :value="r.nature" class="field__input" @change="onCalcRowNature(r.id, ($event.target as HTMLSelectElement).value)">
+                <option value="normal">通常</option>
+                <option value="up">EXP↑</option>
+                <option value="down">EXP↓</option>
+              </select>
+            </label>
+
+            <label class="field field--sm">
+              <span class="field__label">アメブLv（サブ）</span>
+              <input
+                :value="r.ui.boostReachLevel"
+                type="number"
+                :min="r.srcLevel"
+                :max="r.dstLevel"
+                class="field__input"
+                @input="onCalcRowBoostLevel(r.id, ($event.target as HTMLInputElement).value)"
+              />
+            </label>
+            <label class="field field--sm">
+              <span class="field__label">アメブ割合（サブ）</span>
+              <input
+                :value="r.ui.boostRatioPct"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                class="field__range"
+                @input="onCalcRowBoostRatio(r.id, ($event.target as HTMLInputElement).value)"
+              />
+              <span class="field__sub">{{ r.ui.boostRatioPct }}%</span>
+            </label>
+            <label class="field field--sm">
+              <span class="field__label">アメブ個数（サブ）</span>
+              <input
+                :value="r.ui.boostCandyInput"
+                type="number"
+                min="0"
+                class="field__input"
+                @input="onCalcRowBoostCandy(r.id, ($event.target as HTMLInputElement).value)"
+              />
+            </label>
+          </div>
+
+          <div class="calcRow__result">
+            <div class="calcRow__res">
+              <span class="calcRow__k">かけら</span>
+              <span class="calcRow__v">{{ r.result.shards.toLocaleString() }}</span>
+            </div>
+            <div class="calcRow__res">
+              <span class="calcRow__k">アメ（合計）</span>
+              <span class="calcRow__v">{{ (r.result.normalCandy + r.result.boostCandy).toLocaleString() }}</span>
+            </div>
+            <div class="calcRow__res">
+              <span class="calcRow__k">内訳</span>
+              <span class="calcRow__v">
+                アメブ{{ r.result.boostCandy.toLocaleString() }} / 通常{{ r.result.normalCandy.toLocaleString() }}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
+      <p class="boxEmpty" v-else>まだ計算対象がありません。ポケモンボックスから追加してください。</p>
+
     </section>
 
     <section class="panel" v-else>
@@ -410,6 +563,21 @@
               </div>
 
               <div class="boxFilters__group">
+                <span class="boxFilters__label">お気に入り</span>
+                <div class="boxFilters__chips">
+                  <button
+                    class="chipBtn"
+                    :class="{ 'chipBtn--on': favoritesOnly }"
+                    type="button"
+                    @click="favoritesOnly = !favoritesOnly"
+                    title="★お気に入りのみ"
+                  >
+                    ★
+                  </button>
+                </div>
+              </div>
+
+              <div class="boxFilters__group">
                 <span class="boxFilters__label">とくい</span>
                 <div class="boxFilters__chips">
                   <button
@@ -480,6 +648,11 @@
           </div>
 
           <div class="boxSortRow">
+            <div class="boxSortRow__left">
+              <button class="btn btn--ghost" type="button" @click="onUndo" :disabled="!canUndo" title="直前の変更を取り消し">
+                Undo
+              </button>
+            </div>
             <div class="boxSort">
               <select v-model="boxSortKey" class="field__input boxSort__select" aria-label="ソート項目">
                 <option value="label">表記名</option>
@@ -500,7 +673,10 @@
                 @click="onSelectBox(e.id)"
               >
                 <div class="boxTile__name">{{ displayBoxTitle(e) }}</div>
-                <div class="boxTile__lv">Lv{{ e.planner?.level ?? e.derived?.level ?? "-" }}</div>
+                <div class="boxTile__lv">
+                  Lv{{ e.planner?.level ?? e.derived?.level ?? "-" }}
+                  <span v-if="e.favorite" class="boxTile__fav" aria-label="お気に入り" title="お気に入り">★</span>
+                </div>
               </button>
 
               <div
@@ -523,107 +699,220 @@
                 </div>
 
                 <div class="boxDetail__grid">
-                  <div class="boxDetail__kv">
-                    <div class="boxDetail__k">種族</div>
-                    <div class="boxDetail__v">{{ displayPokemonName(selectedBox) ?? selectedBox.label ?? "-" }}</div>
-                  </div>
-                  <div class="boxDetail__kv">
-                    <div class="boxDetail__k">種族リンク</div>
-                    <div class="boxDetail__v">
-                      <div v-if="selectedBox.derived?.pokedexId">
-                        #{{ selectedBox.derived.pokedexId }} / form {{ selectedBox.derived.form }}
-                        <span class="boxDetail__minor">（未一致の場合は下で再リンク）</span>
-                      </div>
-                      <div v-else class="boxDetail__minor">未リンク（pokedexId/formが未確定）</div>
-                      <div class="relinkRow suggest">
+                  <div class="boxDetail__col">
+                    <div class="boxDetail__kv">
+                      <div class="boxDetail__k">ニックネーム</div>
+                      <div class="boxDetail__v">
                         <input
-                          v-model="relinkName"
                           class="field__input"
-                          placeholder="例: ピカチュウ / ピカチュウ (ホリデー)"
-                          @focus="relinkOpen = true"
-                          @blur="onRelinkBlur"
-                          @input="onRelinkInput"
+                          :value="selectedBox.label ?? ''"
+                          :placeholder="displayPokemonName(selectedBox) ?? '（任意）'"
+                          @change="onEditSelectedLabel(($event.target as HTMLInputElement).value)"
                         />
-                        <button class="btn btn--ghost" type="button" @click="onRelinkApply" :disabled="!relinkName.trim()">
-                          再リンク
-                        </button>
-                        <div v-if="relinkOpen && relinkSuggestList.length" class="suggest__panel" role="listbox">
-                          <button
-                            v-for="n in relinkSuggestList"
-                            :key="n"
-                            type="button"
-                            class="suggest__item"
-                            role="option"
-                            @mousedown.prevent="pickRelinkName(n)"
-                          >
-                            {{ n }}
+                        <div class="boxDetail__minor">空にすると種族名表示に戻ります</div>
+                      </div>
+                    </div>
+
+                    <div class="boxDetail__kv">
+                      <div class="boxDetail__k">種族（リンク）</div>
+                      <div class="boxDetail__v">
+                        <div>
+                          <span class="boxDetail__strong">{{ displayPokemonName(selectedBox) ?? "未リンク" }}</span>
+                          <span class="boxDetail__minor" v-if="selectedBox.derived?.pokedexId">（図鑑No.{{ selectedBox.derived.pokedexId }}）</span>
+                          <span class="boxDetail__minor" v-else>（必要なら下で再リンク）</span>
+                        </div>
+
+                        <div class="relinkRow suggest">
+                          <input
+                            v-model="relinkName"
+                            class="field__input"
+                            placeholder="例: ピカチュウ / ピカチュウ (ホリデー)"
+                            @focus="relinkOpen = true"
+                            @blur="onRelinkBlur"
+                            @input="onRelinkInput"
+                          />
+                          <button class="btn btn--ghost" type="button" @click="onRelinkApply" :disabled="!relinkName.trim()">
+                            再リンク
                           </button>
+                          <div class="boxDetail__minor" v-if="relinkFound">
+                            候補: {{ getPokemonNameJa(relinkFound.pokedexId, relinkFound.form) }}（#{{ relinkFound.pokedexId }} / EXP{{ relinkFound.expType }}）
+                          </div>
+                          <div class="boxDetail__minor" v-else-if="relinkName.trim()">候補なし</div>
+                          <div v-if="relinkOpen && relinkSuggestList.length" class="suggest__panel" role="listbox">
+                            <button
+                              v-for="n in relinkSuggestList"
+                              :key="n"
+                              type="button"
+                              class="suggest__item"
+                              role="option"
+                              @mousedown.prevent="pickRelinkName(n)"
+                            >
+                              {{ n }}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div class="boxDetail__minor" v-if="relinkStatus">{{ relinkStatus }}</div>
+                      </div>
+                    </div>
+
+                    <div class="boxDetail__kv">
+                      <div class="boxDetail__k">レベル</div>
+                      <div class="boxDetail__v">
+                        <div class="levelPick">
+                          <button
+                            type="button"
+                            class="field__input field__input--button levelPick__button"
+                            @click.stop="toggleBoxLevelPick"
+                            aria-haspopup="dialog"
+                            :aria-expanded="openBoxLevelPick"
+                          >
+                            {{ selectedDetail?.level ?? 1 }}
+                          </button>
+
+                          <div v-if="openBoxLevelPick" class="levelPick__popover" role="dialog" aria-label="現在Lvの選択">
+                            <div class="levelPick__top">
+                              <div class="levelPick__title">現在Lv</div>
+                              <button class="btn btn--ghost btn--xs" type="button" @click="closeBoxLevelPick">閉じる</button>
+                            </div>
+
+                            <div class="levelPick__sliderRow">
+                              <button class="btn btn--ghost btn--xs" type="button" @click="nudgeBoxLevel(-1)" :disabled="(selectedDetail?.level ?? 1) <= 1">
+                                ◀
+                              </button>
+                              <input
+                                class="levelPick__range"
+                                type="range"
+                                min="1"
+                                max="65"
+                                step="1"
+                                :value="selectedDetail?.level ?? 1"
+                                @input="setBoxLevel(($event.target as HTMLInputElement).value)"
+                              />
+                              <button class="btn btn--ghost btn--xs" type="button" @click="nudgeBoxLevel(1)" :disabled="(selectedDetail?.level ?? 1) >= 65">
+                                ▶
+                              </button>
+                            </div>
+
+                            <div class="levelPick__chips">
+                              <button
+                                v-for="lv in levelPresets"
+                                :key="`box_${lv}`"
+                                type="button"
+                                class="levelChip"
+                                :class="{ 'levelChip--on': lv === (selectedDetail?.level ?? 1) }"
+                                @click="setBoxLevel(lv)"
+                                :disabled="lv < 1 || lv > 65"
+                              >
+                                {{ lv }}
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                  <div class="boxDetail__kv">
-                    <div class="boxDetail__k">レベル</div>
-                    <div class="boxDetail__v">{{ selectedDetail?.level ?? "-" }}</div>
-                  </div>
-                  <div class="boxDetail__kv">
-                    <div class="boxDetail__k">EXPタイプ</div>
-                    <div class="boxDetail__v">{{ selectedDetail?.expType ?? "-" }}</div>
-                  </div>
-                  <div class="boxDetail__kv">
-                    <div class="boxDetail__k">性格（EXP補正）</div>
-                    <div class="boxDetail__v">
-                      {{
-                        selectedDetail?.expGainNature === "up"
-                          ? "EXP↑"
-                          : selectedDetail?.expGainNature === "down"
-                            ? "EXP↓"
-                            : "通常"
-                      }}
-                      <span class="boxDetail__minor" v-if="selectedDetail?.decoded?.natureName">
-                        （{{ selectedDetail.decoded.natureName }}）
-                      </span>
-                    </div>
-                  </div>
 
-                  <div class="boxDetail__kv">
-                    <div class="boxDetail__k">とくい</div>
-                    <div class="boxDetail__v">
-                      <select
-                        class="field__input"
-                        :value="selectedSpecialtySelectValue"
-                        @change="onEditSelectedSpecialty(($event.target as HTMLSelectElement).value)"
-                      >
-                        <option value="">不明（自動）</option>
-                        <option value="Berries">きのみ</option>
-                        <option value="Ingredients">しょくざい</option>
-                        <option value="Skills">スキル</option>
-                        <option value="All">オール</option>
-                      </select>
-                      <div class="boxDetail__minor">表示: {{ specialtyJa(selectedDetail.specialty) }}</div>
-                    </div>
-                  </div>
-
-                  <div class="boxDetail__kv">
-                    <div class="boxDetail__k">食材</div>
-                    <div class="boxDetail__v boxDetail__v--mono">
-                      <div>タイプ: {{ selectedDetail.ingredientType ?? "-" }}</div>
-                      <div v-if="selectedDetail.ingredientSlots">
-                        {{ selectedDetail.ingredientSlots.map(toIngredientJa).join(" / ") }}
+                    <div class="boxDetail__kv">
+                      <div class="boxDetail__k">EXPタイプ</div>
+                      <div class="boxDetail__v">
+                        <select
+                          class="field__input"
+                          :value="String(selectedDetail?.expType ?? 600)"
+                          @change="onEditSelectedExpType(($event.target as HTMLSelectElement).value)"
+                        >
+                          <option value="600">600</option>
+                          <option value="900">900</option>
+                          <option value="1080">1080</option>
+                          <option value="1320">1320</option>
+                        </select>
                       </div>
-                      <div v-else>（不明）</div>
+                    </div>
+
+                    <div class="boxDetail__kv">
+                      <div class="boxDetail__k">とくい</div>
+                      <div class="boxDetail__v">
+                        <select
+                          class="field__input"
+                          :value="selectedSpecialtySelectValue"
+                          @change="onEditSelectedSpecialty(($event.target as HTMLSelectElement).value)"
+                        >
+                          <option value="">不明（自動）</option>
+                          <option value="Berries">きのみ</option>
+                          <option value="Ingredients">しょくざい</option>
+                          <option value="Skills">スキル</option>
+                          <option value="All">オール</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div class="boxDetail__kv">
+                      <div class="boxDetail__k">性格（EXP補正）</div>
+                      <div class="boxDetail__v">
+                        <select
+                          class="field__input"
+                          :value="selectedDetail?.expGainNature ?? 'normal'"
+                          @change="onEditSelectedNature(($event.target as HTMLSelectElement).value)"
+                        >
+                          <option value="normal">通常</option>
+                          <option value="up">EXP↑</option>
+                          <option value="down">EXP↓</option>
+                        </select>
+                        <span class="boxDetail__minor" v-if="selectedDetail?.decoded?.natureName">
+                          （{{ selectedDetail.decoded.natureName }}）
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  <div class="boxDetail__kv">
-                    <div class="boxDetail__k">サブスキル</div>
-                    <div class="boxDetail__v boxDetail__v--mono">
-            <div v-if="selectedDetail?.subSkills?.length">
-              <div v-for="s in selectedDetail.subSkills" :key="s.lv">
-                          Lv{{ s.lv }}: {{ s.nameJa }}
+                  <div class="boxDetail__col">
+                    <div class="boxDetail__kv">
+                      <div class="boxDetail__k">食材</div>
+                      <div class="boxDetail__v boxDetail__v--mono">
+                        <div class="boxDetail__editRow">
+                          <select
+                            class="field__input"
+                            :value="selectedDetail.ingredientType ?? ''"
+                            @change="onEditSelectedIngredientType(($event.target as HTMLSelectElement).value)"
+                          >
+                            <option value="">不明（自動）</option>
+                            <option v-for="t in IngredientTypes" :key="t" :value="t">{{ t }}</option>
+                          </select>
+                        </div>
+                        <div v-if="selectedDetail.ingredientSlots">
+                          {{ selectedDetail.ingredientSlots.map(toIngredientJa).join(" / ") }}
+                        </div>
+                        <div v-else>（不明）</div>
+                      </div>
+                    </div>
+
+                    <div class="boxDetail__kv">
+                      <div class="boxDetail__k">サブスキル</div>
+                      <div class="boxDetail__v boxDetail__v--mono">
+                        <div class="boxDetail__subEdit">
+                          <div v-for="lv in [10, 25, 50, 75, 100]" :key="lv" class="subField">
+                            <span class="subField__k">Lv{{ lv }}</span>
+                            <input
+                              :value="boxEditSubInputs[String(lv)] ?? ''"
+                              class="field__input"
+                              :class="{ 'field__input--error': !!boxEditSubErrors[String(lv)] }"
+                              list="subSkillOptions"
+                              placeholder="（任意）"
+                              @input="onBoxEditSubInput(lv, ($event.target as HTMLInputElement).value)"
+                              @blur="onBoxEditSubBlur(lv)"
+                            />
+                            <span v-if="boxEditSubErrors[String(lv)]" class="field__error">{{ boxEditSubErrors[String(lv)] }}</span>
+                          </div>
                         </div>
                       </div>
-                      <div v-else>（なし/不明）</div>
+                    </div>
+
+                    <div class="boxDetail__kv">
+                      <div class="boxDetail__k">お気に入り</div>
+                      <div class="boxDetail__v">
+                        <button class="chipBtn" :class="{ 'chipBtn--on': !!selectedBox.favorite }" type="button" @click="toggleSelectedFavorite">
+                          ★
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -671,6 +960,7 @@ const filterJoinMode = ref<FilterJoinMode>("and"); // とくい/サブスキル 
 const subSkillJoinMode = ref<FilterJoinMode>("or"); // 複数サブスキル の結合
 const selectedSpecialties = ref<Array<"Berries" | "Ingredients" | "Skills" | "All">>([]);
 const selectedSubSkillEns = ref<string[]>([]);
+const favoritesOnly = ref(false);
 
 const addName = ref("");
 const addNameHasFocus = ref(false);
@@ -752,6 +1042,8 @@ const showAddNameSuggest = computed(
 
 const relinkName = ref("");
 const relinkOpen = ref(false);
+const relinkStatus = ref<string>("");
+const relinkFound = computed(() => findPokemonByNameJa(relinkName.value.trim()) ?? null);
 const relinkSuggestList = computed(() => {
   const q = relinkName.value.trim();
   if (q.length === 0) return [];
@@ -786,9 +1078,9 @@ function onRelinkBlur() {
 function onRelinkApply() {
   const e = selectedBox.value;
   if (!e) return;
-  const found = findPokemonByNameJa(relinkName.value);
+  const found = relinkFound.value;
   if (!found) {
-    importStatus.value = "再リンク失敗：名前が一致しません";
+    relinkStatus.value = "再リンク失敗：名前が一致しません";
     return;
   }
   beginUndoSnapshot();
@@ -814,7 +1106,9 @@ function onRelinkApply() {
       updatedAt: now,
     };
   });
-  importStatus.value = "種族リンクを更新しました";
+  relinkStatus.value = `種族リンクを更新しました（図鑑No.${found.pokedexId}）`;
+  relinkName.value = "";
+  relinkOpen.value = false;
 }
 
 function pickAddName(nameJa: string) {
@@ -897,6 +1191,10 @@ function onUndo() {
   selectedBoxId.value = snap.selectedId;
   undoSnapshot.value = null;
   importStatus.value = "Undoしました";
+  // selectedIdが変わらない場合でも編集UI（サブスキル等）を復元する
+  nextTick(() => {
+    syncBoxEditSubInputsFromSelected();
+  });
 }
 
 watch(
@@ -912,8 +1210,45 @@ watch(
   () => {
     relinkName.value = "";
     relinkOpen.value = false;
+    relinkStatus.value = "";
+    openLevelPickRowId.value = null;
+    openBoxLevelPick.value = false;
+    boxLevelUndoArmed.value = false;
   }
 );
+
+const boxEditSubInputs = ref<Record<string, string>>({ "10": "", "25": "", "50": "", "75": "", "100": "" });
+const boxEditSubErrors = ref<Record<string, string | null>>({ "10": null, "25": null, "50": null, "75": null, "100": null });
+
+const openBoxLevelPick = ref(false);
+const boxLevelUndoArmed = ref(false);
+
+function onGlobalPointerDown(ev: MouseEvent) {
+  const t = ev.target as HTMLElement | null;
+  if (!t) return;
+  // レベルポップアップ内のクリックは閉じない
+  if (t.closest(".levelPick")) return;
+  openLevelPickRowId.value = null;
+  openBoxLevelPick.value = false;
+  boxLevelUndoArmed.value = false;
+}
+
+function onGlobalKeyDown(ev: KeyboardEvent) {
+  if (ev.key === "Escape") {
+    openLevelPickRowId.value = null;
+    openBoxLevelPick.value = false;
+    boxLevelUndoArmed.value = false;
+  }
+}
+
+onMounted(() => {
+  document.addEventListener("mousedown", onGlobalPointerDown, true);
+  document.addEventListener("keydown", onGlobalKeyDown);
+});
+onUnmounted(() => {
+  document.removeEventListener("mousedown", onGlobalPointerDown, true);
+  document.removeEventListener("keydown", onGlobalKeyDown);
+});
 
 const filteredBoxEntries = computed(() => {
   const q = boxFilter.value.trim().toLowerCase();
@@ -928,9 +1263,10 @@ const filteredBoxEntries = computed(() => {
         );
       });
 
+  const hasFavoriteFilter = favoritesOnly.value;
   const hasSpecialtyFilter = selectedSpecialties.value.length > 0;
   const hasSubSkillFilter = selectedSubSkillEns.value.length > 0;
-  if (!hasSpecialtyFilter && !hasSubSkillFilter) return base;
+  if (!hasFavoriteFilter && !hasSpecialtyFilter && !hasSubSkillFilter) return base;
 
   return base.filter((e) => {
     const decoded = getDecodedDetailForEntry(e);
@@ -939,17 +1275,18 @@ const filteredBoxEntries = computed(() => {
     const form = e.derived?.form ?? decoded?.form ?? 0;
     const sp = (e.planner?.specialty ??
       (pokedexId ? getPokemonSpecialty(pokedexId, form) : "unknown")) as PokemonSpecialty;
-    const specialtyOk = !hasSpecialtyFilter ? false : selectedSpecialties.value.includes(sp as any);
+    const favoriteOk = !!e.favorite;
+    const specialtyOk = selectedSpecialties.value.includes(sp as any);
 
     const subEns = decoded?.subSkills?.map((s) => s.nameEn) ?? [];
-    const subOk = !hasSubSkillFilter
-      ? false
-      : matchSubSkills(subEns, selectedSubSkillEns.value, subSkillJoinMode.value);
+    const subOk = matchSubSkills(subEns, selectedSubSkillEns.value, subSkillJoinMode.value);
 
-    if (hasSpecialtyFilter && hasSubSkillFilter) {
-      return filterJoinMode.value === "and" ? specialtyOk && subOk : specialtyOk || subOk;
-    }
-    return hasSpecialtyFilter ? specialtyOk : subOk;
+    const oks: boolean[] = [];
+    if (hasFavoriteFilter) oks.push(favoriteOk);
+    if (hasSpecialtyFilter) oks.push(specialtyOk);
+    if (hasSubSkillFilter) oks.push(subOk);
+    // active filters are always at least 1 here
+    return filterJoinMode.value === "and" ? oks.every(Boolean) : oks.some(Boolean);
   });
 });
 
@@ -1095,6 +1432,10 @@ function specialtyJa(sp: PokemonSpecialty | null | undefined): string {
   return "不明";
 }
 
+// NOTE: computed/ watch の参照順で TDZ (Cannot access 'X' before initialization) が起きるため、
+// 依存元の computed を先に宣言すること。
+const selectedBox = computed(() => boxEntries.value.find((x) => x.id === selectedBoxId.value) ?? null);
+
 const selectedDetail = computed(() => {
   const e = selectedBox.value;
   if (!e) return null;
@@ -1108,7 +1449,8 @@ const selectedDetail = computed(() => {
   const pokedexId = e.derived?.pokedexId ?? decoded?.pokedexId ?? null;
   const form = e.derived?.form ?? decoded?.form ?? 0;
   const ingredients = pokedexId ? getPokemonIngredients(pokedexId, form) : null;
-  const ingredientType = decoded?.ingredientType ?? e.planner?.ingredientType ?? null;
+  // ユーザーがボックス詳細で編集した値を優先する（Nitoyonのdecodedを上書きできるようにする）
+  const ingredientType = e.planner?.ingredientType ?? decoded?.ingredientType ?? null;
   const ingredientSlots =
     ingredients && ingredientType
       ? ingredientType
@@ -1141,6 +1483,25 @@ const selectedDetail = computed(() => {
   };
 });
 
+function syncBoxEditSubInputsFromSelected() {
+  const d = selectedDetail.value;
+  const next: Record<string, string> = { "10": "", "25": "", "50": "", "75": "", "100": "" };
+  for (const s of d?.subSkills ?? []) {
+    if (s.lv === 10 || s.lv === 25 || s.lv === 50 || s.lv === 75 || s.lv === 100) next[String(s.lv)] = s.nameJa;
+  }
+  boxEditSubInputs.value = next;
+  boxEditSubErrors.value = { "10": null, "25": null, "50": null, "75": null, "100": null };
+}
+
+// selectedBox / selectedDetail の初期化後に watch を定義する（TDZ回避）
+watch(
+  () => selectedBoxId.value,
+  () => {
+    syncBoxEditSubInputsFromSelected();
+  },
+  { immediate: true }
+);
+
 const selectedSpecialtySelectValue = computed(() => {
   const manual = selectedBox.value?.planner?.specialty;
   if (manual && manual !== "unknown") return manual;
@@ -1148,8 +1509,6 @@ const selectedSpecialtySelectValue = computed(() => {
   if (auto && auto !== "unknown") return auto;
   return "";
 });
-
-const selectedBox = computed(() => boxEntries.value.find((x) => x.id === selectedBoxId.value) ?? null);
 
 function displayPokemonName(e: PokemonBoxEntryV1): string | null {
   if (!e.derived) return null;
@@ -1352,16 +1711,6 @@ function onCreateManual(opts: { mode: "toCalc" | "toBox" }) {
   addSubErrors.value = { "10": null, "25": null, "50": null, "75": null, "100": null };
 }
 
-const srcLevel = ref(10);
-const dstLevel = ref(25);
-const expRemaining = ref(0);
-const expRemainingTouched = ref(false);
-const boostRatioPct = ref(0); // 0..100
-const boostCandyInput = ref(0); // 表示・手入力用
-const boostReachLevel = ref(25);
-
-const expType = ref<ExpType>(600);
-const nature = ref<ExpGainNature>("normal");
 const boostKind = ref<Exclude<BoostEvent, "none">>("full");
 
 const fullLabel = computed(
@@ -1371,166 +1720,153 @@ const miniLabel = computed(
   () => `ミニブ（かけら×${boostRules.mini.shardMultiplier} / EXP×${boostRules.mini.expMultiplier}）`
 );
 
-const expToNextLevel = computed(() => calcExp(srcLevel.value, srcLevel.value + 1, expType.value));
-
-// ゲーム画面の「あとEXP（残り）」→ 現在レベル内で既に得ているEXP（expGot）へ換算
-const expGot = computed(() => {
-  const toNext = expToNextLevel.value;
-  const remaining = Math.max(0, Math.floor(expRemaining.value));
-  if (toNext <= 0) return 0;
-  // remaining が toNext を超える入力（誤入力）でも破綻しないように 0..toNext へ丸める
-  const got = toNext - Math.min(remaining, toNext);
-  return Math.max(0, Math.min(got, toNext));
-});
-
-function onExpRemainingInput() {
-  expRemainingTouched.value = true;
-}
-
-// 入力が 100%（次Lvまでの必要EXP）を超えたら、自動で100%に補正する
-watch([expRemaining, expToNextLevel], () => {
-  const toNext = expToNextLevel.value;
-  if (toNext <= 0) return;
-  const clamped = Math.max(0, Math.min(Math.floor(expRemaining.value), toNext));
-  if (clamped !== expRemaining.value) expRemaining.value = clamped;
-});
-
-const isHydratingFromBox = ref(false);
-
-// 初期値＆Lv/EXPタイプ変更時は「次Lvまでの必要EXP（100%）」をデフォルトにする（ただしボックス反映中は触らない）
-watch(
-  [srcLevel, expType],
-  () => {
-    if (isHydratingFromBox.value) return;
-    expRemainingTouched.value = false;
-    const toNext = calcExp(srcLevel.value, srcLevel.value + 1, expType.value);
-    expRemaining.value = Math.max(0, toNext);
-  },
-  { immediate: true }
-);
-
-const requiredExp = computed(() =>
-  calcExpAndCandy({
-    srcLevel: srcLevel.value,
-    dstLevel: dstLevel.value,
-    expType: expType.value,
-    nature: nature.value,
-    boost: "none",
-    expGot: expGot.value,
-  })
-);
-
-const boostRatio = computed(() => Math.max(0, Math.min(1, boostRatioPct.value / 100)));
-
-// スライダー（割合）→ アメブ個数へ換算（割合指定の計算）
-const byRatio = computed(() =>
-  calcExpAndCandyByBoostExpRatio({
-    srcLevel: srcLevel.value,
-    dstLevel: dstLevel.value,
-    expType: expType.value,
-    nature: nature.value,
-    boost: boostKind.value,
-    boostExpRatio: boostRatio.value,
-    expGot: expGot.value,
-  })
-);
-
-// アメブ個数（手入力）で計算（個数指定の計算）
-const byCandy = computed(() =>
-  calcExpAndCandyMixed({
-    srcLevel: srcLevel.value,
-    dstLevel: dstLevel.value,
-    expType: expType.value,
-    nature: nature.value,
-    boost: boostKind.value,
-    boostCandy: boostCandyInput.value,
-    expGot: expGot.value,
-  })
-);
-
-// 入力は「最後に触った方」を優先して、表示が自然になるようにする
-const lastEdited = ref<"ratio" | "candy">("ratio");
-const mode = ref<"boostLevel" | "ratio" | "candy">("boostLevel");
-function onRatioInput() {
-  lastEdited.value = "ratio";
-  mode.value = "ratio";
-}
-function onCandyInput() {
-  lastEdited.value = "candy";
-  mode.value = "candy";
-}
-function onBoostLevelInput() {
-  mode.value = "boostLevel";
-}
-
-// 割合スライダーを動かしたら、アメブ到達Lvも連動して“主入力”にする
-watch(
-  () => boostRatioPct.value,
-  () => {
-    if (mode.value !== "ratio") return;
-    // 先に個数へ同期（ratio→candy watch）が走る → その後 level を合わせる
-    const lvl = boostOnlyFromCandyInput.value.level;
-    boostReachLevel.value = Math.max(srcLevel.value, Math.min(dstLevel.value, lvl));
+const TOTAL_SHARDS_KEY = "candy-boost-planner:calc:totalShards";
+function loadTotalShards(): number {
+  try {
+    const raw = localStorage.getItem(TOTAL_SHARDS_KEY);
+    if (!raw) return 0;
+    const n = Number(raw);
+    return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+  } catch {
+    return 0;
   }
-);
+}
+const totalShards = ref<number>(loadTotalShards());
+watch(totalShards, (v) => localStorage.setItem(TOTAL_SHARDS_KEY, String(Math.max(0, Math.floor(Number(v) || 0)))));
 
-const boostReachLevelClamped = computed(() => {
-  const min = srcLevel.value;
-  const max = dstLevel.value;
-  const v = Math.floor(boostReachLevel.value);
-  return Math.max(min, Math.min(max, v));
-});
+type CalcMode = "boostLevel" | "ratio" | "candy";
+type CalcRow = {
+  id: string;
+  /** 元のボックスID（ボックス由来の場合のみ） */
+  boxId?: string;
+  /** 表示名 */
+  title: string;
+  srcLevel: number;
+  dstLevel: number;
+  /** 目標Lvの入力中テキスト（datalist表示用。確定はblurでdstLevelへ反映） */
+  dstLevelText?: string;
+  expRemaining: number; // ゲーム画面の「あとEXP（次Lvまで）」
+  expType: ExpType;
+  nature: ExpGainNature;
+  boostReachLevel: number;
+  boostRatioPct: number; // 0..100
+  boostCandyInput: number; // 手入力用（mode=candyのとき有効）
+  mode: CalcMode;
+};
 
-// 目標「アメブLv」までをアメブだけで上げ、残りを通常アメで埋める（基本モード）
-const byBoostLevel = computed(() => {
-  const mid = boostReachLevelClamped.value;
+const calcRows = ref<CalcRow[]>([]);
+const activeCalcRowId = ref<string | null>(null);
+const activeCalcRow = computed(() => calcRows.value.find((x) => x.id === activeCalcRowId.value) ?? null);
 
-  if (mid <= srcLevel.value) {
+const openLevelPickRowId = ref<string | null>(null);
+const openLevelPickKind = ref<"src" | "dst">("dst");
+const levelPresets = [10, 25, 30, 40, 50, 55, 57, 60, 65] as const;
+
+const dragRowId = ref<string | null>(null);
+const dragOverRowId = ref<string | null>(null);
+
+function clampInt(v: unknown, min: number, max: number, fallback: number): number {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(n)));
+}
+
+function openDstLevelPick(id: string) {
+  openLevelPickKind.value = "dst";
+  openLevelPickRowId.value = openLevelPickRowId.value === id ? null : id;
+}
+function openSrcLevelPick(id: string) {
+  openLevelPickKind.value = "src";
+  openLevelPickRowId.value = openLevelPickRowId.value === id ? null : id;
+}
+function closeLevelPick() {
+  openLevelPickRowId.value = null;
+}
+function setDstLevel(id: string, v: unknown) {
+  const r = calcRows.value.find((x) => x.id === id);
+  if (!r) return;
+  const dst = clampInt(v, r.srcLevel, 65, r.dstLevel);
+  updateCalcRow(id, { dstLevel: dst });
+}
+function nudgeDstLevel(id: string, delta: number) {
+  const r = calcRows.value.find((x) => x.id === id);
+  if (!r) return;
+  setDstLevel(id, r.dstLevel + delta);
+}
+
+function setSrcLevel(id: string, v: unknown) {
+  const r = calcRows.value.find((x) => x.id === id);
+  if (!r) return;
+  const src = clampInt(v, 1, r.dstLevel, r.srcLevel);
+  const dst = r.dstLevel < src ? src : r.dstLevel;
+  const toNext = Math.max(0, calcExp(src, src + 1, r.expType));
+  const nextBoostReach = clampInt(r.boostReachLevel, src, dst, src);
+  updateCalcRow(id, { srcLevel: src, dstLevel: dst, expRemaining: toNext, boostReachLevel: nextBoostReach });
+}
+function nudgeSrcLevel(id: string, delta: number) {
+  const r = calcRows.value.find((x) => x.id === id);
+  if (!r) return;
+  setSrcLevel(id, r.srcLevel + delta);
+}
+
+function calcRowExpGot(r: CalcRow): { toNext: number; expGot: number; expRemaining: number } {
+  const toNext = Math.max(0, calcExp(r.srcLevel, r.srcLevel + 1, r.expType));
+  const remaining = clampInt(r.expRemaining, 0, toNext, toNext);
+  if (toNext <= 0) return { toNext: 0, expGot: 0, expRemaining: remaining };
+  const got = toNext - remaining;
+  return { toNext, expGot: Math.max(0, Math.min(got, toNext)), expRemaining: remaining };
+}
+
+function calcRowMixedByBoostLevel(r: CalcRow, expGot: number) {
+  const src = r.srcLevel;
+  const dst = r.dstLevel;
+  const mid = clampInt(r.boostReachLevel, src, dst, src);
+  if (mid <= src) {
     return calcExpAndCandyMixed({
-      srcLevel: srcLevel.value,
-      dstLevel: dstLevel.value,
-      expType: expType.value,
-      nature: nature.value,
+      srcLevel: src,
+      dstLevel: dst,
+      expType: r.expType,
+      nature: r.nature,
       boost: "none",
       boostCandy: 0,
-      expGot: expGot.value,
+      expGot,
     });
   }
 
   const boostOnlyNeed = calcExpAndCandy({
-    srcLevel: srcLevel.value,
+    srcLevel: src,
     dstLevel: mid,
-    expType: expType.value,
-    nature: nature.value,
+    expType: r.expType,
+    nature: r.nature,
     boost: boostKind.value,
-    expGot: expGot.value,
+    expGot,
   });
 
   const boostSeg = calcExpAndCandyMixed({
-    srcLevel: srcLevel.value,
+    srcLevel: src,
     dstLevel: mid,
-    expType: expType.value,
-    nature: nature.value,
+    expType: r.expType,
+    nature: r.nature,
     boost: boostKind.value,
     boostCandy: boostOnlyNeed.candy,
-    expGot: expGot.value,
+    expGot,
   });
 
   const atMid = calcLevelByCandy({
-    srcLevel: srcLevel.value,
+    srcLevel: src,
     dstLevel: mid,
-    expType: expType.value,
-    nature: nature.value,
+    expType: r.expType,
+    nature: r.nature,
     boost: boostKind.value,
     candy: boostOnlyNeed.candy,
-    expGot: expGot.value,
+    expGot,
   });
 
   const normalSeg = calcExpAndCandyMixed({
     srcLevel: mid,
-    dstLevel: dstLevel.value,
-    expType: expType.value,
-    nature: nature.value,
+    dstLevel: dst,
+    expType: r.expType,
+    nature: r.nature,
     boost: "none",
     boostCandy: 0,
     expGot: atMid.expGot,
@@ -1547,104 +1883,275 @@ const byBoostLevel = computed(() => {
     shardsBoost: boostSeg.shardsBoost,
     boostCandyLeft: 0,
   };
-});
+}
 
-const mixed = computed(() => {
-  if (mode.value === "boostLevel") return byBoostLevel.value;
-  return lastEdited.value === "ratio" ? byRatio.value : byCandy.value;
-});
+function calcRowView(r: CalcRow) {
+  const src = clampInt(r.srcLevel, 1, 65, 1);
+  const dstFromText =
+    typeof r.dstLevelText === "string" && r.dstLevelText.trim() !== "" ? clampInt(r.dstLevelText, 1, 65, r.dstLevel) : null;
+  const dst = clampInt(dstFromText ?? r.dstLevel, src, 65, src);
+  const expT = r.expType;
+  const nat = r.nature;
 
-// 同期: ratio→candy（換算結果を表示に反映）
-watch(
-  () => byRatio.value.boostCandy,
-  (next) => {
-    if (mode.value !== "ratio") return;
-    boostCandyInput.value = next;
-  },
-  { immediate: true }
-);
+  const expInfo = calcRowExpGot({ ...r, srcLevel: src, dstLevel: dst, expType: expT, nature: nat });
+  const expGot = expInfo.expGot;
 
-// 同期: candy→ratio（実際にアメブで入った経験値を、必要EXPで割って割合に戻す）
-watch(
-  () => byCandy.value,
-  (r) => {
-    if (mode.value !== "candy") return;
-    const base = requiredExp.value.exp;
-    const pct = base > 0 ? Math.round((r.expBoostApplied / base) * 100) : 0;
-    boostRatioPct.value = Math.max(0, Math.min(100, pct));
-  }
-);
+  const requiredExp = calcExpAndCandy({
+    srcLevel: src,
+    dstLevel: dst,
+    expType: expT,
+    nature: nat,
+    boost: "none",
+    expGot,
+  });
 
-// 基本モード（アメブLv指定）のときは、表示用のアメブ個数・割合を自動で合わせる
-watch(
-  () => byBoostLevel.value,
-  (r) => {
-    if (mode.value !== "boostLevel") return;
-    boostCandyInput.value = r.boostCandy;
-    const base = requiredExp.value.exp;
-    const pct = base > 0 ? Math.round((r.expBoostApplied / base) * 100) : 0;
-    boostRatioPct.value = Math.max(0, Math.min(100, pct));
-  },
-  { immediate: true }
-);
-
-// 現在の「アメブ個数（表示・手入力）」で、アメブだけでどこまで上げられるか
-const boostOnlyFromCandyInput = computed(() =>
-  calcLevelByCandy({
-    srcLevel: srcLevel.value,
-    dstLevel: dstLevel.value,
-    expType: expType.value,
-    nature: nature.value,
+  const ratio = Math.max(0, Math.min(1, (Number(r.boostRatioPct) || 0) / 100));
+  const byRatio = calcExpAndCandyByBoostExpRatio({
+    srcLevel: src,
+    dstLevel: dst,
+    expType: expT,
+    nature: nat,
     boost: boostKind.value,
-    candy: boostCandyInput.value,
-    expGot: expGot.value,
+    boostExpRatio: ratio,
+    expGot,
+  });
+
+  const byCandy = calcExpAndCandyMixed({
+    srcLevel: src,
+    dstLevel: dst,
+    expType: expT,
+    nature: nat,
+    boost: boostKind.value,
+    boostCandy: Math.max(0, Math.floor(Number(r.boostCandyInput) || 0)),
+    expGot,
+  });
+
+  const byBoostLevel = calcRowMixedByBoostLevel({ ...r, srcLevel: src, dstLevel: dst, expType: expT, nature: nat }, expGot);
+
+  const mixed = r.mode === "boostLevel" ? byBoostLevel : r.mode === "ratio" ? byRatio : byCandy;
+
+  const uiCandy = r.mode === "ratio" ? byRatio.boostCandy : r.mode === "boostLevel" ? byBoostLevel.boostCandy : Math.max(0, Math.floor(Number(r.boostCandyInput) || 0));
+  const base = requiredExp.exp;
+  const uiRatioPct = r.mode === "ratio"
+    ? clampInt(r.boostRatioPct, 0, 100, 0)
+    : clampInt(base > 0 ? Math.round((mixed.expBoostApplied / base) * 100) : 0, 0, 100, 0);
+
+  const boostOnly = calcLevelByCandy({
+    srcLevel: src,
+    dstLevel: dst,
+    expType: expT,
+    nature: nat,
+    boost: boostKind.value,
+    candy: uiCandy,
+    expGot,
+  });
+  const uiBoostReachLevel = r.mode === "boostLevel" ? clampInt(r.boostReachLevel, src, dst, src) : clampInt(boostOnly.level, src, dst, src);
+
+  return {
+    normalized: { srcLevel: src, dstLevel: dst, expRemaining: expInfo.expRemaining },
+    requiredExp,
+    mixed,
+    ui: { boostCandyInput: uiCandy, boostRatioPct: uiRatioPct, boostReachLevel: uiBoostReachLevel },
+  };
+}
+
+const calcRowsView = computed(() =>
+  calcRows.value.map((r) => {
+    const v = calcRowView(r);
+    return {
+      ...r,
+      srcLevel: v.normalized.srcLevel,
+      dstLevel: v.normalized.dstLevel,
+      expRemaining: v.normalized.expRemaining,
+      result: v.mixed,
+      ui: v.ui,
+    };
   })
 );
 
-// 割合/個数を触ったときは、到達Lvも追従させる（＝3つ連動）
-watch(
-  () => boostOnlyFromCandyInput.value.level,
-  (lvl) => {
-    if (mode.value === "boostLevel") return;
-    boostReachLevel.value = Math.max(srcLevel.value, Math.min(dstLevel.value, lvl));
-  },
-  { immediate: true }
-);
+const calcTotalShardsUsed = computed(() => calcRowsView.value.reduce((a, r) => a + (r.result.shards || 0), 0));
+const calcShardsOver = computed(() => calcTotalShardsUsed.value - Math.max(0, Math.floor(Number(totalShards.value) || 0)));
+
+function removeCalcRow(id: string) {
+  calcRows.value = calcRows.value.filter((x) => x.id !== id);
+  if (activeCalcRowId.value === id) activeCalcRowId.value = calcRows.value[0]?.id ?? null;
+}
+
+function indexOfCalcRow(id: string): number {
+  return calcRows.value.findIndex((x) => x.id === id);
+}
+
+function moveCalcRow(fromId: string, toIndex: number) {
+  const from = indexOfCalcRow(fromId);
+  if (from < 0) return;
+  const next = [...calcRows.value];
+  const [item] = next.splice(from, 1);
+  const idx = Math.max(0, Math.min(next.length, toIndex));
+  next.splice(idx, 0, item);
+  calcRows.value = next;
+}
+
+function canMoveCalcRowUp(id: string): boolean {
+  const i = indexOfCalcRow(id);
+  return i > 0;
+}
+function canMoveCalcRowDown(id: string): boolean {
+  const i = indexOfCalcRow(id);
+  return i >= 0 && i < calcRows.value.length - 1;
+}
+function moveCalcRowUp(id: string) {
+  const i = indexOfCalcRow(id);
+  if (i <= 0) return;
+  moveCalcRow(id, i - 1);
+}
+function moveCalcRowDown(id: string) {
+  const i = indexOfCalcRow(id);
+  if (i < 0 || i >= calcRows.value.length - 1) return;
+  moveCalcRow(id, i + 1);
+}
+
+function onCalcRowDragStart(id: string, ev: DragEvent) {
+  dragRowId.value = id;
+  dragOverRowId.value = null;
+  try {
+    ev.dataTransfer?.setData("text/plain", id);
+    ev.dataTransfer?.setDragImage?.((ev.target as HTMLElement) ?? new Image(), 0, 0);
+  } catch {
+    // ignore
+  }
+}
+function onCalcRowDragEnd() {
+  dragRowId.value = null;
+  dragOverRowId.value = null;
+}
+function onCalcRowDragOver(overId: string) {
+  if (!dragRowId.value) return;
+  if (overId === dragOverRowId.value) return;
+  dragOverRowId.value = overId;
+}
+function onCalcRowDragLeave(overId: string) {
+  if (dragOverRowId.value === overId) dragOverRowId.value = null;
+}
+function onCalcRowDrop(overId: string) {
+  const fromId = dragRowId.value;
+  if (!fromId) return;
+  if (fromId === overId) return onCalcRowDragEnd();
+  const to = indexOfCalcRow(overId);
+  if (to < 0) return onCalcRowDragEnd();
+  moveCalcRow(fromId, to);
+  onCalcRowDragEnd();
+}
+
+function updateCalcRow(id: string, patch: Partial<CalcRow>) {
+  calcRows.value = calcRows.value.map((x) => (x.id === id ? { ...x, ...patch } : x));
+}
+
+function onCalcRowDstLevel(id: string, v: string) {
+  const r = calcRows.value.find((x) => x.id === id);
+  if (!r) return;
+  // 入力中はテキストとして保持（datalist候補表示を安定させる）
+  updateCalcRow(id, { dstLevelText: v });
+}
+
+function onCalcRowDstLevelBlur(id: string) {
+  const r = calcRows.value.find((x) => x.id === id);
+  if (!r) return;
+  const raw = (r.dstLevelText ?? "").trim();
+  const parsed = raw === "" ? r.dstLevel : clampInt(raw, 1, 65, r.dstLevel);
+  const dst = clampInt(parsed, r.srcLevel, 65, r.srcLevel);
+  updateCalcRow(id, { dstLevel: dst, dstLevelText: undefined });
+}
+function onCalcRowExpRemaining(id: string, v: string) {
+  const r = calcRows.value.find((x) => x.id === id);
+  if (!r) return;
+  const toNext = Math.max(0, calcExp(r.srcLevel, r.srcLevel + 1, r.expType));
+  const rem = clampInt(v, 0, toNext, toNext);
+  updateCalcRow(id, { expRemaining: rem });
+}
+function onCalcRowExpType(id: string, v: string) {
+  const n = Number(v);
+  const expT: ExpType = n === 600 || n === 900 || n === 1080 || n === 1320 ? (n as any) : 600;
+  const r = calcRows.value.find((x) => x.id === id);
+  if (!r) return;
+  const toNext = Math.max(0, calcExp(r.srcLevel, r.srcLevel + 1, expT));
+  updateCalcRow(id, { expType: expT, expRemaining: toNext });
+}
+function onCalcRowNature(id: string, v: string) {
+  const nat: ExpGainNature = v === "up" || v === "down" || v === "normal" ? (v as any) : "normal";
+  updateCalcRow(id, { nature: nat });
+}
+function onCalcRowBoostLevel(id: string, v: string) {
+  const r = calcRows.value.find((x) => x.id === id);
+  if (!r) return;
+  const mid = clampInt(v, r.srcLevel, r.dstLevel, r.srcLevel);
+  updateCalcRow(id, { boostReachLevel: mid, mode: "boostLevel" });
+}
+function onCalcRowBoostRatio(id: string, v: string) {
+  const pct = clampInt(v, 0, 100, 0);
+  updateCalcRow(id, { boostRatioPct: pct, mode: "ratio" });
+}
+function onCalcRowBoostCandy(id: string, v: string) {
+  const n = Math.max(0, Math.floor(Number(v) || 0));
+  updateCalcRow(id, { boostCandyInput: n, mode: "candy" });
+}
 
 function applyBoxToCalculator() {
   const e = selectedBox.value;
   if (!e) return;
 
   const lvl = e.planner?.level ?? e.derived?.level ?? 10;
-  const expT = e.planner?.expType ?? e.derived?.expType ?? 600;
-  const nat = e.planner?.expGainNature ?? e.derived?.expGainNature ?? "normal";
-
-  isHydratingFromBox.value = true;
-  srcLevel.value = Math.max(1, Math.min(65, Math.floor(lvl)));
-  expType.value = expT as ExpType;
-  nature.value = nat as ExpGainNature;
-
-  // dst/boostは「そのまま維持」でもいいが、整合だけとる
-  dstLevel.value = Math.max(srcLevel.value, Math.min(65, Math.floor(dstLevel.value)));
-  boostReachLevel.value = Math.max(srcLevel.value, Math.min(dstLevel.value, Math.floor(boostReachLevel.value)));
-
-  const toNext = calcExp(srcLevel.value, srcLevel.value + 1, expType.value);
+  const expT = (e.planner?.expType ?? e.derived?.expType ?? 600) as ExpType;
+  const nat = (e.planner?.expGainNature ?? e.derived?.expGainNature ?? "normal") as ExpGainNature;
+  const srcLevel = clampInt(lvl, 1, 65, 10);
+  const dstLevel = clampInt(50, srcLevel, 65, srcLevel); // 目標Lvのデフォルトは50（典型値）
+  const toNext = Math.max(0, calcExp(srcLevel, srcLevel + 1, expT));
   const remaining =
     e.planner?.expRemaining !== undefined && Number.isFinite(e.planner.expRemaining)
-      ? Math.max(0, Math.min(Math.floor(e.planner.expRemaining), toNext))
+      ? clampInt(e.planner.expRemaining, 0, toNext, toNext)
       : toNext;
-  expRemaining.value = remaining;
-  expRemainingTouched.value = e.planner?.expRemaining !== undefined;
 
-  mode.value = "boostLevel";
+  const existing = calcRows.value.find((x) => x.boxId === e.id) ?? null;
+  const basePatch: Partial<CalcRow> = {
+    title: displayBoxTitle(e),
+    boxId: e.id,
+    srcLevel,
+    expType: expT,
+    nature: nat,
+    expRemaining: remaining,
+  };
+
+  if (existing) {
+    // 既存行があれば「ボックス由来の基礎値」だけ更新して、目標Lv/調整は維持
+    updateCalcRow(existing.id, basePatch);
+    activeCalcRowId.value = existing.id;
+  } else {
+    const row: CalcRow = {
+      id: cryptoRandomId(),
+      title: displayBoxTitle(e),
+      boxId: e.id,
+      srcLevel,
+      dstLevel,
+      expRemaining: remaining,
+      expType: expT,
+      nature: nat,
+      boostReachLevel: dstLevel, // ratio=100 のとき UI 表示は dst に揃う想定
+      boostRatioPct: 100, // デフォルトは「目標Lvまでアメブで上げる」
+      boostCandyInput: 0,
+      mode: "ratio",
+    };
+    calcRows.value = [row, ...calcRows.value];
+    activeCalcRowId.value = row.id;
+  }
+
   nextTick(() => {
-    isHydratingFromBox.value = false;
     activeTab.value = "calc";
   });
 }
 
 function applyCalculatorToBox() {
-  const e = selectedBox.value;
+  const r = activeCalcRow.value;
+  if (!r || !r.boxId) return;
+  const e = boxEntries.value.find((x) => x.id === r.boxId) ?? null;
   if (!e) return;
   beginUndoSnapshot();
   const now = new Date().toISOString();
@@ -1654,14 +2161,15 @@ function applyCalculatorToBox() {
       ...x,
       planner: {
         ...(x.planner ?? {}),
-        level: srcLevel.value,
-        expRemaining: expRemaining.value,
-        expType: expType.value,
-        expGainNature: nature.value,
+        level: r.srcLevel,
+        expRemaining: r.expRemaining,
+        expType: r.expType,
+        expGainNature: r.nature,
       },
       updatedAt: now,
     };
   });
+  selectedBoxId.value = e.id;
   importStatus.value = "計算機の値をボックスへ保存しました";
 }
 
@@ -1713,6 +2221,198 @@ function onEditSelectedSpecialty(v: string) {
     };
   });
   importStatus.value = "とくいを更新しました";
+}
+
+function onEditSelectedLevel(v: string) {
+  const e = selectedBox.value;
+  if (!e) return;
+  beginUndoSnapshot();
+  const lvl = clampInt(v, 1, 65, e.planner?.level ?? e.derived?.level ?? 1);
+  writeSelectedLevel(lvl);
+}
+
+function onEditSelectedLabel(v: string) {
+  const e = selectedBox.value;
+  if (!e) return;
+  beginUndoSnapshot();
+  const label = String(v ?? "").trim(); // 空文字は「種族名表示に戻す」扱い
+  const now = new Date().toISOString();
+  boxEntries.value = boxEntries.value.map((x) => {
+    if (x.id !== e.id) return x;
+    return {
+      ...x,
+      label,
+      updatedAt: now,
+    };
+  });
+  importStatus.value = "ニックネームを更新しました";
+}
+
+function toggleSelectedFavorite() {
+  const e = selectedBox.value;
+  if (!e) return;
+  beginUndoSnapshot();
+  const now = new Date().toISOString();
+  boxEntries.value = boxEntries.value.map((x) => {
+    if (x.id !== e.id) return x;
+    return { ...x, favorite: !x.favorite, updatedAt: now };
+  });
+  importStatus.value = "お気に入りを更新しました";
+}
+
+function writeSelectedLevel(lvl: number) {
+  const e = selectedBox.value;
+  if (!e) return;
+  const now = new Date().toISOString();
+  boxEntries.value = boxEntries.value.map((x) => {
+    if (x.id !== e.id) return x;
+    return {
+      ...x,
+      planner: {
+        ...(x.planner ?? {}),
+        level: lvl,
+      },
+      updatedAt: now,
+    };
+  });
+  importStatus.value = "レベルを更新しました";
+}
+
+function toggleBoxLevelPick() {
+  openBoxLevelPick.value = !openBoxLevelPick.value;
+  // このポップオーバーの操作中は、最初の変更でだけUndoスナップショットを取る
+  if (openBoxLevelPick.value) boxLevelUndoArmed.value = false;
+}
+function closeBoxLevelPick() {
+  openBoxLevelPick.value = false;
+  boxLevelUndoArmed.value = false;
+}
+function ensureBoxLevelUndoSnapshot() {
+  if (boxLevelUndoArmed.value) return;
+  beginUndoSnapshot();
+  boxLevelUndoArmed.value = true;
+}
+function setBoxLevel(v: unknown) {
+  const e = selectedBox.value;
+  if (!e) return;
+  ensureBoxLevelUndoSnapshot();
+  const lvl = clampInt(v, 1, 65, e.planner?.level ?? e.derived?.level ?? 1);
+  writeSelectedLevel(lvl);
+}
+function nudgeBoxLevel(delta: number) {
+  const cur = selectedDetail.value?.level ?? 1;
+  setBoxLevel(cur + delta);
+}
+
+function onEditSelectedExpType(v: string) {
+  const e = selectedBox.value;
+  if (!e) return;
+  beginUndoSnapshot();
+  const n = Number(v);
+  const expT: ExpType = n === 600 || n === 900 || n === 1080 || n === 1320 ? (n as any) : 600;
+  const now = new Date().toISOString();
+  boxEntries.value = boxEntries.value.map((x) => {
+    if (x.id !== e.id) return x;
+    return {
+      ...x,
+      planner: {
+        ...(x.planner ?? {}),
+        expType: expT,
+      },
+      updatedAt: now,
+    };
+  });
+  importStatus.value = "EXPタイプを更新しました";
+}
+
+function onEditSelectedNature(v: string) {
+  const e = selectedBox.value;
+  if (!e) return;
+  beginUndoSnapshot();
+  const nat: ExpGainNature = v === "up" || v === "down" || v === "normal" ? (v as any) : "normal";
+  const now = new Date().toISOString();
+  boxEntries.value = boxEntries.value.map((x) => {
+    if (x.id !== e.id) return x;
+    return {
+      ...x,
+      planner: {
+        ...(x.planner ?? {}),
+        expGainNature: nat,
+      },
+      updatedAt: now,
+    };
+  });
+  importStatus.value = "性格（EXP補正）を更新しました";
+}
+
+function onEditSelectedIngredientType(v: string) {
+  const e = selectedBox.value;
+  if (!e) return;
+  beginUndoSnapshot();
+  const next = (v || "").trim() as any;
+  const ingredientType: IngredientType | undefined = (IngredientTypes as readonly string[]).includes(next) ? (next as any) : undefined;
+  const now = new Date().toISOString();
+  boxEntries.value = boxEntries.value.map((x) => {
+    if (x.id !== e.id) return x;
+    return {
+      ...x,
+      planner: {
+        ...(x.planner ?? {}),
+        ingredientType,
+      },
+      updatedAt: now,
+    };
+  });
+  importStatus.value = "食材タイプを更新しました";
+}
+
+function toSubSkillLevel(v: unknown): 10 | 25 | 50 | 75 | 100 | null {
+  const n = typeof v === "number" ? v : Number(v);
+  if (n === 10 || n === 25 || n === 50 || n === 75 || n === 100) return n;
+  return null;
+}
+
+function onBoxEditSubInput(lvLike: unknown, v: string) {
+  const lv = toSubSkillLevel(lvLike);
+  if (!lv) return;
+  boxEditSubInputs.value = { ...boxEditSubInputs.value, [String(lv)]: v };
+  if (boxEditSubErrors.value[String(lv)]) {
+    boxEditSubErrors.value = { ...boxEditSubErrors.value, [String(lv)]: null };
+  }
+}
+
+function onBoxEditSubBlur(lvLike: unknown) {
+  const e = selectedBox.value;
+  if (!e) return;
+  const lv = toSubSkillLevel(lvLike);
+  if (!lv) return;
+  const ja = (boxEditSubInputs.value[String(lv)] ?? "").trim();
+  const en = ja ? subSkillEnFromJa(ja) : null;
+  if (ja && !en) {
+    // 保存はしないが、UIは「変更済み」なので取り消せるようにUndoを有効化する
+    // （この時点ではboxEntriesは変わっていないので、UndoでUIを同期し直すだけで元に戻る）
+    if (!undoSnapshot.value) beginUndoSnapshot();
+    boxEditSubErrors.value = { ...boxEditSubErrors.value, [String(lv)]: "未知のサブスキルです（保存時は無視されます）" };
+    return;
+  }
+
+  beginUndoSnapshot();
+  const now = new Date().toISOString();
+  boxEntries.value = boxEntries.value.map((x) => {
+    if (x.id !== e.id) return x;
+    const base = (x.planner?.subSkills ?? []).filter((s) => s.lv !== lv);
+    const nextSubs = en ? [...base, { lv, nameEn: en }] : base;
+    nextSubs.sort((a, b) => a.lv - b.lv);
+    return {
+      ...x,
+      planner: {
+        ...(x.planner ?? {}),
+        subSkills: nextSubs.length ? nextSubs : undefined,
+      },
+      updatedAt: now,
+    };
+  });
+  importStatus.value = "サブスキルを更新しました";
 }
 </script>
 
@@ -1810,6 +2510,249 @@ function onEditSelectedSpecialty(v: string) {
   .grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+}
+
+/* --- Calculator (multi) --- */
+.calcTop {
+  max-width: 660px;
+  margin-top: 12px;
+}
+.calcTop__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+@media (min-width: 860px) {
+  .calcTop__grid {
+    grid-template-columns: 1.2fr 0.8fr;
+    align-items: start;
+  }
+}
+.calcTop__summary {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.calcSum {
+  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
+  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
+  border-radius: 14px;
+  padding: 10px 12px;
+  min-width: 160px;
+}
+.calcSum__k {
+  font-family: var(--font-body);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--ink) 60%, transparent);
+}
+.calcSum__v {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 18px;
+  margin-top: 2px;
+}
+.calcSum--danger .calcSum__v {
+  color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 10%);
+}
+.calcHint {
+  font-family: var(--font-body);
+  margin: 14px 0 8px;
+  color: color-mix(in oklab, var(--ink) 68%, transparent);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.calcRows {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+}
+.calcRow {
+  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
+  background: color-mix(in oklab, var(--paper) 97%, var(--ink) 3%);
+  border-radius: 16px;
+  padding: 12px;
+}
+.calcRow--active {
+  border-color: color-mix(in oklab, var(--accent) 34%, var(--ink) 10%);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 10%, transparent);
+}
+.calcRow--dragOver {
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--ink) 10%);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 14%, transparent);
+}
+.calcRow--dragging {
+  opacity: 0.65;
+}
+.calcRow__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.calcRow__headLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.calcRow__headRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.calcRow__dragHandle {
+  cursor: grab;
+  user-select: none;
+  line-height: 1;
+  letter-spacing: -2px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.calcRow__dragHandle:active {
+  cursor: grabbing;
+}
+.calcRow__title {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.calcRow__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+@media (min-width: 860px) {
+  .calcRow__grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.calcRow__result {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed color-mix(in oklab, var(--ink) 14%, transparent);
+}
+.calcRow__res {
+  display: grid;
+  gap: 2px;
+  min-width: 180px;
+}
+.calcRow__k {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: color-mix(in oklab, var(--ink) 60%, transparent);
+}
+.calcRow__v {
+  font-family: var(--font-heading);
+  font-weight: 800;
+}
+
+.field--sm {
+  gap: 5px;
+}
+.field--sm .field__label {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+.field--sm .field__input {
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+.field--sm .field__sub {
+  font-size: 11px;
+}
+
+/* --- Level picker (nitoyon-like) --- */
+.levelPick {
+  position: relative;
+}
+.levelPick__button {
+  width: 100%;
+  text-align: left;
+}
+.field__input--button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.field__input--button::after {
+  content: "▾";
+  color: color-mix(in oklab, var(--ink) 55%, transparent);
+  font-size: 12px;
+}
+.levelPick__popover {
+  position: absolute;
+  z-index: 40;
+  left: 0;
+  top: calc(100% + 8px);
+  width: min(360px, 78vw);
+  border: 1px solid color-mix(in oklab, var(--ink) 16%, transparent);
+  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
+  border-radius: 16px;
+  padding: 12px;
+  box-shadow:
+    0 16px 32px color-mix(in oklab, var(--ink) 18%, transparent),
+    0 2px 0 color-mix(in oklab, var(--ink) 10%, transparent);
+}
+.levelPick__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.levelPick__title {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.levelPick__sliderRow {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+  margin-top: 10px;
+}
+.levelPick__range {
+  width: 100%;
+  accent-color: color-mix(in oklab, var(--accent) 72%, var(--ink) 20%);
+}
+.levelPick__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+.levelChip {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--ink) 18%, transparent);
+  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
+  font: inherit;
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-weight: 800;
+}
+.levelChip:hover {
+  border-color: color-mix(in oklab, var(--ink) 28%, transparent);
+}
+.levelChip--on {
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--ink) 16%);
+  background: color-mix(in oklab, var(--accent) 14%, var(--paper) 86%);
+}
+.levelChip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .field {
   display: grid;
@@ -1924,6 +2867,11 @@ function onEditSelectedSpecialty(v: string) {
 .btn--danger {
   border-color: color-mix(in oklab, #b10 35%, transparent);
   background: color-mix(in oklab, #b10 10%, var(--paper) 90%);
+}
+.btn--xs {
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 12px;
 }
 
 .chip {
@@ -2156,6 +3104,12 @@ function onEditSelectedSpecialty(v: string) {
   font-size: 12px;
   color: color-mix(in oklab, var(--ink) 62%, transparent);
 }
+.boxTile__fav {
+  margin-left: 6px;
+  font-family: var(--font-heading);
+  font-weight: 900;
+  color: color-mix(in oklab, var(--accent) 78%, var(--ink) 22%);
+}
 .boxListHint {
   margin: 6px 0 0;
   font-family: var(--font-body);
@@ -2313,7 +3267,16 @@ function onEditSelectedSpecialty(v: string) {
 .boxSortRow {
   margin-top: 10px;
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.boxSortRow__left {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 .boxDetail {
   margin-top: 12px;
@@ -2358,6 +3321,11 @@ function onEditSelectedSpecialty(v: string) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+.boxDetail__col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 .boxDetail__kv {
   border: 1px solid color-mix(in oklab, var(--ink) 12%, transparent);
   background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
@@ -2388,6 +3356,13 @@ function onEditSelectedSpecialty(v: string) {
   font-weight: 600;
   font-size: 12px;
   line-height: 1.6;
+}
+.boxDetail__editRow {
+  margin-bottom: 8px;
+}
+.boxDetail__subEdit {
+  display: grid;
+  gap: 10px;
 }
 .boxDetail__raw {
   width: 100%;
