@@ -1,0 +1,194 @@
+import fs from "node:fs";
+import path from "node:path";
+import process from "node:process";
+import * as cheerio from "cheerio";
+
+const WIKI_URL =
+  "https://wikiwiki.jp/poke_sleep/%E8%82%B2%E6%88%90/%E3%83%AC%E3%83%99%E3%83%AB";
+
+function assert(cond, msg) {
+  if (!cond) throw new Error(msg);
+}
+
+function toInt(s) {
+  if (typeof s !== "string") return NaN;
+  const cleaned = s.replace(/,/g, "").trim();
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function normalizeText(t) {
+  return (t ?? "").replace(/\s+/g, " ").trim();
+}
+
+function findExpTable($) {
+  // WikiのHTMLは「見出し文字列」で辿れないケースがあるため、
+  // 全テーブルを走査して「レベル表っぽさ」で判定する。
+  const tables = $("table")
+    .toArray()
+    .map((t) => $(t));
+
+  let best = null;
+  let bestScore = -Infinity;
+
+  for (const $t of tables) {
+    const rows = $t.find("tr").toArray();
+
+    let parsed = 0;
+    let maxLevel = 0;
+    let hasLv25Text = false;
+
+    const tableText = normalizeText($t.text());
+    if (tableText.includes("Lv.25")) hasLv25Text = true;
+
+    for (const r of rows) {
+      const cells = $(r)
+        .find("th,td")
+        .toArray()
+        .map((c) => normalizeText($(c).text()));
+      if (cells.length < 6) continue;
+
+      const level = toInt(cells[0]);
+      if (!Number.isFinite(level) || level < 2) continue;
+
+      const expTotal = toInt(cells[2]);
+      const shardsPerCandy = toInt(cells[5]);
+      if (!Number.isFinite(expTotal) || !Number.isFinite(shardsPerCandy)) continue;
+
+      parsed++;
+      if (level > maxLevel) maxLevel = level;
+    }
+
+    // Score: prioritize many parsed rows and higher maxLevel
+    const score =
+      parsed * 10 + maxLevel + (hasLv25Text ? 50 : 0) + (rows.length >= 60 ? 20 : 0);
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = $t;
+    }
+  }
+
+  return best;
+}
+
+function parseTablesFromWiki(html) {
+  const $ = cheerio.load(html);
+
+  const $table = findExpTable($);
+  assert(
+    $table,
+    "必要EXP表のテーブルが見つかりませんでした。ページ構造が変わった可能性があります。"
+  );
+
+  // Parse rows: we want (level, exp cumulative, shardsPerCandy)
+  // Wiki table columns include:
+  // レベル | EXP(必要量/累計) | アメ(必要量/累計) | ゆめのかけら(アメ1個あたり/必要量/累計)
+  // We only need: EXP累計, かけら(アメ1個あたり)
+  const rows = $table.find("tr").toArray();
+
+  // Find column indices by scanning the first 2 header rows (some tables have multi-row headers).
+  // We'll just parse by fixed positions based on observed structure in fetched HTML:
+  // [level, expNeeded, expTotal, candyNeeded, candyTotal, shardsPerCandy, shardsNeeded, shardsTotal]
+  // and skip non-numeric level rows.
+
+  const expTotalByLevel = [];
+  const shardsPerCandyByLevel = [];
+  let maxLevel = 0;
+
+  for (const r of rows) {
+    const cells = $(r)
+      .find("th,td")
+      .toArray()
+      .map((c) => normalizeText($(c).text()));
+    if (cells.length < 6) continue;
+
+    const level = toInt(cells[0]);
+    if (!Number.isFinite(level)) continue;
+    // Skip header-like numeric? keep only >=2
+    if (level < 2) continue;
+
+    const expTotal = toInt(cells[2]);
+    const shardsPerCandy = toInt(cells[5]);
+
+    if (!Number.isFinite(expTotal) || !Number.isFinite(shardsPerCandy)) continue;
+
+    expTotalByLevel[level] = expTotal;
+    shardsPerCandyByLevel[level] = shardsPerCandy;
+    if (level > maxLevel) maxLevel = level;
+  }
+
+  assert(maxLevel >= 30, `抽出できた最大レベルが小さすぎます: ${maxLevel}`);
+
+  // Ensure arrays start with 0,0 for indices 0,1
+  expTotalByLevel[0] = 0;
+  expTotalByLevel[1] = 0;
+  shardsPerCandyByLevel[0] = 0;
+  shardsPerCandyByLevel[1] = 0;
+
+  // Fill missing with previous value? (better: keep 0 and let runtime guard)
+  // We'll instead coerce undefined to 0 for safety in generated file.
+  const expTotal = Array.from({ length: maxLevel + 1 }, (_, i) => expTotalByLevel[i] ?? 0);
+  const shardsPerCandy = Array.from(
+    { length: maxLevel + 1 },
+    (_, i) => shardsPerCandyByLevel[i] ?? 0
+  );
+
+  return { expTotal, shardsPerCandy, maxLevel };
+}
+
+function formatTsArray(arr) {
+  // Pretty-print: 11 items per line
+  const cols = 11;
+  const lines = [];
+  for (let i = 0; i < arr.length; i += cols) {
+    lines.push("  " + arr.slice(i, i + cols).join(", ") + ",");
+  }
+  return "[\n" + lines.join("\n") + "\n]";
+}
+
+async function main() {
+  console.log(`[generate] Fetch: ${WIKI_URL}`);
+  const res = await fetch(WIKI_URL, {
+    headers: {
+      // basic UA to avoid being blocked as empty agent
+      "user-agent": "candy-boost-planner/0.1 (table-generator)",
+      "accept-language": "ja,en;q=0.8",
+    },
+  });
+  assert(res.ok, `Fetch failed: ${res.status} ${res.statusText}`);
+  const html = await res.text();
+
+  const { expTotal, shardsPerCandy, maxLevel } = parseTablesFromWiki(html);
+
+  const outPath = path.join(
+    process.cwd(),
+    "src",
+    "domain",
+    "pokesleep",
+    "tables.ts"
+  );
+
+  const now = new Date().toISOString();
+  const file = `// This file is auto-generated by scripts/generate-pokesleep-tables.mjs
+// Source (Wiki): ${WIKI_URL}
+// Generated at: ${now}
+
+export const maxLevel = ${maxLevel} as const;
+
+// totalExpToTheLevel[level] = そのレベル到達までの累積EXP（600タイプの表）
+export const totalExpToTheLevel = ${formatTsArray(expTotal)} as const;
+
+// dreamShardsPerCandy[level] = アメ1個あたりのゆめのかけら
+export const dreamShardsPerCandy = ${formatTsArray(shardsPerCandy)} as const;
+`;
+
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  fs.writeFileSync(outPath, file, "utf8");
+  console.log(`[generate] Wrote: ${outPath}`);
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
