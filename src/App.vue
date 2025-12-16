@@ -74,6 +74,38 @@
         </div>
       </div>
 
+      <div class="calcActions">
+        <button class="btn btn--danger" type="button" @click="onCalcClear" :disabled="!calcRowsView.length">
+          ポケモンをクリア
+        </button>
+        <button class="btn btn--ghost" type="button" @click="onCalcUndo" :disabled="!canCalcUndo">
+          Undo
+        </button>
+        <button class="btn btn--ghost" type="button" @click="onCalcRedo" :disabled="!canCalcRedo">
+          Redo
+        </button>
+      </div>
+
+      <div class="calcSlots">
+        <div v-for="i in 3" :key="i" class="calcSlot" :class="{ 'calcSlot--empty': !calcSlots[i - 1] }">
+          <div class="calcSlot__head">
+            <div class="calcSlot__label">スロット{{ i }}</div>
+            <div class="calcSlot__state">{{ calcSlots[i - 1] ? formatCalcSlotSavedAt(calcSlots[i - 1]?.savedAt) : "空" }}</div>
+          </div>
+          <div class="calcSlot__actions">
+            <button class="btn btn--ghost btn--xs" type="button" @click="onCalcSlotLoad(i - 1)" :disabled="!calcSlots[i - 1]">
+              読み込む
+            </button>
+            <button class="btn btn--xs" type="button" @click="onCalcSlotSave(i - 1)" :disabled="!calcRowsView.length">
+              保存
+            </button>
+            <button class="btn btn--ghost btn--xs" type="button" @click="onCalcSlotDelete(i - 1)" :disabled="!calcSlots[i - 1]">
+              削除
+            </button>
+          </div>
+        </div>
+      </div>
+
       <p class="calcHint">
         追加方法: ポケモンボックスの詳細で <strong>「計算機に追加（反映）」</strong> を押すと、このリストに追加されます。
       </p>
@@ -116,7 +148,7 @@
               <button class="btn btn--ghost btn--xs" type="button" @click.stop="moveCalcRowDown(r.id)" :disabled="!canMoveCalcRowDown(r.id)">
                 ↓
               </button>
-              <button class="btn btn--danger btn--xs" type="button" @click.stop="removeCalcRow(r.id)">削除</button>
+              <button class="btn btn--danger btn--xs" type="button" @click.stop="onCalcRemoveRow(r.id)">削除</button>
             </div>
           </div>
 
@@ -142,7 +174,9 @@
                 >
                   <div class="levelPick__top">
                     <div class="levelPick__title">現在Lv</div>
-                    <button class="btn btn--ghost btn--xs" type="button" @click="closeLevelPick">閉じる</button>
+                    <button class="btn btn--ghost btn--xs" type="button" @mousedown.stop.prevent @click.stop.prevent="closeLevelPick()">
+                      閉じる
+                    </button>
                   </div>
 
                   <div class="levelPick__sliderRow">
@@ -200,7 +234,9 @@
                 >
                   <div class="levelPick__top">
                     <div class="levelPick__title">Lv{{ r.srcLevel }} → Lv{{ r.dstLevel }}</div>
-                    <button class="btn btn--ghost btn--xs" type="button" @click="closeLevelPick">閉じる</button>
+                    <button class="btn btn--ghost btn--xs" type="button" @mousedown.stop.prevent @click.stop.prevent="closeLevelPick()">
+                      閉じる
+                    </button>
                   </div>
 
                   <div class="levelPick__sliderRow">
@@ -266,7 +302,7 @@
             </label>
 
             <label class="field field--sm">
-              <span class="field__label">アメブLv（サブ）</span>
+              <span class="field__label">アメブ目標Lv</span>
               <input
                 :value="r.ui.boostReachLevel"
                 type="number"
@@ -277,7 +313,7 @@
               />
             </label>
             <label class="field field--sm">
-              <span class="field__label">アメブ割合（サブ）</span>
+              <span class="field__label">経験値に対するアメブ割合</span>
               <input
                 :value="r.ui.boostRatioPct"
                 type="range"
@@ -290,7 +326,7 @@
               <span class="field__sub">{{ r.ui.boostRatioPct }}%</span>
             </label>
             <label class="field field--sm">
-              <span class="field__label">アメブ個数（サブ）</span>
+              <span class="field__label">アメブ個数</span>
               <input
                 :value="r.ui.boostCandyInput"
                 type="number"
@@ -542,8 +578,8 @@
             <h3 class="boxCard__title">一覧</h3>
             <div class="boxCard__tools">
               <input v-model="boxFilter" class="boxSearch" placeholder="検索（ラベル/ID）" />
-              <button class="btn btn--ghost" type="button" @click="onClearSelection" :disabled="!selectedBoxId">
-                選択解除
+              <button class="btn btn--ghost" type="button" @click="boxFilter = ''" :disabled="!boxFilter.trim()">
+                検索クリア
               </button>
             </div>
           </div>
@@ -689,9 +725,6 @@
                     <button class="btn btn--primary" type="button" @click="applyBoxToCalculator">
                       計算機に追加（反映）
                     </button>
-                    <button class="btn btn--ghost" type="button" @click="onUndo" :disabled="!canUndo">
-                      Undo
-                    </button>
                     <button class="btn btn--danger" type="button" @click="onDeleteSelected">
                       削除
                     </button>
@@ -773,7 +806,9 @@
                           <div v-if="openBoxLevelPick" class="levelPick__popover" role="dialog" aria-label="現在Lvの選択">
                             <div class="levelPick__top">
                               <div class="levelPick__title">現在Lv</div>
-                              <button class="btn btn--ghost btn--xs" type="button" @click="closeBoxLevelPick">閉じる</button>
+                              <button class="btn btn--ghost btn--xs" type="button" @mousedown.stop.prevent @click.stop.prevent="closeBoxLevelPick()">
+                                閉じる
+                              </button>
                             </div>
 
                             <div class="levelPick__sliderRow">
@@ -935,6 +970,8 @@ import { boostRules } from "./domain/pokesleep/boost-config";
 import type { BoxSubSkillSlotV1, IngredientType, PokemonBoxEntryV1, PokemonSpecialty } from "./domain/types";
 import { decodeNitoyonIvDetail, decodeNitoyonIvMinimal, parseNitoyonBoxLine } from "./domain/box/nitoyon";
 import { cryptoRandomId, loadBox, saveBox } from "./persistence/box";
+import type { CalcRowV1, CalcSaveSlotV1 } from "./persistence/calc";
+import { loadCalcAutosave, loadCalcSlots, loadLegacyTotalShards, saveCalcAutosave, saveCalcSlots } from "./persistence/calc";
 import {
   findPokemonByNameJa,
   getPokemonExpType,
@@ -1083,7 +1120,6 @@ function onRelinkApply() {
     relinkStatus.value = "再リンク失敗：名前が一致しません";
     return;
   }
-  beginUndoSnapshot();
   const now = new Date().toISOString();
   boxEntries.value = boxEntries.value.map((x) => {
     if (x.id !== e.id) return x;
@@ -1166,9 +1202,13 @@ watch(
   }
 );
 
-type UndoSnapshot = { entries: PokemonBoxEntryV1[]; selectedId: string | null };
-const undoSnapshot = ref<UndoSnapshot | null>(null);
-const canUndo = computed(() => !!undoSnapshot.value);
+type BoxUndoAction =
+  | { kind: "delete"; entry: PokemonBoxEntryV1; index: number; selectedId: string | null }
+  | { kind: "add"; addedIds: string[]; selectedId: string | null }
+  | { kind: "import"; addedIds: string[]; selectedId: string | null }
+  | { kind: "clear"; entries: PokemonBoxEntryV1[]; selectedId: string | null };
+const boxUndoAction = ref<BoxUndoAction | null>(null);
+const canUndo = computed(() => !!boxUndoAction.value);
 
 function cloneBoxEntries(entries: PokemonBoxEntryV1[]): PokemonBoxEntryV1[] {
   // Vueのreactive配列/オブジェクトはProxyなので、まずtoRawで剥がしてからコピーする
@@ -1177,19 +1217,29 @@ function cloneBoxEntries(entries: PokemonBoxEntryV1[]): PokemonBoxEntryV1[] {
   return JSON.parse(JSON.stringify(raw));
 }
 
-function beginUndoSnapshot() {
-  undoSnapshot.value = {
-    entries: cloneBoxEntries(boxEntries.value),
-    selectedId: selectedBoxId.value,
-  };
+function cloneBoxEntry(e: PokemonBoxEntryV1): PokemonBoxEntryV1 {
+  const raw = toRaw(e) as any;
+  return JSON.parse(JSON.stringify(raw));
 }
 
 function onUndo() {
-  const snap = undoSnapshot.value;
-  if (!snap) return;
-  boxEntries.value = snap.entries;
-  selectedBoxId.value = snap.selectedId;
-  undoSnapshot.value = null;
+  const a = boxUndoAction.value;
+  if (!a) return;
+  if (a.kind === "delete") {
+    const next = [...boxEntries.value];
+    const idx = Math.max(0, Math.min(next.length, a.index));
+    next.splice(idx, 0, a.entry);
+    boxEntries.value = next.slice(0, 300);
+    selectedBoxId.value = a.selectedId;
+  } else if (a.kind === "add" || a.kind === "import") {
+    const set = new Set(a.addedIds);
+    boxEntries.value = boxEntries.value.filter((x) => !set.has(x.id));
+    selectedBoxId.value = a.selectedId;
+  } else if (a.kind === "clear") {
+    boxEntries.value = a.entries;
+    selectedBoxId.value = a.selectedId;
+  }
+  boxUndoAction.value = null;
   importStatus.value = "Undoしました";
   // selectedIdが変わらない場合でも編集UI（サブスキル等）を復元する
   nextTick(() => {
@@ -1213,7 +1263,6 @@ watch(
     relinkStatus.value = "";
     openLevelPickRowId.value = null;
     openBoxLevelPick.value = false;
-    boxLevelUndoArmed.value = false;
   }
 );
 
@@ -1221,7 +1270,6 @@ const boxEditSubInputs = ref<Record<string, string>>({ "10": "", "25": "", "50":
 const boxEditSubErrors = ref<Record<string, string | null>>({ "10": null, "25": null, "50": null, "75": null, "100": null });
 
 const openBoxLevelPick = ref(false);
-const boxLevelUndoArmed = ref(false);
 
 function onGlobalPointerDown(ev: MouseEvent) {
   const t = ev.target as HTMLElement | null;
@@ -1230,14 +1278,12 @@ function onGlobalPointerDown(ev: MouseEvent) {
   if (t.closest(".levelPick")) return;
   openLevelPickRowId.value = null;
   openBoxLevelPick.value = false;
-  boxLevelUndoArmed.value = false;
 }
 
 function onGlobalKeyDown(ev: KeyboardEvent) {
   if (ev.key === "Escape") {
     openLevelPickRowId.value = null;
     openBoxLevelPick.value = false;
-    boxLevelUndoArmed.value = false;
   }
 }
 
@@ -1550,13 +1596,14 @@ function onImport() {
     importStatus.value = "入力が空です";
     return;
   }
-  beginUndoSnapshot();
+  const undoSelectedId = selectedBoxId.value;
 
   const existing = new Set(boxEntries.value.map((e) => e.rawText));
   let added = 0;
   let skipped = 0;
   const now = new Date().toISOString();
   const next: PokemonBoxEntryV1[] = [...boxEntries.value];
+  const addedIds: string[] = [];
 
   for (const line of lines) {
     const parsed = parseNitoyonBoxLine(line);
@@ -1589,12 +1636,14 @@ function onImport() {
       updatedAt: now,
     };
     next.push(entry);
+    addedIds.push(entry.id);
     existing.add(rawText);
     added++;
     if (next.length >= 300) break;
   }
 
   boxEntries.value = next;
+  boxUndoAction.value = addedIds.length ? { kind: "import", addedIds, selectedId: undoSelectedId } : null;
   importStatus.value = `取り込み: ${added}件 / スキップ: ${skipped}件`;
 }
 
@@ -1651,7 +1700,7 @@ function onCreateManual(opts: { mode: "toCalc" | "toBox" }) {
     importStatus.value = "名前が空です";
     return;
   }
-  beginUndoSnapshot();
+  const undoSelectedId = selectedBoxId.value;
   const pokedexId = found?.pokedexId ?? 0;
   const form = found?.form ?? 0;
   const speciesName = found ? getPokemonNameJa(pokedexId, form) : null;
@@ -1687,6 +1736,7 @@ function onCreateManual(opts: { mode: "toCalc" | "toBox" }) {
     updatedAt: now,
   };
   boxEntries.value = [entry, ...boxEntries.value].slice(0, 300);
+  boxUndoAction.value = { kind: "add", addedIds: [entry.id], selectedId: undoSelectedId };
   selectedBoxId.value = entry.id;
   if (opts.mode === "toCalc") {
     activeTab.value = "calc";
@@ -1711,7 +1761,15 @@ function onCreateManual(opts: { mode: "toCalc" | "toBox" }) {
   addSubErrors.value = { "10": null, "25": null, "50": null, "75": null, "100": null };
 }
 
-const boostKind = ref<Exclude<BoostEvent, "none">>("full");
+const calcAutosave0 = loadCalcAutosave();
+const calcSlots = ref<Array<CalcSaveSlotV1 | null>>(loadCalcSlots());
+
+type CalcRow = CalcRowV1;
+
+const boostKind = ref<Exclude<BoostEvent, "none">>(calcAutosave0?.boostKind ?? "full");
+const totalShards = ref<number>(calcAutosave0?.totalShards ?? loadLegacyTotalShards());
+const calcRows = ref<CalcRow[]>(calcAutosave0?.rows ?? []);
+const activeCalcRowId = ref<string | null>(calcAutosave0?.activeRowId ?? calcRows.value[0]?.id ?? null);
 
 const fullLabel = computed(
   () => `アメブ（かけら×${boostRules.full.shardMultiplier} / EXP×${boostRules.full.expMultiplier}）`
@@ -1720,43 +1778,160 @@ const miniLabel = computed(
   () => `ミニブ（かけら×${boostRules.mini.shardMultiplier} / EXP×${boostRules.mini.expMultiplier}）`
 );
 
-const TOTAL_SHARDS_KEY = "candy-boost-planner:calc:totalShards";
-function loadTotalShards(): number {
-  try {
-    const raw = localStorage.getItem(TOTAL_SHARDS_KEY);
-    if (!raw) return 0;
-    const n = Number(raw);
-    return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
-  } catch {
-    return 0;
-  }
+function cloneCalcRows(entries: CalcRow[]): CalcRow[] {
+  const raw = toRaw(entries) as any;
+  return JSON.parse(JSON.stringify(raw));
 }
-const totalShards = ref<number>(loadTotalShards());
-watch(totalShards, (v) => localStorage.setItem(TOTAL_SHARDS_KEY, String(Math.max(0, Math.floor(Number(v) || 0)))));
 
-type CalcMode = "boostLevel" | "ratio" | "candy";
-type CalcRow = {
-  id: string;
-  /** 元のボックスID（ボックス由来の場合のみ） */
-  boxId?: string;
-  /** 表示名 */
-  title: string;
-  srcLevel: number;
-  dstLevel: number;
-  /** 目標Lvの入力中テキスト（datalist表示用。確定はblurでdstLevelへ反映） */
-  dstLevelText?: string;
-  expRemaining: number; // ゲーム画面の「あとEXP（次Lvまで）」
-  expType: ExpType;
-  nature: ExpGainNature;
-  boostReachLevel: number;
-  boostRatioPct: number; // 0..100
-  boostCandyInput: number; // 手入力用（mode=candyのとき有効）
-  mode: CalcMode;
-};
+function saveCalcAutosaveNow() {
+  saveCalcAutosave({
+    version: 1,
+    totalShards: Math.max(0, Math.floor(Number(totalShards.value) || 0)),
+    boostKind: boostKind.value,
+    rows: cloneCalcRows(calcRows.value),
+    activeRowId: activeCalcRowId.value,
+  });
+}
 
-const calcRows = ref<CalcRow[]>([]);
-const activeCalcRowId = ref<string | null>(null);
+watch(
+  [calcRows, activeCalcRowId, boostKind, totalShards],
+  () => {
+    saveCalcAutosaveNow();
+  },
+  { deep: true }
+);
+
+watch(
+  calcSlots,
+  (v) => {
+    saveCalcSlots(v);
+  },
+  { deep: true }
+);
+
+watch(
+  calcRows,
+  () => {
+    const id = activeCalcRowId.value;
+    if (!id) {
+      activeCalcRowId.value = calcRows.value[0]?.id ?? null;
+      return;
+    }
+    if (!calcRows.value.some((x) => x.id === id)) {
+      activeCalcRowId.value = calcRows.value[0]?.id ?? null;
+    }
+  },
+  { deep: true }
+);
 const activeCalcRow = computed(() => calcRows.value.find((x) => x.id === activeCalcRowId.value) ?? null);
+
+type CalcUndoState = {
+  rows: CalcRow[];
+  activeRowId: string | null;
+  slots: Array<CalcSaveSlotV1 | null>;
+};
+const calcUndoState = ref<CalcUndoState | null>(null);
+const calcRedoState = ref<CalcUndoState | null>(null);
+const canCalcUndo = computed(() => !!calcUndoState.value);
+const canCalcRedo = computed(() => !!calcRedoState.value);
+
+function cloneCalcSlots(v: Array<CalcSaveSlotV1 | null>): Array<CalcSaveSlotV1 | null> {
+  const raw = toRaw(v) as any;
+  return JSON.parse(JSON.stringify(raw));
+}
+
+function snapshotCalcUndoState(): CalcUndoState {
+  return {
+    rows: cloneCalcRows(calcRows.value),
+    activeRowId: activeCalcRowId.value,
+    slots: cloneCalcSlots(calcSlots.value),
+  };
+}
+
+function restoreCalcUndoState(s: CalcUndoState) {
+  calcRows.value = s.rows;
+  activeCalcRowId.value = s.activeRowId;
+  calcSlots.value = s.slots;
+  // UI補助
+  openLevelPickRowId.value = null;
+}
+
+function beginCalcUndo() {
+  calcUndoState.value = snapshotCalcUndoState();
+  calcRedoState.value = null;
+}
+
+function onCalcUndo() {
+  const s = calcUndoState.value;
+  if (!s) return;
+  calcRedoState.value = snapshotCalcUndoState();
+  restoreCalcUndoState(s);
+  calcUndoState.value = null;
+}
+
+function onCalcRedo() {
+  const s = calcRedoState.value;
+  if (!s) return;
+  calcUndoState.value = snapshotCalcUndoState();
+  restoreCalcUndoState(s);
+  calcRedoState.value = null;
+}
+
+function onCalcClear() {
+  if (!calcRows.value.length) return;
+  beginCalcUndo();
+  calcRows.value = [];
+  activeCalcRowId.value = null;
+  openLevelPickRowId.value = null;
+}
+
+function onCalcRemoveRow(id: string) {
+  const exists = calcRows.value.some((x) => x.id === id);
+  if (!exists) return;
+  beginCalcUndo();
+  removeCalcRow(id);
+}
+
+function onCalcSlotSave(slotIndex: number) {
+  if (!calcRows.value.length) return;
+  const i = Math.max(0, Math.min(2, Math.floor(Number(slotIndex) || 0)));
+  beginCalcUndo();
+  const now = new Date().toISOString();
+  const slot: CalcSaveSlotV1 = { savedAt: now, rows: cloneCalcRows(calcRows.value), activeRowId: activeCalcRowId.value };
+  calcSlots.value = calcSlots.value.map((x, idx) => (idx === i ? slot : x));
+}
+
+function onCalcSlotLoad(slotIndex: number) {
+  const i = Math.max(0, Math.min(2, Math.floor(Number(slotIndex) || 0)));
+  const slot = calcSlots.value[i];
+  if (!slot) return;
+  beginCalcUndo();
+  calcRows.value = cloneCalcRows(slot.rows);
+  activeCalcRowId.value = slot.activeRowId ?? calcRows.value[0]?.id ?? null;
+  openLevelPickRowId.value = null;
+}
+
+function onCalcSlotDelete(slotIndex: number) {
+  const i = Math.max(0, Math.min(2, Math.floor(Number(slotIndex) || 0)));
+  if (!calcSlots.value[i]) return;
+  beginCalcUndo();
+  calcSlots.value = calcSlots.value.map((x, idx) => (idx === i ? null : x));
+}
+
+function formatCalcSlotSavedAt(iso: string | undefined | null): string {
+  const s = String(iso ?? "").trim();
+  if (!s) return "";
+  const d = new Date(s);
+  if (!Number.isFinite(d.getTime())) return "";
+  // 例: 2025/12/17 10:31
+  return d.toLocaleString("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 const openLevelPickRowId = ref<string | null>(null);
 const openLevelPickKind = ref<"src" | "dst">("dst");
@@ -2153,7 +2328,6 @@ function applyCalculatorToBox() {
   if (!r || !r.boxId) return;
   const e = boxEntries.value.find((x) => x.id === r.boxId) ?? null;
   if (!e) return;
-  beginUndoSnapshot();
   const now = new Date().toISOString();
   boxEntries.value = boxEntries.value.map((x) => {
     if (x.id !== e.id) return x;
@@ -2178,7 +2352,8 @@ function onDeleteSelected() {
   if (!e) return;
   const ok = confirm(`削除しますか？\n${e.label || e.rawText}`);
   if (!ok) return;
-  beginUndoSnapshot();
+  const idx = boxEntries.value.findIndex((x) => x.id === e.id);
+  boxUndoAction.value = { kind: "delete", entry: cloneBoxEntry(e), index: Math.max(0, idx), selectedId: selectedBoxId.value };
   boxEntries.value = boxEntries.value.filter((x) => x.id !== e.id);
   selectedBoxId.value = null;
 }
@@ -2192,7 +2367,7 @@ function onClearBox() {
       `※ この操作は取り消せません。`
   );
   if (!ok) return;
-  beginUndoSnapshot();
+  boxUndoAction.value = { kind: "clear", entries: cloneBoxEntries(boxEntries.value), selectedId: selectedBoxId.value };
   boxEntries.value = [];
   selectedBoxId.value = null;
   boxFilter.value = "";
@@ -2204,7 +2379,6 @@ function onClearBox() {
 function onEditSelectedSpecialty(v: string) {
   const e = selectedBox.value;
   if (!e) return;
-  beginUndoSnapshot();
   const next = (v || "").trim() as any;
   const specialty: PokemonSpecialty | undefined =
     next === "Berries" || next === "Ingredients" || next === "Skills" || next === "All" ? next : undefined;
@@ -2226,7 +2400,6 @@ function onEditSelectedSpecialty(v: string) {
 function onEditSelectedLevel(v: string) {
   const e = selectedBox.value;
   if (!e) return;
-  beginUndoSnapshot();
   const lvl = clampInt(v, 1, 65, e.planner?.level ?? e.derived?.level ?? 1);
   writeSelectedLevel(lvl);
 }
@@ -2234,7 +2407,6 @@ function onEditSelectedLevel(v: string) {
 function onEditSelectedLabel(v: string) {
   const e = selectedBox.value;
   if (!e) return;
-  beginUndoSnapshot();
   const label = String(v ?? "").trim(); // 空文字は「種族名表示に戻す」扱い
   const now = new Date().toISOString();
   boxEntries.value = boxEntries.value.map((x) => {
@@ -2251,7 +2423,6 @@ function onEditSelectedLabel(v: string) {
 function toggleSelectedFavorite() {
   const e = selectedBox.value;
   if (!e) return;
-  beginUndoSnapshot();
   const now = new Date().toISOString();
   boxEntries.value = boxEntries.value.map((x) => {
     if (x.id !== e.id) return x;
@@ -2280,22 +2451,13 @@ function writeSelectedLevel(lvl: number) {
 
 function toggleBoxLevelPick() {
   openBoxLevelPick.value = !openBoxLevelPick.value;
-  // このポップオーバーの操作中は、最初の変更でだけUndoスナップショットを取る
-  if (openBoxLevelPick.value) boxLevelUndoArmed.value = false;
 }
 function closeBoxLevelPick() {
   openBoxLevelPick.value = false;
-  boxLevelUndoArmed.value = false;
-}
-function ensureBoxLevelUndoSnapshot() {
-  if (boxLevelUndoArmed.value) return;
-  beginUndoSnapshot();
-  boxLevelUndoArmed.value = true;
 }
 function setBoxLevel(v: unknown) {
   const e = selectedBox.value;
   if (!e) return;
-  ensureBoxLevelUndoSnapshot();
   const lvl = clampInt(v, 1, 65, e.planner?.level ?? e.derived?.level ?? 1);
   writeSelectedLevel(lvl);
 }
@@ -2307,7 +2469,6 @@ function nudgeBoxLevel(delta: number) {
 function onEditSelectedExpType(v: string) {
   const e = selectedBox.value;
   if (!e) return;
-  beginUndoSnapshot();
   const n = Number(v);
   const expT: ExpType = n === 600 || n === 900 || n === 1080 || n === 1320 ? (n as any) : 600;
   const now = new Date().toISOString();
@@ -2328,7 +2489,6 @@ function onEditSelectedExpType(v: string) {
 function onEditSelectedNature(v: string) {
   const e = selectedBox.value;
   if (!e) return;
-  beginUndoSnapshot();
   const nat: ExpGainNature = v === "up" || v === "down" || v === "normal" ? (v as any) : "normal";
   const now = new Date().toISOString();
   boxEntries.value = boxEntries.value.map((x) => {
@@ -2348,7 +2508,6 @@ function onEditSelectedNature(v: string) {
 function onEditSelectedIngredientType(v: string) {
   const e = selectedBox.value;
   if (!e) return;
-  beginUndoSnapshot();
   const next = (v || "").trim() as any;
   const ingredientType: IngredientType | undefined = (IngredientTypes as readonly string[]).includes(next) ? (next as any) : undefined;
   const now = new Date().toISOString();
@@ -2389,14 +2548,10 @@ function onBoxEditSubBlur(lvLike: unknown) {
   const ja = (boxEditSubInputs.value[String(lv)] ?? "").trim();
   const en = ja ? subSkillEnFromJa(ja) : null;
   if (ja && !en) {
-    // 保存はしないが、UIは「変更済み」なので取り消せるようにUndoを有効化する
-    // （この時点ではboxEntriesは変わっていないので、UndoでUIを同期し直すだけで元に戻る）
-    if (!undoSnapshot.value) beginUndoSnapshot();
     boxEditSubErrors.value = { ...boxEditSubErrors.value, [String(lv)]: "未知のサブスキルです（保存時は無視されます）" };
     return;
   }
 
-  beginUndoSnapshot();
   const now = new Date().toISOString();
   boxEntries.value = boxEntries.value.map((x) => {
     if (x.id !== e.id) return x;
@@ -2557,6 +2712,61 @@ function onBoxEditSubBlur(lvLike: unknown) {
 .calcSum--danger .calcSum__v {
   color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 10%);
 }
+
+.calcActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.calcSlots {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-top: 10px;
+  margin-bottom: 6px;
+  max-width: 660px;
+}
+@media (min-width: 860px) {
+  .calcSlots {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.calcSlot {
+  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
+  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+.calcSlot--empty {
+  background: color-mix(in oklab, var(--paper) 96%, var(--ink) 4%);
+  border-style: dashed;
+}
+.calcSlot__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.calcSlot__label {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.calcSlot__state {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: color-mix(in oklab, var(--ink) 62%, transparent);
+}
+.calcSlot__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .calcHint {
   font-family: var(--font-body);
   margin: 14px 0 8px;
@@ -2628,6 +2838,9 @@ function onBoxEditSubBlur(lvLike: unknown) {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin-top: 10px;
+}
+.calcRow__grid > * {
+  min-width: 0;
 }
 @media (min-width: 860px) {
   .calcRow__grid {
@@ -2757,6 +2970,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
 .field {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 .field--wide {
   grid-column: 1 / -1;
@@ -2775,6 +2989,9 @@ function onBoxEditSubBlur(lvLike: unknown) {
   border: 1px solid color-mix(in oklab, var(--ink) 16%, transparent);
   background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
   outline: none;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 .field__range {
   width: 100%;
@@ -2945,6 +3162,11 @@ function onBoxEditSubBlur(lvLike: unknown) {
   display: inline-flex;
   gap: 8px;
   align-items: center;
+}
+.boxSort .btn {
+  white-space: nowrap;
+  min-width: 56px; /* 「昇順/降順」が2行にならない程度 */
+  justify-content: center;
 }
 .boxSort__select {
   padding: 10px 12px;
