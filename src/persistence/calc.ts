@@ -22,7 +22,7 @@ export type CalcRowV1 = {
 };
 
 export type CalcAutosaveV1 = {
-  version: 1;
+  schemaVersion: 1;
   totalShards: number;
   boostKind: Exclude<BoostEvent, "none">;
   rows: CalcRowV1[];
@@ -33,6 +33,11 @@ export type CalcSaveSlotV1 = {
   savedAt: string;
   rows: CalcRowV1[];
   activeRowId: string | null;
+};
+
+type CalcSlotsStoreV1 = {
+  schemaVersion: 1;
+  slots: Array<CalcSaveSlotV1 | null>;
 };
 
 const AUTOSAVE_KEY = "candy-boost-planner:calc:autosave:v1";
@@ -60,10 +65,15 @@ export function loadCalcSlots(): Array<CalcSaveSlotV1 | null> {
     const raw = localStorage.getItem(SLOTS_KEY);
     if (!raw) return [null, null, null];
     const json = JSON.parse(raw);
-    if (!Array.isArray(json)) return [null, null, null];
+    const arr = Array.isArray(json)
+      ? json
+      : json && typeof json === "object" && Array.isArray((json as any).slots)
+        ? (json as any).slots
+        : null;
+    if (!arr) return [null, null, null];
     const out: Array<CalcSaveSlotV1 | null> = [];
     for (let i = 0; i < 3; i++) {
-      out.push(normalizeSlot(json[i] ?? null));
+      out.push(normalizeSlot(arr[i] ?? null));
     }
     return out;
   } catch {
@@ -74,7 +84,8 @@ export function loadCalcSlots(): Array<CalcSaveSlotV1 | null> {
 export function saveCalcSlots(v: Array<CalcSaveSlotV1 | null>) {
   const a = Array.isArray(v) ? v.slice(0, 3) : [];
   while (a.length < 3) a.push(null);
-  localStorage.setItem(SLOTS_KEY, JSON.stringify(a));
+  const store: CalcSlotsStoreV1 = { schemaVersion: 1, slots: a };
+  localStorage.setItem(SLOTS_KEY, JSON.stringify(store));
 }
 
 export function loadLegacyTotalShards(): number {
@@ -93,7 +104,8 @@ function normalizeAutosave(x: any): CalcAutosaveV1 {
   const boostKind: Exclude<BoostEvent, "none"> = x.boostKind === "mini" ? "mini" : "full";
   const rows = toRows(x.rows);
   const activeRowId = typeof x.activeRowId === "string" ? x.activeRowId : null;
-  return { version: 1, totalShards, boostKind, rows, activeRowId };
+  // legacy compatibility: previous versions used `version`
+  return { schemaVersion: 1, totalShards, boostKind, rows, activeRowId };
 }
 
 function normalizeSlot(x: any): CalcSaveSlotV1 | null {

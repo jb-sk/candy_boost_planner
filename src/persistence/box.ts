@@ -9,16 +9,28 @@ import type {
 } from "../domain/types";
 
 const STORAGE_KEY = "candy-boost-planner:box:v1";
+const SCHEMA_VERSION = 1 as const;
+
+type BoxStoreV1 = {
+  schemaVersion: typeof SCHEMA_VERSION;
+  entries: PokemonBoxEntryV1[];
+};
 
 export function loadBox(): PokemonBoxEntryV1[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const json = JSON.parse(raw);
-    if (!Array.isArray(json)) return [];
+    // legacy: array of entries
+    const arr = Array.isArray(json)
+      ? json
+      : json && typeof json === "object" && Array.isArray((json as any).entries)
+        ? (json as any).entries
+        : null;
+    if (!arr) return [];
     // できるだけ壊れに強く（最低限の形だけ保証）
-    return json
-      .filter((x) => x && typeof x === "object")
+    return arr
+      .filter((x: any) => x && typeof x === "object")
       .map((x: any) => normalizeEntry(x))
       .slice(0, 300);
   } catch {
@@ -27,7 +39,8 @@ export function loadBox(): PokemonBoxEntryV1[] {
 }
 
 export function saveBox(entries: PokemonBoxEntryV1[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+  const v: BoxStoreV1 = { schemaVersion: SCHEMA_VERSION, entries };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(v));
 }
 
 function normalizeEntry(x: any): PokemonBoxEntryV1 {

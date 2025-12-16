@@ -79,7 +79,10 @@
             }"
           >
             <div class="calcSum__head">
-              <div class="calcSum__k">{{ calcShardsCap > 0 ? `かけら使用 ${calcShardsUsagePctRounded}%` : "かけら使用 -" }}</div>
+              <div class="calcSum__k">
+                {{ calcShardsCap > 0 ? `かけら使用 ${calcShardsUsagePctRounded}%` : "かけら使用 -" }}
+                <span v-if="showShardsFire" aria-hidden="true"> 🔥</span>
+              </div>
               <div class="calcSum__k calcSum__k--right">
                 {{ calcShardsCap > 0 ? `上限 ${calcShardsCap.toLocaleString()}` : "上限 未設定" }}
               </div>
@@ -316,12 +319,9 @@
             </label>
             <label class="field field--sm">
               <span class="field__label">EXPタイプ</span>
-              <select :value="r.expType" class="field__input" @change="onCalcRowExpType(r.id, ($event.target as HTMLSelectElement).value)">
-                <option :value="600">600</option>
-                <option :value="900">900</option>
-                <option :value="1080">1080</option>
-                <option :value="1320">1320</option>
-              </select>
+              <div class="field__input field__input--static" title="EXPタイプは種族固定のため編集できません。">
+                {{ r.expType }}
+              </div>
             </label>
             <label class="field field--sm">
               <span class="field__label">性格（EXP補正）</span>
@@ -472,13 +472,15 @@
               </label>
               <label class="field">
                 <span class="field__label">EXPタイプ</span>
-                <select v-model.number="addExpType" class="field__input" @change="onAddExpTypeChanged">
+                <select v-model.number="addExpType" class="field__input" :disabled="!!addLookup" @change="onAddExpTypeChanged">
                   <option :value="600">600</option>
                   <option :value="900">900</option>
                   <option :value="1080">1080</option>
                   <option :value="1320">1320</option>
                 </select>
-                <span class="field__sub">自動判定される場合でも、ここで上書きできます。</span>
+                <span class="field__sub">
+                  {{ addLookup ? "名前一致時は自動設定（編集不可）" : "一致なしのときのみ手動設定できます" }}
+                </span>
               </label>
 
               <label class="field">
@@ -881,7 +883,15 @@
                     <div class="boxDetail__kv">
                       <div class="boxDetail__k">EXPタイプ</div>
                       <div class="boxDetail__v">
+                        <div
+                          v-if="(selectedDetail?.pokedexId ?? 0) > 0"
+                          class="field__input field__input--static"
+                          title="EXPタイプは種族固定のため編集できません。"
+                        >
+                          {{ selectedDetail?.expType ?? 600 }}
+                        </div>
                         <select
+                          v-else
                           class="field__input"
                           :value="String(selectedDetail?.expType ?? 600)"
                           @change="onEditSelectedExpType(($event.target as HTMLSelectElement).value)"
@@ -891,6 +901,9 @@
                           <option value="1080">1080</option>
                           <option value="1320">1320</option>
                         </select>
+                        <span class="boxDetail__minor" v-if="(selectedDetail?.pokedexId ?? 0) <= 0">
+                          （種族不明のため仮設定）
+                        </span>
                       </div>
                     </div>
 
@@ -1816,7 +1829,7 @@ function cloneCalcRows(entries: CalcRow[]): CalcRow[] {
 
 function saveCalcAutosaveNow() {
   saveCalcAutosave({
-    version: 1,
+    schemaVersion: 1,
     totalShards: Math.max(0, Math.floor(Number(totalShards.value) || 0)),
     boostKind: boostKind.value,
     rows: cloneCalcRows(calcRows.value),
@@ -2180,6 +2193,7 @@ const calcShardsCap = computed(() => Math.max(0, Math.floor(Number(totalShards.v
 const calcShardsOver = computed(() => calcTotalShardsUsed.value - calcShardsCap.value);
 const calcShardsUsedPct = computed(() => (calcShardsCap.value > 0 ? (calcTotalShardsUsed.value / calcShardsCap.value) * 100 : 0));
 const calcShardsUsagePctRounded = computed(() => (calcShardsCap.value > 0 ? Math.round(calcShardsUsedPct.value) : 0));
+const showShardsFire = computed(() => calcShardsCap.value > 0 && calcShardsUsedPct.value >= 90);
 const calcShardsUsedPctForBar = computed(() => (calcShardsCap.value > 0 ? Math.min(100, Math.max(0, calcShardsUsedPct.value)) : 0));
 const calcShardsOverPct = computed(() =>
   calcShardsCap.value > 0 && calcShardsOver.value > 0 ? (calcShardsOver.value / calcShardsCap.value) * 100 : 0
@@ -3083,6 +3097,13 @@ function onBoxEditSubBlur(lvLike: unknown) {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
+}
+.field__input--static {
+  display: flex;
+  align-items: center;
+  cursor: default;
+  user-select: text;
+  color: color-mix(in oklab, var(--ink) 84%, transparent);
 }
 .field__range {
   width: 100%;
