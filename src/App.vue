@@ -71,6 +71,37 @@
             <div class="calcSum__k">{{ calcShardsOver > 0 ? "超過" : "残り" }}</div>
             <div class="calcSum__v">{{ (calcShardsOver > 0 ? calcShardsOver : -calcShardsOver).toLocaleString() }}</div>
           </div>
+          <div
+            class="calcSum calcSum--bar"
+            :class="{
+              'calcSum--danger': calcShardsOver > 0,
+              'calcSum--muted': calcShardsCap <= 0,
+            }"
+          >
+            <div class="calcSum__head">
+              <div class="calcSum__k">{{ calcShardsCap > 0 ? `かけら使用 ${calcShardsUsagePctRounded}%` : "かけら使用 -" }}</div>
+              <div class="calcSum__k calcSum__k--right">
+                {{ calcShardsCap > 0 ? `上限 ${calcShardsCap.toLocaleString()}` : "上限 未設定" }}
+              </div>
+            </div>
+            <div
+              class="calcBar"
+              role="progressbar"
+              :aria-valuenow="Math.max(0, calcTotalShardsUsed)"
+              aria-valuemin="0"
+              :aria-valuemax="Math.max(1, calcShardsCap)"
+              :aria-label="calcShardsCap > 0 ? `かけら使用 ${calcShardsUsagePctRounded}% / 上限 ${calcShardsCap.toLocaleString()}` : 'かけら上限 未設定'"
+            >
+              <div class="calcBar__track">
+                <div class="calcBar__fill" :style="{ width: `${calcShardsUsedPctForBar}%` }"></div>
+                <div
+                  v-if="calcShardsOver > 0 && calcShardsCap > 0"
+                  class="calcBar__over"
+                  :style="{ width: `${calcShardsOverPctForBar}%` }"
+                ></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -2145,7 +2176,15 @@ const calcRowsView = computed(() =>
 );
 
 const calcTotalShardsUsed = computed(() => calcRowsView.value.reduce((a, r) => a + (r.result.shards || 0), 0));
-const calcShardsOver = computed(() => calcTotalShardsUsed.value - Math.max(0, Math.floor(Number(totalShards.value) || 0)));
+const calcShardsCap = computed(() => Math.max(0, Math.floor(Number(totalShards.value) || 0)));
+const calcShardsOver = computed(() => calcTotalShardsUsed.value - calcShardsCap.value);
+const calcShardsUsedPct = computed(() => (calcShardsCap.value > 0 ? (calcTotalShardsUsed.value / calcShardsCap.value) * 100 : 0));
+const calcShardsUsagePctRounded = computed(() => (calcShardsCap.value > 0 ? Math.round(calcShardsUsedPct.value) : 0));
+const calcShardsUsedPctForBar = computed(() => (calcShardsCap.value > 0 ? Math.min(100, Math.max(0, calcShardsUsedPct.value)) : 0));
+const calcShardsOverPct = computed(() =>
+  calcShardsCap.value > 0 && calcShardsOver.value > 0 ? (calcShardsOver.value / calcShardsCap.value) * 100 : 0
+);
+const calcShardsOverPctForBar = computed(() => Math.min(35, Math.max(0, calcShardsOverPct.value)));
 
 function removeCalcRow(id: string) {
   calcRows.value = calcRows.value.filter((x) => x.id !== id);
@@ -2711,6 +2750,58 @@ function onBoxEditSubBlur(lvLike: unknown) {
 }
 .calcSum--danger .calcSum__v {
   color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 10%);
+}
+.calcSum--bar {
+  flex: 1;
+  min-width: 220px;
+}
+.calcSum__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.calcSum__k--right {
+  white-space: nowrap;
+  text-align: right;
+}
+.calcBar {
+  margin-top: 8px;
+}
+.calcBar__track {
+  position: relative;
+  height: 10px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--ink) 10%, transparent);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ink) 12%, transparent);
+}
+.calcBar__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--accent) 70%, var(--paper) 30%),
+    color-mix(in oklab, var(--accent) 45%, var(--paper) 55%)
+  );
+  transition: width 240ms ease;
+}
+.calcSum--muted .calcBar__fill {
+  opacity: 0.35;
+}
+.calcBar__over {
+  position: absolute;
+  inset: 0 0 0 auto;
+  height: 100%;
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklab, hsl(6 78% 52%) 78%, var(--paper) 22%) 0 6px,
+    color-mix(in oklab, hsl(6 78% 52%) 62%, var(--paper) 38%) 6px 12px
+  );
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, hsl(6 78% 52%) 55%, transparent);
+  transition: width 240ms ease;
 }
 
 .calcActions {
