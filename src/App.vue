@@ -730,7 +730,7 @@
                     :value="s.nameEn"
                     v-model="selectedSubSkillEns"
                   />
-                  <span class="boxFilters__itemLabel">{{ s.nameJa }}</span>
+                  <span class="boxFilters__itemLabel">{{ gt(s.nameJa) }}</span>
                 </label>
               </div>
             </details>
@@ -958,7 +958,7 @@
                           <option value="down">EXP↓</option>
                         </select>
                         <span class="boxDetail__minor" v-if="selectedDetail?.decoded?.natureName">
-                          （{{ selectedDetail.decoded.natureName }}）
+                          （{{ gt(selectedDetail.decoded.natureName) }}）
                         </span>
                       </div>
                     </div>
@@ -1104,6 +1104,7 @@ import { computed, nextTick, ref, toRaw, watch } from "vue";
 import { onMounted, onUnmounted } from "vue";
 import { toPng } from "html-to-image";
 import { useI18n } from "vue-i18n";
+import { localizeGameTerm } from "./i18n/terms";
 import type { BoostEvent, ExpGainNature, ExpType } from "./domain";
 import { calcExp, calcExpAndCandy, calcExpAndCandyByBoostExpRatio, calcExpAndCandyMixed, calcLevelByCandy } from "./domain/pokesleep";
 import { boostRules } from "./domain/pokesleep/boost-config";
@@ -1133,6 +1134,10 @@ const { t, locale } = useI18n();
 function setLocale(next: "ja" | "en") {
   locale.value = next;
   localStorage.setItem("candy-boost-planner:lang", next);
+}
+
+function gt(s: string): string {
+  return localizeGameTerm(s, locale.value as any);
 }
 
 const activeTab = ref<"calc" | "box">("calc");
@@ -1185,10 +1190,10 @@ const ingredientTypeOptions = computed(() => {
   const found = addLookup.value;
   if (!found) return IngredientTypes.map((t) => ({ type: t, preview: "" }));
   const ing = getPokemonIngredients(found.pokedexId, found.form);
-  const toJa = (k: string | null) => toIngredientJa(k);
-  const a = toJa(ing?.a ?? null);
-  const b = toJa(ing?.b ?? null);
-  const c = toJa(ing?.c ?? null);
+  const toL = (k: string | null) => toIngredientLabel(k);
+  const a = toL(ing?.a ?? null);
+  const b = toL(ing?.b ?? null);
+  const c = toL(ing?.c ?? null);
   return IngredientTypes.map((t) => {
     const slots = t.split("").map((x) => (x === "A" ? a : x === "B" ? b : c));
     return { type: t, preview: slots.join(" / ") };
@@ -1589,6 +1594,11 @@ const detailInsertAfterIndex = computed(() => {
 function toIngredientJa(key: string | null): string {
   if (!key) return "-";
   return ingredientJa[key] ?? key;
+}
+
+function toIngredientLabel(key: string | null): string {
+  const ja = toIngredientJa(key);
+  return ja ? gt(ja) : "";
 }
 
 const ingredientJa: Record<string, string> = {
