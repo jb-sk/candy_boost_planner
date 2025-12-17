@@ -32,6 +32,11 @@ jobs:
         run: npm ci
 
       - name: Build
+        env:
+          VITE_OFUSE_URL: ${{ vars.VITE_OFUSE_URL }}
+          VITE_BMAC_URL: ${{ vars.VITE_BMAC_URL }}
+          # Optional: set this as a repository variable or secret if you enable Cloudflare Web Analytics
+          VITE_CF_WEB_ANALYTICS_TOKEN: ${{ vars.VITE_CF_WEB_ANALYTICS_TOKEN }}
         run: npm run build
 
       - name: Upload artifact
