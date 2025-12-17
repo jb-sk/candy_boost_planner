@@ -115,7 +115,7 @@ export const en = {
     import: {
       title: "Import (Nitoyon unofficial support)",
       hint: "(paste multiple lines)",
-      desc: "1 line = 1 Pokémon (iv or iv@nickname). Raw text is kept even if it includes extra data like ingredients/subskills.",
+      desc: "1 line = 1 Pokémon (iv or iv＠nickname). Raw text is kept even if it includes extra data like ingredients/subskills.",
       ph: "Paste here (multiple lines)",
       run: "Import",
     },
