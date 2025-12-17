@@ -1,16 +1,17 @@
 :root {
-  /* Palette (Dreamy Lab, low-saturation) */
+  /* Palette (Dreamy Lab, a bit more pop) */
   --paper: #fbf6ee;
   --ink: #17171f;
   --muted: #4b4f5c;
-  --accent: #74c1b2; /* mint */
-  --accent-warm: #e9c07a; /* honey */
-  --accent-cool: #8ea7e2; /* periwinkle */
+  /* slightly higher saturation / brightness for “fun” */
+  --accent: #6fd0bd; /* mint (brighter) */
+  --accent-warm: #f0c46a; /* honey (brighter) */
+  --accent-cool: #8fb0ff; /* periwinkle (brighter) */
   --danger: #d86b60;
 
   /* Effects */
-  --shadow-1: 0 10px 24px color-mix(in oklab, var(--ink) 10%, transparent);
-  --shadow-2: 0 20px 50px color-mix(in oklab, var(--ink) 14%, transparent);
+  --shadow-1: 0 10px 26px color-mix(in oklab, var(--ink) 12%, transparent);
+  --shadow-2: 0 22px 56px color-mix(in oklab, var(--ink) 16%, transparent);
 
   /* Typography */
   --font-heading: ui-serif, "Georgia", serif;
@@ -26,9 +27,9 @@ body {
   margin: 0;
   color: var(--ink);
   background:
-    radial-gradient(1200px 740px at 12% 8%, color-mix(in oklab, var(--accent-warm) 16%, transparent), transparent 68%),
-    radial-gradient(1100px 680px at 86% 12%, color-mix(in oklab, var(--accent-cool) 12%, transparent), transparent 70%),
-    radial-gradient(900px 600px at 55% 30%, color-mix(in oklab, var(--accent) 10%, transparent), transparent 72%),
+    radial-gradient(1200px 740px at 12% 8%, color-mix(in oklab, var(--accent-warm) 22%, transparent), transparent 68%),
+    radial-gradient(1100px 680px at 86% 12%, color-mix(in oklab, var(--accent-cool) 16%, transparent), transparent 70%),
+    radial-gradient(900px 600px at 55% 30%, color-mix(in oklab, var(--accent) 14%, transparent), transparent 72%),
     url("../assets/textures/grain.svg"),
     var(--paper);
   background-repeat: no-repeat, no-repeat, no-repeat, repeat, no-repeat;

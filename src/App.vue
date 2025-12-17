@@ -371,16 +371,17 @@
           <div class="calcRow__result">
             <div class="calcRow__res">
               <span class="calcRow__k">かけら</span>
-              <span class="calcRow__v">{{ r.result.shards.toLocaleString() }}</span>
+              <span class="calcRow__v"><span class="calcRow__num">{{ r.result.shards.toLocaleString() }}</span></span>
             </div>
             <div class="calcRow__res">
               <span class="calcRow__k">アメ（合計）</span>
-              <span class="calcRow__v">{{ (r.result.normalCandy + r.result.boostCandy).toLocaleString() }}</span>
+              <span class="calcRow__v"><span class="calcRow__num">{{ (r.result.normalCandy + r.result.boostCandy).toLocaleString() }}</span></span>
             </div>
             <div class="calcRow__res">
               <span class="calcRow__k">内訳</span>
               <span class="calcRow__v">
-                アメブ{{ r.result.boostCandy.toLocaleString() }} / 通常{{ r.result.normalCandy.toLocaleString() }}
+                アメブ<span class="calcRow__num">{{ r.result.boostCandy.toLocaleString() }}</span> /
+                通常<span class="calcRow__num">{{ r.result.normalCandy.toLocaleString() }}</span>
               </span>
             </div>
           </div>
@@ -2854,8 +2855,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
   background: linear-gradient(
     90deg,
     color-mix(in oklab, var(--accent) 74%, var(--paper) 26%),
-    color-mix(in oklab, var(--accent-warm) 56%, var(--paper) 44%),
-    color-mix(in oklab, var(--accent) 54%, var(--paper) 46%)
+    color-mix(in oklab, var(--accent-warm) 56%, var(--paper) 44%)
   );
   transition: width 240ms ease;
 }
@@ -3037,6 +3037,23 @@ function onBoxEditSubBlur(lvLike: unknown) {
 .calcRow__v {
   font-family: var(--font-heading);
   font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.calcRow__result .calcRow__v {
+  font-size: 16px;
+}
+.calcRow__num {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--accent-warm) 34%, var(--paper) 66%),
+    color-mix(in oklab, var(--accent-warm) 24%, var(--paper) 76%)
+  );
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, var(--paper) 65%, transparent),
+    0 10px 18px color-mix(in oklab, var(--accent-warm) 14%, transparent);
 }
 
 .field--sm {
