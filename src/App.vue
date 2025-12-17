@@ -2321,7 +2321,7 @@ async function downloadCalcExportPng() {
     const dataUrl = await toPng(el, {
       cacheBust: true,
       pixelRatio: 2,
-      backgroundColor: "#FFFBE6",
+      backgroundColor: "#FDFBF7",
       width: w,
       height: h,
       style: {
@@ -3287,14 +3287,11 @@ function onBoxEditSubBlur(lvLike: unknown) {
 .exportSheet {
   transform-origin: top center;
   width: 100%;
-  border-radius: 20px;
-  border: 3px solid #F1C40F;
-  background:
-    radial-gradient(820px 520px at 15% 0%, rgba(241, 196, 15, 0.10), transparent 70%),
-    radial-gradient(780px 520px at 85% 10%, rgba(22, 160, 133, 0.08), transparent 72%),
-    #FFFBE6;
-  box-shadow: 0 22px 56px rgba(44, 62, 80, 0.18);
-  padding: 18px 18px 14px;
+  border-radius: 12px;
+  border: 4px double #D4AC0D;
+  background: #FDFBF7;
+  box-shadow: 0 4px 12px rgba(74, 66, 56, 0.1);
+  padding: 22px 22px 16px;
   position: relative;
 }
 .exportSheet--capture {
@@ -3303,61 +3300,31 @@ function onBoxEditSubBlur(lvLike: unknown) {
   border-radius: 0;
   box-shadow: none;
 }
-.exportSheet::before,
-.exportSheet::after {
-  content: "";
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  height: 14px;
-  border-radius: 999px;
-  pointer-events: none;
-  opacity: 0.95;
-  background:
-    repeating-linear-gradient(
-      135deg,
-      rgba(22, 160, 133, 0.45) 0 8px,
-      rgba(241, 196, 15, 0.40) 8px 16px
-    );
-}
-.exportSheet::before {
-  top: 10px;
-}
-.exportSheet::after {
-  bottom: 10px;
-}
-.exportSheet--capture::before,
-.exportSheet--capture::after {
-  /* 保存時は外枠同様、上下のリボンも消す */
-  display: none;
-}
 .exportHead {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 10px;
-  padding: 10px 10px 6px;
-  border-radius: 16px;
-  background:
-    radial-gradient(560px 220px at 20% 0%, rgba(241, 196, 15, 0.16), transparent 70%),
-    radial-gradient(520px 240px at 90% 0%, rgba(241, 196, 15, 0.10), transparent 72%),
-    rgba(255, 255, 255, 0.35);
+  padding: 0 2px 8px;
+  border-radius: 0;
+  background: transparent;
+  border-bottom: 1px solid #D4AC0D;
 }
 .exportBrand {
   font-family: var(--font-body);
   font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: color-mix(in oklab, var(--ink) 55%, transparent);
+  color: rgba(74, 66, 56, 0.6);
   margin-bottom: 2px;
 }
 .exportTitle {
-  font-family: "M PLUS Rounded 1c", var(--font-body);
+  font-family: ui-serif, "Zen Old Mincho", "Noto Serif JP", "Georgia", serif;
   font-weight: 900;
   letter-spacing: -0.01em;
-  color: #F1C40F;
-  text-shadow: 1px 1px 2px rgba(212, 172, 13, 0.5);
+  color: #C0392B;
+  text-shadow: none;
 }
 .exportMeta {
   margin-top: 2px;
@@ -3392,7 +3359,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
   font-variant-numeric: tabular-nums;
   overflow: hidden;
   border-radius: 12px;
-  border: 0;
+  border: 1px solid #E5E0D8;
 }
 .exportTable .col-name { width: 34%; }
 .exportTable .col-exp { width: 8%; }
@@ -3402,15 +3369,16 @@ function onBoxEditSubBlur(lvLike: unknown) {
 .exportTable th,
 .exportTable td {
   padding: 7px 8px;
-  border-bottom: 0;
-  background: rgba(255, 255, 255, 0.45);
+  border-bottom: 1px solid #E5E0D8;
+  background: #FDFBF7;
+  color: #4A4238;
 }
 .exportTable thead th {
   font-family: var(--font-heading);
   font-weight: 900;
   letter-spacing: 0.02em;
-  background: linear-gradient(180deg, #F1C40F, #D4AC0D);
-  color: #1F4D45;
+  background: #FDFBF7;
+  color: #4A4238;
 }
 .exportSheet:not(.exportSheet--capture) .exportTable thead th {
   position: sticky;
@@ -3418,14 +3386,16 @@ function onBoxEditSubBlur(lvLike: unknown) {
   z-index: 1;
 }
 .exportTable tbody tr:nth-child(2n) td {
-  background: rgba(22, 160, 133, 0.08);
+  background: #FBF7EF;
 }
 .exportTable tfoot td {
-  font-family: "M PLUS Rounded 1c", var(--font-body);
+  font-family: var(--font-heading);
   font-weight: 900;
   border-bottom: 0;
-  background: #16A085;
-  color: #ffffff;
+  background: #FDFBF7;
+  color: #4A4238;
+  border-top: 2px solid #D4AC0D;
+  border-bottom: 2px solid #D4AC0D;
 }
 .exportName {
   font-family: var(--font-heading);
@@ -3440,7 +3410,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
   font-variant-numeric: tabular-nums;
 }
 .exportTable tfoot td.ta-r {
-  box-shadow: inset 0 0 8px rgba(241, 196, 15, 0.3);
+  box-shadow: none;
 }
 .ta-r {
   text-align: right;
