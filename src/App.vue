@@ -83,11 +83,11 @@
       <div class="calcSticky">
         <div class="calcSticky__summary">
           <div class="calcSum calcSum--hi">
-            <div class="calcSum__k">{{ t("calc.export.colShards") }}</div>
+            <div class="calcSum__k">{{ t("calc.shardsTotal") }}</div>
             <div class="calcSum__v">{{ fmtNum(calcTotalShardsUsed) }}</div>
           </div>
           <div class="calcSum calcSum--hi" :class="{ 'calcSum--danger': calcShardsOver > 0 }">
-            <div class="calcSum__k">{{ calcShardsOver > 0 ? t("calc.over") : t("calc.remaining") }}</div>
+            <div class="calcSum__k">{{ calcShardsOver > 0 ? t("calc.over") : t("calc.shardsUnused") }}</div>
             <div class="calcSum__v">{{ fmtNum(calcShardsOver > 0 ? calcShardsOver : -calcShardsOver) }}</div>
           </div>
         </div>
@@ -121,7 +121,7 @@
               "
             >
               <div class="calcBar__track">
-                <div class="calcBar__fill" :style="{ width: `${calcShardsUsedPctForBar}%` }"></div>
+              <div class="calcBar__fill" :style="{ width: `${calcShardsFillPctForBar}%` }"></div>
                 <div
                   v-if="calcShardsOver > 0 && calcShardsCap > 0"
                   class="calcBar__over"
@@ -149,7 +149,7 @@
               :aria-label="t('calc.boostCandyUsageAria', { pct: calcBoostCandyUsagePctRounded, cap: fmtNum(calcBoostCandyCap) })"
             >
               <div class="calcBar__track">
-                <div class="calcBar__fill calcBar__fill--candy" :style="{ width: `${calcBoostCandyUsedPctForBar}%` }"></div>
+                <div class="calcBar__fill calcBar__fill--candy" :style="{ width: `${calcBoostCandyFillPctForBar}%` }"></div>
                 <div
                   v-if="calcBoostCandyOver > 0 && calcBoostCandyCap > 0"
                   class="calcBar__over"
@@ -1163,7 +1163,7 @@
                     "
                   >
                     <div class="calcBar__track">
-                      <div class="calcBar__fill" :style="{ width: `${calcShardsUsedPctForBar}%` }"></div>
+                      <div class="calcBar__fill" :style="{ width: `${calcShardsFillPctForBar}%` }"></div>
                       <div
                         v-if="calcShardsOver > 0 && calcShardsCap > 0"
                         class="calcBar__over"
@@ -1191,7 +1191,7 @@
                     :aria-label="t('calc.boostCandyUsageAria', { pct: calcBoostCandyUsagePctRounded, cap: fmtNum(calcBoostCandyCap) })"
                   >
                     <div class="calcBar__track">
-                      <div class="calcBar__fill calcBar__fill--candy" :style="{ width: `${calcBoostCandyUsedPctForBar}%` }"></div>
+                      <div class="calcBar__fill calcBar__fill--candy" :style="{ width: `${calcBoostCandyFillPctForBar}%` }"></div>
                       <div
                         v-if="calcBoostCandyOver > 0 && calcBoostCandyCap > 0"
                         class="calcBar__over"
@@ -2699,11 +2699,22 @@ const calcShardsOver = computed(() => calcTotalShardsUsed.value - calcShardsCap.
 const calcShardsUsedPct = computed(() => (calcShardsCap.value > 0 ? (calcTotalShardsUsed.value / calcShardsCap.value) * 100 : 0));
 const calcShardsUsagePctRounded = computed(() => (calcShardsCap.value > 0 ? Math.round(calcShardsUsedPct.value) : 0));
 const showShardsFire = computed(() => calcShardsCap.value > 0 && calcShardsUsedPct.value >= 90);
-const calcShardsUsedPctForBar = computed(() => (calcShardsCap.value > 0 ? Math.min(100, Math.max(0, calcShardsUsedPct.value)) : 0));
-const calcShardsOverPct = computed(() =>
-  calcShardsCap.value > 0 && calcShardsOver.value > 0 ? (calcShardsOver.value / calcShardsCap.value) * 100 : 0
-);
-const calcShardsOverPctForBar = computed(() => Math.min(35, Math.max(0, calcShardsOverPct.value)));
+// Bar rendering:
+// - under cap: fill = used/cap
+// - over cap:  fill = cap/used, over = (used-cap)/used (so green+red = 100%)
+const calcShardsFillPctForBar = computed(() => {
+  const cap = calcShardsCap.value;
+  const used = Math.max(0, calcTotalShardsUsed.value);
+  if (cap <= 0) return 0;
+  if (used <= cap) return Math.min(100, Math.max(0, (used / cap) * 100));
+  return Math.min(100, Math.max(0, (cap / Math.max(1, used)) * 100));
+});
+const calcShardsOverPctForBar = computed(() => {
+  const cap = calcShardsCap.value;
+  const used = Math.max(0, calcTotalShardsUsed.value);
+  if (cap <= 0 || used <= cap) return 0;
+  return Math.min(100, Math.max(0, 100 - calcShardsFillPctForBar.value));
+});
 
 // Candy Boost count cap (full=3500, mini=350)
 const calcTotalBoostCandyUsed = computed(() => calcRowsView.value.reduce((a, r) => a + (r.result.boostCandy || 0), 0));
@@ -2712,11 +2723,19 @@ const calcBoostCandyOver = computed(() => calcTotalBoostCandyUsed.value - calcBo
 const calcBoostCandyUnused = computed(() => Math.max(0, calcBoostCandyCap.value - calcTotalBoostCandyUsed.value));
 const calcBoostCandyUsedPct = computed(() => (calcBoostCandyCap.value > 0 ? (calcTotalBoostCandyUsed.value / calcBoostCandyCap.value) * 100 : 0));
 const calcBoostCandyUsagePctRounded = computed(() => (calcBoostCandyCap.value > 0 ? Math.round(calcBoostCandyUsedPct.value) : 0));
-const calcBoostCandyUsedPctForBar = computed(() => (calcBoostCandyCap.value > 0 ? Math.min(100, Math.max(0, calcBoostCandyUsedPct.value)) : 0));
-const calcBoostCandyOverPct = computed(() =>
-  calcBoostCandyCap.value > 0 && calcBoostCandyOver.value > 0 ? (calcBoostCandyOver.value / calcBoostCandyCap.value) * 100 : 0
-);
-const calcBoostCandyOverPctForBar = computed(() => Math.min(35, Math.max(0, calcBoostCandyOverPct.value)));
+const calcBoostCandyFillPctForBar = computed(() => {
+  const cap = calcBoostCandyCap.value;
+  const used = Math.max(0, calcTotalBoostCandyUsed.value);
+  if (cap <= 0) return 0;
+  if (used <= cap) return Math.min(100, Math.max(0, (used / cap) * 100));
+  return Math.min(100, Math.max(0, (cap / Math.max(1, used)) * 100));
+});
+const calcBoostCandyOverPctForBar = computed(() => {
+  const cap = calcBoostCandyCap.value;
+  const used = Math.max(0, calcTotalBoostCandyUsed.value);
+  if (cap <= 0 || used <= cap) return 0;
+  return Math.min(100, Math.max(0, 100 - calcBoostCandyFillPctForBar.value));
+});
 
 function removeCalcRow(id: string) {
   calcRows.value = calcRows.value.filter((x) => x.id !== id);
