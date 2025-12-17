@@ -94,38 +94,68 @@
         <div
           class="calcSum calcSum--bar calcSum--sparkle"
           :class="{
-            'calcSum--danger': calcShardsOver > 0,
+            'calcSum--danger': calcShardsOver > 0 || calcBoostCandyOver > 0,
             'calcSum--muted': calcShardsCap <= 0,
           }"
         >
-          <div class="calcSum__head">
-            <div class="calcSum__k">
-              {{ calcShardsCap > 0 ? t("calc.shardsUsage", { pct: calcShardsUsagePctRounded }) : t("calc.shardsUsageDash") }}
-              <span v-if="showShardsFire" aria-hidden="true"> 🔥</span>
+          <div class="calcBarBlock">
+            <div class="calcSum__head">
+              <div class="calcSum__k">
+                {{ calcShardsCap > 0 ? t("calc.shardsUsage", { pct: calcShardsUsagePctRounded }) : t("calc.shardsUsageDash") }}
+                <span v-if="showShardsFire" aria-hidden="true"> 🔥</span>
+              </div>
+              <div class="calcSum__k calcSum__k--right">
+                {{ calcShardsCap > 0 ? t("calc.cap", { cap: fmtNum(calcShardsCap) }) : t("calc.capUnset") }}
+              </div>
             </div>
-            <div class="calcSum__k calcSum__k--right">
-              {{ calcShardsCap > 0 ? t("calc.cap", { cap: fmtNum(calcShardsCap) }) : t("calc.capUnset") }}
+            <div
+              class="calcBar"
+              role="progressbar"
+              :aria-valuenow="Math.max(0, calcTotalShardsUsed)"
+              aria-valuemin="0"
+              :aria-valuemax="Math.max(1, calcShardsCap)"
+              :aria-label="
+                calcShardsCap > 0
+                  ? t('calc.shardsUsageAria', { pct: calcShardsUsagePctRounded, cap: fmtNum(calcShardsCap) })
+                  : t('calc.shardsCapUnsetAria')
+              "
+            >
+              <div class="calcBar__track">
+                <div class="calcBar__fill" :style="{ width: `${calcShardsUsedPctForBar}%` }"></div>
+                <div
+                  v-if="calcShardsOver > 0 && calcShardsCap > 0"
+                  class="calcBar__over"
+                  :style="{ width: `${calcShardsOverPctForBar}%` }"
+                ></div>
+              </div>
             </div>
           </div>
-          <div
-            class="calcBar"
-            role="progressbar"
-            :aria-valuenow="Math.max(0, calcTotalShardsUsed)"
-            aria-valuemin="0"
-            :aria-valuemax="Math.max(1, calcShardsCap)"
-            :aria-label="
-              calcShardsCap > 0
-                ? t('calc.shardsUsageAria', { pct: calcShardsUsagePctRounded, cap: fmtNum(calcShardsCap) })
-                : t('calc.shardsCapUnsetAria')
-            "
-          >
-            <div class="calcBar__track">
-              <div class="calcBar__fill" :style="{ width: `${calcShardsUsedPctForBar}%` }"></div>
-              <div
-                v-if="calcShardsOver > 0 && calcShardsCap > 0"
-                class="calcBar__over"
-                :style="{ width: `${calcShardsOverPctForBar}%` }"
-              ></div>
+
+          <div class="calcBarBlock calcBarBlock--candy" :class="{ 'calcBarBlock--danger': calcBoostCandyOver > 0 }">
+            <div class="calcSum__head">
+              <div class="calcSum__k">
+                {{ t("calc.boostCandyUsage", { pct: calcBoostCandyUsagePctRounded }) }}
+              </div>
+              <div class="calcSum__k calcSum__k--right">
+                {{ t("calc.cap", { cap: fmtNum(calcBoostCandyCap) }) }}
+              </div>
+            </div>
+            <div
+              class="calcBar"
+              role="progressbar"
+              :aria-valuenow="Math.max(0, calcTotalBoostCandyUsed)"
+              aria-valuemin="0"
+              :aria-valuemax="Math.max(1, calcBoostCandyCap)"
+              :aria-label="t('calc.boostCandyUsageAria', { pct: calcBoostCandyUsagePctRounded, cap: fmtNum(calcBoostCandyCap) })"
+            >
+              <div class="calcBar__track">
+                <div class="calcBar__fill calcBar__fill--candy" :style="{ width: `${calcBoostCandyUsedPctForBar}%` }"></div>
+                <div
+                  v-if="calcBoostCandyOver > 0 && calcBoostCandyCap > 0"
+                  class="calcBar__over"
+                  :style="{ width: `${calcBoostCandyOverPctForBar}%` }"
+                ></div>
+              </div>
             </div>
           </div>
         </div>
@@ -2554,6 +2584,18 @@ const calcShardsOverPct = computed(() =>
 );
 const calcShardsOverPctForBar = computed(() => Math.min(35, Math.max(0, calcShardsOverPct.value)));
 
+// Candy Boost count cap (full=3500, mini=350)
+const calcTotalBoostCandyUsed = computed(() => calcRowsView.value.reduce((a, r) => a + (r.result.boostCandy || 0), 0));
+const calcBoostCandyCap = computed(() => (boostKind.value === "mini" ? 350 : 3500));
+const calcBoostCandyOver = computed(() => calcTotalBoostCandyUsed.value - calcBoostCandyCap.value);
+const calcBoostCandyUsedPct = computed(() => (calcBoostCandyCap.value > 0 ? (calcTotalBoostCandyUsed.value / calcBoostCandyCap.value) * 100 : 0));
+const calcBoostCandyUsagePctRounded = computed(() => (calcBoostCandyCap.value > 0 ? Math.round(calcBoostCandyUsedPct.value) : 0));
+const calcBoostCandyUsedPctForBar = computed(() => (calcBoostCandyCap.value > 0 ? Math.min(100, Math.max(0, calcBoostCandyUsedPct.value)) : 0));
+const calcBoostCandyOverPct = computed(() =>
+  calcBoostCandyCap.value > 0 && calcBoostCandyOver.value > 0 ? (calcBoostCandyOver.value / calcBoostCandyCap.value) * 100 : 0
+);
+const calcBoostCandyOverPctForBar = computed(() => Math.min(35, Math.max(0, calcBoostCandyOverPct.value)));
+
 function removeCalcRow(id: string) {
   calcRows.value = calcRows.value.filter((x) => x.id !== id);
   if (activeCalcRowId.value === id) activeCalcRowId.value = calcRows.value[0]?.id ?? null;
@@ -3267,6 +3309,21 @@ function onBoxEditSubBlur(lvLike: unknown) {
 }
 .calcBar {
   margin-top: 8px;
+}
+.calcBarBlock + .calcBarBlock {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed color-mix(in oklab, var(--ink) 14%, transparent);
+}
+.calcBarBlock--candy .calcBar {
+  margin-top: 6px;
+}
+.calcBar__fill--candy {
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--accent-cool) 58%, var(--paper) 42%),
+    color-mix(in oklab, var(--accent) 64%, var(--paper) 36%)
+  );
 }
 .calcBar__track {
   position: relative;
