@@ -456,7 +456,7 @@
                 <span class="field__sub" v-if="addLookup">
                   {{
                     t("box.add.detected", {
-                      name: getPokemonNameJa(addLookup.pokedexId, addLookup.form),
+                      name: getPokemonNameLocalized(addLookup.pokedexId, addLookup.form, locale as any),
                       id: addLookup.pokedexId,
                       expType: addLookup.expType,
                     })
@@ -836,7 +836,7 @@
                           <div class="boxDetail__minor" v-if="relinkFound">
                             {{
                               t("box.detail.relinkCandidate", {
-                                name: getPokemonNameJa(relinkFound.pokedexId, relinkFound.form),
+                                name: getPokemonNameLocalized(relinkFound.pokedexId, relinkFound.form, locale as any),
                                 id: relinkFound.pokedexId,
                                 expType: relinkFound.expType,
                               })
@@ -1145,6 +1145,7 @@ import {
   getPokemonType,
   pokemonIdFormsByNameJa,
 } from "./domain/pokesleep/pokemon-names";
+import { getPokemonNameLocalized } from "./domain/pokesleep/pokemon-name-localize";
 import { IngredientTypes, SubSkillAllJaSorted, SubSkillNameJaByEn, subSkillEnFromJa } from "./domain/box/nitoyon";
 
 import iconBerrySvg from "./assets/icons/berry.svg?raw";
@@ -1583,9 +1584,9 @@ const sortedBoxEntries = computed(() => {
       const la = a.planner?.level ?? a.derived?.level ?? 0;
       const lb = b.planner?.level ?? b.derived?.level ?? 0;
       if (la !== lb) return (la - lb) * dir;
-      return displayBoxTitle(a).localeCompare(displayBoxTitle(b), "ja") * dir;
+      return displayBoxTitle(a).localeCompare(displayBoxTitle(b), locale.value === "en" ? "en" : "ja") * dir;
     }
-    return displayBoxTitle(a).localeCompare(displayBoxTitle(b), "ja") * dir;
+    return displayBoxTitle(a).localeCompare(displayBoxTitle(b), locale.value === "en" ? "en" : "ja") * dir;
   });
   return list;
 });
@@ -1739,7 +1740,7 @@ const selectedSpecialtySelectValue = computed(() => {
 
 function displayPokemonName(e: PokemonBoxEntryV1): string | null {
   if (!e.derived) return null;
-  return getPokemonNameJa(e.derived.pokedexId, e.derived.form);
+  return getPokemonNameLocalized(e.derived.pokedexId, e.derived.form, locale.value as any);
 }
 
 function displayBoxTitle(e: PokemonBoxEntryV1): string {
@@ -1748,6 +1749,11 @@ function displayBoxTitle(e: PokemonBoxEntryV1): string {
   // labelが空、または "#123" だけのような暫定表示の場合は名前を優先
   if (!label) return name ?? "(no name)";
   if (name && /^#\d+$/.test(label)) return name;
+  // 既存データの互換: label が日本語種族名で固定されている場合、英語表示では種族名に置き換える
+  if (locale.value === "en" && e.derived) {
+    const ja = getPokemonNameJa(e.derived.pokedexId, e.derived.form);
+    if (ja && label === ja) return name ?? label;
+  }
   return label;
 }
 
@@ -1801,13 +1807,14 @@ function onImport() {
       continue;
     }
     const derived0 = decodeNitoyonIvMinimal(parsed.iv);
-    const name0 = derived0 ? getPokemonNameJa(derived0.pokedexId, derived0.form) : null;
+    const name0 = derived0 ? getPokemonNameLocalized(derived0.pokedexId, derived0.form, locale.value as any) : null;
     const expT0 = derived0 ? getPokemonExpType(derived0.pokedexId, derived0.form) : 600;
     const entry: PokemonBoxEntryV1 = {
       id: cryptoRandomId(),
       source: "nitoyon",
       rawText,
-      label: parsed.nickname || name0 || (derived0 ? `#${derived0.pokedexId}` : "(imported)"),
+      // nickname がない場合は label を空にして「種族名表示」に任せる（locale で切り替え可能にする）
+      label: parsed.nickname || (derived0 ? "" : name0 || "(imported)"),
       derived: derived0
         ? {
             pokedexId: derived0.pokedexId,
@@ -1882,15 +1889,16 @@ function onCreateManual(opts: { mode: "toCalc" | "toBox" }) {
   const found = addLookup.value;
   const now = new Date().toISOString();
   const lvl = Math.max(1, Math.min(65, Math.floor(Number(addLevel.value))));
-  const label = (addLabel.value || addName.value).trim();
-  if (!label) {
+  const nickname = String(addLabel.value || "").trim();
+  // nickname が空でも、名前一致（図鑑リンク）できていればOK（表示名は locale で生成する）
+  if (!nickname && !found) {
     importStatus.value = t("status.nameEmpty");
     return;
   }
   const undoSelectedId = selectedBoxId.value;
   const pokedexId = found?.pokedexId ?? 0;
   const form = found?.form ?? 0;
-  const speciesName = found ? getPokemonNameJa(pokedexId, form) : null;
+  const speciesName = found ? getPokemonNameLocalized(pokedexId, form, locale.value as any) : null;
   const expT = found ? found.expType : addExpType.value;
   const specialty = addSpecialty.value ? (addSpecialty.value as PokemonSpecialty) : undefined;
   const ingredientType =
@@ -1902,7 +1910,7 @@ function onCreateManual(opts: { mode: "toCalc" | "toBox" }) {
     id: cryptoRandomId(),
     source: "manual",
     rawText: "",
-    label,
+    label: nickname,
     derived: {
       pokedexId,
       form,
@@ -2326,8 +2334,11 @@ function calcRowView(r: CalcRow) {
 const calcRowsView = computed(() =>
   calcRows.value.map((r) => {
     const v = calcRowView(r);
+    const boxEntry = r.boxId ? boxEntries.value.find((x) => x.id === r.boxId) ?? null : null;
+    const title = boxEntry ? displayBoxTitle(boxEntry) : r.title;
     return {
       ...r,
+      title,
       srcLevel: v.normalized.srcLevel,
       dstLevel: v.normalized.dstLevel,
       expRemaining: v.normalized.expRemaining,
