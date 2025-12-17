@@ -7,10 +7,12 @@
     "dev": "vite",
     "build": "vue-tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
+    "generate:terms": "node scripts/generate-terms.mjs",
     "generate:tables": "node scripts/generate-pokesleep-tables.mjs",
     "generate:pokemon-db": "node scripts/generate-pokemon-db.mjs",
     "generate:pokemon-master": "node scripts/generate-pokemon-master.mjs --interactive",
     "generate:pokemon-names": "node scripts/generate-pokemon-master.mjs --non-interactive",
+    "generate:pokemon-en-names": "node scripts/generate-pokemon-en-names.mjs",
     "generate:pokemon-all": "npm run generate:pokemon-db && node scripts/generate-pokemon-master.mjs --interactive",
     "set:boost": "node scripts/set-boost-config.mjs"
   },

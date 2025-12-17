@@ -1,5 +1,5 @@
 <template>
-  <main class="shell">
+  <main class="shell" :data-locale="locale">
     <header class="hero">
       <div>
         <p class="kicker">{{ t("app.kicker") }}</p>
@@ -589,7 +589,7 @@
                   </label>
                 </div>
                 <datalist id="subSkillOptions">
-                  <option v-for="s in SubSkillAllJaSorted" :key="s.nameEn" :value="s.nameJa" />
+                  <option v-for="label in subSkillOptionLabels" :key="label" :value="label" />
                 </datalist>
                 <span class="field__sub">{{ t("box.add.subSkillNote") }}</span>
               </label>
@@ -740,7 +740,7 @@
                     :value="s.nameEn"
                     v-model="selectedSubSkillEns"
                   />
-                  <span class="boxFilters__itemLabel">{{ gt(s.nameJa) }}</span>
+                  <span class="boxFilters__itemLabel">{{ subSkillLabel(s) }}</span>
                 </label>
               </div>
             </details>
@@ -1146,7 +1146,7 @@ import {
   pokemonIdFormsByNameJa,
 } from "./domain/pokesleep/pokemon-names";
 import { getPokemonNameLocalized } from "./domain/pokesleep/pokemon-name-localize";
-import { IngredientTypes, SubSkillAllJaSorted, SubSkillNameJaByEn, subSkillEnFromJa } from "./domain/box/nitoyon";
+import { IngredientTypes, SubSkillAllJaSorted, SubSkillAllNames, SubSkillNameJaByEn, subSkillEnFromJa } from "./domain/box/nitoyon";
 
 import iconBerrySvg from "./assets/icons/berry.svg?raw";
 import iconIngredientsSvg from "./assets/icons/ingredients.svg?raw";
@@ -1212,6 +1212,11 @@ const addSubErrors = ref<Record<"10" | "25" | "50" | "75" | "100", string | null
   "50": null,
   "75": null,
   "100": null,
+});
+
+const subSkillOptionLabels = computed(() => {
+  if (locale.value === "en") return [...SubSkillAllNames];
+  return SubSkillAllJaSorted.map((s) => s.nameJa);
 });
 
 const ingredientTypeOptions = computed(() => {
@@ -1575,6 +1580,11 @@ const availableSubSkills = computed(() => {
     .sort((a, b) => a.nameJa.localeCompare(b.nameJa, "ja"));
 });
 
+function subSkillLabel(s: { nameEn: string; nameJa: string }): string {
+  if (locale.value === "en") return s.nameEn;
+  return s.nameJa;
+}
+
 const sortedBoxEntries = computed(() => {
   const list = [...filteredBoxEntries.value];
   const dir = boxSortDir.value === "asc" ? 1 : -1;
@@ -1625,8 +1635,9 @@ function toIngredientJa(key: string | null): string {
 }
 
 function toIngredientLabel(key: string | null): string {
-  const ja = toIngredientJa(key);
-  return ja ? gt(ja) : "";
+  if (!key) return "-";
+  if (locale.value === "en") return ingredientEn[key] ?? key;
+  return ingredientJa[key] ?? key;
 }
 
 const ingredientJa: Record<string, string> = {
@@ -1650,6 +1661,29 @@ const ingredientJa: Record<string, string> = {
   pumpkin: "かぼちゃ",
   seed: "ひらめきのたね",
   avocado: "アボカド",
+};
+
+const ingredientEn: Record<string, string> = {
+  leek: "Leek",
+  mushroom: "Mushroom",
+  egg: "Egg",
+  potato: "Potato",
+  apple: "Apple",
+  herb: "Herb",
+  sausage: "Bean Sausage",
+  milk: "Milk",
+  honey: "Honey",
+  oil: "Oil",
+  ginger: "Ginger",
+  tomato: "Tomato",
+  cacao: "Cacao",
+  tail: "Slowpoke Tail",
+  soy: "Soybeans",
+  corn: "Corn",
+  coffee: "Coffee",
+  pumpkin: "Pumpkin",
+  seed: "Greengrass Soybeans Seed",
+  avocado: "Avocado",
 };
 
 function getIvFromRawText(rawText: string): string | null {
@@ -1715,7 +1749,9 @@ function syncBoxEditSubInputsFromSelected() {
   const d = selectedDetail.value;
   const next: Record<string, string> = { "10": "", "25": "", "50": "", "75": "", "100": "" };
   for (const s of d?.subSkills ?? []) {
-    if (s.lv === 10 || s.lv === 25 || s.lv === 50 || s.lv === 75 || s.lv === 100) next[String(s.lv)] = s.nameJa;
+    if (s.lv === 10 || s.lv === 25 || s.lv === 50 || s.lv === 75 || s.lv === 100) {
+      next[String(s.lv)] = locale.value === "en" ? s.nameEn : s.nameJa;
+    }
   }
   boxEditSubInputs.value = next;
   boxEditSubErrors.value = { "10": null, "25": null, "50": null, "75": null, "100": null };
@@ -1728,6 +1764,13 @@ watch(
     syncBoxEditSubInputsFromSelected();
   },
   { immediate: true }
+);
+
+watch(
+  () => locale.value,
+  () => {
+    syncBoxEditSubInputsFromSelected();
+  }
 );
 
 const selectedSpecialtySelectValue = computed(() => {
@@ -1841,6 +1884,16 @@ function onImport() {
   importStatus.value = t("status.importResult", { added, skipped });
 }
 
+function subSkillEnFromLabel(label: string): string | null {
+  const v = String(label ?? "").trim();
+  if (!v) return null;
+  // English label (nitoyon internal) -> itself
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((SubSkillNameJaByEn as any)[v]) return v;
+  // Japanese label -> convert to internal English
+  return subSkillEnFromJa(v);
+}
+
 function buildManualPlannerSubSkills(): BoxSubSkillSlotV1[] | undefined {
   const slots: Array<{ lv: 10 | 25 | 50 | 75 | 100; ja: string }> = [
     { lv: 10, ja: addSubLv10.value },
@@ -1853,7 +1906,7 @@ function buildManualPlannerSubSkills(): BoxSubSkillSlotV1[] | undefined {
   for (const s of slots) {
     const ja = String(s.ja ?? "").trim();
     if (!ja) continue;
-    const en = subSkillEnFromJa(ja);
+    const en = subSkillEnFromLabel(ja);
     if (!en) continue;
     out.push({ lv: s.lv, nameEn: en });
   }
@@ -1867,7 +1920,7 @@ function validateSubSkillField(lv: 10 | 25 | 50 | 75 | 100, value: string) {
     addSubErrors.value[key] = null;
     return;
   }
-  const en = subSkillEnFromJa(ja);
+  const en = subSkillEnFromLabel(ja);
   addSubErrors.value[key] = en ? null : t("status.subSkillUnknown");
 }
 
@@ -2852,7 +2905,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
   const lv = toSubSkillLevel(lvLike);
   if (!lv) return;
   const ja = (boxEditSubInputs.value[String(lv)] ?? "").trim();
-  const en = ja ? subSkillEnFromJa(ja) : null;
+  const en = ja ? subSkillEnFromLabel(ja) : null;
   if (ja && !en) {
     boxEditSubErrors.value = { ...boxEditSubErrors.value, [String(lv)]: t("status.subSkillUnknownIgnored") };
     return;
@@ -3815,6 +3868,14 @@ function onBoxEditSubBlur(lvLike: unknown) {
 }
 .boxSort__select {
   padding: 10px 12px;
+}
+
+/* ENは文言が長めなので、ソートUIの幅を少しだけ広げて崩れを防ぐ */
+.shell[data-locale="en"] .boxSort__select {
+  min-width: 120px;
+}
+.shell[data-locale="en"] .boxSort .btn {
+  min-width: 120px;
 }
 .boxAddGrid {
   display: grid;
