@@ -2,15 +2,19 @@
   <main class="shell">
     <header class="hero">
       <div>
-        <p class="kicker">Holiday Candy Boost Planner</p>
-        <h1 class="title">CandyBoost Planner</h1>
+        <p class="kicker">{{ t("app.kicker") }}</p>
+        <h1 class="title">{{ t("app.title") }}</h1>
         <p class="lede">
-          複数ポケモンのアメブースト配分を、総アメ・総かけら制約つきでリアルタイムに計画します。
+          {{ t("app.lede") }}
         </p>
       </div>
       <div class="badge">
         <p class="badge__label">MVP</p>
         <p class="badge__value">v0.1</p>
+      </div>
+      <div class="lang">
+        <button class="lang__btn" type="button" :class="{ 'lang__btn--on': locale === 'ja' }" @click="setLocale('ja')">JP</button>
+        <button class="lang__btn" type="button" :class="{ 'lang__btn--on': locale === 'en' }" @click="setLocale('en')">EN</button>
       </div>
     </header>
 
@@ -21,7 +25,7 @@
         type="button"
         @click="activeTab = 'calc'"
       >
-        計算機
+        {{ t("nav.calc") }}
       </button>
       <button
         class="tab"
@@ -29,14 +33,14 @@
         type="button"
         @click="activeTab = 'box'"
       >
-        ポケモンボックス
+        {{ t("nav.box") }}
         <span class="tab__count" v-if="boxEntries.length">{{ boxEntries.length }}</span>
       </button>
     </nav>
 
     <section class="panel" v-if="activeTab === 'calc'">
       <div class="panel__head">
-        <h2 class="panel__title">計算機: 複数ポケモン（目標Lvベース）</h2>
+        <h2 class="panel__title">{{ t("calc.title") }}</h2>
         <div class="panel__side" v-if="activeCalcRow && activeCalcRow.boxId">
           <div class="chip">
             <span class="chip__k">編集中</span>
@@ -67,7 +71,7 @@
       <div class="calcSticky">
         <div class="calcSticky__summary">
           <div class="calcSum calcSum--hi">
-            <div class="calcSum__k">合計かけら</div>
+            <div class="calcSum__k">{{ t("calc.export.colShards") }}</div>
             <div class="calcSum__v">{{ calcTotalShardsUsed.toLocaleString() }}</div>
           </div>
           <div class="calcSum calcSum--hi" :class="{ 'calcSum--danger': calcShardsOver > 0 }">
@@ -116,7 +120,7 @@
           ポケモンをクリア
         </button>
         <button class="btn btn--primary" type="button" @click="openCalcExport" :disabled="!calcRowsView.length">
-          結果を1枚にまとめる
+          {{ t("calc.export.open") }}
         </button>
         <button class="btn btn--ghost" type="button" @click="onCalcUndo" :disabled="!canCalcUndo">
           Undo
@@ -1022,7 +1026,7 @@
     </section>
 
     <!-- 1枚出力（スクショ用）: calc/boxタブに依存せず表示できるように main 直下へ -->
-    <div v-if="calcExportOpen" class="exportOverlay" @click.self="closeCalcExport" role="dialog" aria-label="計算結果を1枚にまとめる">
+    <div v-if="calcExportOpen" class="exportOverlay" @click.self="closeCalcExport" role="dialog" :aria-label="t('calc.export.open')">
       <div class="exportSheetWrap">
         <div
           ref="exportSheetEl"
@@ -1033,13 +1037,13 @@
           <div class="exportHead">
             <div>
               <div class="exportBrand">CandyBoost Planner</div>
-              <div class="exportTitle">ホリデーアメブ計画シート</div>
+              <div class="exportTitle">{{ t("calc.export.sheetTitle") }}</div>
             </div>
             <div class="exportActions">
               <button class="btn btn--primary btn--xs" type="button" @click="downloadCalcExportPng" :disabled="exportBusy">
-                画像で保存
+                {{ t("calc.export.saveImage") }}
               </button>
-              <button class="btn btn--ghost btn--xs" type="button" @click="closeCalcExport" :disabled="exportBusy">閉じる</button>
+              <button class="btn btn--ghost btn--xs" type="button" @click="closeCalcExport" :disabled="exportBusy">{{ t("calc.export.close") }}</button>
             </div>
           </div>
           <div v-if="exportStatus" class="exportStatus" role="status">{{ exportStatus }}</div>
@@ -1057,14 +1061,14 @@
             </colgroup>
             <thead>
               <tr>
-                <th>ポケモン</th>
-                <th class="ta-c">EXP補正</th>
-                <th class="ta-r">現在</th>
-                <th class="ta-r">目標</th>
-                <th class="ta-r">アメブ</th>
-                <th class="ta-r">通常</th>
-                <th class="ta-r">合計</th>
-                <th class="ta-r">かけら</th>
+                <th>{{ t("calc.export.colPokemon") }}</th>
+                <th class="ta-c">{{ t("calc.export.colExpAdj") }}</th>
+                <th class="ta-r">{{ t("calc.export.colNow") }}</th>
+                <th class="ta-r">{{ t("calc.export.colTarget") }}</th>
+                <th class="ta-r">{{ t("calc.export.colBoost") }}</th>
+                <th class="ta-r">{{ t("calc.export.colNormal") }}</th>
+                <th class="ta-r">{{ t("calc.export.colTotal") }}</th>
+                <th class="ta-r">{{ t("calc.export.colShards") }}</th>
               </tr>
             </thead>
             <tbody>
@@ -1081,7 +1085,7 @@
             </tbody>
             <tfoot>
               <tr>
-                <td class="exportTotalLabel" colspan="4">合計</td>
+                <td class="exportTotalLabel" colspan="4">{{ t("calc.export.total") }}</td>
                 <td class="ta-r exportTotal">{{ calcExportTotals.boostCandy.toLocaleString() }}</td>
                 <td class="ta-r exportTotal">{{ calcExportTotals.normalCandy.toLocaleString() }}</td>
                 <td class="ta-r exportTotal">{{ calcExportTotals.totalCandy.toLocaleString() }}</td>
@@ -1099,6 +1103,7 @@
 import { computed, nextTick, ref, toRaw, watch } from "vue";
 import { onMounted, onUnmounted } from "vue";
 import { toPng } from "html-to-image";
+import { useI18n } from "vue-i18n";
 import type { BoostEvent, ExpGainNature, ExpType } from "./domain";
 import { calcExp, calcExpAndCandy, calcExpAndCandyByBoostExpRatio, calcExpAndCandyMixed, calcLevelByCandy } from "./domain/pokesleep";
 import { boostRules } from "./domain/pokesleep/boost-config";
@@ -1123,6 +1128,12 @@ import iconIngredientsSvg from "./assets/icons/ingredients.svg?raw";
 import iconSkillsSvg from "./assets/icons/skills.svg?raw";
 import iconAllSvg from "./assets/icons/all.svg?raw";
 import iconStarSvg from "./assets/icons/star.svg?raw";
+
+const { t, locale } = useI18n();
+function setLocale(next: "ja" | "en") {
+  locale.value = next;
+  localStorage.setItem("candy-boost-planner:lang", next);
+}
 
 const activeTab = ref<"calc" | "box">("calc");
 
@@ -2345,7 +2356,7 @@ async function downloadCalcExportPng() {
 function natureLabel(n: ExpGainNature): string {
   if (n === "up") return "↑";
   if (n === "down") return "↓";
-  return "→";
+  return "";
 }
 
 const calcExportRows = computed(() =>
@@ -2878,6 +2889,31 @@ function onBoxEditSubBlur(lvLike: unknown) {
   font-family: var(--font-heading);
   font-weight: 800;
   margin: 0;
+}
+.lang {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.lang__btn {
+  appearance: none;
+  font: inherit;
+  cursor: pointer;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
+  background: color-mix(in oklab, var(--paper) 94%, var(--ink) 6%);
+  color: color-mix(in oklab, var(--ink) 70%, transparent);
+  letter-spacing: 0.08em;
+  font-size: 12px;
+}
+.lang__btn:hover {
+  border-color: color-mix(in oklab, var(--ink) 22%, transparent);
+}
+.lang__btn--on {
+  background: color-mix(in oklab, var(--accent-warm) 20%, var(--paper) 80%);
+  color: color-mix(in oklab, var(--ink) 90%, transparent);
+  box-shadow: 0 10px 22px color-mix(in oklab, var(--accent-warm) 12%, transparent);
 }
 .panel {
   border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
