@@ -146,6 +146,7 @@ const content =
 
 fs.writeFileSync(outPath, content, "utf8");
 console.log(`[generate-terms] wrote: ${outPath}`);
+const total = [].concat(...Object.values(buckets)).length;
 console.log(
-  `[generate-terms] counts: subSkills=${buckets.subSkills.length} ingredients=${buckets.ingredients.length} berries=${buckets.berries.length} types=${buckets.types.length} natures=${buckets.natures.length}`
+  `[generate-terms] counts: total=${total} subSkills=${buckets.subSkills.length} ingredients=${buckets.ingredients.length} berries=${buckets.berries.length} types=${buckets.types.length} natures=${buckets.natures.length} other=${buckets.other.length}`
 );
