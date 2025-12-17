@@ -3717,11 +3717,15 @@ function onBoxEditSubBlur(lvLike: unknown) {
 }
 
 @media (max-width: 560px) {
-  /* Mobile: put "Apply to Box" on the next line (full width) */
+  /* Mobile: put "Apply to Box" on the next line (narrower, right-aligned) */
   .calcRow__applyBtn {
-    flex: 1 0 100%;
+    flex: 0 0 auto;
     order: 99;
+    margin-left: auto;
+    width: fit-content;
+    max-width: 72%;
     justify-content: center;
+    white-space: nowrap;
   }
   /* Mobile: make results two columns (shards + candy total), breakdown full-width */
   .calcRow__result {
