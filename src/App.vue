@@ -115,6 +115,9 @@
         <button class="btn btn--danger" type="button" @click="onCalcClear" :disabled="!calcRowsView.length">
           ポケモンをクリア
         </button>
+        <button class="btn btn--primary" type="button" @click="openCalcExport" :disabled="!calcRowsView.length">
+          結果を1枚にまとめる
+        </button>
         <button class="btn btn--ghost" type="button" @click="onCalcUndo" :disabled="!canCalcUndo">
           Undo
         </button>
@@ -1015,13 +1018,87 @@
           <p class="boxEmpty" v-else>まだ1匹もありません。上でインポートするか、新規追加してください。</p>
         </div>
       </div>
+
     </section>
+
+    <!-- 1枚出力（スクショ用）: calc/boxタブに依存せず表示できるように main 直下へ -->
+    <div v-if="calcExportOpen" class="exportOverlay" @click.self="closeCalcExport" role="dialog" aria-label="計算結果を1枚にまとめる">
+      <div class="exportSheetWrap">
+        <div
+          ref="exportSheetEl"
+          class="exportSheet"
+          :class="{ 'exportSheet--capture': exportBusy }"
+          :style="{ transform: exportBusy ? 'none' : `scale(${calcExportScale})` }"
+        >
+          <div class="exportHead">
+            <div>
+              <div class="exportBrand">CandyBoost Planner</div>
+              <div class="exportTitle">ホリデーアメブ計画シート</div>
+            </div>
+            <div class="exportActions">
+              <button class="btn btn--primary btn--xs" type="button" @click="downloadCalcExportPng" :disabled="exportBusy">
+                画像で保存
+              </button>
+              <button class="btn btn--ghost btn--xs" type="button" @click="closeCalcExport" :disabled="exportBusy">閉じる</button>
+            </div>
+          </div>
+          <div v-if="exportStatus" class="exportStatus" role="status">{{ exportStatus }}</div>
+
+          <table class="exportTable">
+            <colgroup>
+              <col class="col-name" />
+              <col class="col-exp" />
+              <col class="col-lv" />
+              <col class="col-lv" />
+              <col class="col-num" />
+              <col class="col-num" />
+              <col class="col-num" />
+              <col class="col-shards" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>ポケモン</th>
+                <th class="ta-c">EXP補正</th>
+                <th class="ta-r">現在</th>
+                <th class="ta-r">目標</th>
+                <th class="ta-r">アメブ</th>
+                <th class="ta-r">通常</th>
+                <th class="ta-r">合計</th>
+                <th class="ta-r">かけら</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in calcExportRows" :key="row.id">
+                <td class="exportName">{{ row.title }}</td>
+                <td class="ta-c">{{ row.natureLabel }}</td>
+                <td class="ta-r">{{ row.srcLevel }}</td>
+                <td class="ta-r">{{ row.dstLevel }}</td>
+                <td class="ta-r">{{ row.boostCandy.toLocaleString() }}</td>
+                <td class="ta-r">{{ row.normalCandy.toLocaleString() }}</td>
+                <td class="ta-r">{{ row.totalCandy.toLocaleString() }}</td>
+                <td class="ta-r">{{ row.shards.toLocaleString() }}</td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <td class="exportTotalLabel" colspan="4">合計</td>
+                <td class="ta-r exportTotal">{{ calcExportTotals.boostCandy.toLocaleString() }}</td>
+                <td class="ta-r exportTotal">{{ calcExportTotals.normalCandy.toLocaleString() }}</td>
+                <td class="ta-r exportTotal">{{ calcExportTotals.totalCandy.toLocaleString() }}</td>
+                <td class="ta-r exportTotal">{{ calcExportTotals.shards.toLocaleString() }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
   </main>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, ref, toRaw, watch } from "vue";
 import { onMounted, onUnmounted } from "vue";
+import { toPng } from "html-to-image";
 import type { BoostEvent, ExpGainNature, ExpType } from "./domain";
 import { calcExp, calcExpAndCandy, calcExpAndCandyByBoostExpRatio, calcExpAndCandyMixed, calcLevelByCandy } from "./domain/pokesleep";
 import { boostRules } from "./domain/pokesleep/boost-config";
@@ -2215,6 +2292,99 @@ const calcRowsView = computed(() =>
   })
 );
 
+const calcExportOpen = ref(false);
+const exportSheetEl = ref<HTMLElement | null>(null);
+const exportBusy = ref(false);
+const exportStatus = ref<string>("");
+function openCalcExport() {
+  if (!calcRowsView.value.length) return;
+  calcExportOpen.value = true;
+}
+function closeCalcExport() {
+  calcExportOpen.value = false;
+}
+
+async function downloadCalcExportPng() {
+  const el = exportSheetEl.value;
+  if (!el) return;
+  exportBusy.value = true;
+  exportStatus.value = "";
+  try {
+    // 保存時は transform(scale) / sticky を外した状態で、全高を確実に取り込む
+    await nextTick();
+    const w = Math.max(el.scrollWidth, el.clientWidth, 1);
+    const h = Math.max(el.scrollHeight, el.clientHeight, 1);
+    const dataUrl = await toPng(el, {
+      cacheBust: true,
+      pixelRatio: 2,
+      backgroundColor: "#fbf6ee",
+      width: w,
+      height: h,
+      style: {
+        transform: "none",
+        transformOrigin: "top left",
+      },
+    });
+    const a = document.createElement("a");
+    const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    a.download = `CandyBoost-Planner_${ts}.png`;
+    a.href = dataUrl;
+    a.click();
+    exportStatus.value = "";
+  } catch (e: any) {
+    exportStatus.value = "ごめん、画像の作成に失敗しました（もう一度お試しください）";
+  } finally {
+    exportBusy.value = false;
+  }
+}
+
+function natureLabel(n: ExpGainNature): string {
+  if (n === "up") return "↑";
+  if (n === "down") return "↓";
+  return "→";
+}
+
+const calcExportRows = computed(() =>
+  calcRowsView.value.map((r) => {
+    const boostCandy = Math.max(0, Math.floor(r.result.boostCandy || 0));
+    const normalCandy = Math.max(0, Math.floor(r.result.normalCandy || 0));
+    const shards = Math.max(0, Math.floor(r.result.shards || 0));
+    return {
+      id: r.id,
+      title: String(r.title ?? "").trim() || "(no name)",
+      natureLabel: natureLabel(r.nature),
+      srcLevel: r.srcLevel,
+      dstLevel: r.dstLevel,
+      boostCandy,
+      normalCandy,
+      totalCandy: boostCandy + normalCandy,
+      shards,
+    };
+  })
+);
+
+const calcExportTotals = computed(() => {
+  let boostCandy = 0;
+  let normalCandy = 0;
+  let shards = 0;
+  for (const r of calcExportRows.value) {
+    boostCandy += r.boostCandy;
+    normalCandy += r.normalCandy;
+    shards += r.shards;
+  }
+  return { boostCandy, normalCandy, totalCandy: boostCandy + normalCandy, shards };
+});
+
+const calcExportScale = computed(() => {
+  const n = calcExportRows.value.length;
+  // できるだけ「1枚」に収めるための軽い縮小（多すぎる場合は最小0.76）
+  if (n <= 6) return 1;
+  if (n <= 9) return 0.94;
+  if (n <= 12) return 0.88;
+  if (n <= 16) return 0.82;
+  return 0.76;
+});
+
 const calcTotalShardsUsed = computed(() => calcRowsView.value.reduce((a, r) => a + (r.result.shards || 0), 0));
 const calcShardsCap = computed(() => Math.max(0, Math.floor(Number(totalShards.value) || 0)));
 const calcShardsOver = computed(() => calcTotalShardsUsed.value - calcShardsCap.value);
@@ -3092,6 +3262,153 @@ function onBoxEditSubBlur(lvLike: unknown) {
 }
 .field--sm .field__sub {
   font-size: 10.5px;
+}
+
+/* --- Export sheet (SNS screenshot) --- */
+.exportOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  padding: 18px;
+  background: color-mix(in oklab, var(--ink) 28%, transparent);
+  display: grid;
+  place-items: center;
+}
+.exportSheetWrap {
+  /* 横長になりすぎない（縦3:横4 目安） */
+  width: min(860px, calc(100vw - 36px));
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+}
+.exportSheet {
+  transform-origin: top center;
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
+  background:
+    radial-gradient(900px 520px at 10% 0%, color-mix(in oklab, var(--accent-warm) 10%, transparent), transparent 70%),
+    radial-gradient(880px 540px at 90% 10%, color-mix(in oklab, var(--accent-cool) 10%, transparent), transparent 72%),
+    color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
+  box-shadow: var(--shadow-2);
+  padding: 14px 14px 12px;
+}
+.exportSheet--capture {
+  /* 画像保存時は「カード枠」を消してスクショ向けに */
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.exportHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.exportBrand {
+  font-family: var(--font-body);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--ink) 55%, transparent);
+  margin-bottom: 2px;
+}
+.exportTitle {
+  font-family: var(--font-heading);
+  font-weight: 900;
+  letter-spacing: -0.01em;
+}
+.exportMeta {
+  margin-top: 2px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: color-mix(in oklab, var(--ink) 58%, transparent);
+}
+.exportActions {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+.exportSheet--capture .exportActions {
+  display: none;
+}
+.exportSheet--capture .exportStatus {
+  display: none;
+}
+.exportStatus {
+  margin: 0 0 10px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: color-mix(in oklab, var(--ink) 62%, transparent);
+}
+.exportTable {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid color-mix(in oklab, var(--ink) 12%, transparent);
+}
+.exportTable .col-name { width: 34%; }
+.exportTable .col-exp { width: 8%; }
+.exportTable .col-lv { width: 8%; }
+.exportTable .col-num { width: 10%; }
+.exportTable .col-shards { width: 20%; }
+.exportTable th,
+.exportTable td {
+  padding: 7px 8px;
+  border-bottom: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
+  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
+}
+.exportTable thead th {
+  font-family: var(--font-heading);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--paper) 92%, var(--ink) 8%),
+    color-mix(in oklab, var(--paper) 98%, var(--ink) 2%)
+  );
+}
+.exportSheet:not(.exportSheet--capture) .exportTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.exportTable tbody tr:nth-child(2n) td {
+  background: color-mix(in oklab, var(--paper) 96%, var(--ink) 4%);
+}
+.exportTable tfoot td {
+  font-family: var(--font-heading);
+  font-weight: 900;
+  border-bottom: 0;
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--accent-warm) 10%, var(--paper) 90%),
+    color-mix(in oklab, var(--paper) 98%, var(--ink) 2%)
+  );
+}
+.exportName {
+  font-family: var(--font-heading);
+  font-weight: 900;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.exportTotalLabel {
+  text-align: left;
+}
+.exportTotal {
+  font-variant-numeric: tabular-nums;
+}
+.ta-r {
+  text-align: right;
+}
+.ta-c {
+  text-align: center;
 }
 
 /* --- Level picker (nitoyon-like) --- */

@@ -15,6 +15,7 @@
     "set:boost": "node scripts/set-boost-config.mjs"
   },
   "dependencies": {
+    "html-to-image": "^1.11.13",
     "vue": "^3.5.0"
   },
   "devDependencies": {
