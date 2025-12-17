@@ -1102,7 +1102,6 @@
           <div class="exportHead">
             <div>
               <div class="exportBrand">CandyBoost Planner</div>
-              <div class="exportTitle">{{ t("calc.export.sheetTitle") }}</div>
             </div>
             <div class="exportActions">
               <button class="btn btn--primary btn--xs" type="button" @click="downloadCalcExportPng" :disabled="exportBusy">
@@ -1113,51 +1112,135 @@
           </div>
           <div v-if="exportStatus" class="exportStatus" role="status">{{ exportStatus }}</div>
 
-          <table class="exportTable">
-            <colgroup>
-              <col class="col-name" />
-              <col class="col-exp" />
-              <col class="col-lv" />
-              <col class="col-lv" />
-              <col class="col-num" />
-              <col class="col-num" />
-              <col class="col-num" />
-              <col class="col-shards" />
-            </colgroup>
-            <thead>
-              <tr>
-                <th>{{ t("calc.export.colPokemon") }}</th>
-                <th class="ta-c">{{ t("calc.export.colExpAdj") }}</th>
-                <th class="ta-r">{{ t("calc.export.colNow") }}</th>
-                <th class="ta-r">{{ t("calc.export.colTarget") }}</th>
-                <th class="ta-r">{{ t("calc.export.colBoost") }}</th>
-                <th class="ta-r">{{ t("calc.export.colNormal") }}</th>
-                <th class="ta-r">{{ t("calc.export.colTotal") }}</th>
-                <th class="ta-r">{{ t("calc.export.colShards") }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in calcExportRows" :key="row.id">
-                <td class="exportName">{{ row.title }}</td>
-                <td class="ta-c">{{ row.natureLabel }}</td>
-                <td class="ta-r">{{ row.srcLevel }}</td>
-                <td class="ta-r">{{ row.dstLevel }}</td>
-                <td class="ta-r">{{ row.boostCandy.toLocaleString() }}</td>
-                <td class="ta-r">{{ row.normalCandy.toLocaleString() }}</td>
-                <td class="ta-r">{{ row.totalCandy.toLocaleString() }}</td>
-                <td class="ta-r">{{ row.shards.toLocaleString() }}</td>
-              </tr>
-            </tbody>
-            <tfoot>
-              <tr>
-                <td class="exportTotalLabel" colspan="4">{{ t("calc.export.total") }}</td>
-                <td class="ta-r exportTotal">{{ calcExportTotals.boostCandy.toLocaleString() }}</td>
-                <td class="ta-r exportTotal">{{ calcExportTotals.normalCandy.toLocaleString() }}</td>
-                <td class="ta-r exportTotal">{{ calcExportTotals.totalCandy.toLocaleString() }}</td>
-                <td class="ta-r exportTotal">{{ calcExportTotals.shards.toLocaleString() }}</td>
-              </tr>
-            </tfoot>
-          </table>
+          <div class="exportCalc">
+            <div class="exportCalcTop">
+              <div class="exportCalcTop__nums calcSticky__summary">
+                <div class="calcSum calcSum--hi">
+                  <div class="calcSum__k">{{ t("calc.export.sumShardsTotal") }}</div>
+                  <div class="calcSum__v">{{ fmtNum(calcTotalShardsUsed) }}</div>
+                </div>
+                  <div class="calcSum calcSum--hi">
+                    <div class="calcSum__k">{{ t("calc.export.sumBoostTotal") }}</div>
+                    <div class="calcSum__v">{{ fmtNum(calcTotalBoostCandyUsed) }}</div>
+                  </div>
+                  <div class="calcSum calcSum--hi">
+                    <div class="calcSum__k">{{ t("calc.export.sumNormalTotal") }}</div>
+                    <div class="calcSum__v">{{ fmtNum(calcExportTotals.normalCandy) }}</div>
+                  </div>
+                  <div class="calcSum calcSum--hi" :class="{ 'calcSum--danger': calcBoostCandyOver > 0 }">
+                    <div class="calcSum__k">{{ t("calc.export.sumBoostUnused") }}</div>
+                    <div class="calcSum__v">{{ fmtNum(calcBoostCandyUnused) }}</div>
+                  </div>
+              </div>
+
+              <div
+                class="calcSum calcSum--bar"
+                :class="{
+                  'calcSum--danger': calcShardsOver > 0 || calcBoostCandyOver > 0,
+                  'calcSum--muted': calcShardsCap <= 0,
+                }"
+              >
+                <div class="calcBarBlock">
+                  <div class="calcSum__head">
+                    <div class="calcSum__k">
+                      {{ calcShardsCap > 0 ? t("calc.shardsUsage", { pct: calcShardsUsagePctRounded }) : t("calc.shardsUsageDash") }}
+                      <span v-if="showShardsFire" aria-hidden="true"> 🔥</span>
+                    </div>
+                    <div class="calcSum__k calcSum__k--right">
+                      {{ calcShardsCap > 0 ? t("calc.cap", { cap: fmtNum(calcShardsCap) }) : t("calc.capUnset") }}
+                    </div>
+                  </div>
+                  <div
+                    class="calcBar"
+                    role="progressbar"
+                    :aria-valuenow="Math.max(0, calcTotalShardsUsed)"
+                    aria-valuemin="0"
+                    :aria-valuemax="Math.max(1, calcShardsCap)"
+                    :aria-label="
+                      calcShardsCap > 0
+                        ? t('calc.shardsUsageAria', { pct: calcShardsUsagePctRounded, cap: fmtNum(calcShardsCap) })
+                        : t('calc.shardsCapUnsetAria')
+                    "
+                  >
+                    <div class="calcBar__track">
+                      <div class="calcBar__fill" :style="{ width: `${calcShardsUsedPctForBar}%` }"></div>
+                      <div
+                        v-if="calcShardsOver > 0 && calcShardsCap > 0"
+                        class="calcBar__over"
+                        :style="{ width: `${calcShardsOverPctForBar}%` }"
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="calcBarBlock calcBarBlock--candy" :class="{ 'calcBarBlock--danger': calcBoostCandyOver > 0 }">
+                  <div class="calcSum__head">
+                    <div class="calcSum__k">
+                      {{ t("calc.boostCandyUsage", { pct: calcBoostCandyUsagePctRounded }) }}
+                    </div>
+                    <div class="calcSum__k calcSum__k--right">
+                      {{ t("calc.cap", { cap: fmtNum(calcBoostCandyCap) }) }}
+                    </div>
+                  </div>
+                  <div
+                    class="calcBar"
+                    role="progressbar"
+                    :aria-valuenow="Math.max(0, calcTotalBoostCandyUsed)"
+                    aria-valuemin="0"
+                    :aria-valuemax="Math.max(1, calcBoostCandyCap)"
+                    :aria-label="t('calc.boostCandyUsageAria', { pct: calcBoostCandyUsagePctRounded, cap: fmtNum(calcBoostCandyCap) })"
+                  >
+                    <div class="calcBar__track">
+                      <div class="calcBar__fill calcBar__fill--candy" :style="{ width: `${calcBoostCandyUsedPctForBar}%` }"></div>
+                      <div
+                        v-if="calcBoostCandyOver > 0 && calcBoostCandyCap > 0"
+                        class="calcBar__over"
+                        :style="{ width: `${calcBoostCandyOverPctForBar}%` }"
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="exportCalcGrid">
+              <div v-for="row in calcExportRows" :key="row.id" class="exportCard">
+                <div class="exportCard__head">
+                  <div class="exportCard__name">{{ row.title }}</div>
+                  <div v-if="row.natureLabel" class="exportCard__badge" :aria-label="t('calc.export.colExpAdj')">
+                    {{ t("calc.export.colExpAdj") }} {{ row.natureLabel }}
+                  </div>
+                </div>
+
+                <div class="exportCard__chips">
+                  <div class="exportChip">
+                    <span class="exportChip__k">{{ t("calc.row.srcLevel") }}</span>
+                    <span class="exportChip__v">{{ row.srcLevel }}</span>
+                  </div>
+                  <div class="exportChip">
+                    <span class="exportChip__k">{{ t("calc.row.dstLevel") }}</span>
+                    <span class="exportChip__v">{{ row.dstLevel }}</span>
+                  </div>
+                  <div class="exportChip exportChip--num">
+                    <span class="exportChip__k">{{ t("calc.export.colBoost") }}</span>
+                    <span class="exportChip__v"><span class="calcRow__num">{{ fmtNum(row.boostCandy) }}</span></span>
+                  </div>
+                  <div class="exportChip exportChip--num">
+                    <span class="exportChip__k">{{ t("calc.export.colNormal") }}</span>
+                    <span class="exportChip__v"><span class="calcRow__num">{{ fmtNum(row.normalCandy) }}</span></span>
+                  </div>
+                  <div class="exportChip exportChip--num">
+                    <span class="exportChip__k">{{ t("calc.export.colTotal") }}</span>
+                    <span class="exportChip__v"><span class="calcRow__num">{{ fmtNum(row.totalCandy) }}</span></span>
+                  </div>
+                  <div class="exportChip exportChip--num">
+                    <span class="exportChip__k">{{ t("calc.export.colShards") }}</span>
+                    <span class="exportChip__v"><span class="calcRow__num">{{ fmtNum(row.shards) }}</span></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -2504,7 +2587,8 @@ async function downloadCalcExportPng() {
     const dataUrl = await toPng(el, {
       cacheBust: true,
       pixelRatio: 2,
-      backgroundColor: "#FDFBF7",
+      // Export sheet has its own gradient background; keep fallback close to --paper.
+      backgroundColor: "#fbf6ee",
       width: w,
       height: h,
       style: {
@@ -2625,6 +2709,7 @@ const calcShardsOverPctForBar = computed(() => Math.min(35, Math.max(0, calcShar
 const calcTotalBoostCandyUsed = computed(() => calcRowsView.value.reduce((a, r) => a + (r.result.boostCandy || 0), 0));
 const calcBoostCandyCap = computed(() => (boostKind.value === "mini" ? 350 : 3500));
 const calcBoostCandyOver = computed(() => calcTotalBoostCandyUsed.value - calcBoostCandyCap.value);
+const calcBoostCandyUnused = computed(() => Math.max(0, calcBoostCandyCap.value - calcTotalBoostCandyUsed.value));
 const calcBoostCandyUsedPct = computed(() => (calcBoostCandyCap.value > 0 ? (calcTotalBoostCandyUsed.value / calcBoostCandyCap.value) * 100 : 0));
 const calcBoostCandyUsagePctRounded = computed(() => (calcBoostCandyCap.value > 0 ? Math.round(calcBoostCandyUsedPct.value) : 0));
 const calcBoostCandyUsedPctForBar = computed(() => (calcBoostCandyCap.value > 0 ? Math.min(100, Math.max(0, calcBoostCandyUsedPct.value)) : 0));
@@ -3615,9 +3700,13 @@ function onBoxEditSubBlur(lvLike: unknown) {
   width: 100%;
   border-radius: 12px;
   border: 4px double #D4AC0D;
-  background: #FDFBF7;
+  background:
+    radial-gradient(1200px 740px at 12% 8%, color-mix(in oklab, var(--accent-warm) 22%, transparent), transparent 68%),
+    radial-gradient(1100px 680px at 86% 12%, color-mix(in oklab, var(--accent-cool) 16%, transparent), transparent 70%),
+    radial-gradient(900px 600px at 55% 30%, color-mix(in oklab, var(--accent) 14%, transparent), transparent 72%),
+    var(--paper);
   box-shadow: 0 4px 12px rgba(74, 66, 56, 0.1);
-  padding: 22px 22px 16px;
+  padding: 16px 22px 16px;
   position: relative;
   --xmas-gold: #D4AC0D;
 }
@@ -3628,30 +3717,31 @@ function onBoxEditSubBlur(lvLike: unknown) {
   box-shadow: none;
 }
 .exportHead {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: flex-start;
-  justify-content: space-between;
   gap: 10px;
-  margin-bottom: 10px;
-  padding: 0 2px 8px;
+  margin-bottom: 14px;
+  padding: 0 2px 6px;
   border-radius: 0;
   background: transparent;
-  border-bottom: 1px solid var(--xmas-gold);
+  border-bottom: 0;
+}
+.exportHead::before {
+  content: "";
+}
+.exportHead > :first-child {
+  justify-self: center;
+  text-align: center;
 }
 .exportBrand {
-  font-family: var(--font-body);
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: rgba(74, 66, 56, 0.6);
-  margin-bottom: 2px;
-}
-.exportTitle {
-  font-family: ui-serif, "Zen Old Mincho", "Noto Serif JP", "Georgia", serif;
-  font-weight: 900;
+  font-family: var(--font-heading);
+  font-weight: 800;
   letter-spacing: -0.01em;
-  color: #C0392B;
-  text-shadow: none;
+  font-size: 17px;
+  color: color-mix(in oklab, var(--ink) 88%, transparent);
+  line-height: 1.15;
+  margin-top: -2px;
 }
 .exportMeta {
   margin-top: 2px;
@@ -3663,6 +3753,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
   display: inline-flex;
   gap: 8px;
   align-items: center;
+  justify-self: end;
 }
 .exportSheet--capture .exportActions {
   display: none;
@@ -3675,6 +3766,127 @@ function onBoxEditSubBlur(lvLike: unknown) {
   font-family: var(--font-body);
   font-size: 12px;
   color: color-mix(in oklab, var(--ink) 62%, transparent);
+}
+
+/* Export (reusing calculator UI) */
+.exportCalcTop__nums {
+  margin-bottom: 10px;
+}
+.exportCalcTop__nums {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.exportCalcTop .calcSum {
+  min-width: 0;
+}
+.exportCalcTop .calcSum__v {
+  font-variant-numeric: tabular-nums;
+}
+.exportCalcTop .calcSum--bar {
+  padding: 10px 12px;
+  border-radius: 14px;
+}
+.exportCalcTop .calcBarBlock + .calcBarBlock {
+  margin-top: 8px;
+  padding-top: 8px;
+}
+.exportCalcTop .calcBar__track {
+  height: 9px;
+}
+
+.exportCalcGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 10px;
+}
+.exportCard {
+  border: 1px solid #E5E0D8;
+  background: #FBF7EF;
+  border-radius: 14px;
+  padding: 9px 10px 8px;
+  box-shadow:
+    0 10px 18px rgba(74, 66, 56, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.exportCard__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.exportCard__name {
+  font-family: var(--font-heading);
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  color: #4A4238;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.exportCard__badge {
+  flex: 0 0 auto;
+  font-family: var(--font-heading);
+  font-weight: 900;
+  font-size: 11px;
+  line-height: 1;
+  padding: 6px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--ink) 12%, transparent);
+  background: #FDFBF7;
+  color: color-mix(in oklab, var(--ink) 70%, transparent);
+  min-width: 44px;
+  text-align: center;
+  white-space: nowrap;
+}
+.exportCard__chips {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.exportChip {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 9px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
+  background: #FDFBF7;
+  font-variant-numeric: tabular-nums;
+}
+.exportChip__k {
+  font-family: var(--font-body);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: color-mix(in oklab, var(--ink) 62%, transparent);
+  white-space: nowrap;
+}
+.exportChip__v {
+  font-family: var(--font-heading);
+  font-weight: 900;
+  color: #4A4238;
+  white-space: nowrap;
+}
+.exportChip--num .exportChip__v {
+  font-size: 14px;
+}
+
+@media (max-width: 560px) {
+  .exportSheetWrap {
+    width: min(760px, calc(100vw - 24px));
+  }
+  .exportSheet {
+    padding: 18px 16px 14px;
+  }
+  .exportCalcTop__nums {
+    grid-template-columns: 1fr 1fr;
+  }
+  .exportCalcGrid {
+    grid-template-columns: 1fr;
+  }
 }
 .exportTable {
   width: 100%;
