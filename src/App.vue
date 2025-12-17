@@ -63,16 +63,16 @@
           </label>
         </div>
         <div class="calcTop__summary">
-          <div class="calcSum">
+          <div class="calcSum calcSum--hi">
             <div class="calcSum__k">合計かけら</div>
             <div class="calcSum__v">{{ calcTotalShardsUsed.toLocaleString() }}</div>
           </div>
-          <div class="calcSum" :class="{ 'calcSum--danger': calcShardsOver > 0 }">
+          <div class="calcSum calcSum--hi" :class="{ 'calcSum--danger': calcShardsOver > 0 }">
             <div class="calcSum__k">{{ calcShardsOver > 0 ? "超過" : "残り" }}</div>
             <div class="calcSum__v">{{ (calcShardsOver > 0 ? calcShardsOver : -calcShardsOver).toLocaleString() }}</div>
           </div>
           <div
-            class="calcSum calcSum--bar"
+            class="calcSum calcSum--bar calcSum--sparkle"
             :class="{
               'calcSum--danger': calcShardsOver > 0,
               'calcSum--muted': calcShardsCap <= 0,
@@ -640,8 +640,9 @@
                     type="button"
                     @click="favoritesOnly = !favoritesOnly"
                     title="★お気に入りのみ"
+                    aria-label="お気に入りのみ"
                   >
-                    ★
+                    <span class="chipBtn__icon" v-html="iconStarSvg" aria-hidden="true"></span>
                   </button>
                 </div>
               </div>
@@ -654,32 +655,40 @@
                     :class="{ 'chipBtn--on': selectedSpecialties.includes('Berries') }"
                     type="button"
                     @click="toggleSpecialty('Berries')"
+                    aria-label="とくい: きのみ"
                   >
-                    きのみ
+                    <span class="chipBtn__icon" v-html="iconBerrySvg" aria-hidden="true"></span>
+                    <span class="chipBtn__text">きのみ</span>
                   </button>
                   <button
                     class="chipBtn"
                     :class="{ 'chipBtn--on': selectedSpecialties.includes('Ingredients') }"
                     type="button"
                     @click="toggleSpecialty('Ingredients')"
+                    aria-label="とくい: しょくざい"
                   >
-                    しょくざい
+                    <span class="chipBtn__icon" v-html="iconIngredientsSvg" aria-hidden="true"></span>
+                    <span class="chipBtn__text">しょくざい</span>
                   </button>
                   <button
                     class="chipBtn"
                     :class="{ 'chipBtn--on': selectedSpecialties.includes('Skills') }"
                     type="button"
                     @click="toggleSpecialty('Skills')"
+                    aria-label="とくい: スキル"
                   >
-                    スキル
+                    <span class="chipBtn__icon" v-html="iconSkillsSvg" aria-hidden="true"></span>
+                    <span class="chipBtn__text">スキル</span>
                   </button>
                   <button
                     class="chipBtn"
                     :class="{ 'chipBtn--on': selectedSpecialties.includes('All') }"
                     type="button"
                     @click="toggleSpecialty('All')"
+                    aria-label="とくい: オール"
                   >
-                    オール
+                    <span class="chipBtn__icon" v-html="iconAllSvg" aria-hidden="true"></span>
+                    <span class="chipBtn__text">オール</span>
                   </button>
                 </div>
               </div>
@@ -989,7 +998,7 @@
                       <div class="boxDetail__k">お気に入り</div>
                       <div class="boxDetail__v">
                         <button class="chipBtn" :class="{ 'chipBtn--on': !!selectedBox.favorite }" type="button" @click="toggleSelectedFavorite">
-                          ★
+                          <span class="chipBtn__icon" v-html="iconStarSvg" aria-hidden="true"></span>
                         </button>
                       </div>
                     </div>
@@ -1025,6 +1034,12 @@ import {
   pokemonIdFormsByNameJa,
 } from "./domain/pokesleep/pokemon-names";
 import { IngredientTypes, SubSkillAllJaSorted, SubSkillNameJaByEn, subSkillEnFromJa } from "./domain/box/nitoyon";
+
+import iconBerrySvg from "./assets/icons/berry.svg?raw";
+import iconIngredientsSvg from "./assets/icons/ingredients.svg?raw";
+import iconSkillsSvg from "./assets/icons/skills.svg?raw";
+import iconAllSvg from "./assets/icons/all.svg?raw";
+import iconStarSvg from "./assets/icons/star.svg?raw";
 
 const activeTab = ref<"calc" | "box">("calc");
 
@@ -2680,9 +2695,14 @@ function onBoxEditSubBlur(lvLike: unknown) {
 }
 .panel {
   border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
-  background: color-mix(in oklab, var(--paper) 96%, var(--ink) 4%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--paper) 98%, var(--ink) 2%),
+    color-mix(in oklab, var(--paper) 92%, var(--ink) 8%)
+  );
   border-radius: 18px;
   padding: 18px 18px;
+  box-shadow: var(--shadow-1);
 }
 .panel__head {
   display: flex;
@@ -2748,6 +2768,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
   border-radius: 14px;
   padding: 10px 12px;
   min-width: 160px;
+  position: relative;
 }
 .calcSum__k {
   font-family: var(--font-body);
@@ -2762,12 +2783,47 @@ function onBoxEditSubBlur(lvLike: unknown) {
   font-size: 18px;
   margin-top: 2px;
 }
+.calcSum--hi .calcSum__v {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--accent-warm) 34%, var(--paper) 66%),
+    color-mix(in oklab, var(--accent-warm) 24%, var(--paper) 76%)
+  );
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, var(--paper) 65%, transparent),
+    0 10px 18px color-mix(in oklab, var(--accent-warm) 14%, transparent);
+}
 .calcSum--danger .calcSum__v {
   color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 10%);
 }
 .calcSum--bar {
   flex: 1;
   min-width: 220px;
+}
+.calcSum--sparkle::after {
+  content: "";
+  position: absolute;
+  inset: -10px -10px -14px -10px;
+  pointer-events: none;
+  background:
+    radial-gradient(10px 10px at 18% 22%, color-mix(in oklab, var(--accent-warm) 42%, transparent), transparent 65%),
+    radial-gradient(8px 8px at 32% 68%, color-mix(in oklab, var(--accent) 32%, transparent), transparent 70%),
+    radial-gradient(12px 12px at 78% 34%, color-mix(in oklab, var(--accent-warm) 38%, transparent), transparent 68%),
+    radial-gradient(7px 7px at 86% 72%, color-mix(in oklab, var(--accent-cool) 26%, transparent), transparent 70%);
+  filter: blur(0.2px);
+  opacity: 0.65;
+}
+.calcSum--sparkle::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: 14px;
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent-warm) 10%, transparent);
+  opacity: 0.6;
 }
 .calcSum__head {
   display: flex;
@@ -2786,7 +2842,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
   position: relative;
   height: 10px;
   border-radius: 999px;
-  background: color-mix(in oklab, var(--ink) 10%, transparent);
+  background: color-mix(in oklab, var(--ink) 9%, transparent);
   overflow: hidden;
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ink) 12%, transparent);
 }
@@ -2797,8 +2853,9 @@ function onBoxEditSubBlur(lvLike: unknown) {
   border-radius: 999px;
   background: linear-gradient(
     90deg,
-    color-mix(in oklab, var(--accent) 70%, var(--paper) 30%),
-    color-mix(in oklab, var(--accent) 45%, var(--paper) 55%)
+    color-mix(in oklab, var(--accent) 74%, var(--paper) 26%),
+    color-mix(in oklab, var(--accent-warm) 56%, var(--paper) 44%),
+    color-mix(in oklab, var(--accent) 54%, var(--paper) 46%)
   );
   transition: width 240ms ease;
 }
@@ -2891,8 +2948,15 @@ function onBoxEditSubBlur(lvLike: unknown) {
   padding: 12px;
 }
 .calcRow--active {
-  border-color: color-mix(in oklab, var(--accent) 34%, var(--ink) 10%);
-  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 10%, transparent);
+  border-color: color-mix(in oklab, var(--accent-warm) 34%, var(--ink) 10%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--accent-warm) 12%, var(--paper) 88%),
+    color-mix(in oklab, var(--paper) 94%, var(--ink) 6%)
+  );
+  box-shadow:
+    0 0 0 4px color-mix(in oklab, var(--accent-warm) 12%, transparent),
+    0 18px 40px color-mix(in oklab, var(--ink) 10%, transparent);
 }
 .calcRow--dragOver {
   border-color: color-mix(in oklab, var(--accent) 55%, var(--ink) 10%);
@@ -3134,8 +3198,9 @@ function onBoxEditSubBlur(lvLike: unknown) {
   padding: 6px;
   border-radius: 16px;
   border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
-  background: color-mix(in oklab, var(--paper) 95%, var(--ink) 5%);
+  background: color-mix(in oklab, var(--paper) 92%, var(--ink) 8%);
   margin: 10px 0 14px;
+  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--paper) 70%, transparent);
 }
 .tab {
   font: inherit;
@@ -3150,9 +3215,15 @@ function onBoxEditSubBlur(lvLike: unknown) {
   gap: 8px;
 }
 .tab--active {
-  background: color-mix(in oklab, var(--paper) 90%, var(--accent) 10%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--paper) 94%, var(--accent-warm) 6%),
+    color-mix(in oklab, var(--paper) 88%, var(--accent) 12%)
+  );
   color: var(--ink);
-  box-shadow: 0 1px 0 color-mix(in oklab, var(--ink) 10%, transparent);
+  box-shadow:
+    0 1px 0 color-mix(in oklab, var(--paper) 60%, transparent),
+    0 10px 22px color-mix(in oklab, var(--ink) 10%, transparent);
 }
 .tab:focus-visible {
   outline: none;
@@ -3171,16 +3242,28 @@ function onBoxEditSubBlur(lvLike: unknown) {
   font: inherit;
   cursor: pointer;
   border: 1px solid color-mix(in oklab, var(--ink) 16%, transparent);
-  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--paper) 99%, var(--ink) 1%),
+    color-mix(in oklab, var(--paper) 95%, var(--ink) 5%)
+  );
   padding: 10px 12px;
   border-radius: 12px;
+  box-shadow: 0 1px 0 color-mix(in oklab, var(--paper) 60%, transparent);
 }
 .btn:hover {
   border-color: color-mix(in oklab, var(--ink) 26%, transparent);
+  box-shadow:
+    0 1px 0 color-mix(in oklab, var(--paper) 60%, transparent),
+    0 12px 26px color-mix(in oklab, var(--ink) 10%, transparent);
 }
 .btn:focus-visible {
   outline: none;
   box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 18%, transparent);
+}
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: 0 1px 0 color-mix(in oklab, var(--paper) 60%, transparent);
 }
 .btn:disabled {
   opacity: 0.55;
@@ -3188,14 +3271,22 @@ function onBoxEditSubBlur(lvLike: unknown) {
 }
 .btn--primary {
   border-color: color-mix(in oklab, var(--accent) 40%, transparent);
-  background: color-mix(in oklab, var(--accent) 18%, var(--paper) 82%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--accent) 18%, var(--paper) 82%),
+    color-mix(in oklab, var(--accent) 14%, var(--paper) 86%)
+  );
 }
 .btn--ghost {
   background: transparent;
 }
 .btn--danger {
-  border-color: color-mix(in oklab, #b10 35%, transparent);
-  background: color-mix(in oklab, #b10 10%, var(--paper) 90%);
+  border-color: color-mix(in oklab, var(--danger) 40%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--danger) 12%, var(--paper) 88%),
+    color-mix(in oklab, var(--danger) 8%, var(--paper) 92%)
+  );
 }
 .btn--xs {
   padding: 6px 10px;
@@ -3425,8 +3516,13 @@ function onBoxEditSubBlur(lvLike: unknown) {
   border-color: color-mix(in oklab, var(--ink) 26%, transparent);
 }
 .boxTile--active {
-  border-color: color-mix(in oklab, var(--accent) 52%, transparent);
-  background: color-mix(in oklab, var(--accent) 12%, var(--paper) 88%);
+  border-color: color-mix(in oklab, var(--accent-warm) 52%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--accent-warm) 12%, var(--paper) 88%),
+    color-mix(in oklab, var(--paper) 96%, var(--ink) 4%)
+  );
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent-warm) 12%, transparent);
 }
 .boxTile__name {
   font-family: var(--font-heading);
@@ -3493,16 +3589,55 @@ function onBoxEditSubBlur(lvLike: unknown) {
   font: inherit;
   cursor: pointer;
   border: 1px solid color-mix(in oklab, var(--ink) 16%, transparent);
-  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--paper) 99%, var(--ink) 1%),
+    color-mix(in oklab, var(--paper) 96%, var(--ink) 4%)
+  );
   padding: 8px 10px;
   border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 1px 0 color-mix(in oklab, var(--paper) 60%, transparent);
 }
 .chipBtn:hover {
   border-color: color-mix(in oklab, var(--ink) 26%, transparent);
+  box-shadow:
+    0 1px 0 color-mix(in oklab, var(--paper) 60%, transparent),
+    0 14px 28px color-mix(in oklab, var(--ink) 10%, transparent);
 }
 .chipBtn--on {
-  border-color: color-mix(in oklab, var(--accent) 52%, transparent);
-  background: color-mix(in oklab, var(--accent) 14%, var(--paper) 86%);
+  border-color: color-mix(in oklab, var(--accent) 55%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--accent) 16%, var(--paper) 84%),
+    color-mix(in oklab, var(--accent-warm) 10%, var(--paper) 90%)
+  );
+  box-shadow:
+    0 1px 0 color-mix(in oklab, var(--paper) 60%, transparent),
+    0 16px 34px color-mix(in oklab, var(--accent) 14%, transparent);
+}
+.chipBtn__icon {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  color: color-mix(in oklab, var(--ink) 70%, transparent);
+}
+.chipBtn--on .chipBtn__icon {
+  color: color-mix(in oklab, var(--accent) 78%, var(--ink) 18%);
+  filter: drop-shadow(0 0 10px color-mix(in oklab, var(--accent) 18%, transparent));
+}
+.chipBtn__icon :deep(svg) {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+.chipBtn__text {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: color-mix(in oklab, var(--ink) 72%, transparent);
 }
 .boxFilters__subskill {
   margin-top: 10px;

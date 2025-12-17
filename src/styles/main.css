@@ -1,9 +1,16 @@
 :root {
-  /* Palette (custom, low-saturation) */
-  --paper: #faf7f1;
-  --ink: #15161b;
+  /* Palette (Dreamy Lab, low-saturation) */
+  --paper: #fbf6ee;
+  --ink: #17171f;
   --muted: #4b4f5c;
-  --accent: #b56a46; /* terracotta-ish */
+  --accent: #74c1b2; /* mint */
+  --accent-warm: #e9c07a; /* honey */
+  --accent-cool: #8ea7e2; /* periwinkle */
+  --danger: #d86b60;
+
+  /* Effects */
+  --shadow-1: 0 10px 24px color-mix(in oklab, var(--ink) 10%, transparent);
+  --shadow-2: 0 20px 50px color-mix(in oklab, var(--ink) 14%, transparent);
 
   /* Typography */
   --font-heading: ui-serif, "Georgia", serif;
@@ -19,9 +26,14 @@ body {
   margin: 0;
   color: var(--ink);
   background:
-    radial-gradient(1200px 700px at 15% 10%, color-mix(in oklab, var(--accent) 14%, transparent), transparent 70%),
-    radial-gradient(1000px 600px at 85% 15%, color-mix(in oklab, #6a7ab5 10%, transparent), transparent 70%),
+    radial-gradient(1200px 740px at 12% 8%, color-mix(in oklab, var(--accent-warm) 16%, transparent), transparent 68%),
+    radial-gradient(1100px 680px at 86% 12%, color-mix(in oklab, var(--accent-cool) 12%, transparent), transparent 70%),
+    radial-gradient(900px 600px at 55% 30%, color-mix(in oklab, var(--accent) 10%, transparent), transparent 72%),
+    url("../assets/textures/grain.svg"),
     var(--paper);
+  background-repeat: no-repeat, no-repeat, no-repeat, repeat, no-repeat;
+  background-size: auto, auto, auto, 256px 256px, auto;
+  background-blend-mode: normal, normal, normal, soft-light, normal;
 }
 
 * {
