@@ -16,6 +16,10 @@
   /* Typography */
   --font-heading: ui-serif, "Georgia", serif;
   --font-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Pokemon Box (tile base) */
+  --box-tile-left: #f1dfc8;
+  --box-tile-right: #f5f2ea;
 }
 
 html,

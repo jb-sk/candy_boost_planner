@@ -2,6 +2,26 @@
 // Source: https://wikiwiki.jp/poke_sleep/%E3%83%9D%E3%82%B1%E3%83%A2%E3%83%B3%E3%81%AE%E4%B8%80%E8%A6%A7
 
 export type PokemonSpecialty = "Berries" | "Ingredients" | "Skills" | "All" | "unknown";
+export type PokemonType =
+  | "Normal"
+  | "Fire"
+  | "Water"
+  | "Electric"
+  | "Grass"
+  | "Ice"
+  | "Fighting"
+  | "Poison"
+  | "Ground"
+  | "Flying"
+  | "Psychic"
+  | "Bug"
+  | "Rock"
+  | "Ghost"
+  | "Dragon"
+  | "Dark"
+  | "Steel"
+  | "Fairy"
+  | "unknown";
 export type ExpType = 600 | 900 | 1080 | 1320;
 export type PokemonIngredients = { a: string; b: string; c: string | null };
 export type PokemonMasterEntry = {
@@ -12,6 +32,8 @@ export type PokemonMasterEntry = {
   nameJa: string;
   baseNameJa: string;
   specialty: PokemonSpecialty;
+  type: PokemonType;
+  typeJa: string;
   expType: ExpType;
   ingredients: PokemonIngredients | null;
   link: string | null;
@@ -26,6 +48,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "フシギダネ",
     "baseNameJa": "フシギダネ",
     "specialty": "Ingredients",
+    "type": "Grass",
+    "typeJa": "くさ",
     "expType": 600,
     "ingredients": {
       "a": "honey",
@@ -42,6 +66,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "フシギソウ",
     "baseNameJa": "フシギソウ",
     "specialty": "Ingredients",
+    "type": "Grass",
+    "typeJa": "くさ",
     "expType": 600,
     "ingredients": {
       "a": "honey",
@@ -58,6 +84,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "フシギバナ",
     "baseNameJa": "フシギバナ",
     "specialty": "Ingredients",
+    "type": "Grass",
+    "typeJa": "くさ",
     "expType": 600,
     "ingredients": {
       "a": "honey",
@@ -74,6 +102,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ヒトカゲ",
     "baseNameJa": "ヒトカゲ",
     "specialty": "Ingredients",
+    "type": "Fire",
+    "typeJa": "ほのお",
     "expType": 600,
     "ingredients": {
       "a": "sausage",
@@ -90,6 +120,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "リザード",
     "baseNameJa": "リザード",
     "specialty": "Ingredients",
+    "type": "Fire",
+    "typeJa": "ほのお",
     "expType": 600,
     "ingredients": {
       "a": "sausage",
@@ -106,6 +138,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "リザードン",
     "baseNameJa": "リザードン",
     "specialty": "Ingredients",
+    "type": "Fire",
+    "typeJa": "ほのお",
     "expType": 600,
     "ingredients": {
       "a": "sausage",
@@ -122,6 +156,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ゼニガメ",
     "baseNameJa": "ゼニガメ",
     "specialty": "Ingredients",
+    "type": "Water",
+    "typeJa": "みず",
     "expType": 600,
     "ingredients": {
       "a": "milk",
@@ -138,6 +174,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "カメール",
     "baseNameJa": "カメール",
     "specialty": "Ingredients",
+    "type": "Water",
+    "typeJa": "みず",
     "expType": 600,
     "ingredients": {
       "a": "milk",
@@ -154,6 +192,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "カメックス",
     "baseNameJa": "カメックス",
     "specialty": "Ingredients",
+    "type": "Water",
+    "typeJa": "みず",
     "expType": 600,
     "ingredients": {
       "a": "milk",
@@ -170,6 +210,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "キャタピー",
     "baseNameJa": "キャタピー",
     "specialty": "Berries",
+    "type": "Bug",
+    "typeJa": "むし",
     "expType": 600,
     "ingredients": {
       "a": "honey",
@@ -186,6 +228,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "トランセル",
     "baseNameJa": "トランセル",
     "specialty": "Berries",
+    "type": "Bug",
+    "typeJa": "むし",
     "expType": 600,
     "ingredients": {
       "a": "honey",
@@ -202,6 +246,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "バタフリー",
     "baseNameJa": "バタフリー",
     "specialty": "Berries",
+    "type": "Bug",
+    "typeJa": "むし",
     "expType": 600,
     "ingredients": {
       "a": "honey",
@@ -218,6 +264,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "コラッタ",
     "baseNameJa": "コラッタ",
     "specialty": "Berries",
+    "type": "Normal",
+    "typeJa": "ノーマル",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -234,6 +282,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ラッタ",
     "baseNameJa": "ラッタ",
     "specialty": "Berries",
+    "type": "Normal",
+    "typeJa": "ノーマル",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -250,6 +300,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "アーボ",
     "baseNameJa": "アーボ",
     "specialty": "Berries",
+    "type": "Poison",
+    "typeJa": "どく",
     "expType": 600,
     "ingredients": {
       "a": "sausage",
@@ -266,6 +318,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "アーボック",
     "baseNameJa": "アーボック",
     "specialty": "Berries",
+    "type": "Poison",
+    "typeJa": "どく",
     "expType": 600,
     "ingredients": {
       "a": "sausage",
@@ -282,6 +336,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ピカチュウ",
     "baseNameJa": "ピカチュウ",
     "specialty": "Berries",
+    "type": "Electric",
+    "typeJa": "でんき",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -298,6 +354,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ピカチュウ(ハロウィン)",
     "baseNameJa": "ピカチュウ",
     "specialty": "Berries",
+    "type": "Electric",
+    "typeJa": "でんき",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -314,6 +372,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ピカチュウ(ハロウィン)",
     "baseNameJa": "ピカチュウ",
     "specialty": "Berries",
+    "type": "Electric",
+    "typeJa": "でんき",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -330,6 +390,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ピカチュウ(ホリデー)",
     "baseNameJa": "ピカチュウ",
     "specialty": "Skills",
+    "type": "Electric",
+    "typeJa": "でんき",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -346,6 +408,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ライチュウ",
     "baseNameJa": "ライチュウ",
     "specialty": "Berries",
+    "type": "Electric",
+    "typeJa": "でんき",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -362,6 +426,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ピッピ",
     "baseNameJa": "ピッピ",
     "specialty": "Berries",
+    "type": "Fairy",
+    "typeJa": "フェアリー",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -378,6 +444,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ピクシー",
     "baseNameJa": "ピクシー",
     "specialty": "Berries",
+    "type": "Fairy",
+    "typeJa": "フェアリー",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -394,6 +462,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ロコン",
     "baseNameJa": "ロコン",
     "specialty": "Berries",
+    "type": "Fire",
+    "typeJa": "ほのお",
     "expType": 600,
     "ingredients": {
       "a": "soy",
@@ -410,6 +480,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ロコン(アローラ)",
     "baseNameJa": "ロコン",
     "specialty": "Berries",
+    "type": "Ice",
+    "typeJa": "こおり",
     "expType": 600,
     "ingredients": {
       "a": "soy",
@@ -426,6 +498,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "キュウコン",
     "baseNameJa": "キュウコン",
     "specialty": "Berries",
+    "type": "Fire",
+    "typeJa": "ほのお",
     "expType": 600,
     "ingredients": {
       "a": "soy",
@@ -442,6 +516,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "キュウコン(アローラ)",
     "baseNameJa": "キュウコン",
     "specialty": "Berries",
+    "type": "Ice",
+    "typeJa": "こおり",
     "expType": 600,
     "ingredients": {
       "a": "soy",
@@ -458,6 +534,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "プリン",
     "baseNameJa": "プリン",
     "specialty": "Skills",
+    "type": "Fairy",
+    "typeJa": "フェアリー",
     "expType": 600,
     "ingredients": {
       "a": "honey",
@@ -474,6 +552,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "プクリン",
     "baseNameJa": "プクリン",
     "specialty": "Skills",
+    "type": "Fairy",
+    "typeJa": "フェアリー",
     "expType": 600,
     "ingredients": {
       "a": "honey",
@@ -490,6 +570,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ディグダ",
     "baseNameJa": "ディグダ",
     "specialty": "Ingredients",
+    "type": "Ground",
+    "typeJa": "じめん",
     "expType": 600,
     "ingredients": {
       "a": "tomato",
@@ -506,6 +588,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ダグトリオ",
     "baseNameJa": "ダグトリオ",
     "specialty": "Ingredients",
+    "type": "Ground",
+    "typeJa": "じめん",
     "expType": 600,
     "ingredients": {
       "a": "tomato",
@@ -522,6 +606,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ニャース",
     "baseNameJa": "ニャース",
     "specialty": "Skills",
+    "type": "Normal",
+    "typeJa": "ノーマル",
     "expType": 600,
     "ingredients": {
       "a": "milk",
@@ -538,6 +624,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ペルシアン",
     "baseNameJa": "ペルシアン",
     "specialty": "Skills",
+    "type": "Normal",
+    "typeJa": "ノーマル",
     "expType": 600,
     "ingredients": {
       "a": "milk",
@@ -554,6 +642,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "コダック",
     "baseNameJa": "コダック",
     "specialty": "Skills",
+    "type": "Water",
+    "typeJa": "みず",
     "expType": 600,
     "ingredients": {
       "a": "cacao",
@@ -570,6 +660,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ゴルダック",
     "baseNameJa": "ゴルダック",
     "specialty": "Skills",
+    "type": "Water",
+    "typeJa": "みず",
     "expType": 600,
     "ingredients": {
       "a": "cacao",
@@ -586,6 +678,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "マンキー",
     "baseNameJa": "マンキー",
     "specialty": "Berries",
+    "type": "Fighting",
+    "typeJa": "かくとう",
     "expType": 600,
     "ingredients": {
       "a": "sausage",
@@ -602,6 +696,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "オコリザル",
     "baseNameJa": "オコリザル",
     "specialty": "Berries",
+    "type": "Fighting",
+    "typeJa": "かくとう",
     "expType": 600,
     "ingredients": {
       "a": "sausage",
@@ -618,6 +714,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ガーディ",
     "baseNameJa": "ガーディ",
     "specialty": "Skills",
+    "type": "Fire",
+    "typeJa": "ほのお",
     "expType": 600,
     "ingredients": {
       "a": "herb",
@@ -634,6 +732,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ウインディ",
     "baseNameJa": "ウインディ",
     "specialty": "Skills",
+    "type": "Fire",
+    "typeJa": "ほのお",
     "expType": 600,
     "ingredients": {
       "a": "herb",
@@ -650,6 +750,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "マダツボミ",
     "baseNameJa": "マダツボミ",
     "specialty": "Ingredients",
+    "type": "Grass",
+    "typeJa": "くさ",
     "expType": 600,
     "ingredients": {
       "a": "tomato",
@@ -666,6 +768,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ウツドン",
     "baseNameJa": "ウツドン",
     "specialty": "Ingredients",
+    "type": "Grass",
+    "typeJa": "くさ",
     "expType": 600,
     "ingredients": {
       "a": "tomato",
@@ -682,6 +786,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ウツボット",
     "baseNameJa": "ウツボット",
     "specialty": "Ingredients",
+    "type": "Grass",
+    "typeJa": "くさ",
     "expType": 600,
     "ingredients": {
       "a": "tomato",
@@ -698,6 +804,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "イシツブテ",
     "baseNameJa": "イシツブテ",
     "specialty": "Ingredients",
+    "type": "Rock",
+    "typeJa": "いわ",
     "expType": 600,
     "ingredients": {
       "a": "soy",
@@ -714,6 +822,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ゴローン",
     "baseNameJa": "ゴローン",
     "specialty": "Ingredients",
+    "type": "Rock",
+    "typeJa": "いわ",
     "expType": 600,
     "ingredients": {
       "a": "soy",
@@ -730,6 +840,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ゴローニャ",
     "baseNameJa": "ゴローニャ",
     "specialty": "Ingredients",
+    "type": "Rock",
+    "typeJa": "いわ",
     "expType": 600,
     "ingredients": {
       "a": "soy",
@@ -746,6 +858,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ヤドン",
     "baseNameJa": "ヤドン",
     "specialty": "Skills",
+    "type": "Water",
+    "typeJa": "みず",
     "expType": 600,
     "ingredients": {
       "a": "cacao",
@@ -762,6 +876,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ヤドラン",
     "baseNameJa": "ヤドラン",
     "specialty": "Skills",
+    "type": "Water",
+    "typeJa": "みず",
     "expType": 600,
     "ingredients": {
       "a": "cacao",
@@ -778,6 +894,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "コイル",
     "baseNameJa": "コイル",
     "specialty": "Skills",
+    "type": "Steel",
+    "typeJa": "はがね",
     "expType": 600,
     "ingredients": {
       "a": "oil",
@@ -794,6 +912,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "レアコイル",
     "baseNameJa": "レアコイル",
     "specialty": "Skills",
+    "type": "Steel",
+    "typeJa": "はがね",
     "expType": 600,
     "ingredients": {
       "a": "oil",
@@ -810,6 +930,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "カモネギ",
     "baseNameJa": "カモネギ",
     "specialty": "Ingredients",
+    "type": "Flying",
+    "typeJa": "ひこう",
     "expType": 600,
     "ingredients": {
       "a": "leek",
@@ -826,6 +948,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ドードー",
     "baseNameJa": "ドードー",
     "specialty": "Berries",
+    "type": "Flying",
+    "typeJa": "ひこう",
     "expType": 600,
     "ingredients": {
       "a": "soy",
@@ -842,6 +966,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ドードリオ",
     "baseNameJa": "ドードリオ",
     "specialty": "Berries",
+    "type": "Flying",
+    "typeJa": "ひこう",
     "expType": 600,
     "ingredients": {
       "a": "soy",
@@ -858,6 +984,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ゴース",
     "baseNameJa": "ゴース",
     "specialty": "Ingredients",
+    "type": "Ghost",
+    "typeJa": "ゴースト",
     "expType": 600,
     "ingredients": {
       "a": "herb",
@@ -874,6 +1002,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ゴースト",
     "baseNameJa": "ゴースト",
     "specialty": "Ingredients",
+    "type": "Ghost",
+    "typeJa": "ゴースト",
     "expType": 600,
     "ingredients": {
       "a": "herb",
@@ -890,6 +1020,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ゲンガー",
     "baseNameJa": "ゲンガー",
     "specialty": "Ingredients",
+    "type": "Ghost",
+    "typeJa": "ゴースト",
     "expType": 600,
     "ingredients": {
       "a": "herb",
@@ -906,6 +1038,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "イワーク",
     "baseNameJa": "イワーク",
     "specialty": "Berries",
+    "type": "Rock",
+    "typeJa": "いわ",
     "expType": 600,
     "ingredients": {
       "a": "tomato",
@@ -922,6 +1056,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "カラカラ",
     "baseNameJa": "カラカラ",
     "specialty": "Berries",
+    "type": "Ground",
+    "typeJa": "じめん",
     "expType": 600,
     "ingredients": {
       "a": "ginger",
@@ -938,6 +1074,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ガラガラ",
     "baseNameJa": "ガラガラ",
     "specialty": "Berries",
+    "type": "Ground",
+    "typeJa": "じめん",
     "expType": 600,
     "ingredients": {
       "a": "ginger",
@@ -954,6 +1092,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ラッキー",
     "baseNameJa": "ラッキー",
     "specialty": "Ingredients",
+    "type": "Normal",
+    "typeJa": "ノーマル",
     "expType": 600,
     "ingredients": {
       "a": "egg",
@@ -970,6 +1110,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ガルーラ",
     "baseNameJa": "ガルーラ",
     "specialty": "Ingredients",
+    "type": "Normal",
+    "typeJa": "ノーマル",
     "expType": 600,
     "ingredients": {
       "a": "ginger",
@@ -986,6 +1128,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "バリヤード",
     "baseNameJa": "バリヤード",
     "specialty": "Ingredients",
+    "type": "Psychic",
+    "typeJa": "エスパー",
     "expType": 600,
     "ingredients": {
       "a": "tomato",
@@ -1002,6 +1146,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "カイロス",
     "baseNameJa": "カイロス",
     "specialty": "Ingredients",
+    "type": "Bug",
+    "typeJa": "むし",
     "expType": 600,
     "ingredients": {
       "a": "honey",
@@ -1018,6 +1164,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "メタモン",
     "baseNameJa": "メタモン",
     "specialty": "Ingredients",
+    "type": "Normal",
+    "typeJa": "ノーマル",
     "expType": 600,
     "ingredients": {
       "a": "oil",
@@ -1034,6 +1182,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "イーブイ",
     "baseNameJa": "イーブイ",
     "specialty": "Skills",
+    "type": "Normal",
+    "typeJa": "ノーマル",
     "expType": 600,
     "ingredients": {
       "a": "milk",
@@ -1050,6 +1200,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "イーブイ(ハロウィン)",
     "baseNameJa": "イーブイ",
     "specialty": "Skills",
+    "type": "Normal",
+    "typeJa": "ノーマル",
     "expType": 600,
     "ingredients": {
       "a": "pumpkin",
@@ -1066,6 +1218,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "イーブイ(ホリデー)",
     "baseNameJa": "イーブイ",
     "specialty": "Berries",
+    "type": "Normal",
+    "typeJa": "ノーマル",
     "expType": 600,
     "ingredients": {
       "a": "milk",
@@ -1082,6 +1236,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "シャワーズ",
     "baseNameJa": "シャワーズ",
     "specialty": "Skills",
+    "type": "Water",
+    "typeJa": "みず",
     "expType": 600,
     "ingredients": {
       "a": "milk",
@@ -1098,6 +1254,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "サンダース",
     "baseNameJa": "サンダース",
     "specialty": "Skills",
+    "type": "Electric",
+    "typeJa": "でんき",
     "expType": 600,
     "ingredients": {
       "a": "milk",
@@ -1114,6 +1272,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ブースター",
     "baseNameJa": "ブースター",
     "specialty": "Skills",
+    "type": "Fire",
+    "typeJa": "ほのお",
     "expType": 600,
     "ingredients": {
       "a": "milk",
@@ -1130,6 +1290,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ミニリュウ",
     "baseNameJa": "ミニリュウ",
     "specialty": "Ingredients",
+    "type": "Dragon",
+    "typeJa": "ドラゴン",
     "expType": 900,
     "ingredients": {
       "a": "herb",
@@ -1146,6 +1308,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ハクリュー",
     "baseNameJa": "ハクリュー",
     "specialty": "Ingredients",
+    "type": "Dragon",
+    "typeJa": "ドラゴン",
     "expType": 900,
     "ingredients": {
       "a": "herb",
@@ -1162,6 +1326,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "カイリュー",
     "baseNameJa": "カイリュー",
     "specialty": "Ingredients",
+    "type": "Dragon",
+    "typeJa": "ドラゴン",
     "expType": 900,
     "ingredients": {
       "a": "herb",
@@ -1178,6 +1344,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "チコリータ",
     "baseNameJa": "チコリータ",
     "specialty": "Berries",
+    "type": "Grass",
+    "typeJa": "くさ",
     "expType": 600,
     "ingredients": {
       "a": "cacao",
@@ -1194,6 +1362,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ベイリーフ",
     "baseNameJa": "ベイリーフ",
     "specialty": "Berries",
+    "type": "Grass",
+    "typeJa": "くさ",
     "expType": 600,
     "ingredients": {
       "a": "cacao",
@@ -1210,6 +1380,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "メガニウム",
     "baseNameJa": "メガニウム",
     "specialty": "Berries",
+    "type": "Grass",
+    "typeJa": "くさ",
     "expType": 600,
     "ingredients": {
       "a": "cacao",
@@ -1226,6 +1398,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ヒノアラシ",
     "baseNameJa": "ヒノアラシ",
     "specialty": "Berries",
+    "type": "Fire",
+    "typeJa": "ほのお",
     "expType": 600,
     "ingredients": {
       "a": "ginger",
@@ -1242,6 +1416,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "マグマラシ",
     "baseNameJa": "マグマラシ",
     "specialty": "Berries",
+    "type": "Fire",
+    "typeJa": "ほのお",
     "expType": 600,
     "ingredients": {
       "a": "ginger",
@@ -1258,6 +1434,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "バクフーン",
     "baseNameJa": "バクフーン",
     "specialty": "Berries",
+    "type": "Fire",
+    "typeJa": "ほのお",
     "expType": 600,
     "ingredients": {
       "a": "ginger",
@@ -1274,6 +1452,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ワニノコ",
     "baseNameJa": "ワニノコ",
     "specialty": "Berries",
+    "type": "Water",
+    "typeJa": "みず",
     "expType": 600,
     "ingredients": {
       "a": "sausage",
@@ -1290,6 +1470,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "アリゲイツ",
     "baseNameJa": "アリゲイツ",
     "specialty": "Berries",
+    "type": "Water",
+    "typeJa": "みず",
     "expType": 600,
     "ingredients": {
       "a": "sausage",
@@ -1306,6 +1488,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "オーダイル",
     "baseNameJa": "オーダイル",
     "specialty": "Berries",
+    "type": "Water",
+    "typeJa": "みず",
     "expType": 600,
     "ingredients": {
       "a": "sausage",
@@ -1322,6 +1506,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ピチュー",
     "baseNameJa": "ピチュー",
     "specialty": "Berries",
+    "type": "Electric",
+    "typeJa": "でんき",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -1338,6 +1524,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ピィ",
     "baseNameJa": "ピィ",
     "specialty": "Berries",
+    "type": "Fairy",
+    "typeJa": "フェアリー",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -1354,6 +1542,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ププリン",
     "baseNameJa": "ププリン",
     "specialty": "Skills",
+    "type": "Fairy",
+    "typeJa": "フェアリー",
     "expType": 600,
     "ingredients": {
       "a": "honey",
@@ -1370,6 +1560,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "トゲピー",
     "baseNameJa": "トゲピー",
     "specialty": "Skills",
+    "type": "Fairy",
+    "typeJa": "フェアリー",
     "expType": 600,
     "ingredients": {
       "a": "egg",
@@ -1386,6 +1578,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "トゲチック",
     "baseNameJa": "トゲチック",
     "specialty": "Skills",
+    "type": "Fairy",
+    "typeJa": "フェアリー",
     "expType": 600,
     "ingredients": {
       "a": "egg",
@@ -1402,6 +1596,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ネイティ",
     "baseNameJa": "ネイティ",
     "specialty": "Berries",
+    "type": "Psychic",
+    "typeJa": "エスパー",
     "expType": 600,
     "ingredients": {
       "a": "egg",
@@ -1418,6 +1614,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ネイティオ",
     "baseNameJa": "ネイティオ",
     "specialty": "Berries",
+    "type": "Psychic",
+    "typeJa": "エスパー",
     "expType": 600,
     "ingredients": {
       "a": "egg",
@@ -1434,6 +1632,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "メリープ",
     "baseNameJa": "メリープ",
     "specialty": "Skills",
+    "type": "Electric",
+    "typeJa": "でんき",
     "expType": 600,
     "ingredients": {
       "a": "herb",
@@ -1450,6 +1650,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "モココ",
     "baseNameJa": "モココ",
     "specialty": "Skills",
+    "type": "Electric",
+    "typeJa": "でんき",
     "expType": 600,
     "ingredients": {
       "a": "herb",
@@ -1466,6 +1668,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "デンリュウ",
     "baseNameJa": "デンリュウ",
     "specialty": "Skills",
+    "type": "Electric",
+    "typeJa": "でんき",
     "expType": 600,
     "ingredients": {
       "a": "herb",
@@ -1482,6 +1686,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ウソッキー",
     "baseNameJa": "ウソッキー",
     "specialty": "Skills",
+    "type": "Rock",
+    "typeJa": "いわ",
     "expType": 600,
     "ingredients": {
       "a": "tomato",
@@ -1498,6 +1704,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ウパー",
     "baseNameJa": "ウパー",
     "specialty": "Ingredients",
+    "type": "Water",
+    "typeJa": "みず",
     "expType": 600,
     "ingredients": {
       "a": "mushroom",
@@ -1514,6 +1722,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ウパー(パルデア)",
     "baseNameJa": "ウパー",
     "specialty": "Ingredients",
+    "type": "Poison",
+    "typeJa": "どく",
     "expType": 600,
     "ingredients": {
       "a": "cacao",
@@ -1530,6 +1740,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ヌオー",
     "baseNameJa": "ヌオー",
     "specialty": "Ingredients",
+    "type": "Water",
+    "typeJa": "みず",
     "expType": 600,
     "ingredients": {
       "a": "mushroom",
@@ -1546,6 +1758,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "エーフィ",
     "baseNameJa": "エーフィ",
     "specialty": "Skills",
+    "type": "Psychic",
+    "typeJa": "エスパー",
     "expType": 600,
     "ingredients": {
       "a": "milk",
@@ -1562,6 +1776,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ブラッキー",
     "baseNameJa": "ブラッキー",
     "specialty": "Skills",
+    "type": "Dark",
+    "typeJa": "あく",
     "expType": 600,
     "ingredients": {
       "a": "milk",
@@ -1578,6 +1794,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ヤミカラス",
     "baseNameJa": "ヤミカラス",
     "specialty": "Skills",
+    "type": "Dark",
+    "typeJa": "あく",
     "expType": 600,
     "ingredients": {
       "a": "coffee",
@@ -1594,6 +1812,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ヤドキング",
     "baseNameJa": "ヤドキング",
     "specialty": "Skills",
+    "type": "Water",
+    "typeJa": "みず",
     "expType": 600,
     "ingredients": {
       "a": "cacao",
@@ -1610,6 +1830,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ソーナンス",
     "baseNameJa": "ソーナンス",
     "specialty": "Skills",
+    "type": "Psychic",
+    "typeJa": "エスパー",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -1626,6 +1848,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ハガネール",
     "baseNameJa": "ハガネール",
     "specialty": "Berries",
+    "type": "Steel",
+    "typeJa": "はがね",
     "expType": 600,
     "ingredients": {
       "a": "tomato",
@@ -1642,6 +1866,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ヘラクロス",
     "baseNameJa": "ヘラクロス",
     "specialty": "Skills",
+    "type": "Bug",
+    "typeJa": "むし",
     "expType": 600,
     "ingredients": {
       "a": "honey",
@@ -1658,6 +1884,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ニューラ",
     "baseNameJa": "ニューラ",
     "specialty": "Berries",
+    "type": "Dark",
+    "typeJa": "あく",
     "expType": 600,
     "ingredients": {
       "a": "sausage",
@@ -1674,6 +1902,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "デリバード",
     "baseNameJa": "デリバード",
     "specialty": "Ingredients",
+    "type": "Flying",
+    "typeJa": "ひこう",
     "expType": 600,
     "ingredients": {
       "a": "egg",
@@ -1690,6 +1920,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "デルビル",
     "baseNameJa": "デルビル",
     "specialty": "Berries",
+    "type": "Dark",
+    "typeJa": "あく",
     "expType": 600,
     "ingredients": {
       "a": "herb",
@@ -1706,6 +1938,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ヘルガー",
     "baseNameJa": "ヘルガー",
     "specialty": "Berries",
+    "type": "Dark",
+    "typeJa": "あく",
     "expType": 600,
     "ingredients": {
       "a": "herb",
@@ -1722,6 +1956,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ハピナス",
     "baseNameJa": "ハピナス",
     "specialty": "Ingredients",
+    "type": "Normal",
+    "typeJa": "ノーマル",
     "expType": 600,
     "ingredients": {
       "a": "egg",
@@ -1738,6 +1974,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ライコウ",
     "baseNameJa": "ライコウ",
     "specialty": "Skills",
+    "type": "Electric",
+    "typeJa": "でんき",
     "expType": 1080,
     "ingredients": {
       "a": "sausage",
@@ -1754,6 +1992,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "エンテイ",
     "baseNameJa": "エンテイ",
     "specialty": "Skills",
+    "type": "Fire",
+    "typeJa": "ほのお",
     "expType": 1080,
     "ingredients": {
       "a": "oil",
@@ -1770,6 +2010,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "スイクン",
     "baseNameJa": "スイクン",
     "specialty": "Skills",
+    "type": "Water",
+    "typeJa": "みず",
     "expType": 1080,
     "ingredients": {
       "a": "apple",
@@ -1786,6 +2028,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ヨーギラス",
     "baseNameJa": "ヨーギラス",
     "specialty": "Ingredients",
+    "type": "Rock",
+    "typeJa": "いわ",
     "expType": 900,
     "ingredients": {
       "a": "ginger",
@@ -1802,6 +2046,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "サナギラス",
     "baseNameJa": "サナギラス",
     "specialty": "Ingredients",
+    "type": "Rock",
+    "typeJa": "いわ",
     "expType": 900,
     "ingredients": {
       "a": "ginger",
@@ -1818,6 +2064,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "バンギラス",
     "baseNameJa": "バンギラス",
     "specialty": "Ingredients",
+    "type": "Dark",
+    "typeJa": "あく",
     "expType": 900,
     "ingredients": {
       "a": "ginger",
@@ -1834,6 +2082,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "キモリ",
     "baseNameJa": "キモリ",
     "specialty": "Skills",
+    "type": "Grass",
+    "typeJa": "くさ",
     "expType": 600,
     "ingredients": {
       "a": "egg",
@@ -1850,6 +2100,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ジュプトル",
     "baseNameJa": "ジュプトル",
     "specialty": "Skills",
+    "type": "Grass",
+    "typeJa": "くさ",
     "expType": 600,
     "ingredients": {
       "a": "egg",
@@ -1866,6 +2118,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ジュカイン",
     "baseNameJa": "ジュカイン",
     "specialty": "Skills",
+    "type": "Grass",
+    "typeJa": "くさ",
     "expType": 600,
     "ingredients": {
       "a": "egg",
@@ -1882,6 +2136,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "アチャモ",
     "baseNameJa": "アチャモ",
     "specialty": "Berries",
+    "type": "Fire",
+    "typeJa": "ほのお",
     "expType": 600,
     "ingredients": {
       "a": "mushroom",
@@ -1898,6 +2154,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ワカシャモ",
     "baseNameJa": "ワカシャモ",
     "specialty": "Berries",
+    "type": "Fighting",
+    "typeJa": "かくとう",
     "expType": 600,
     "ingredients": {
       "a": "mushroom",
@@ -1914,6 +2172,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "バシャーモ",
     "baseNameJa": "バシャーモ",
     "specialty": "Berries",
+    "type": "Fighting",
+    "typeJa": "かくとう",
     "expType": 600,
     "ingredients": {
       "a": "mushroom",
@@ -1930,6 +2190,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ミズゴロウ",
     "baseNameJa": "ミズゴロウ",
     "specialty": "Berries",
+    "type": "Water",
+    "typeJa": "みず",
     "expType": 600,
     "ingredients": {
       "a": "corn",
@@ -1946,6 +2208,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ヌマクロー",
     "baseNameJa": "ヌマクロー",
     "specialty": "Berries",
+    "type": "Ground",
+    "typeJa": "じめん",
     "expType": 600,
     "ingredients": {
       "a": "corn",
@@ -1962,6 +2226,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ラグラージ",
     "baseNameJa": "ラグラージ",
     "specialty": "Berries",
+    "type": "Ground",
+    "typeJa": "じめん",
     "expType": 600,
     "ingredients": {
       "a": "corn",
@@ -1978,6 +2244,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ラルトス",
     "baseNameJa": "ラルトス",
     "specialty": "Skills",
+    "type": "Psychic",
+    "typeJa": "エスパー",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -1994,6 +2262,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "キルリア",
     "baseNameJa": "キルリア",
     "specialty": "Skills",
+    "type": "Psychic",
+    "typeJa": "エスパー",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -2010,6 +2280,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "サーナイト",
     "baseNameJa": "サーナイト",
     "specialty": "Skills",
+    "type": "Psychic",
+    "typeJa": "エスパー",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -2026,6 +2298,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ナマケロ",
     "baseNameJa": "ナマケロ",
     "specialty": "Berries",
+    "type": "Normal",
+    "typeJa": "ノーマル",
     "expType": 600,
     "ingredients": {
       "a": "tomato",
@@ -2042,6 +2316,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ヤルキモノ",
     "baseNameJa": "ヤルキモノ",
     "specialty": "Berries",
+    "type": "Normal",
+    "typeJa": "ノーマル",
     "expType": 600,
     "ingredients": {
       "a": "tomato",
@@ -2058,6 +2334,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ケッキング",
     "baseNameJa": "ケッキング",
     "specialty": "Berries",
+    "type": "Normal",
+    "typeJa": "ノーマル",
     "expType": 600,
     "ingredients": {
       "a": "tomato",
@@ -2074,6 +2352,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ヤミラミ",
     "baseNameJa": "ヤミラミ",
     "specialty": "Skills",
+    "type": "Dark",
+    "typeJa": "あく",
     "expType": 600,
     "ingredients": {
       "a": "oil",
@@ -2090,6 +2370,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "クチート",
     "baseNameJa": "クチート",
     "specialty": "Ingredients",
+    "type": "Steel",
+    "typeJa": "はがね",
     "expType": 600,
     "ingredients": {
       "a": "oil",
@@ -2106,6 +2388,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ココドラ",
     "baseNameJa": "ココドラ",
     "specialty": "Ingredients",
+    "type": "Steel",
+    "typeJa": "はがね",
     "expType": 600,
     "ingredients": {
       "a": "sausage",
@@ -2122,6 +2406,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "コドラ",
     "baseNameJa": "コドラ",
     "specialty": "Ingredients",
+    "type": "Steel",
+    "typeJa": "はがね",
     "expType": 600,
     "ingredients": {
       "a": "sausage",
@@ -2138,6 +2424,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ボスゴドラ",
     "baseNameJa": "ボスゴドラ",
     "specialty": "Ingredients",
+    "type": "Steel",
+    "typeJa": "はがね",
     "expType": 600,
     "ingredients": {
       "a": "sausage",
@@ -2154,6 +2442,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "プラスル",
     "baseNameJa": "プラスル",
     "specialty": "Skills",
+    "type": "Electric",
+    "typeJa": "でんき",
     "expType": 600,
     "ingredients": {
       "a": "coffee",
@@ -2170,6 +2460,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "マイナン",
     "baseNameJa": "マイナン",
     "specialty": "Skills",
+    "type": "Electric",
+    "typeJa": "でんき",
     "expType": 600,
     "ingredients": {
       "a": "honey",
@@ -2186,6 +2478,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ゴクリン",
     "baseNameJa": "ゴクリン",
     "specialty": "Skills",
+    "type": "Poison",
+    "typeJa": "どく",
     "expType": 600,
     "ingredients": {
       "a": "soy",
@@ -2202,6 +2496,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "マルノーム",
     "baseNameJa": "マルノーム",
     "specialty": "Skills",
+    "type": "Poison",
+    "typeJa": "どく",
     "expType": 600,
     "ingredients": {
       "a": "soy",
@@ -2218,6 +2514,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ナックラー",
     "baseNameJa": "ナックラー",
     "specialty": "Ingredients",
+    "type": "Ground",
+    "typeJa": "じめん",
     "expType": 600,
     "ingredients": {
       "a": "avocado",
@@ -2234,6 +2532,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ビブラーバ",
     "baseNameJa": "ビブラーバ",
     "specialty": "Ingredients",
+    "type": "Ground",
+    "typeJa": "じめん",
     "expType": 600,
     "ingredients": {
       "a": "avocado",
@@ -2250,6 +2550,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "フライゴン",
     "baseNameJa": "フライゴン",
     "specialty": "Ingredients",
+    "type": "Ground",
+    "typeJa": "じめん",
     "expType": 600,
     "ingredients": {
       "a": "avocado",
@@ -2266,6 +2568,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "チルット",
     "baseNameJa": "チルット",
     "specialty": "Berries",
+    "type": "Flying",
+    "typeJa": "ひこう",
     "expType": 600,
     "ingredients": {
       "a": "egg",
@@ -2282,6 +2586,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "チルタリス",
     "baseNameJa": "チルタリス",
     "specialty": "Berries",
+    "type": "Dragon",
+    "typeJa": "ドラゴン",
     "expType": 600,
     "ingredients": {
       "a": "egg",
@@ -2298,6 +2604,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "カゲボウズ",
     "baseNameJa": "カゲボウズ",
     "specialty": "Berries",
+    "type": "Ghost",
+    "typeJa": "ゴースト",
     "expType": 600,
     "ingredients": {
       "a": "oil",
@@ -2314,6 +2622,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ジュペッタ",
     "baseNameJa": "ジュペッタ",
     "specialty": "Berries",
+    "type": "Ghost",
+    "typeJa": "ゴースト",
     "expType": 600,
     "ingredients": {
       "a": "oil",
@@ -2330,6 +2640,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "アブソル",
     "baseNameJa": "アブソル",
     "specialty": "Ingredients",
+    "type": "Dark",
+    "typeJa": "あく",
     "expType": 600,
     "ingredients": {
       "a": "cacao",
@@ -2346,6 +2658,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ソーナノ",
     "baseNameJa": "ソーナノ",
     "specialty": "Skills",
+    "type": "Psychic",
+    "typeJa": "エスパー",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -2362,6 +2676,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "タマザラシ",
     "baseNameJa": "タマザラシ",
     "specialty": "Berries",
+    "type": "Ice",
+    "typeJa": "こおり",
     "expType": 600,
     "ingredients": {
       "a": "oil",
@@ -2378,6 +2694,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "トドグラー",
     "baseNameJa": "トドグラー",
     "specialty": "Berries",
+    "type": "Ice",
+    "typeJa": "こおり",
     "expType": 600,
     "ingredients": {
       "a": "oil",
@@ -2394,6 +2712,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "トドゼルガ",
     "baseNameJa": "トドゼルガ",
     "specialty": "Berries",
+    "type": "Ice",
+    "typeJa": "こおり",
     "expType": 600,
     "ingredients": {
       "a": "oil",
@@ -2410,6 +2730,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "タツベイ",
     "baseNameJa": "タツベイ",
     "specialty": "Berries",
+    "type": "Dragon",
+    "typeJa": "ドラゴン",
     "expType": 900,
     "ingredients": {
       "a": "potato",
@@ -2426,6 +2748,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "コモルー",
     "baseNameJa": "コモルー",
     "specialty": "Berries",
+    "type": "Dragon",
+    "typeJa": "ドラゴン",
     "expType": 900,
     "ingredients": {
       "a": "potato",
@@ -2442,6 +2766,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ボーマンダ",
     "baseNameJa": "ボーマンダ",
     "specialty": "Berries",
+    "type": "Dragon",
+    "typeJa": "ドラゴン",
     "expType": 900,
     "ingredients": {
       "a": "potato",
@@ -2458,6 +2784,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "コリンク",
     "baseNameJa": "コリンク",
     "specialty": "Ingredients",
+    "type": "Electric",
+    "typeJa": "でんき",
     "expType": 600,
     "ingredients": {
       "a": "tomato",
@@ -2474,6 +2802,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ルクシオ",
     "baseNameJa": "ルクシオ",
     "specialty": "Ingredients",
+    "type": "Electric",
+    "typeJa": "でんき",
     "expType": 600,
     "ingredients": {
       "a": "tomato",
@@ -2490,6 +2820,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "レントラー",
     "baseNameJa": "レントラー",
     "specialty": "Ingredients",
+    "type": "Electric",
+    "typeJa": "でんき",
     "expType": 600,
     "ingredients": {
       "a": "tomato",
@@ -2506,6 +2838,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "フワンテ",
     "baseNameJa": "フワンテ",
     "specialty": "Skills",
+    "type": "Ghost",
+    "typeJa": "ゴースト",
     "expType": 600,
     "ingredients": {
       "a": "corn",
@@ -2522,6 +2856,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "フワライド",
     "baseNameJa": "フワライド",
     "specialty": "Skills",
+    "type": "Ghost",
+    "typeJa": "ゴースト",
     "expType": 600,
     "ingredients": {
       "a": "corn",
@@ -2538,6 +2874,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ドンカラス",
     "baseNameJa": "ドンカラス",
     "specialty": "Skills",
+    "type": "Dark",
+    "typeJa": "あく",
     "expType": 600,
     "ingredients": {
       "a": "coffee",
@@ -2554,6 +2892,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ウソハチ",
     "baseNameJa": "ウソハチ",
     "specialty": "Skills",
+    "type": "Rock",
+    "typeJa": "いわ",
     "expType": 600,
     "ingredients": {
       "a": "tomato",
@@ -2570,6 +2910,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "マネネ",
     "baseNameJa": "マネネ",
     "specialty": "Ingredients",
+    "type": "Psychic",
+    "typeJa": "エスパー",
     "expType": 600,
     "ingredients": {
       "a": "tomato",
@@ -2586,6 +2928,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ピンプク",
     "baseNameJa": "ピンプク",
     "specialty": "Ingredients",
+    "type": "Normal",
+    "typeJa": "ノーマル",
     "expType": 600,
     "ingredients": {
       "a": "egg",
@@ -2602,6 +2946,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ミカルゲ",
     "baseNameJa": "ミカルゲ",
     "specialty": "Ingredients",
+    "type": "Dark",
+    "typeJa": "あく",
     "expType": 600,
     "ingredients": {
       "a": "mushroom",
@@ -2618,6 +2964,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "リオル",
     "baseNameJa": "リオル",
     "specialty": "Skills",
+    "type": "Fighting",
+    "typeJa": "かくとう",
     "expType": 600,
     "ingredients": {
       "a": "oil",
@@ -2634,6 +2982,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ルカリオ",
     "baseNameJa": "ルカリオ",
     "specialty": "Skills",
+    "type": "Fighting",
+    "typeJa": "かくとう",
     "expType": 600,
     "ingredients": {
       "a": "oil",
@@ -2650,6 +3000,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "グレッグル",
     "baseNameJa": "グレッグル",
     "specialty": "Ingredients",
+    "type": "Poison",
+    "typeJa": "どく",
     "expType": 600,
     "ingredients": {
       "a": "oil",
@@ -2666,6 +3018,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ドクロッグ",
     "baseNameJa": "ドクロッグ",
     "specialty": "Ingredients",
+    "type": "Poison",
+    "typeJa": "どく",
     "expType": 600,
     "ingredients": {
       "a": "oil",
@@ -2682,6 +3036,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ユキカブリ",
     "baseNameJa": "ユキカブリ",
     "specialty": "Ingredients",
+    "type": "Ice",
+    "typeJa": "こおり",
     "expType": 600,
     "ingredients": {
       "a": "tomato",
@@ -2698,6 +3054,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ユキノオー",
     "baseNameJa": "ユキノオー",
     "specialty": "Ingredients",
+    "type": "Ice",
+    "typeJa": "こおり",
     "expType": 600,
     "ingredients": {
       "a": "tomato",
@@ -2714,6 +3072,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "マニューラ",
     "baseNameJa": "マニューラ",
     "specialty": "Berries",
+    "type": "Dark",
+    "typeJa": "あく",
     "expType": 600,
     "ingredients": {
       "a": "sausage",
@@ -2730,6 +3090,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ジバコイル",
     "baseNameJa": "ジバコイル",
     "specialty": "Skills",
+    "type": "Steel",
+    "typeJa": "はがね",
     "expType": 600,
     "ingredients": {
       "a": "oil",
@@ -2746,6 +3108,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "トゲキッス",
     "baseNameJa": "トゲキッス",
     "specialty": "Skills",
+    "type": "Fairy",
+    "typeJa": "フェアリー",
     "expType": 600,
     "ingredients": {
       "a": "egg",
@@ -2762,6 +3126,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "リーフィア",
     "baseNameJa": "リーフィア",
     "specialty": "Skills",
+    "type": "Grass",
+    "typeJa": "くさ",
     "expType": 600,
     "ingredients": {
       "a": "milk",
@@ -2778,6 +3144,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "グレイシア",
     "baseNameJa": "グレイシア",
     "specialty": "Skills",
+    "type": "Ice",
+    "typeJa": "こおり",
     "expType": 600,
     "ingredients": {
       "a": "milk",
@@ -2794,6 +3162,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "エルレイド",
     "baseNameJa": "エルレイド",
     "specialty": "Skills",
+    "type": "Fighting",
+    "typeJa": "かくとう",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -2810,6 +3180,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "クレセリア",
     "baseNameJa": "クレセリア",
     "specialty": "Skills",
+    "type": "Psychic",
+    "typeJa": "エスパー",
     "expType": 1080,
     "ingredients": {
       "a": "ginger",
@@ -2826,6 +3198,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ダークライ",
     "baseNameJa": "ダークライ",
     "specialty": "All",
+    "type": "Dark",
+    "typeJa": "あく",
     "expType": 1320,
     "ingredients": null,
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%80%E3%83%BC%E3%82%AF%E3%83%A9%E3%82%A4"
@@ -2838,6 +3212,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ムンナ",
     "baseNameJa": "ムンナ",
     "specialty": "Berries",
+    "type": "Psychic",
+    "typeJa": "エスパー",
     "expType": 600,
     "ingredients": {
       "a": "milk",
@@ -2854,6 +3230,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ムシャーナ",
     "baseNameJa": "ムシャーナ",
     "specialty": "Berries",
+    "type": "Psychic",
+    "typeJa": "エスパー",
     "expType": 600,
     "ingredients": {
       "a": "milk",
@@ -2870,6 +3248,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "イシズマイ",
     "baseNameJa": "イシズマイ",
     "specialty": "Skills",
+    "type": "Bug",
+    "typeJa": "むし",
     "expType": 600,
     "ingredients": {
       "a": "avocado",
@@ -2886,6 +3266,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "イワパレス",
     "baseNameJa": "イワパレス",
     "specialty": "Skills",
+    "type": "Bug",
+    "typeJa": "むし",
     "expType": 600,
     "ingredients": {
       "a": "avocado",
@@ -2902,6 +3284,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ワシボン",
     "baseNameJa": "ワシボン",
     "specialty": "Skills",
+    "type": "Flying",
+    "typeJa": "ひこう",
     "expType": 600,
     "ingredients": {
       "a": "sausage",
@@ -2918,6 +3302,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ウォーグル",
     "baseNameJa": "ウォーグル",
     "specialty": "Skills",
+    "type": "Flying",
+    "typeJa": "ひこう",
     "expType": 600,
     "ingredients": {
       "a": "sausage",
@@ -2934,6 +3320,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ニンフィア",
     "baseNameJa": "ニンフィア",
     "specialty": "Skills",
+    "type": "Fairy",
+    "typeJa": "フェアリー",
     "expType": 600,
     "ingredients": {
       "a": "milk",
@@ -2950,6 +3338,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "デデンネ",
     "baseNameJa": "デデンネ",
     "specialty": "Skills",
+    "type": "Electric",
+    "typeJa": "でんき",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -2966,6 +3356,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "バケッチャ(おおだま)",
     "baseNameJa": "バケッチャ",
     "specialty": "Ingredients",
+    "type": "Ghost",
+    "typeJa": "ゴースト",
     "expType": 600,
     "ingredients": {
       "a": "pumpkin",
@@ -2982,6 +3374,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "バケッチャ(ギガだま)",
     "baseNameJa": "バケッチャ",
     "specialty": "Ingredients",
+    "type": "Ghost",
+    "typeJa": "ゴースト",
     "expType": 600,
     "ingredients": {
       "a": "pumpkin",
@@ -2998,6 +3392,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "バケッチャ(こだま)",
     "baseNameJa": "バケッチャ",
     "specialty": "Ingredients",
+    "type": "Ghost",
+    "typeJa": "ゴースト",
     "expType": 600,
     "ingredients": {
       "a": "pumpkin",
@@ -3014,6 +3410,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "バケッチャ(ちゅうだま)",
     "baseNameJa": "バケッチャ",
     "specialty": "Ingredients",
+    "type": "Ghost",
+    "typeJa": "ゴースト",
     "expType": 600,
     "ingredients": {
       "a": "pumpkin",
@@ -3030,6 +3428,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "パンプジン(おおだま)",
     "baseNameJa": "パンプジン",
     "specialty": "Ingredients",
+    "type": "Ghost",
+    "typeJa": "ゴースト",
     "expType": 600,
     "ingredients": {
       "a": "pumpkin",
@@ -3046,6 +3446,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "パンプジン(ギガだま)",
     "baseNameJa": "パンプジン",
     "specialty": "Ingredients",
+    "type": "Ghost",
+    "typeJa": "ゴースト",
     "expType": 600,
     "ingredients": {
       "a": "pumpkin",
@@ -3062,6 +3464,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "パンプジン(こだま)",
     "baseNameJa": "パンプジン",
     "specialty": "Ingredients",
+    "type": "Ghost",
+    "typeJa": "ゴースト",
     "expType": 600,
     "ingredients": {
       "a": "pumpkin",
@@ -3078,6 +3482,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "パンプジン(ちゅうだま)",
     "baseNameJa": "パンプジン",
     "specialty": "Ingredients",
+    "type": "Ghost",
+    "typeJa": "ゴースト",
     "expType": 600,
     "ingredients": {
       "a": "pumpkin",
@@ -3094,6 +3500,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "アゴジムシ",
     "baseNameJa": "アゴジムシ",
     "specialty": "Ingredients",
+    "type": "Bug",
+    "typeJa": "むし",
     "expType": 600,
     "ingredients": {
       "a": "coffee",
@@ -3110,6 +3518,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "デンヂムシ",
     "baseNameJa": "デンヂムシ",
     "specialty": "Ingredients",
+    "type": "Bug",
+    "typeJa": "むし",
     "expType": 600,
     "ingredients": {
       "a": "coffee",
@@ -3126,6 +3536,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "クワガノン",
     "baseNameJa": "クワガノン",
     "specialty": "Ingredients",
+    "type": "Bug",
+    "typeJa": "むし",
     "expType": 600,
     "ingredients": {
       "a": "coffee",
@@ -3142,6 +3554,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ヌイコグマ",
     "baseNameJa": "ヌイコグマ",
     "specialty": "Ingredients",
+    "type": "Fighting",
+    "typeJa": "かくとう",
     "expType": 600,
     "ingredients": {
       "a": "corn",
@@ -3158,6 +3572,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "キテルグマ",
     "baseNameJa": "キテルグマ",
     "specialty": "Ingredients",
+    "type": "Fighting",
+    "typeJa": "かくとう",
     "expType": 600,
     "ingredients": {
       "a": "corn",
@@ -3174,6 +3590,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "キュワワー",
     "baseNameJa": "キュワワー",
     "specialty": "Ingredients",
+    "type": "Fairy",
+    "typeJa": "フェアリー",
     "expType": 600,
     "ingredients": {
       "a": "corn",
@@ -3190,6 +3608,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ミミッキュ",
     "baseNameJa": "ミミッキュ",
     "specialty": "Skills",
+    "type": "Ghost",
+    "typeJa": "ゴースト",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -3206,6 +3626,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ウッウ",
     "baseNameJa": "ウッウ",
     "specialty": "Ingredients",
+    "type": "Flying",
+    "typeJa": "ひこう",
     "expType": 600,
     "ingredients": {
       "a": "oil",
@@ -3222,6 +3644,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "エレズン",
     "baseNameJa": "エレズン",
     "specialty": "Skills",
+    "type": "Poison",
+    "typeJa": "どく",
     "expType": 600,
     "ingredients": {
       "a": "milk",
@@ -3238,6 +3662,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ストリンダー(ハイ)",
     "baseNameJa": "ストリンダー",
     "specialty": "Skills",
+    "type": "Poison",
+    "typeJa": "どく",
     "expType": 600,
     "ingredients": {
       "a": "milk",
@@ -3254,6 +3680,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ストリンダー(ロー)",
     "baseNameJa": "ストリンダー",
     "specialty": "Skills",
+    "type": "Poison",
+    "typeJa": "どく",
     "expType": 600,
     "ingredients": {
       "a": "milk",
@@ -3270,6 +3698,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ニャオハ",
     "baseNameJa": "ニャオハ",
     "specialty": "Ingredients",
+    "type": "Grass",
+    "typeJa": "くさ",
     "expType": 600,
     "ingredients": {
       "a": "potato",
@@ -3286,6 +3716,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ニャローテ",
     "baseNameJa": "ニャローテ",
     "specialty": "Ingredients",
+    "type": "Grass",
+    "typeJa": "くさ",
     "expType": 600,
     "ingredients": {
       "a": "potato",
@@ -3302,6 +3734,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "マスカーニャ",
     "baseNameJa": "マスカーニャ",
     "specialty": "Ingredients",
+    "type": "Dark",
+    "typeJa": "あく",
     "expType": 600,
     "ingredients": {
       "a": "potato",
@@ -3318,6 +3752,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ホゲータ",
     "baseNameJa": "ホゲータ",
     "specialty": "Ingredients",
+    "type": "Fire",
+    "typeJa": "ほのお",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -3334,6 +3770,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "アチゲータ",
     "baseNameJa": "アチゲータ",
     "specialty": "Ingredients",
+    "type": "Fire",
+    "typeJa": "ほのお",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -3350,6 +3788,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ラウドボーン",
     "baseNameJa": "ラウドボーン",
     "specialty": "Ingredients",
+    "type": "Ghost",
+    "typeJa": "ゴースト",
     "expType": 600,
     "ingredients": {
       "a": "apple",
@@ -3366,6 +3806,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "クワッス",
     "baseNameJa": "クワッス",
     "specialty": "Ingredients",
+    "type": "Water",
+    "typeJa": "みず",
     "expType": 600,
     "ingredients": {
       "a": "soy",
@@ -3382,6 +3824,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ウェルカモ",
     "baseNameJa": "ウェルカモ",
     "specialty": "Ingredients",
+    "type": "Water",
+    "typeJa": "みず",
     "expType": 600,
     "ingredients": {
       "a": "soy",
@@ -3398,6 +3842,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ウェーニバル",
     "baseNameJa": "ウェーニバル",
     "specialty": "Ingredients",
+    "type": "Fighting",
+    "typeJa": "かくとう",
     "expType": 600,
     "ingredients": {
       "a": "soy",
@@ -3414,6 +3860,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "パモ",
     "baseNameJa": "パモ",
     "specialty": "Skills",
+    "type": "Electric",
+    "typeJa": "でんき",
     "expType": 600,
     "ingredients": {
       "a": "cacao",
@@ -3430,6 +3878,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "パモット",
     "baseNameJa": "パモット",
     "specialty": "Skills",
+    "type": "Electric",
+    "typeJa": "でんき",
     "expType": 600,
     "ingredients": {
       "a": "cacao",
@@ -3446,6 +3896,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "パーモット",
     "baseNameJa": "パーモット",
     "specialty": "Skills",
+    "type": "Electric",
+    "typeJa": "でんき",
     "expType": 600,
     "ingredients": {
       "a": "cacao",
@@ -3462,6 +3914,8 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "nameJa": "ドオー",
     "baseNameJa": "ドオー",
     "specialty": "Ingredients",
+    "type": "Poison",
+    "typeJa": "どく",
     "expType": 600,
     "ingredients": {
       "a": "cacao",

@@ -751,7 +751,8 @@
               <button
                 type="button"
                 class="boxTile"
-                :class="{ 'boxTile--active': e.id === selectedBoxId }"
+                :class="[boxTileTypeClass(e), { 'boxTile--active': e.id === selectedBoxId }]"
+                :data-type="e.derived ? getPokemonType(e.derived.pokedexId, e.derived.form) : 'unknown'"
                 @click="onSelectBox(e.id)"
               >
                 <div class="boxTile__name">{{ displayBoxTitle(e) }}</div>
@@ -1035,6 +1036,7 @@ import {
   getPokemonIngredients,
   getPokemonNameJa,
   getPokemonSpecialty,
+  getPokemonType,
   pokemonIdFormsByNameJa,
 } from "./domain/pokesleep/pokemon-names";
 import { IngredientTypes, SubSkillAllJaSorted, SubSkillNameJaByEn, subSkillEnFromJa } from "./domain/box/nitoyon";
@@ -1631,6 +1633,12 @@ function displayBoxTitle(e: PokemonBoxEntryV1): string {
   if (!label) return name ?? "(no name)";
   if (name && /^#\d+$/.test(label)) return name;
   return label;
+}
+
+function boxTileTypeClass(e: PokemonBoxEntryV1): string {
+  if (!e.derived) return "boxTile--type-unknown";
+  const t = getPokemonType(e.derived.pokedexId, e.derived.form);
+  return `boxTile--type-${t}`;
 }
 
 function onSelectBox(id: string) {
@@ -3537,23 +3545,97 @@ function onBoxEditSubBlur(lvLike: unknown) {
   text-align: left;
   cursor: pointer;
   border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
-  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
+  --type-wash: transparent;
+  background:
+    radial-gradient(
+      140% 160% at 12% 0%,
+      color-mix(in oklab, var(--type-wash) 32%, transparent),
+      transparent 58%
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in oklab, var(--box-tile-left, #f1dfc8) 84%, var(--type-wash) 16%),
+      color-mix(in oklab, var(--box-tile-right, #f5f2ea) 86%, var(--type-wash) 14%)
+    );
   border-radius: 14px;
   padding: 12px 12px;
   display: grid;
   gap: 8px;
   min-height: 76px;
 }
+.boxTile--type-Normal {
+  --type-wash: #d7d7d7;
+}
+.boxTile--type-Fire {
+  --type-wash: #f84c4cf0;
+}
+.boxTile--type-Water {
+  --type-wash: #68aaf0;
+}
+.boxTile--type-Electric {
+  --type-wash: #f8e130;
+}
+.boxTile--type-Grass {
+  --type-wash: #78C850;
+}
+.boxTile--type-Ice {
+  --type-wash: #98D8D8;
+}
+.boxTile--type-Fighting {
+  --type-wash: #eb9131f4;
+}
+.boxTile--type-Poison {
+  --type-wash: #a256b0;
+}
+.boxTile--type-Ground {
+  --type-wash: #d29d41;
+}
+.boxTile--type-Flying {
+  --type-wash: #6992f2;
+}
+.boxTile--type-Psychic {
+  --type-wash: #ff6e9c;
+}
+.boxTile--type-Bug {
+  --type-wash: #93b219;
+}
+.boxTile--type-Rock {
+  --type-wash: #b88738;
+}
+.boxTile--type-Ghost {
+  --type-wash: #705898;
+}
+.boxTile--type-Dragon {
+  --type-wash: #633bf3;
+}
+.boxTile--type-Dark {
+  --type-wash: #705848;
+}
+.boxTile--type-Steel {
+  --type-wash: #959595;
+}
+.boxTile--type-Fairy {
+  --type-wash: #ffa4cb;
+}
+.boxTile--type-unknown {
+  --type-wash: transparent;
+}
 .boxTile:hover {
   border-color: color-mix(in oklab, var(--ink) 26%, transparent);
 }
 .boxTile--active {
   border-color: color-mix(in oklab, var(--accent-warm) 52%, transparent);
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--accent-warm) 12%, var(--paper) 88%),
-    color-mix(in oklab, var(--paper) 96%, var(--ink) 4%)
-  );
+  background:
+    radial-gradient(
+      140% 160% at 12% 0%,
+      color-mix(in oklab, var(--type-wash) 26%, transparent),
+      transparent 60%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--accent-warm) 12%, var(--paper) 88%),
+      color-mix(in oklab, var(--paper) 96%, var(--ink) 4%)
+    );
   box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent-warm) 12%, transparent);
 }
 .boxTile__name {
