@@ -3649,10 +3649,23 @@ function onBoxEditSubBlur(lvLike: unknown) {
   color: color-mix(in oklab, var(--ink) 62%, transparent);
 }
 .boxTile__fav {
-  margin-left: 6px;
+  margin-left: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
+  background: color-mix(in oklab, var(--paper) 78%, var(--accent-warm) 22%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, var(--paper) 70%, transparent),
+    0 10px 20px color-mix(in oklab, var(--ink) 14%, transparent);
+  color: color-mix(in oklab, var(--ink) 88%, transparent);
   font-family: var(--font-heading);
   font-weight: 900;
-  color: color-mix(in oklab, var(--accent) 78%, var(--ink) 22%);
+  font-size: 14px;
+  line-height: 1;
 }
 .boxListHint {
   margin: 6px 0 0;
