@@ -3,6 +3,7 @@ export const ja = {
   common: {
     pageNav: "ページ",
     editing: "編集中",
+    support: "SUPPORT",
     applyToBox: "ボックスへ反映",
     undo: "元に戻す",
     redo: "やり直す",

@@ -16,6 +16,22 @@
         <button class="lang__btn" type="button" :class="{ 'lang__btn--on': locale === 'ja' }" @click="setLocale('ja')">JP</button>
         <button class="lang__btn" type="button" :class="{ 'lang__btn--on': locale === 'en' }" @click="setLocale('en')">EN</button>
       </div>
+      <div class="support" v-if="supportLinks.length">
+        <p class="support__label">{{ t("common.support") }}</p>
+        <div class="support__links">
+          <a
+            v-for="l in supportLinks"
+            :key="l.id"
+            class="support__link"
+            :href="l.href"
+            target="_blank"
+            rel="noopener noreferrer"
+            :aria-label="l.ariaLabel"
+          >
+            {{ l.label }}
+          </a>
+        </div>
+      </div>
     </header>
 
     <nav class="tabs" :aria-label="t('common.pageNav')">
@@ -1167,6 +1183,38 @@ function gt(s: string): string {
 function fmtNum(n: number): string {
   return new Intl.NumberFormat(locale.value as any).format(n);
 }
+
+/**
+ * Support links (donations)
+ *
+ * Set URLs via Vite env:
+ * - VITE_OFUSE_URL=https://ofuse.me/xxxx
+ * - VITE_BMAC_URL=https://buymeacoffee.com/xxxx
+ */
+const OFUSE_URL = (import.meta.env.VITE_OFUSE_URL ?? "").trim();
+const BMAC_URL = (import.meta.env.VITE_BMAC_URL ?? "").trim();
+
+type SupportLink = { id: "ofuse" | "bmac"; label: string; href: string; ariaLabel: string };
+const supportLinks = computed<SupportLink[]>(() => {
+  const out: SupportLink[] = [];
+  if (OFUSE_URL) {
+    out.push({
+      id: "ofuse",
+      label: "OFUSE",
+      href: OFUSE_URL,
+      ariaLabel: locale.value === "en" ? "Open OFUSE in a new tab" : "OFUSEを新しいタブで開く",
+    });
+  }
+  if (BMAC_URL) {
+    out.push({
+      id: "bmac",
+      label: "Buy Me a Coffee",
+      href: BMAC_URL,
+      ariaLabel: locale.value === "en" ? "Open Buy Me a Coffee in a new tab" : "Buy Me a Coffeeを新しいタブで開く",
+    });
+  }
+  return out;
+});
 
 const activeTab = ref<"calc" | "box">("calc");
 
@@ -3008,6 +3056,48 @@ function onBoxEditSubBlur(lvLike: unknown) {
   background: color-mix(in oklab, var(--accent-warm) 20%, var(--paper) 80%);
   color: color-mix(in oklab, var(--ink) 90%, transparent);
   box-shadow: 0 10px 22px color-mix(in oklab, var(--accent-warm) 12%, transparent);
+}
+
+.support {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+.support__label {
+  margin: 0;
+  font-family: var(--font-body);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 11px;
+  color: color-mix(in oklab, var(--ink) 55%, transparent);
+}
+.support__links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.support__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  font: inherit;
+  cursor: pointer;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
+  background: color-mix(in oklab, var(--paper) 94%, var(--ink) 6%);
+  color: color-mix(in oklab, var(--ink) 72%, transparent);
+  font-size: 12px;
+}
+.support__link:hover {
+  border-color: color-mix(in oklab, var(--ink) 22%, transparent);
+  color: color-mix(in oklab, var(--ink) 86%, transparent);
+}
+.support__link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 18%, transparent);
 }
 .panel {
   border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);

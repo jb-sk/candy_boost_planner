@@ -3,6 +3,7 @@ export const en = {
   common: {
     pageNav: "Pages",
     editing: "Editing",
+    support: "Support",
     applyToBox: "Save to Box",
     undo: "Undo",
     redo: "Redo",
