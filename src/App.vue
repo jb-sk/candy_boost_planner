@@ -3199,6 +3199,40 @@ function onBoxEditSubBlur(lvLike: unknown) {
   flex: 1;
   min-width: 220px;
 }
+
+/* Mobile: keep "Shards" and "Remaining" compact and side-by-side */
+@media (max-width: 560px) {
+  .calcSticky {
+    top: 6px;
+    padding: 6px;
+    border-radius: 14px;
+  }
+  .calcSticky__summary {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .calcSticky__summary .calcSum {
+    min-width: 0;
+    padding: 8px 10px;
+    border-radius: 12px;
+  }
+  .calcSum__k {
+    font-size: 11px;
+    letter-spacing: 0.05em;
+  }
+  .calcSum__v {
+    font-size: 16px;
+  }
+  .calcSum--hi .calcSum__v {
+    padding: 5px 8px;
+    border-radius: 10px;
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, var(--paper) 65%, transparent),
+      0 8px 14px color-mix(in oklab, var(--accent-warm) 12%, transparent);
+  }
+}
 .calcSum--sparkle::after {
   content: "";
   position: absolute;
