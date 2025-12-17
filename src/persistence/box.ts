@@ -39,8 +39,12 @@ export function loadBox(): PokemonBoxEntryV1[] {
 }
 
 export function saveBox(entries: PokemonBoxEntryV1[]) {
-  const v: BoxStoreV1 = { schemaVersion: SCHEMA_VERSION, entries };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(v));
+  try {
+    const v: BoxStoreV1 = { schemaVersion: SCHEMA_VERSION, entries };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(v));
+  } catch {
+    // localStorage can throw (quota exceeded / blocked). Persistence must not break UI.
+  }
 }
 
 function normalizeEntry(x: any): PokemonBoxEntryV1 {

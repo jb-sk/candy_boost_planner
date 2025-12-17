@@ -57,7 +57,11 @@ export function loadCalcAutosave(): CalcAutosaveV1 | null {
 }
 
 export function saveCalcAutosave(v: CalcAutosaveV1) {
-  localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(v));
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(v));
+  } catch {
+    // localStorage can throw (quota exceeded / blocked). Persistence must not break UI.
+  }
 }
 
 export function loadCalcSlots(): Array<CalcSaveSlotV1 | null> {
@@ -85,7 +89,11 @@ export function saveCalcSlots(v: Array<CalcSaveSlotV1 | null>) {
   const a = Array.isArray(v) ? v.slice(0, 3) : [];
   while (a.length < 3) a.push(null);
   const store: CalcSlotsStoreV1 = { schemaVersion: 1, slots: a };
-  localStorage.setItem(SLOTS_KEY, JSON.stringify(store));
+  try {
+    localStorage.setItem(SLOTS_KEY, JSON.stringify(store));
+  } catch {
+    // localStorage can throw (quota exceeded / blocked). Persistence must not break UI.
+  }
 }
 
 export function loadLegacyTotalShards(): number {
