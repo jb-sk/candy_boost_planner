@@ -79,6 +79,9 @@ export const en = {
       colTotal: "Total",
       colShards: "Dream Shards",
       total: "Total",
+      summaryBoost: "Boost total",
+      summaryShards: "Shards total",
+      summaryCount: "Pokémon",
     },
   },
   box: {

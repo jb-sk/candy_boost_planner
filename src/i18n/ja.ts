@@ -79,6 +79,9 @@ export const ja = {
       colTotal: "合計",
       colShards: "かけら",
       total: "合計",
+      summaryBoost: "合計アメブ",
+      summaryShards: "かけら合計",
+      summaryCount: "使用ポケモン",
     },
   },
   box: {

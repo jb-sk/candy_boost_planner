@@ -3478,7 +3478,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
 }
 .exportSheetWrap {
   /* 横長になりすぎない（縦3:横4 目安） */
-  width: min(860px, calc(100vw - 36px));
+  width: min(820px, calc(100vw - 36px));
   max-height: calc(100vh - 36px);
   overflow: auto;
 }
@@ -3491,6 +3491,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
   box-shadow: 0 4px 12px rgba(74, 66, 56, 0.1);
   padding: 22px 22px 16px;
   position: relative;
+  --xmas-gold: #D4AC0D;
 }
 .exportSheet--capture {
   /* 画像保存時は「カード枠」を消してスクショ向けに */
@@ -3507,7 +3508,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
   padding: 0 2px 8px;
   border-radius: 0;
   background: transparent;
-  border-bottom: 1px solid #D4AC0D;
+  border-bottom: 1px solid var(--xmas-gold);
 }
 .exportBrand {
   font-family: var(--font-body);
@@ -3556,14 +3557,14 @@ function onBoxEditSubBlur(lvLike: unknown) {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: 0; /* 指定: 表の角は丸めない */
   border: 1px solid #E5E0D8;
 }
-.exportTable .col-name { width: 34%; }
-.exportTable .col-exp { width: 8%; }
-.exportTable .col-lv { width: 8%; }
+.exportTable .col-name { width: 32%; }
+.exportTable .col-exp { width: 10%; }
+.exportTable .col-lv { width: 7%; }
 .exportTable .col-num { width: 10%; }
-.exportTable .col-shards { width: 20%; }
+.exportTable .col-shards { width: 14%; }
 .exportTable th,
 .exportTable td {
   padding: 7px 8px;
@@ -3574,7 +3575,11 @@ function onBoxEditSubBlur(lvLike: unknown) {
 .exportTable thead th {
   font-family: var(--font-heading);
   font-weight: 900;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   background: #FDFBF7;
   color: #4A4238;
 }
@@ -3592,14 +3597,8 @@ function onBoxEditSubBlur(lvLike: unknown) {
   border-bottom: 0;
   background: #FDFBF7;
   color: #4A4238;
-  border-top: 2px solid #D4AC0D;
-  border-bottom: 2px solid #D4AC0D;
-}
-.exportName {
-  font-family: var(--font-heading);
-  font-weight: 900;
-  white-space: normal;
-  overflow-wrap: anywhere;
+  border-top: 2px solid var(--xmas-gold);
+  border-bottom: 2px solid var(--xmas-gold);
 }
 .exportTotalLabel {
   text-align: left;
@@ -3610,12 +3609,19 @@ function onBoxEditSubBlur(lvLike: unknown) {
 .exportTable tfoot td.ta-r {
   box-shadow: none;
 }
+.exportName {
+  font-family: var(--font-heading);
+  font-weight: 900;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .ta-r {
   text-align: right;
 }
 .ta-c {
   text-align: center;
 }
+
 
 /* --- Level picker (nitoyon-like) --- */
 .levelPick {
