@@ -2512,9 +2512,46 @@ async function downloadCalcExportPng() {
         transformOrigin: "top left",
       },
     });
-    const a = document.createElement("a");
     const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-    a.download = `CandyBoost-Planner_${ts}.png`;
+    const filename = `CandyBoost-Planner_${ts}.png`;
+
+    // iOS Safari: prefer Share Sheet so users can "Save Image" to Photos.
+    // (Direct download typically goes to Files on iPhone.)
+    const ua = navigator.userAgent || "";
+    // iPadOS sometimes reports MacIntel; treat it as iOS if it has touch.
+    const isLikelyIOS =
+      /iPad|iPhone|iPod/i.test(ua) ||
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ((navigator as any).platform === "MacIntel" && (navigator as any).maxTouchPoints > 1);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const nav: any = navigator as any;
+    if (isLikelyIOS && nav?.share) {
+      try {
+        const blob = await (await fetch(dataUrl)).blob();
+        const file = new File([blob], filename, { type: "image/png" });
+        const canShareFiles = typeof nav.canShare !== "function" || nav.canShare({ files: [file] });
+        if (canShareFiles) {
+          await nav.share({ files: [file], title: "CandyBoost Planner" });
+          exportStatus.value = "";
+          return;
+        }
+      } catch {
+        // fall through to fallback
+      }
+      // As a fallback on iOS, open the image in a new tab so the user can long-press and save to Photos.
+      try {
+        window.open(dataUrl, "_blank", "noopener,noreferrer");
+        exportStatus.value = "";
+        return;
+      } catch {
+        // fall through to download
+      }
+    }
+
+    // Default: download (desktop / Android / non-share iOS)
+    const a = document.createElement("a");
+    a.download = filename;
     a.href = dataUrl;
     a.click();
     exportStatus.value = "";
