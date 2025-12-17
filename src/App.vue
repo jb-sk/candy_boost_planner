@@ -223,15 +223,6 @@
               <div class="calcRow__title">{{ r.title }}</div>
             </div>
             <div class="calcRow__headRight">
-              <button
-                v-if="r.boxId"
-                class="btn btn--xs"
-                type="button"
-                @click.stop="applyCalculatorToBox(r.id)"
-                :title="t('calc.applyToBoxTitle')"
-              >
-                {{ t("common.applyToBox") }}
-              </button>
               <button class="btn btn--ghost btn--xs" type="button" @click.stop="moveCalcRowUp(r.id)" :disabled="!canMoveCalcRowUp(r.id)">
                 ↑
               </button>
@@ -239,6 +230,15 @@
                 ↓
               </button>
               <button class="btn btn--danger btn--xs" type="button" @click.stop="onCalcRemoveRow(r.id)">{{ t("common.delete") }}</button>
+              <button
+                v-if="r.boxId"
+                class="btn btn--xs calcRow__applyBtn"
+                type="button"
+                @click.stop="applyCalculatorToBox(r.id)"
+                :title="t('calc.applyToBoxTitle')"
+              >
+                {{ t("common.applyToBox") }}
+              </button>
             </div>
           </div>
 
@@ -3447,25 +3447,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
     font-size: 15px;
   }
 
-  /* Mobile: keep shards + candy(total) side-by-side under inputs */
-}
-
-@media (max-width: 560px) {
-  /* Mobile: keep shards + candy(total) side-by-side under inputs (override later base rules) */
-  .calcRow__result {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 10px;
-  }
-  .calcRow__res {
-    min-width: 0;
-  }
-  .calcRow__res:nth-child(3) {
-    grid-column: 1 / -1;
-  }
-  .calcRow__result .calcRow__v {
-    font-size: 15px;
-  }
+  /* Mobile: keep shards + candy(total) side-by-side under inputs (moved near base rules for correct cascade) */
 }
 .calcSum--sparkle::after {
   content: "";
@@ -3734,6 +3716,30 @@ function onBoxEditSubBlur(lvLike: unknown) {
     0 10px 18px color-mix(in oklab, var(--accent-warm) 14%, transparent);
 }
 
+@media (max-width: 560px) {
+  /* Mobile: put "Apply to Box" on the next line (full width) */
+  .calcRow__applyBtn {
+    flex: 1 0 100%;
+    order: 99;
+    justify-content: center;
+  }
+  /* Mobile: make results two columns (shards + candy total), breakdown full-width */
+  .calcRow__result {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 10px;
+  }
+  .calcRow__res {
+    min-width: 0;
+  }
+  .calcRow__res:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+  .calcRow__result .calcRow__v {
+    font-size: 15px;
+  }
+}
+
 .field--sm {
   gap: 4px;
 }
@@ -3950,6 +3956,26 @@ function onBoxEditSubBlur(lvLike: unknown) {
   }
   .exportSheet {
     padding: 18px 16px 14px;
+  }
+  /* Mobile: avoid vertical wrapping of header buttons by giving them full row width */
+  .exportHead {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding-bottom: 0;
+  }
+  .exportHead::before {
+    content: none;
+    display: none;
+  }
+  .exportActions {
+    justify-self: stretch;
+    width: 100%;
+    flex-wrap: nowrap;
+  }
+  .exportActions .btn {
+    flex: 1 1 0;
+    white-space: nowrap;
   }
   .exportCalcTop__nums {
     grid-template-columns: 1fr 1fr;
