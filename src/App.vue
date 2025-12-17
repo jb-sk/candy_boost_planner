@@ -7,14 +7,10 @@
         <p class="lede">
           {{ t("app.lede") }}
         </p>
-      </div>
-      <div class="badge">
-        <p class="badge__label">MVP</p>
-        <p class="badge__value">v0.1</p>
-      </div>
-      <div class="lang">
-        <button class="lang__btn" type="button" :class="{ 'lang__btn--on': locale === 'ja' }" @click="setLocale('ja')">JP</button>
-        <button class="lang__btn" type="button" :class="{ 'lang__btn--on': locale === 'en' }" @click="setLocale('en')">EN</button>
+        <div class="lang">
+          <button class="lang__btn" type="button" :class="{ 'lang__btn--on': locale === 'ja' }" @click="setLocale('ja')">JP</button>
+          <button class="lang__btn" type="button" :class="{ 'lang__btn--on': locale === 'en' }" @click="setLocale('en')">EN</button>
+        </div>
       </div>
       <div class="support" v-if="supportLinks.length">
         <p class="support__label">{{ t("common.support") }}</p>
@@ -2990,7 +2986,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
   gap: 18px;
   align-items: start;
   margin-top: 16px;
-  margin-bottom: 22px;
+  margin-bottom: 12px;
 }
 .kicker {
   font-family: var(--font-body);
@@ -3012,25 +3008,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
   font-size: 15px;
   line-height: 1.7;
   color: color-mix(in oklab, var(--ink) 72%, transparent);
-  max-width: 62ch;
-}
-.badge {
-  border: 1px solid color-mix(in oklab, var(--ink) 16%, transparent);
-  background: color-mix(in oklab, var(--paper) 88%, var(--accent) 12%);
-  border-radius: 16px;
-  padding: 12px 14px;
-  min-width: 96px;
-}
-.badge__label {
-  font-family: var(--font-body);
-  font-size: 12px;
-  color: color-mix(in oklab, var(--ink) 60%, transparent);
-  margin: 0 0 4px;
-}
-.badge__value {
-  font-family: var(--font-heading);
-  font-weight: 800;
-  margin: 0;
+  max-width: min(74ch, 100%);
 }
 .lang {
   display: inline-flex;
@@ -3784,7 +3762,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
   border-radius: 16px;
   border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
   background: color-mix(in oklab, var(--paper) 92%, var(--ink) 8%);
-  margin: 10px 0 14px;
+  margin: 6px 0 12px;
   box-shadow: inset 0 1px 0 color-mix(in oklab, var(--paper) 70%, transparent);
 }
 .tab {
