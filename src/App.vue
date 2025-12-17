@@ -62,7 +62,10 @@
             </select>
           </label>
         </div>
-        <div class="calcTop__summary">
+      </div>
+
+      <div class="calcSticky">
+        <div class="calcSticky__summary">
           <div class="calcSum calcSum--hi">
             <div class="calcSum__k">合計かけら</div>
             <div class="calcSum__v">{{ calcTotalShardsUsed.toLocaleString() }}</div>
@@ -71,38 +74,38 @@
             <div class="calcSum__k">{{ calcShardsOver > 0 ? "超過" : "残り" }}</div>
             <div class="calcSum__v">{{ (calcShardsOver > 0 ? calcShardsOver : -calcShardsOver).toLocaleString() }}</div>
           </div>
-          <div
-            class="calcSum calcSum--bar calcSum--sparkle"
-            :class="{
-              'calcSum--danger': calcShardsOver > 0,
-              'calcSum--muted': calcShardsCap <= 0,
-            }"
-          >
-            <div class="calcSum__head">
-              <div class="calcSum__k">
-                {{ calcShardsCap > 0 ? `かけら使用 ${calcShardsUsagePctRounded}%` : "かけら使用 -" }}
-                <span v-if="showShardsFire" aria-hidden="true"> 🔥</span>
-              </div>
-              <div class="calcSum__k calcSum__k--right">
-                {{ calcShardsCap > 0 ? `上限 ${calcShardsCap.toLocaleString()}` : "上限 未設定" }}
-              </div>
+        </div>
+        <div
+          class="calcSum calcSum--bar calcSum--sparkle"
+          :class="{
+            'calcSum--danger': calcShardsOver > 0,
+            'calcSum--muted': calcShardsCap <= 0,
+          }"
+        >
+          <div class="calcSum__head">
+            <div class="calcSum__k">
+              {{ calcShardsCap > 0 ? `かけら使用 ${calcShardsUsagePctRounded}%` : "かけら使用 -" }}
+              <span v-if="showShardsFire" aria-hidden="true"> 🔥</span>
             </div>
-            <div
-              class="calcBar"
-              role="progressbar"
-              :aria-valuenow="Math.max(0, calcTotalShardsUsed)"
-              aria-valuemin="0"
-              :aria-valuemax="Math.max(1, calcShardsCap)"
-              :aria-label="calcShardsCap > 0 ? `かけら使用 ${calcShardsUsagePctRounded}% / 上限 ${calcShardsCap.toLocaleString()}` : 'かけら上限 未設定'"
-            >
-              <div class="calcBar__track">
-                <div class="calcBar__fill" :style="{ width: `${calcShardsUsedPctForBar}%` }"></div>
-                <div
-                  v-if="calcShardsOver > 0 && calcShardsCap > 0"
-                  class="calcBar__over"
-                  :style="{ width: `${calcShardsOverPctForBar}%` }"
-                ></div>
-              </div>
+            <div class="calcSum__k calcSum__k--right">
+              {{ calcShardsCap > 0 ? `上限 ${calcShardsCap.toLocaleString()}` : "上限 未設定" }}
+            </div>
+          </div>
+          <div
+            class="calcBar"
+            role="progressbar"
+            :aria-valuenow="Math.max(0, calcTotalShardsUsed)"
+            aria-valuemin="0"
+            :aria-valuemax="Math.max(1, calcShardsCap)"
+            :aria-label="calcShardsCap > 0 ? `かけら使用 ${calcShardsUsagePctRounded}% / 上限 ${calcShardsCap.toLocaleString()}` : 'かけら上限 未設定'"
+          >
+            <div class="calcBar__track">
+              <div class="calcBar__fill" :style="{ width: `${calcShardsUsedPctForBar}%` }"></div>
+              <div
+                v-if="calcShardsOver > 0 && calcShardsCap > 0"
+                class="calcBar__over"
+                :style="{ width: `${calcShardsOverPctForBar}%` }"
+              ></div>
             </div>
           </div>
         </div>
@@ -2757,11 +2760,23 @@ function onBoxEditSubBlur(lvLike: unknown) {
     align-items: start;
   }
 }
-.calcTop__summary {
+.calcSticky {
+  max-width: 660px;
+  position: sticky;
+  top: 10px;
+  z-index: 30;
+  margin-top: 10px;
+  padding: 8px;
+  border-radius: 16px;
+  background: color-mix(in oklab, var(--paper) 88%, transparent);
+  border: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
+  box-shadow: 0 14px 36px color-mix(in oklab, var(--ink) 12%, transparent);
+}
+.calcSticky__summary {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-  margin-top: 10px;
+  margin-bottom: 10px;
 }
 .calcSum {
   border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
@@ -3005,8 +3020,8 @@ function onBoxEditSubBlur(lvLike: unknown) {
 .calcRow__grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 10px;
+  gap: 8px;
+  margin-top: 8px;
 }
 .calcRow__grid > * {
   min-width: 0;
@@ -3020,8 +3035,8 @@ function onBoxEditSubBlur(lvLike: unknown) {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
-  margin-top: 10px;
-  padding-top: 10px;
+  margin-top: 8px;
+  padding-top: 8px;
   border-top: 1px dashed color-mix(in oklab, var(--ink) 14%, transparent);
 }
 .calcRow__res {
@@ -3057,18 +3072,18 @@ function onBoxEditSubBlur(lvLike: unknown) {
 }
 
 .field--sm {
-  gap: 5px;
+  gap: 4px;
 }
 .field--sm .field__label {
-  font-size: 11px;
+  font-size: 10.5px;
   letter-spacing: 0.05em;
 }
 .field--sm .field__input {
-  padding: 8px 10px;
+  padding: 7px 10px;
   border-radius: 10px;
 }
 .field--sm .field__sub {
-  font-size: 11px;
+  font-size: 10.5px;
 }
 
 /* --- Level picker (nitoyon-like) --- */
