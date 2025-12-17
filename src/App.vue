@@ -18,7 +18,7 @@
       </div>
     </header>
 
-    <nav class="tabs" aria-label="ページ">
+    <nav class="tabs" :aria-label="t('common.pageNav')">
       <button
         class="tab"
         :class="{ 'tab--active': activeTab === 'calc' }"
@@ -43,23 +43,23 @@
         <h2 class="panel__title">{{ t("calc.title") }}</h2>
         <div class="panel__side" v-if="activeCalcRow && activeCalcRow.boxId">
           <div class="chip">
-            <span class="chip__k">編集中</span>
+            <span class="chip__k">{{ t("common.editing") }}</span>
             <span class="chip__v">{{ activeCalcRow.title }}</span>
           </div>
-          <button class="btn" type="button" @click="applyCalculatorToBox" title="編集内容（現在Lv/あとEXP/EXPタイプ/性格補正）をボックスへ保存">
-            ボックスへ反映
+          <button class="btn" type="button" @click="applyCalculatorToBox" :title="t('calc.applyToBoxTitle')">
+            {{ t("common.applyToBox") }}
           </button>
         </div>
       </div>
       <div class="calcTop">
         <div class="calcTop__grid">
           <label class="field">
-            <span class="field__label">最大かけら（上限チェック）</span>
+            <span class="field__label">{{ t("calc.maxShardsLabel") }}</span>
             <input v-model.number="totalShards" type="number" min="0" class="field__input" />
-            <span class="field__sub">超過しても計算は継続し、超過分を赤字で表示します。</span>
+            <span class="field__sub">{{ t("calc.maxShardsHelp") }}</span>
           </label>
           <label class="field">
-            <span class="field__label">アメブ種別</span>
+            <span class="field__label">{{ t("calc.boostKindLabel") }}</span>
             <select v-model="boostKind" class="field__input">
               <option value="full">{{ fullLabel }}</option>
               <option value="mini">{{ miniLabel }}</option>
@@ -72,11 +72,11 @@
         <div class="calcSticky__summary">
           <div class="calcSum calcSum--hi">
             <div class="calcSum__k">{{ t("calc.export.colShards") }}</div>
-            <div class="calcSum__v">{{ calcTotalShardsUsed.toLocaleString() }}</div>
+            <div class="calcSum__v">{{ fmtNum(calcTotalShardsUsed) }}</div>
           </div>
           <div class="calcSum calcSum--hi" :class="{ 'calcSum--danger': calcShardsOver > 0 }">
-            <div class="calcSum__k">{{ calcShardsOver > 0 ? "超過" : "残り" }}</div>
-            <div class="calcSum__v">{{ (calcShardsOver > 0 ? calcShardsOver : -calcShardsOver).toLocaleString() }}</div>
+            <div class="calcSum__k">{{ calcShardsOver > 0 ? t("calc.over") : t("calc.remaining") }}</div>
+            <div class="calcSum__v">{{ fmtNum(calcShardsOver > 0 ? calcShardsOver : -calcShardsOver) }}</div>
           </div>
         </div>
         <div
@@ -88,11 +88,11 @@
         >
           <div class="calcSum__head">
             <div class="calcSum__k">
-              {{ calcShardsCap > 0 ? `かけら使用 ${calcShardsUsagePctRounded}%` : "かけら使用 -" }}
+              {{ calcShardsCap > 0 ? t("calc.shardsUsage", { pct: calcShardsUsagePctRounded }) : t("calc.shardsUsageDash") }}
               <span v-if="showShardsFire" aria-hidden="true"> 🔥</span>
             </div>
             <div class="calcSum__k calcSum__k--right">
-              {{ calcShardsCap > 0 ? `上限 ${calcShardsCap.toLocaleString()}` : "上限 未設定" }}
+              {{ calcShardsCap > 0 ? t("calc.cap", { cap: fmtNum(calcShardsCap) }) : t("calc.capUnset") }}
             </div>
           </div>
           <div
@@ -101,7 +101,11 @@
             :aria-valuenow="Math.max(0, calcTotalShardsUsed)"
             aria-valuemin="0"
             :aria-valuemax="Math.max(1, calcShardsCap)"
-            :aria-label="calcShardsCap > 0 ? `かけら使用 ${calcShardsUsagePctRounded}% / 上限 ${calcShardsCap.toLocaleString()}` : 'かけら上限 未設定'"
+            :aria-label="
+              calcShardsCap > 0
+                ? t('calc.shardsUsageAria', { pct: calcShardsUsagePctRounded, cap: fmtNum(calcShardsCap) })
+                : t('calc.shardsCapUnsetAria')
+            "
           >
             <div class="calcBar__track">
               <div class="calcBar__fill" :style="{ width: `${calcShardsUsedPctForBar}%` }"></div>
@@ -117,41 +121,41 @@
 
       <div class="calcActions">
         <button class="btn btn--danger" type="button" @click="onCalcClear" :disabled="!calcRowsView.length">
-          ポケモンをクリア
+          {{ t("calc.clearPokemons") }}
         </button>
         <button class="btn btn--primary" type="button" @click="openCalcExport" :disabled="!calcRowsView.length">
           {{ t("calc.export.open") }}
         </button>
         <button class="btn btn--ghost" type="button" @click="onCalcUndo" :disabled="!canCalcUndo">
-          Undo
+          {{ t("common.undo") }}
         </button>
         <button class="btn btn--ghost" type="button" @click="onCalcRedo" :disabled="!canCalcRedo">
-          Redo
+          {{ t("common.redo") }}
         </button>
       </div>
 
       <div class="calcSlots">
         <div v-for="i in 3" :key="i" class="calcSlot" :class="{ 'calcSlot--empty': !calcSlots[i - 1] }">
           <div class="calcSlot__head">
-            <div class="calcSlot__label">スロット{{ i }}</div>
-            <div class="calcSlot__state">{{ calcSlots[i - 1] ? formatCalcSlotSavedAt(calcSlots[i - 1]?.savedAt) : "空" }}</div>
+            <div class="calcSlot__label">{{ t("calc.slot", { n: i }) }}</div>
+            <div class="calcSlot__state">{{ calcSlots[i - 1] ? formatCalcSlotSavedAt(calcSlots[i - 1]?.savedAt) : t("calc.slotEmpty") }}</div>
           </div>
           <div class="calcSlot__actions">
             <button class="btn btn--ghost btn--xs" type="button" @click="onCalcSlotLoad(i - 1)" :disabled="!calcSlots[i - 1]">
-              読み込む
+              {{ t("common.load") }}
             </button>
             <button class="btn btn--xs" type="button" @click="onCalcSlotSave(i - 1)" :disabled="!calcRowsView.length">
-              保存
+              {{ t("common.save") }}
             </button>
             <button class="btn btn--ghost btn--xs" type="button" @click="onCalcSlotDelete(i - 1)" :disabled="!calcSlots[i - 1]">
-              削除
+              {{ t("common.delete") }}
             </button>
           </div>
         </div>
       </div>
 
       <p class="calcHint">
-        追加方法: ポケモンボックスの詳細で <strong>「計算機に追加（反映）」</strong> を押すと、このリストに追加されます。
+        {{ t("calc.addHint") }}
       </p>
 
       <div class="calcRows" v-if="calcRowsView.length">
@@ -174,8 +178,8 @@
               <button
                 class="btn btn--ghost btn--xs calcRow__dragHandle"
                 type="button"
-                title="ドラッグして並び替え"
-                aria-label="ドラッグして並び替え"
+                :title="t('calc.row.dragReorder')"
+                :aria-label="t('calc.row.dragReorder')"
                 draggable="true"
                 @dragstart="onCalcRowDragStart(r.id, $event)"
                 @dragend="onCalcRowDragEnd"
@@ -192,13 +196,13 @@
               <button class="btn btn--ghost btn--xs" type="button" @click.stop="moveCalcRowDown(r.id)" :disabled="!canMoveCalcRowDown(r.id)">
                 ↓
               </button>
-              <button class="btn btn--danger btn--xs" type="button" @click.stop="onCalcRemoveRow(r.id)">削除</button>
+              <button class="btn btn--danger btn--xs" type="button" @click.stop="onCalcRemoveRow(r.id)">{{ t("common.delete") }}</button>
             </div>
           </div>
 
           <div class="calcRow__grid">
             <label class="field field--sm">
-              <span class="field__label">現在Lv</span>
+              <span class="field__label">{{ t("calc.row.srcLevel") }}</span>
               <div class="levelPick">
                 <button
                   type="button"
@@ -214,12 +218,12 @@
                   v-if="openLevelPickRowId === r.id && openLevelPickKind === 'src'"
                   class="levelPick__popover"
                   role="dialog"
-                  aria-label="現在Lvの選択"
+                  :aria-label="t('calc.row.pickLevelAria', { label: t('calc.row.srcLevel') })"
                 >
                   <div class="levelPick__top">
-                    <div class="levelPick__title">現在Lv</div>
+                    <div class="levelPick__title">{{ t("calc.row.srcLevel") }}</div>
                     <button class="btn btn--ghost btn--xs" type="button" @mousedown.stop.prevent @click.stop.prevent="closeLevelPick()">
-                      閉じる
+                      {{ t("common.close") }}
                     </button>
                   </div>
 
@@ -258,7 +262,7 @@
               </div>
             </label>
             <label class="field field--sm">
-              <span class="field__label">目標Lv</span>
+              <span class="field__label">{{ t("calc.row.dstLevel") }}</span>
               <div class="levelPick">
                 <button
                   type="button"
@@ -274,12 +278,12 @@
                   v-if="openLevelPickRowId === r.id && openLevelPickKind === 'dst'"
                   class="levelPick__popover"
                   role="dialog"
-                  aria-label="目標Lvの選択"
+                  :aria-label="t('calc.row.pickLevelAria', { label: t('calc.row.dstLevel') })"
                 >
                   <div class="levelPick__top">
                     <div class="levelPick__title">Lv{{ r.srcLevel }} → Lv{{ r.dstLevel }}</div>
                     <button class="btn btn--ghost btn--xs" type="button" @mousedown.stop.prevent @click.stop.prevent="closeLevelPick()">
-                      閉じる
+                      {{ t("common.close") }}
                     </button>
                   </div>
 
@@ -318,7 +322,7 @@
               </div>
             </label>
             <label class="field field--sm">
-              <span class="field__label">あとEXP（次Lvまで）</span>
+              <span class="field__label">{{ t("calc.row.expRemaining") }}</span>
               <input
                 :value="r.expRemaining"
                 type="number"
@@ -328,22 +332,22 @@
               />
             </label>
             <label class="field field--sm">
-              <span class="field__label">EXPタイプ</span>
-              <div class="field__input field__input--static" title="EXPタイプは種族固定のため編集できません。">
+              <span class="field__label">{{ t("calc.row.expType") }}</span>
+              <div class="field__input field__input--static" :title="t('calc.row.expTypeFixedHint')">
                 {{ r.expType }}
               </div>
             </label>
             <label class="field field--sm">
-              <span class="field__label">性格（EXP補正）</span>
+              <span class="field__label">{{ t("calc.row.nature") }}</span>
               <select :value="r.nature" class="field__input" @change="onCalcRowNature(r.id, ($event.target as HTMLSelectElement).value)">
-                <option value="normal">通常</option>
-                <option value="up">EXP↑</option>
-                <option value="down">EXP↓</option>
+                <option value="normal">{{ t("calc.row.natureNormal") }}</option>
+                <option value="up">{{ t("calc.row.natureUp") }}</option>
+                <option value="down">{{ t("calc.row.natureDown") }}</option>
               </select>
             </label>
 
             <label class="field field--sm">
-              <span class="field__label">アメブ目標Lv</span>
+              <span class="field__label">{{ t("calc.row.boostReachLevel") }}</span>
               <input
                 :value="r.ui.boostReachLevel"
                 type="number"
@@ -354,7 +358,7 @@
               />
             </label>
             <label class="field field--sm">
-              <span class="field__label">経験値に対するアメブ割合</span>
+              <span class="field__label">{{ t("calc.row.boostRatio") }}</span>
               <input
                 :value="r.ui.boostRatioPct"
                 type="range"
@@ -367,7 +371,7 @@
               <span class="field__sub">{{ r.ui.boostRatioPct }}%</span>
             </label>
             <label class="field field--sm">
-              <span class="field__label">アメブ個数</span>
+              <span class="field__label">{{ t("calc.row.boostCandyCount") }}</span>
               <input
                 :value="r.ui.boostCandyInput"
                 type="number"
@@ -380,33 +384,33 @@
 
           <div class="calcRow__result">
             <div class="calcRow__res">
-              <span class="calcRow__k">かけら</span>
-              <span class="calcRow__v"><span class="calcRow__num">{{ r.result.shards.toLocaleString() }}</span></span>
+              <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
+              <span class="calcRow__v"><span class="calcRow__num">{{ fmtNum(r.result.shards) }}</span></span>
             </div>
             <div class="calcRow__res">
-              <span class="calcRow__k">アメ（合計）</span>
-              <span class="calcRow__v"><span class="calcRow__num">{{ (r.result.normalCandy + r.result.boostCandy).toLocaleString() }}</span></span>
+              <span class="calcRow__k">{{ t("calc.row.candyTotal") }}</span>
+              <span class="calcRow__v"><span class="calcRow__num">{{ fmtNum(r.result.normalCandy + r.result.boostCandy) }}</span></span>
             </div>
             <div class="calcRow__res">
-              <span class="calcRow__k">内訳</span>
+              <span class="calcRow__k">{{ t("calc.row.breakdown") }}</span>
               <span class="calcRow__v">
-                アメブ<span class="calcRow__num">{{ r.result.boostCandy.toLocaleString() }}</span> /
-                通常<span class="calcRow__num">{{ r.result.normalCandy.toLocaleString() }}</span>
+                {{ t("calc.row.breakdownBoost") }}<span class="calcRow__num">{{ fmtNum(r.result.boostCandy) }}</span> /
+                {{ t("calc.row.breakdownNormal") }}<span class="calcRow__num">{{ fmtNum(r.result.normalCandy) }}</span>
               </span>
             </div>
           </div>
         </div>
       </div>
-      <p class="boxEmpty" v-else>まだ計算対象がありません。ポケモンボックスから追加してください。</p>
+      <p class="boxEmpty" v-else>{{ t("calc.empty") }}</p>
 
     </section>
 
     <section class="panel" v-else>
       <div class="panel__head">
-        <h2 class="panel__title">ポケモンボックス</h2>
+        <h2 class="panel__title">{{ t("box.title") }}</h2>
         <div class="panel__side">
           <button class="btn btn--danger" type="button" @click="onClearBox" :disabled="!boxEntries.length">
-            ボックス全消去
+            {{ t("box.clearAll") }}
           </button>
         </div>
       </div>
@@ -414,21 +418,21 @@
       <div class="boxGrid">
         <details class="boxDisclosure">
           <summary class="boxDisclosure__summary">
-            <span class="boxDisclosure__title">新規追加</span>
-            <span class="boxDisclosure__hint">（名前/レベル/性格EXP/EXPタイプ）</span>
+            <span class="boxDisclosure__title">{{ t("box.addNew") }}</span>
+            <span class="boxDisclosure__hint">{{ t("box.addNewHint") }}</span>
           </summary>
           <div class="boxCard boxCard--inner">
             <p class="boxCard__desc">
-              「ポケモン名」から図鑑番号（＋フォーム）を自動判定します。表記名は任意で上書きできます。
+              {{ t("box.addNewDesc") }}
             </p>
             <div class="boxAddGrid">
               <label class="field">
-                <span class="field__label">ポケモン名（図鑑）</span>
+                <span class="field__label">{{ t("box.add.nameDex") }}</span>
                 <div class="suggest">
                   <input
                     v-model="addName"
                     class="field__input"
-                    placeholder="例: ピカチュウ / ピカチュウ (ホリデー)"
+                    :placeholder="t('box.add.nameDexPh')"
                     @focus="onAddNameFocus"
                     @blur="onAddNameBlur"
                     @input="onAddNameInput"
@@ -450,39 +454,45 @@
                   </div>
                 </div>
                 <span class="field__sub" v-if="addLookup">
-                  判定: {{ getPokemonNameJa(addLookup.pokedexId, addLookup.form) }}（#{{ addLookup.pokedexId }} / EXP{{ addLookup.expType }}）
+                  {{
+                    t("box.add.detected", {
+                      name: getPokemonNameJa(addLookup.pokedexId, addLookup.form),
+                      id: addLookup.pokedexId,
+                      expType: addLookup.expType,
+                    })
+                  }}
                 </span>
-                <span class="field__sub" v-else>一致なし（手入力扱い）</span>
+                <span class="field__sub" v-else>{{ t("box.add.noMatch") }}</span>
               </label>
               <label class="field">
-                <span class="field__label">表記名（任意）</span>
-                <input v-model="addLabel" class="field__input" placeholder="例: ピカチュウA / 推し個体" />
+                <span class="field__label">{{ t("box.add.labelOpt") }}</span>
+                <input v-model="addLabel" class="field__input" :placeholder="t('box.add.labelOptPh')" />
               </label>
               <label class="field">
-                <span class="field__label">現在Lv</span>
+                <span class="field__label">{{ t("box.add.level") }}</span>
                 <input v-model.number="addLevel" type="number" min="1" max="65" class="field__input" />
               </label>
               <label class="field">
-                <span class="field__label">性格（EXP補正）</span>
+                <span class="field__label">{{ t("box.add.nature") }}</span>
                 <select v-model="addNature" class="field__input">
-                  <option value="normal">通常</option>
-                  <option value="up">EXP↑</option>
-                  <option value="down">EXP↓</option>
+                  <option value="normal">{{ t("calc.row.natureNormal") }}</option>
+                  <option value="up">{{ t("calc.row.natureUp") }}</option>
+                  <option value="down">{{ t("calc.row.natureDown") }}</option>
                 </select>
               </label>
               <label class="field">
-                <span class="field__label">とくい（任意）</span>
+                <span class="field__label">{{ t("box.add.specialtyOpt") }}</span>
                 <select v-model="addSpecialty" class="field__input" @change="onAddSpecialtyChanged">
-                  <option value="">不明</option>
-                  <option value="Berries">きのみ</option>
-                  <option value="Ingredients">しょくざい</option>
-                  <option value="Skills">スキル</option>
-                  <option value="All">オール</option>
+                  <option value="">{{ t("box.add.specialtyUnknown") }}</option>
+                  <option value="Berries">{{ gt("きのみ") }}</option>
+                  <option value="Ingredients">{{ gt("食材") }}</option>
+                  <option value="Skills">{{ gt("スキル") }}</option>
+                  <option value="All">{{ gt("オール") }}</option>
                 </select>
-                <span class="field__sub">名前一致時は自動で入ります（手動で上書き可）。</span>
+                <span class="field__sub">{{ t("box.add.specialtyAutoHint") }}</span>
               </label>
               <label class="field">
-                <span class="field__label">EXPタイプ</span>
+                <span class="field__label">{{ t("box.add.expType") }}</span>
                 <select v-model.number="addExpType" class="field__input" :disabled="!!addLookup" @change="onAddExpTypeChanged">
                   <option :value="600">600</option>
                   <option :value="900">900</option>
@@ -490,17 +500,17 @@
                   <option :value="1320">1320</option>
                 </select>
                 <span class="field__sub">
-                  {{ addLookup ? "名前一致時は自動設定（編集不可）" : "一致なしのときのみ手動設定できます" }}
+                  {{ addLookup ? t("box.add.expTypeAuto") : t("box.add.expTypeManual") }}
                 </span>
               </label>
 
               <label class="field">
-                <span class="field__label">食材（タイプ）</span>
+                <span class="field__label">{{ t("box.add.ingredientType") }}</span>
                 <input
                   v-model="addIngredientType"
                   class="field__input"
                   list="ingredientTypeOptions"
-                  placeholder="例: ABB"
+                  :placeholder="t('box.add.ingredientTypePh')"
                   @change="onAddIngredientTypeChanged"
                 />
                 <datalist id="ingredientTypeOptions">
@@ -511,11 +521,11 @@
                 <span class="field__sub" v-if="addLookup && addIngredientType">
                   {{ ingredientTypeOptions.find((x) => x.type === addIngredientType)?.preview }}
                 </span>
-                <span class="field__sub" v-else>ポケモン名が一致すると、候補A/B/Cからプレビューできます。</span>
+                <span class="field__sub" v-else>{{ t("box.add.ingredientPreviewHint") }}</span>
               </label>
 
               <label class="field field--wide">
-                <span class="field__label">サブスキル（手入力 / 補完）</span>
+                <span class="field__label">{{ t("box.add.subSkills") }}</span>
                 <div class="subGrid">
                   <label class="subField">
                     <span class="subField__k">Lv10</span>
@@ -524,7 +534,7 @@
                       class="field__input"
                       :class="{ 'field__input--error': !!addSubErrors['10'] }"
                       list="subSkillOptions"
-                      placeholder="例: きのみの数S"
+                      :placeholder="t('box.add.subSkillExample')"
                       @blur="onSubBlur(10)"
                     />
                     <span v-if="addSubErrors['10']" class="field__error">{{ addSubErrors["10"] }}</span>
@@ -536,7 +546,7 @@
                       class="field__input"
                       :class="{ 'field__input--error': !!addSubErrors['25'] }"
                       list="subSkillOptions"
-                      placeholder="（任意）"
+                      :placeholder="t('box.add.subSkillLvPh')"
                       @blur="onSubBlur(25)"
                     />
                     <span v-if="addSubErrors['25']" class="field__error">{{ addSubErrors["25"] }}</span>
@@ -548,7 +558,7 @@
                       class="field__input"
                       :class="{ 'field__input--error': !!addSubErrors['50'] }"
                       list="subSkillOptions"
-                      placeholder="（任意）"
+                      :placeholder="t('box.add.subSkillLvPh')"
                       @blur="onSubBlur(50)"
                     />
                     <span v-if="addSubErrors['50']" class="field__error">{{ addSubErrors["50"] }}</span>
@@ -560,7 +570,7 @@
                       class="field__input"
                       :class="{ 'field__input--error': !!addSubErrors['75'] }"
                       list="subSkillOptions"
-                      placeholder="（任意）"
+                      :placeholder="t('box.add.subSkillLvPh')"
                       @blur="onSubBlur(75)"
                     />
                     <span v-if="addSubErrors['75']" class="field__error">{{ addSubErrors["75"] }}</span>
@@ -572,7 +582,7 @@
                       class="field__input"
                       :class="{ 'field__input--error': !!addSubErrors['100'] }"
                       list="subSkillOptions"
-                      placeholder="（任意）"
+                      :placeholder="t('box.add.subSkillLvPh')"
                       @blur="onSubBlur(100)"
                     />
                     <span v-if="addSubErrors['100']" class="field__error">{{ addSubErrors["100"] }}</span>
@@ -581,14 +591,14 @@
                 <datalist id="subSkillOptions">
                   <option v-for="s in SubSkillAllJaSorted" :key="s.nameEn" :value="s.nameJa" />
                 </datalist>
-                <span class="field__sub">入力は日本語名。保存時に内部英名へ変換します。</span>
+                <span class="field__sub">{{ t("box.add.subSkillNote") }}</span>
               </label>
               <div class="boxAddActions">
                 <button class="btn btn--primary" type="button" @click="onCreateManual({ mode: 'toCalc' })">
-                  計算機に追加（反映）
+                  {{ t("box.add.toCalc") }}
                 </button>
                 <button class="btn" type="button" @click="onCreateManual({ mode: 'toBox' })">
-                  ボックスに追加
+                  {{ t("box.add.toBox") }}
                 </button>
               </div>
             </div>
@@ -597,20 +607,20 @@
 
         <details class="boxDisclosure">
           <summary class="boxDisclosure__summary">
-            <span class="boxDisclosure__title">インポート（にとよん非公式サポート）</span>
-            <span class="boxDisclosure__hint">（複数行貼り付け）</span>
+            <span class="boxDisclosure__title">{{ t("box.import.title") }}</span>
+            <span class="boxDisclosure__hint">{{ t("box.import.hint") }}</span>
           </summary>
           <div class="boxCard boxCard--inner">
             <p class="boxCard__desc">
-              1行=1匹（<code>iv</code> または <code>iv@nickname</code>）。食材/サブスキル等の不要データも含めて raw を保持します。
+              {{ t("box.import.desc") }}
             </p>
-            <textarea v-model="importText" class="boxTextarea" rows="7" placeholder="ここに貼り付け（複数行）" />
+            <textarea v-model="importText" class="boxTextarea" rows="7" :placeholder="t('box.import.ph')" />
             <div class="boxCard__actions">
               <button class="btn btn--primary" type="button" @click="onImport">
-                取り込み
+                {{ t("box.import.run") }}
               </button>
               <button class="btn btn--ghost" type="button" @click="importText = ''">
-                クリア
+                {{ t("common.clear") }}
               </button>
               <span class="boxCard__status" v-if="importStatus">{{ importStatus }}</span>
             </div>
@@ -619,39 +629,39 @@
 
         <div class="boxCard">
           <div class="boxCard__head">
-            <h3 class="boxCard__title">一覧</h3>
+            <h3 class="boxCard__title">{{ t("box.list.title") }}</h3>
             <div class="boxCard__tools">
-              <input v-model="boxFilter" class="boxSearch" placeholder="検索（ラベル/ID）" />
+              <input v-model="boxFilter" class="boxSearch" :placeholder="t('box.list.searchPh')" />
               <button class="btn btn--ghost" type="button" @click="boxFilter = ''" :disabled="!boxFilter.trim()">
-                検索クリア
+                {{ t("box.list.clearSearch") }}
               </button>
             </div>
           </div>
 
           <p class="boxListHint">
-            クリックで選択（表示は「名前/レベル」のみ）。選択すると、そのタイルの直下に詳細を表示します。
+            {{ t("box.list.hint") }}
           </p>
 
           <div class="boxFilters">
             <div class="boxFilters__row">
               <div class="boxFilters__group">
-                <span class="boxFilters__label">条件結合</span>
-                <select v-model="filterJoinMode" class="field__input boxFilters__select" aria-label="条件結合">
-                  <option value="and">AND（両方）</option>
-                  <option value="or">OR（どちらか）</option>
+                <span class="boxFilters__label">{{ t("box.list.join") }}</span>
+                <select v-model="filterJoinMode" class="field__input boxFilters__select" :aria-label="t('box.list.join')">
+                  <option value="and">{{ t("box.list.joinAnd") }}</option>
+                  <option value="or">{{ t("box.list.joinOr") }}</option>
                 </select>
               </div>
 
               <div class="boxFilters__group">
-                <span class="boxFilters__label">お気に入り</span>
+                <span class="boxFilters__label">{{ t("box.list.favorites") }}</span>
                 <div class="boxFilters__chips">
                   <button
                     class="chipBtn"
                     :class="{ 'chipBtn--on': favoritesOnly }"
                     type="button"
                     @click="favoritesOnly = !favoritesOnly"
-                    title="★お気に入りのみ"
-                    aria-label="お気に入りのみ"
+                    :title="t('box.list.favoritesOnlyTitle')"
+                    :aria-label="t('box.list.favoritesOnlyAria')"
                   >
                     <span class="chipBtn__icon" v-html="iconStarSvg" aria-hidden="true"></span>
                   </button>
@@ -659,47 +669,47 @@
               </div>
 
               <div class="boxFilters__group">
-                <span class="boxFilters__label">とくい</span>
+                <span class="boxFilters__label">{{ t("box.list.specialty") }}</span>
                 <div class="boxFilters__chips">
                   <button
                     class="chipBtn"
                     :class="{ 'chipBtn--on': selectedSpecialties.includes('Berries') }"
                     type="button"
                     @click="toggleSpecialty('Berries')"
-                    aria-label="とくい: きのみ"
+                    :aria-label="t('box.list.specialtyAria', { name: gt('きのみ') })"
                   >
                     <span class="chipBtn__icon" v-html="iconBerrySvg" aria-hidden="true"></span>
-                    <span class="chipBtn__text">きのみ</span>
+                    <span class="chipBtn__text">{{ gt("きのみ") }}</span>
                   </button>
                   <button
                     class="chipBtn"
                     :class="{ 'chipBtn--on': selectedSpecialties.includes('Ingredients') }"
                     type="button"
                     @click="toggleSpecialty('Ingredients')"
-                    aria-label="とくい: しょくざい"
+                    :aria-label="t('box.list.specialtyAria', { name: gt('食材') })"
                   >
                     <span class="chipBtn__icon" v-html="iconIngredientsSvg" aria-hidden="true"></span>
-                    <span class="chipBtn__text">しょくざい</span>
+                    <span class="chipBtn__text">{{ gt("食材") }}</span>
                   </button>
                   <button
                     class="chipBtn"
                     :class="{ 'chipBtn--on': selectedSpecialties.includes('Skills') }"
                     type="button"
                     @click="toggleSpecialty('Skills')"
-                    aria-label="とくい: スキル"
+                    :aria-label="t('box.list.specialtyAria', { name: gt('スキル') })"
                   >
                     <span class="chipBtn__icon" v-html="iconSkillsSvg" aria-hidden="true"></span>
-                    <span class="chipBtn__text">スキル</span>
+                    <span class="chipBtn__text">{{ gt("スキル") }}</span>
                   </button>
                   <button
                     class="chipBtn"
                     :class="{ 'chipBtn--on': selectedSpecialties.includes('All') }"
                     type="button"
                     @click="toggleSpecialty('All')"
-                    aria-label="とくい: オール"
+                    :aria-label="t('box.list.specialtyAria', { name: gt('オール') })"
                   >
                     <span class="chipBtn__icon" v-html="iconAllSvg" aria-hidden="true"></span>
-                    <span class="chipBtn__text">オール</span>
+                    <span class="chipBtn__text">{{ gt("オール") }}</span>
                   </button>
                 </div>
               </div>
@@ -707,19 +717,19 @@
 
             <details class="boxFilters__subskill">
               <summary class="boxFilters__summary">
-                <span>サブスキルで絞り込み</span>
+                <span>{{ t("box.list.subskillFilter") }}</span>
                 <span class="boxFilters__summaryCount" v-if="selectedSubSkillEns.length">（{{ selectedSubSkillEns.length }}）</span>
               </summary>
               <div class="boxFilters__row boxFilters__row--sub">
                 <div class="boxFilters__group">
-                  <span class="boxFilters__label">サブスキル結合</span>
-                  <select v-model="subSkillJoinMode" class="field__input boxFilters__select" aria-label="サブスキル結合">
-                    <option value="or">OR（いずれか）</option>
-                    <option value="and">AND（すべて）</option>
+                  <span class="boxFilters__label">{{ t("box.list.subskillJoin") }}</span>
+                  <select v-model="subSkillJoinMode" class="field__input boxFilters__select" :aria-label="t('box.list.subskillJoin')">
+                    <option value="or">{{ t("box.list.subskillJoinOr") }}</option>
+                    <option value="and">{{ t("box.list.subskillJoinAnd") }}</option>
                   </select>
                 </div>
                 <button class="btn btn--ghost" type="button" @click="selectedSubSkillEns = []" :disabled="!selectedSubSkillEns.length">
-                  サブスキル選択クリア
+                  {{ t("box.list.subskillClear") }}
                 </button>
               </div>
               <div class="boxFilters__list">
@@ -738,17 +748,17 @@
 
           <div class="boxSortRow">
             <div class="boxSortRow__left">
-              <button class="btn btn--ghost" type="button" @click="onUndo" :disabled="!canUndo" title="直前の変更を取り消し">
-                Undo
+              <button class="btn btn--ghost" type="button" @click="onUndo" :disabled="!canUndo" :title="t('box.list.undoTitle')">
+                {{ t("common.undo") }}
               </button>
             </div>
             <div class="boxSort">
-              <select v-model="boxSortKey" class="field__input boxSort__select" aria-label="ソート項目">
-                <option value="label">表記名</option>
-                <option value="level">レベル</option>
+              <select v-model="boxSortKey" class="field__input boxSort__select" :aria-label="t('box.list.sortKeyAria')">
+                <option value="label">{{ t("box.list.sortLabel") }}</option>
+                <option value="level">{{ t("box.list.sortLevel") }}</option>
               </select>
               <button class="btn btn--ghost" type="button" @click="boxSortDir = boxSortDir === 'asc' ? 'desc' : 'asc'">
-                {{ boxSortDir === 'asc' ? '昇順' : '降順' }}
+                {{ boxSortDir === "asc" ? t("box.list.sortAsc") : t("box.list.sortDesc") }}
               </button>
             </div>
           </div>
@@ -765,7 +775,7 @@
                 <div class="boxTile__name">{{ displayBoxTitle(e) }}</div>
                 <div class="boxTile__lv">
                   Lv{{ e.planner?.level ?? e.derived?.level ?? "-" }}
-                  <span v-if="e.favorite" class="boxTile__fav" aria-label="お気に入り" title="お気に入り">★</span>
+                  <span v-if="e.favorite" class="boxTile__fav" :aria-label="t('box.list.favorite')" :title="t('box.list.favorite')">★</span>
                 </div>
               </button>
 
@@ -774,13 +784,13 @@
                 class="boxDetail boxDetail--inline"
               >
                 <div class="boxDetail__head">
-                  <h4 class="boxDetail__title">選択中: {{ displayBoxTitle(selectedBox) }}</h4>
+                  <h4 class="boxDetail__title">{{ t("box.list.selected", { name: displayBoxTitle(selectedBox) }) }}</h4>
                   <div class="boxDetail__actions">
                     <button class="btn btn--primary" type="button" @click="applyBoxToCalculator">
-                      計算機に追加（反映）
+                      {{ t("box.add.toCalc") }}
                     </button>
                     <button class="btn btn--danger" type="button" @click="onDeleteSelected">
-                      削除
+                      {{ t("common.delete") }}
                     </button>
                   </div>
                 </div>
@@ -788,43 +798,51 @@
                 <div class="boxDetail__grid">
                   <div class="boxDetail__col">
                     <div class="boxDetail__kv">
-                      <div class="boxDetail__k">ニックネーム</div>
+                      <div class="boxDetail__k">{{ t("box.detail.nickname") }}</div>
                       <div class="boxDetail__v">
                         <input
                           class="field__input"
                           :value="selectedBox.label ?? ''"
-                          :placeholder="displayPokemonName(selectedBox) ?? '（任意）'"
+                          :placeholder="displayPokemonName(selectedBox) ?? t('common.optional')"
                           @change="onEditSelectedLabel(($event.target as HTMLInputElement).value)"
                         />
-                        <div class="boxDetail__minor">空にすると種族名表示に戻ります</div>
+                        <div class="boxDetail__minor">{{ t("box.detail.nicknameClearHint") }}</div>
                       </div>
                     </div>
 
                     <div class="boxDetail__kv">
-                      <div class="boxDetail__k">種族（リンク）</div>
+                      <div class="boxDetail__k">{{ t("box.detail.speciesLink") }}</div>
                       <div class="boxDetail__v">
                         <div>
-                          <span class="boxDetail__strong">{{ displayPokemonName(selectedBox) ?? "未リンク" }}</span>
-                          <span class="boxDetail__minor" v-if="selectedBox.derived?.pokedexId">（図鑑No.{{ selectedBox.derived.pokedexId }}）</span>
-                          <span class="boxDetail__minor" v-else>（必要なら下で再リンク）</span>
+                          <span class="boxDetail__strong">{{ displayPokemonName(selectedBox) ?? t("box.detail.unlinked") }}</span>
+                          <span class="boxDetail__minor" v-if="selectedBox.derived?.pokedexId">
+                            {{ t("box.detail.dexNo", { id: selectedBox.derived.pokedexId }) }}
+                          </span>
+                          <span class="boxDetail__minor" v-else>{{ t("box.detail.relinkHint") }}</span>
                         </div>
 
                         <div class="relinkRow suggest">
                           <input
                             v-model="relinkName"
                             class="field__input"
-                            placeholder="例: ピカチュウ / ピカチュウ (ホリデー)"
+                            :placeholder="t('box.detail.relinkPh')"
                             @focus="relinkOpen = true"
                             @blur="onRelinkBlur"
                             @input="onRelinkInput"
                           />
                           <button class="btn btn--ghost" type="button" @click="onRelinkApply" :disabled="!relinkName.trim()">
-                            再リンク
+                            {{ t("box.detail.relinkButton") }}
                           </button>
                           <div class="boxDetail__minor" v-if="relinkFound">
-                            候補: {{ getPokemonNameJa(relinkFound.pokedexId, relinkFound.form) }}（#{{ relinkFound.pokedexId }} / EXP{{ relinkFound.expType }}）
+                            {{
+                              t("box.detail.relinkCandidate", {
+                                name: getPokemonNameJa(relinkFound.pokedexId, relinkFound.form),
+                                id: relinkFound.pokedexId,
+                                expType: relinkFound.expType,
+                              })
+                            }}
                           </div>
-                          <div class="boxDetail__minor" v-else-if="relinkName.trim()">候補なし</div>
+                          <div class="boxDetail__minor" v-else-if="relinkName.trim()">{{ t("box.detail.relinkNoCandidate") }}</div>
                           <div v-if="relinkOpen && relinkSuggestList.length" class="suggest__panel" role="listbox">
                             <button
                               v-for="n in relinkSuggestList"
@@ -844,7 +862,7 @@
                     </div>
 
                     <div class="boxDetail__kv">
-                      <div class="boxDetail__k">レベル</div>
+                      <div class="boxDetail__k">{{ t("box.detail.level") }}</div>
                       <div class="boxDetail__v">
                         <div class="levelPick">
                           <button
@@ -857,11 +875,16 @@
                             {{ selectedDetail?.level ?? 1 }}
                           </button>
 
-                          <div v-if="openBoxLevelPick" class="levelPick__popover" role="dialog" aria-label="現在Lvの選択">
+                          <div
+                            v-if="openBoxLevelPick"
+                            class="levelPick__popover"
+                            role="dialog"
+                            :aria-label="t('calc.row.pickLevelAria', { label: t('box.detail.level') })"
+                          >
                             <div class="levelPick__top">
-                              <div class="levelPick__title">現在Lv</div>
+                              <div class="levelPick__title">{{ t("box.detail.level") }}</div>
                               <button class="btn btn--ghost btn--xs" type="button" @mousedown.stop.prevent @click.stop.prevent="closeBoxLevelPick()">
-                                閉じる
+                                {{ t("common.close") }}
                               </button>
                             </div>
 
@@ -902,12 +925,12 @@
                     </div>
 
                     <div class="boxDetail__kv">
-                      <div class="boxDetail__k">EXPタイプ</div>
+                      <div class="boxDetail__k">{{ t("calc.row.expType") }}</div>
                       <div class="boxDetail__v">
                         <div
                           v-if="(selectedDetail?.pokedexId ?? 0) > 0"
                           class="field__input field__input--static"
-                          title="EXPタイプは種族固定のため編集できません。"
+                          :title="t('calc.row.expTypeFixedHint')"
                         >
                           {{ selectedDetail?.expType ?? 600 }}
                         </div>
@@ -923,39 +946,39 @@
                           <option value="1320">1320</option>
                         </select>
                         <span class="boxDetail__minor" v-if="(selectedDetail?.pokedexId ?? 0) <= 0">
-                          （種族不明のため仮設定）
+                          {{ t("box.detail.speciesUnknownHint") }}
                         </span>
                       </div>
                     </div>
 
                     <div class="boxDetail__kv">
-                      <div class="boxDetail__k">とくい</div>
+                      <div class="boxDetail__k">{{ t("box.list.specialty") }}</div>
                       <div class="boxDetail__v">
                         <select
                           class="field__input"
                           :value="selectedSpecialtySelectValue"
                           @change="onEditSelectedSpecialty(($event.target as HTMLSelectElement).value)"
                         >
-                          <option value="">不明（自動）</option>
-                          <option value="Berries">きのみ</option>
-                          <option value="Ingredients">しょくざい</option>
-                          <option value="Skills">スキル</option>
-                          <option value="All">オール</option>
+                          <option value="">{{ t("box.detail.unknownAuto") }}</option>
+                          <option value="Berries">{{ gt("きのみ") }}</option>
+                          <option value="Ingredients">{{ gt("食材") }}</option>
+                          <option value="Skills">{{ gt("スキル") }}</option>
+                          <option value="All">{{ gt("オール") }}</option>
                         </select>
                       </div>
                     </div>
 
                     <div class="boxDetail__kv">
-                      <div class="boxDetail__k">性格（EXP補正）</div>
+                      <div class="boxDetail__k">{{ t("calc.row.nature") }}</div>
                       <div class="boxDetail__v">
                         <select
                           class="field__input"
                           :value="selectedDetail?.expGainNature ?? 'normal'"
                           @change="onEditSelectedNature(($event.target as HTMLSelectElement).value)"
                         >
-                          <option value="normal">通常</option>
-                          <option value="up">EXP↑</option>
-                          <option value="down">EXP↓</option>
+                          <option value="normal">{{ t("calc.row.natureNormal") }}</option>
+                          <option value="up">{{ t("calc.row.natureUp") }}</option>
+                          <option value="down">{{ t("calc.row.natureDown") }}</option>
                         </select>
                         <span class="boxDetail__minor" v-if="selectedDetail?.decoded?.natureName">
                           （{{ gt(selectedDetail.decoded.natureName) }}）
@@ -966,7 +989,7 @@
 
                   <div class="boxDetail__col">
                     <div class="boxDetail__kv">
-                      <div class="boxDetail__k">食材</div>
+                      <div class="boxDetail__k">{{ t("box.detail.ingredients") }}</div>
                       <div class="boxDetail__v boxDetail__v--mono">
                         <div class="boxDetail__editRow">
                           <select
@@ -974,19 +997,19 @@
                             :value="selectedDetail.ingredientType ?? ''"
                             @change="onEditSelectedIngredientType(($event.target as HTMLSelectElement).value)"
                           >
-                            <option value="">不明（自動）</option>
+                            <option value="">{{ t("box.detail.unknownAuto") }}</option>
                             <option v-for="t in IngredientTypes" :key="t" :value="t">{{ t }}</option>
                           </select>
                         </div>
                         <div v-if="selectedDetail.ingredientSlots">
-                          {{ selectedDetail.ingredientSlots.map(toIngredientJa).join(" / ") }}
+                          {{ selectedDetail.ingredientSlots.map(toIngredientLabel).join(" / ") }}
                         </div>
-                        <div v-else>（不明）</div>
+                        <div v-else>{{ t("box.detail.unknown") }}</div>
                       </div>
                     </div>
 
                     <div class="boxDetail__kv">
-                      <div class="boxDetail__k">サブスキル</div>
+                      <div class="boxDetail__k">{{ t("box.detail.subSkills") }}</div>
                       <div class="boxDetail__v boxDetail__v--mono">
                         <div class="boxDetail__subEdit">
                           <div v-for="lv in [10, 25, 50, 75, 100]" :key="lv" class="subField">
@@ -996,7 +1019,7 @@
                               class="field__input"
                               :class="{ 'field__input--error': !!boxEditSubErrors[String(lv)] }"
                               list="subSkillOptions"
-                              placeholder="（任意）"
+                              :placeholder="t('box.add.subSkillLvPh')"
                               @input="onBoxEditSubInput(lv, ($event.target as HTMLInputElement).value)"
                               @blur="onBoxEditSubBlur(lv)"
                             />
@@ -1007,7 +1030,7 @@
                     </div>
 
                     <div class="boxDetail__kv">
-                      <div class="boxDetail__k">お気に入り</div>
+                      <div class="boxDetail__k">{{ t("box.list.favorite") }}</div>
                       <div class="boxDetail__v">
                         <button class="chipBtn" :class="{ 'chipBtn--on': !!selectedBox.favorite }" type="button" @click="toggleSelectedFavorite">
                           <span class="chipBtn__icon" v-html="iconStarSvg" aria-hidden="true"></span>
@@ -1019,7 +1042,7 @@
               </div>
             </template>
           </div>
-          <p class="boxEmpty" v-else>まだ1匹もありません。上でインポートするか、新規追加してください。</p>
+          <p class="boxEmpty" v-else>{{ t("box.empty") }}</p>
         </div>
       </div>
 
@@ -1138,6 +1161,10 @@ function setLocale(next: "ja" | "en") {
 
 function gt(s: string): string {
   return localizeGameTerm(s, locale.value as any);
+}
+
+function fmtNum(n: number): string {
+  return new Intl.NumberFormat(locale.value as any).format(n);
 }
 
 const activeTab = ref<"calc" | "box">("calc");
@@ -1275,7 +1302,7 @@ function onRelinkApply() {
   if (!e) return;
   const found = relinkFound.value;
   if (!found) {
-    relinkStatus.value = "再リンク失敗：名前が一致しません";
+    relinkStatus.value = t("status.relinkFailed");
     return;
   }
   const now = new Date().toISOString();
@@ -1300,7 +1327,7 @@ function onRelinkApply() {
       updatedAt: now,
     };
   });
-  relinkStatus.value = `種族リンクを更新しました（図鑑No.${found.pokedexId}）`;
+  relinkStatus.value = t("status.relinkUpdated", { id: found.pokedexId });
   relinkName.value = "";
   relinkOpen.value = false;
 }
@@ -1398,7 +1425,7 @@ function onUndo() {
     selectedBoxId.value = a.selectedId;
   }
   boxUndoAction.value = null;
-  importStatus.value = "Undoしました";
+  importStatus.value = t("status.undo");
   // selectedIdが変わらない場合でも編集UI（サブスキル等）を復元する
   nextTick(() => {
     syncBoxEditSubInputsFromSelected();
@@ -1632,15 +1659,6 @@ function getIvFromRawText(rawText: string): string | null {
   return iv || null;
 }
 
-function specialtyJa(sp: PokemonSpecialty | null | undefined): string {
-  if (!sp || sp === "unknown") return "不明";
-  if (sp === "Berries") return "きのみ";
-  if (sp === "Ingredients") return "しょくざい";
-  if (sp === "Skills") return "スキル";
-  if (sp === "All") return "オール";
-  return "不明";
-}
-
 // NOTE: computed/ watch の参照順で TDZ (Cannot access 'X' before initialization) が起きるため、
 // 依存元の computed を先に宣言すること。
 const selectedBox = computed(() => boxEntries.value.find((x) => x.id === selectedBoxId.value) ?? null);
@@ -1762,7 +1780,7 @@ function onImport() {
     .map((x) => x.trim())
     .filter(Boolean);
   if (!lines.length) {
-    importStatus.value = "入力が空です";
+    importStatus.value = t("status.inputEmpty");
     return;
   }
   const undoSelectedId = selectedBoxId.value;
@@ -1813,7 +1831,7 @@ function onImport() {
 
   boxEntries.value = next;
   boxUndoAction.value = addedIds.length ? { kind: "import", addedIds, selectedId: undoSelectedId } : null;
-  importStatus.value = `取り込み: ${added}件 / スキップ: ${skipped}件`;
+  importStatus.value = t("status.importResult", { added, skipped });
 }
 
 function buildManualPlannerSubSkills(): BoxSubSkillSlotV1[] | undefined {
@@ -1843,7 +1861,7 @@ function validateSubSkillField(lv: 10 | 25 | 50 | 75 | 100, value: string) {
     return;
   }
   const en = subSkillEnFromJa(ja);
-  addSubErrors.value[key] = en ? null : "未知のサブスキルです（補完から選ぶと確実です）";
+  addSubErrors.value[key] = en ? null : t("status.subSkillUnknown");
 }
 
 function onSubBlur(lv: 10 | 25 | 50 | 75 | 100) {
@@ -1866,7 +1884,7 @@ function onCreateManual(opts: { mode: "toCalc" | "toBox" }) {
   const lvl = Math.max(1, Math.min(65, Math.floor(Number(addLevel.value))));
   const label = (addLabel.value || addName.value).trim();
   if (!label) {
-    importStatus.value = "名前が空です";
+    importStatus.value = t("status.nameEmpty");
     return;
   }
   const undoSelectedId = selectedBoxId.value;
@@ -1940,11 +1958,17 @@ const totalShards = ref<number>(calcAutosave0?.totalShards ?? loadLegacyTotalSha
 const calcRows = ref<CalcRow[]>(calcAutosave0?.rows ?? []);
 const activeCalcRowId = ref<string | null>(calcAutosave0?.activeRowId ?? calcRows.value[0]?.id ?? null);
 
-const fullLabel = computed(
-  () => `アメブ（かけら×${boostRules.full.shardMultiplier} / EXP×${boostRules.full.expMultiplier}）`
+const fullLabel = computed(() =>
+  t("calc.boostKindFull", {
+    shards: boostRules.full.shardMultiplier,
+    exp: boostRules.full.expMultiplier,
+  })
 );
-const miniLabel = computed(
-  () => `ミニブ（かけら×${boostRules.mini.shardMultiplier} / EXP×${boostRules.mini.expMultiplier}）`
+const miniLabel = computed(() =>
+  t("calc.boostKindMini", {
+    shards: boostRules.mini.shardMultiplier,
+    exp: boostRules.mini.expMultiplier,
+  })
 );
 
 function cloneCalcRows(entries: CalcRow[]): CalcRow[] {
@@ -2357,7 +2381,7 @@ async function downloadCalcExportPng() {
     a.click();
     exportStatus.value = "";
   } catch (e: any) {
-    exportStatus.value = "ごめん、画像の作成に失敗しました（もう一度お試しください）";
+    exportStatus.value = t("status.exportFailed");
   } finally {
     exportBusy.value = false;
   }
@@ -2619,13 +2643,13 @@ function applyCalculatorToBox() {
     };
   });
   selectedBoxId.value = e.id;
-  importStatus.value = "計算機の値をボックスへ保存しました";
+  importStatus.value = t("status.applyCalcToBox");
 }
 
 function onDeleteSelected() {
   const e = selectedBox.value;
   if (!e) return;
-  const ok = confirm(`削除しますか？\n${e.label || e.rawText}`);
+  const ok = confirm(t("confirm.deleteOne", { label: e.label || e.rawText }));
   if (!ok) return;
   const idx = boxEntries.value.findIndex((x) => x.id === e.id);
   boxUndoAction.value = { kind: "delete", entry: cloneBoxEntry(e), index: Math.max(0, idx), selectedId: selectedBoxId.value };
@@ -2636,11 +2660,7 @@ function onDeleteSelected() {
 function onClearBox() {
   const n = boxEntries.value.length;
   if (n === 0) return;
-  const ok = confirm(
-    `ポケモンボックスを全消去しますか？\n` +
-      `登録: ${n}匹\n\n` +
-      `※ この操作は取り消せません。`
-  );
+  const ok = confirm(t("confirm.clearBox", { n }));
   if (!ok) return;
   boxUndoAction.value = { kind: "clear", entries: cloneBoxEntries(boxEntries.value), selectedId: selectedBoxId.value };
   boxEntries.value = [];
@@ -2648,7 +2668,7 @@ function onClearBox() {
   boxFilter.value = "";
   selectedSpecialties.value = [];
   selectedSubSkillEns.value = [];
-  importStatus.value = "ボックスを全消去しました";
+  importStatus.value = t("status.boxCleared");
 }
 
 function onEditSelectedSpecialty(v: string) {
@@ -2669,7 +2689,7 @@ function onEditSelectedSpecialty(v: string) {
       updatedAt: now,
     };
   });
-  importStatus.value = "とくいを更新しました";
+  importStatus.value = t("status.specialtyUpdated");
 }
 
 function onEditSelectedLevel(v: string) {
@@ -2692,7 +2712,7 @@ function onEditSelectedLabel(v: string) {
       updatedAt: now,
     };
   });
-  importStatus.value = "ニックネームを更新しました";
+  importStatus.value = t("status.nicknameUpdated");
 }
 
 function toggleSelectedFavorite() {
@@ -2703,7 +2723,7 @@ function toggleSelectedFavorite() {
     if (x.id !== e.id) return x;
     return { ...x, favorite: !x.favorite, updatedAt: now };
   });
-  importStatus.value = "お気に入りを更新しました";
+  importStatus.value = t("status.favoriteUpdated");
 }
 
 function writeSelectedLevel(lvl: number) {
@@ -2721,7 +2741,7 @@ function writeSelectedLevel(lvl: number) {
       updatedAt: now,
     };
   });
-  importStatus.value = "レベルを更新しました";
+  importStatus.value = t("status.levelUpdated");
 }
 
 function toggleBoxLevelPick() {
@@ -2758,7 +2778,7 @@ function onEditSelectedExpType(v: string) {
       updatedAt: now,
     };
   });
-  importStatus.value = "EXPタイプを更新しました";
+  importStatus.value = t("status.expTypeUpdated");
 }
 
 function onEditSelectedNature(v: string) {
@@ -2777,7 +2797,7 @@ function onEditSelectedNature(v: string) {
       updatedAt: now,
     };
   });
-  importStatus.value = "性格（EXP補正）を更新しました";
+  importStatus.value = t("status.natureUpdated");
 }
 
 function onEditSelectedIngredientType(v: string) {
@@ -2797,7 +2817,7 @@ function onEditSelectedIngredientType(v: string) {
       updatedAt: now,
     };
   });
-  importStatus.value = "食材タイプを更新しました";
+  importStatus.value = t("status.ingredientTypeUpdated");
 }
 
 function toSubSkillLevel(v: unknown): 10 | 25 | 50 | 75 | 100 | null {
@@ -2823,7 +2843,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
   const ja = (boxEditSubInputs.value[String(lv)] ?? "").trim();
   const en = ja ? subSkillEnFromJa(ja) : null;
   if (ja && !en) {
-    boxEditSubErrors.value = { ...boxEditSubErrors.value, [String(lv)]: "未知のサブスキルです（保存時は無視されます）" };
+    boxEditSubErrors.value = { ...boxEditSubErrors.value, [String(lv)]: t("status.subSkillUnknownIgnored") };
     return;
   }
 
@@ -2842,7 +2862,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
       updatedAt: now,
     };
   });
-  importStatus.value = "サブスキルを更新しました";
+  importStatus.value = t("status.subSkillsUpdated");
 }
 </script>
 
