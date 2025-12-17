@@ -10,10 +10,11 @@
     "generate:terms": "node scripts/generate-terms.mjs",
     "generate:tables": "node scripts/generate-pokesleep-tables.mjs",
     "generate:pokemon-db": "node scripts/generate-pokemon-db.mjs",
-    "generate:pokemon-master": "node scripts/generate-pokemon-master.mjs --interactive",
-    "generate:pokemon-names": "node scripts/generate-pokemon-master.mjs --non-interactive",
+    "generate:master": "node scripts/generate-master.mjs",
+    "generate:pokemon-master": "npm run generate:master -- --interactive",
+    "generate:pokemon-names": "npm run generate:master -- --non-interactive",
     "generate:pokemon-en-names": "node scripts/generate-pokemon-en-names.mjs",
-    "generate:pokemon-all": "npm run generate:pokemon-db && node scripts/generate-pokemon-master.mjs --interactive",
+    "generate:pokemon-all": "npm run generate:master",
     "set:boost": "node scripts/set-boost-config.mjs"
   },
   "dependencies": {
