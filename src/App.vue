@@ -2311,13 +2311,17 @@ async function downloadCalcExportPng() {
   exportStatus.value = "";
   try {
     // 保存時は transform(scale) / sticky を外した状態で、全高を確実に取り込む
+    // Webフォントが読み込まれる前にキャプチャすると崩れるので待つ
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fontsReady = (document as any)?.fonts?.ready;
+    if (fontsReady && typeof fontsReady.then === "function") await fontsReady;
     await nextTick();
     const w = Math.max(el.scrollWidth, el.clientWidth, 1);
     const h = Math.max(el.scrollHeight, el.clientHeight, 1);
     const dataUrl = await toPng(el, {
       cacheBust: true,
       pixelRatio: 2,
-      backgroundColor: "#fbf6ee",
+      backgroundColor: "#FFFBE6",
       width: w,
       height: h,
       style: {
@@ -3283,14 +3287,15 @@ function onBoxEditSubBlur(lvLike: unknown) {
 .exportSheet {
   transform-origin: top center;
   width: 100%;
-  border-radius: 16px;
-  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
+  border-radius: 20px;
+  border: 3px solid #F1C40F;
   background:
-    radial-gradient(900px 520px at 10% 0%, color-mix(in oklab, var(--accent-warm) 10%, transparent), transparent 70%),
-    radial-gradient(880px 540px at 90% 10%, color-mix(in oklab, var(--accent-cool) 10%, transparent), transparent 72%),
-    color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
-  box-shadow: var(--shadow-2);
-  padding: 14px 14px 12px;
+    radial-gradient(820px 520px at 15% 0%, rgba(241, 196, 15, 0.10), transparent 70%),
+    radial-gradient(780px 520px at 85% 10%, rgba(22, 160, 133, 0.08), transparent 72%),
+    #FFFBE6;
+  box-shadow: 0 22px 56px rgba(44, 62, 80, 0.18);
+  padding: 18px 18px 14px;
+  position: relative;
 }
 .exportSheet--capture {
   /* 画像保存時は「カード枠」を消してスクショ向けに */
@@ -3298,12 +3303,46 @@ function onBoxEditSubBlur(lvLike: unknown) {
   border-radius: 0;
   box-shadow: none;
 }
+.exportSheet::before,
+.exportSheet::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  height: 14px;
+  border-radius: 999px;
+  pointer-events: none;
+  opacity: 0.95;
+  background:
+    repeating-linear-gradient(
+      135deg,
+      rgba(22, 160, 133, 0.45) 0 8px,
+      rgba(241, 196, 15, 0.40) 8px 16px
+    );
+}
+.exportSheet::before {
+  top: 10px;
+}
+.exportSheet::after {
+  bottom: 10px;
+}
+.exportSheet--capture::before,
+.exportSheet--capture::after {
+  /* 保存時は外枠同様、上下のリボンも消す */
+  display: none;
+}
 .exportHead {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 10px;
+  padding: 10px 10px 6px;
+  border-radius: 16px;
+  background:
+    radial-gradient(560px 220px at 20% 0%, rgba(241, 196, 15, 0.16), transparent 70%),
+    radial-gradient(520px 240px at 90% 0%, rgba(241, 196, 15, 0.10), transparent 72%),
+    rgba(255, 255, 255, 0.35);
 }
 .exportBrand {
   font-family: var(--font-body);
@@ -3314,9 +3353,11 @@ function onBoxEditSubBlur(lvLike: unknown) {
   margin-bottom: 2px;
 }
 .exportTitle {
-  font-family: var(--font-heading);
+  font-family: "M PLUS Rounded 1c", var(--font-body);
   font-weight: 900;
   letter-spacing: -0.01em;
+  color: #F1C40F;
+  text-shadow: 1px 1px 2px rgba(212, 172, 13, 0.5);
 }
 .exportMeta {
   margin-top: 2px;
@@ -3350,8 +3391,8 @@ function onBoxEditSubBlur(lvLike: unknown) {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   overflow: hidden;
-  border-radius: 14px;
-  border: 1px solid color-mix(in oklab, var(--ink) 12%, transparent);
+  border-radius: 12px;
+  border: 0;
 }
 .exportTable .col-name { width: 34%; }
 .exportTable .col-exp { width: 8%; }
@@ -3361,18 +3402,15 @@ function onBoxEditSubBlur(lvLike: unknown) {
 .exportTable th,
 .exportTable td {
   padding: 7px 8px;
-  border-bottom: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
-  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
+  border-bottom: 0;
+  background: rgba(255, 255, 255, 0.45);
 }
 .exportTable thead th {
   font-family: var(--font-heading);
   font-weight: 900;
   letter-spacing: 0.02em;
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--paper) 92%, var(--ink) 8%),
-    color-mix(in oklab, var(--paper) 98%, var(--ink) 2%)
-  );
+  background: linear-gradient(180deg, #F1C40F, #D4AC0D);
+  color: #1F4D45;
 }
 .exportSheet:not(.exportSheet--capture) .exportTable thead th {
   position: sticky;
@@ -3380,17 +3418,14 @@ function onBoxEditSubBlur(lvLike: unknown) {
   z-index: 1;
 }
 .exportTable tbody tr:nth-child(2n) td {
-  background: color-mix(in oklab, var(--paper) 96%, var(--ink) 4%);
+  background: rgba(22, 160, 133, 0.08);
 }
 .exportTable tfoot td {
-  font-family: var(--font-heading);
+  font-family: "M PLUS Rounded 1c", var(--font-body);
   font-weight: 900;
   border-bottom: 0;
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--accent-warm) 10%, var(--paper) 90%),
-    color-mix(in oklab, var(--paper) 98%, var(--ink) 2%)
-  );
+  background: #16A085;
+  color: #ffffff;
 }
 .exportName {
   font-family: var(--font-heading);
@@ -3403,6 +3438,9 @@ function onBoxEditSubBlur(lvLike: unknown) {
 }
 .exportTotal {
   font-variant-numeric: tabular-nums;
+}
+.exportTable tfoot td.ta-r {
+  box-shadow: inset 0 0 8px rgba(241, 196, 15, 0.3);
 }
 .ta-r {
   text-align: right;
