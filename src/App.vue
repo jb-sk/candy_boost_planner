@@ -3717,6 +3717,15 @@ function onBoxEditSubBlur(lvLike: unknown) {
 }
 
 @media (max-width: 560px) {
+  .calcRow__head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .calcRow__headRight {
+    width: 100%;
+    justify-content: flex-end;
+    margin-top: 6px;
+  }
   /* Mobile: put "Apply to Box" on the next line (narrower, right-aligned) */
   .calcRow__applyBtn {
     flex: 0 0 auto;
