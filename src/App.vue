@@ -53,15 +53,6 @@
     <section class="panel" v-if="activeTab === 'calc'">
       <div class="panel__head">
         <h2 class="panel__title">{{ t("calc.title") }}</h2>
-        <div class="panel__side" v-if="activeCalcRow && activeCalcRow.boxId">
-          <div class="chip">
-            <span class="chip__k">{{ t("common.editing") }}</span>
-            <span class="chip__v">{{ activeCalcRow.title }}</span>
-          </div>
-          <button class="btn" type="button" @click="applyCalculatorToBox" :title="t('calc.applyToBoxTitle')">
-            {{ t("common.applyToBox") }}
-          </button>
-        </div>
       </div>
       <div class="calcTop">
         <div class="calcTop__grid">
@@ -232,6 +223,15 @@
               <div class="calcRow__title">{{ r.title }}</div>
             </div>
             <div class="calcRow__headRight">
+              <button
+                v-if="r.boxId"
+                class="btn btn--xs"
+                type="button"
+                @click.stop="applyCalculatorToBox(r.id)"
+                :title="t('calc.applyToBoxTitle')"
+              >
+                {{ t("common.applyToBox") }}
+              </button>
               <button class="btn btn--ghost btn--xs" type="button" @click.stop="moveCalcRowUp(r.id)" :disabled="!canMoveCalcRowUp(r.id)">
                 ↑
               </button>
@@ -2913,8 +2913,8 @@ function applyBoxToCalculator() {
   });
 }
 
-function applyCalculatorToBox() {
-  const r = activeCalcRow.value;
+function applyCalculatorToBox(rowId?: string) {
+  const r = rowId ? (calcRows.value.find((x) => x.id === rowId) ?? null) : activeCalcRow.value;
   if (!r || !r.boxId) return;
   const e = boxEntries.value.find((x) => x.id === r.boxId) ?? null;
   if (!e) return;
@@ -3448,9 +3448,13 @@ function onBoxEditSubBlur(lvLike: unknown) {
   }
 
   /* Mobile: keep shards + candy(total) side-by-side under inputs */
+}
+
+@media (max-width: 560px) {
+  /* Mobile: keep shards + candy(total) side-by-side under inputs (override later base rules) */
   .calcRow__result {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 10px;
   }
   .calcRow__res {
