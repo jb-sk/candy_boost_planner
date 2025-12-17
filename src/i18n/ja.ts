@@ -15,7 +15,7 @@ export const ja = {
     optional: "（任意）",
   },
   app: {
-    title: "CandyBoost Planner",
+    title: "アメブプランナー",
     kicker: "Holiday Candy Boost Planner",
     lede: "複数ポケモンのアメブースト配分を、総アメ・総かけら制約つきでリアルタイムに計画します。",
   },

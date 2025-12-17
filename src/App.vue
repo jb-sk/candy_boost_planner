@@ -1101,7 +1101,7 @@
         >
           <div class="exportHead">
             <div>
-              <div class="exportBrand">CandyBoost Planner</div>
+              <div class="exportBrand">{{ t("app.title") }}</div>
             </div>
             <div class="exportActions">
               <button class="btn btn--primary btn--xs" type="button" @click="downloadCalcExportPng" :disabled="exportBusy">
@@ -2616,7 +2616,7 @@ async function downloadCalcExportPng() {
         const file = new File([blob], filename, { type: "image/png" });
         const canShareFiles = typeof nav.canShare !== "function" || nav.canShare({ files: [file] });
         if (canShareFiles) {
-          await nav.share({ files: [file], title: "CandyBoost Planner" });
+          await nav.share({ files: [file], title: t("app.title") });
           exportStatus.value = "";
           return;
         }
@@ -3414,6 +3414,53 @@ function onBoxEditSubBlur(lvLike: unknown) {
     box-shadow:
       inset 0 1px 0 color-mix(in oklab, var(--paper) 65%, transparent),
       0 8px 14px color-mix(in oklab, var(--accent-warm) 12%, transparent);
+  }
+
+  /* Mobile: shrink header texts (calc title / editing / pokemon name / apply button) */
+  .panel__title {
+    font-size: 22px;
+    line-height: 1.12;
+    margin-bottom: 8px;
+  }
+  .panel__head {
+    gap: 10px;
+  }
+  .panel__side {
+    gap: 8px;
+  }
+  .chip {
+    padding: 5px 8px;
+    gap: 6px;
+  }
+  .chip__k {
+    font-size: 11px;
+  }
+  .chip__v {
+    font-size: 12px;
+  }
+  .panel__side > .btn {
+    font-size: 12px;
+    padding: 8px 10px;
+    white-space: nowrap;
+  }
+  .calcRow__title {
+    font-size: 15px;
+  }
+
+  /* Mobile: keep shards + candy(total) side-by-side under inputs */
+  .calcRow__result {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .calcRow__res {
+    min-width: 0;
+  }
+  .calcRow__res:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+  .calcRow__result .calcRow__v {
+    font-size: 15px;
   }
 }
 .calcSum--sparkle::after {
