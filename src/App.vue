@@ -1098,15 +1098,27 @@
           class="exportSheet"
           :class="{ 'exportSheet--capture': exportBusy }"
           :style="{ transform: exportBusy ? 'none' : `scale(${calcExportScale})` }"
+          @click="exportCsvMenuOpen = false"
         >
           <div class="exportHead">
             <div>
               <div class="exportBrand">{{ t("app.title") }}</div>
             </div>
-            <div class="exportActions">
+            <div class="exportActions" @click.stop>
               <button class="btn btn--primary btn--xs" type="button" @click="downloadCalcExportPng" :disabled="exportBusy">
                 {{ t("calc.export.saveImage") }}
               </button>
+              <button class="btn btn--ghost btn--xs" type="button" @click="toggleCalcExportCsvMenu" :disabled="exportBusy">
+                {{ t("calc.export.csv") }}
+              </button>
+              <div v-if="exportCsvMenuOpen" class="exportCsvMenu" role="menu" :aria-label="t('calc.export.csv')">
+                <button class="exportCsvMenu__item" type="button" @click="downloadCalcExportCsv" :disabled="exportBusy">
+                  {{ t("calc.export.csvDownload") }}
+                </button>
+                <button class="exportCsvMenu__item" type="button" @click="copyCalcExportCsv" :disabled="exportBusy">
+                  {{ t("calc.export.csvCopy") }}
+                </button>
+              </div>
               <button class="btn btn--ghost btn--xs" type="button" @click="closeCalcExport" :disabled="exportBusy">{{ t("calc.export.close") }}</button>
             </div>
           </div>
@@ -2562,12 +2574,127 @@ const calcExportOpen = ref(false);
 const exportSheetEl = ref<HTMLElement | null>(null);
 const exportBusy = ref(false);
 const exportStatus = ref<string>("");
+const exportCsvMenuOpen = ref(false);
 function openCalcExport() {
   if (!calcRowsView.value.length) return;
   calcExportOpen.value = true;
 }
 function closeCalcExport() {
   calcExportOpen.value = false;
+  exportCsvMenuOpen.value = false;
+}
+
+function toggleCalcExportCsvMenu() {
+  exportCsvMenuOpen.value = !exportCsvMenuOpen.value;
+  exportStatus.value = "";
+}
+
+function csvCell(v: unknown): string {
+  const s = String(v ?? "");
+  if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function buildCalcExportCsv(): string {
+  const head = [
+    t("calc.export.colPokemon"),
+    t("calc.row.srcLevel"),
+    t("calc.row.dstLevel"),
+    t("calc.export.colExpAdj"),
+    t("calc.export.colBoost"),
+    t("calc.export.colNormal"),
+    t("calc.export.colTotal"),
+    t("calc.export.colShards"),
+  ]
+    .map(csvCell)
+    .join(",");
+
+  const rows = calcExportRows.value.map((r) =>
+    [
+      r.title,
+      r.srcLevel,
+      r.dstLevel,
+      r.natureLabel || "",
+      r.boostCandy,
+      r.normalCandy,
+      r.totalCandy,
+      r.shards,
+    ]
+      .map(csvCell)
+      .join(",")
+  );
+
+  const total = [
+    t("calc.export.total"),
+    "",
+    "",
+    "",
+    calcExportTotals.value.boostCandy,
+    calcExportTotals.value.normalCandy,
+    calcExportTotals.value.totalCandy,
+    calcExportTotals.value.shards,
+  ]
+    .map(csvCell)
+    .join(",");
+
+  return [head, ...rows, total].join("\r\n") + "\r\n";
+}
+
+function downloadCalcExportCsv() {
+  exportCsvMenuOpen.value = false;
+  exportStatus.value = "";
+  try {
+    const csv = buildCalcExportCsv();
+    const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    const filename = `CandyBoost-Planner_${ts}.csv`;
+    // Excel on Windows often expects BOM for UTF-8 CSV.
+    const blob = new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.download = filename;
+    a.href = url;
+    a.click();
+    URL.revokeObjectURL(url);
+    exportStatus.value = t("status.csvDownloaded");
+  } catch {
+    exportStatus.value = t("status.csvDownloadFailed");
+  }
+}
+
+async function copyCalcExportCsv() {
+  exportCsvMenuOpen.value = false;
+  exportStatus.value = "";
+  const csv = buildCalcExportCsv();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const nav: any = navigator as any;
+  try {
+    if (nav?.clipboard?.writeText) {
+      await nav.clipboard.writeText(csv);
+      exportStatus.value = t("status.csvCopied");
+      return;
+    }
+  } catch {
+    // fall through to legacy copy
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = csv;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "0";
+    ta.style.left = "0";
+    ta.style.width = "1px";
+    ta.style.height = "1px";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    exportStatus.value = ok ? t("status.csvCopied") : t("status.csvCopyFailed");
+  } catch {
+    exportStatus.value = t("status.csvCopyFailed");
+  }
 }
 
 async function downloadCalcExportPng() {
@@ -2575,6 +2702,7 @@ async function downloadCalcExportPng() {
   if (!el) return;
   exportBusy.value = true;
   exportStatus.value = "";
+  exportCsvMenuOpen.value = false;
   try {
     // 保存時は transform(scale) / sticky を外した状態で、全高を確実に取り込む
     // Webフォントが読み込まれる前にキャプチャすると崩れるので待つ
@@ -3843,6 +3971,45 @@ function onBoxEditSubBlur(lvLike: unknown) {
   gap: 8px;
   align-items: center;
   justify-self: end;
+  position: relative;
+}
+.exportCsvMenu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 5;
+  min-width: 180px;
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
+  background: color-mix(in oklab, var(--paper) 92%, white);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+}
+.exportCsvMenu__item {
+  appearance: none;
+  border: 0;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 12px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  color: var(--ink);
+  background: color-mix(in oklab, var(--paper) 92%, white);
+  border: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
+}
+.exportCsvMenu__item:hover {
+  background: color-mix(in oklab, var(--accent) 10%, var(--paper));
+}
+.exportCsvMenu__item:active {
+  transform: translateY(0.5px);
+}
+.exportCsvMenu__item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 .exportSheet--capture .exportActions {
   display: none;
