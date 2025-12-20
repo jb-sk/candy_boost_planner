@@ -30,27 +30,17 @@
       </div>
     </header>
 
-    <nav class="tabs" :aria-label="t('common.pageNav')">
-      <button
-        class="tab"
-        :class="{ 'tab--active': activeTab === 'calc' }"
-        type="button"
-        @click="activeTab = 'calc'"
-      >
+    <nav class="mobileNav">
+      <a href="#neo-calc" class="mobileNav__item" @click.prevent="scrollToPanel('neo-calc')">
         {{ t("nav.calc") }}
-      </button>
-      <button
-        class="tab"
-        :class="{ 'tab--active': activeTab === 'box' }"
-        type="button"
-        @click="activeTab = 'box'"
-      >
+      </a>
+      <a href="#neo-box" class="mobileNav__item" @click.prevent="scrollToPanel('neo-box')">
         {{ t("nav.box") }}
-        <span class="tab__count" v-if="boxEntries.length">{{ boxEntries.length }}</span>
-      </button>
+      </a>
     </nav>
 
-    <section class="panel" v-if="activeTab === 'calc'">
+    <div class="dashboard">
+    <section id="neo-calc" class="panel panel--calc">
       <div class="panel__head">
         <h2 class="panel__title">{{ t("calc.title") }}</h2>
       </div>
@@ -58,7 +48,14 @@
         <div class="calcTop__grid">
           <label class="field">
             <span class="field__label">{{ t("calc.maxShardsLabel") }}</span>
-            <input v-model.number="totalShards" type="number" min="0" class="field__input" />
+            <input
+              :value="totalShardsText"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              class="field__input"
+              @input="onTotalShardsInput(($event.target as HTMLInputElement).value)"
+            />
             <span class="field__sub">{{ t("calc.maxShardsHelp") }}</span>
           </label>
           <label class="field">
@@ -73,13 +70,13 @@
 
       <div class="calcSticky">
         <div class="calcSticky__summary">
-          <div class="calcSum calcSum--hi">
-            <div class="calcSum__k">{{ t("calc.shardsTotal") }}</div>
-            <div class="calcSum__v">{{ fmtNum(calcTotalShardsUsed) }}</div>
+          <div class="calcSum calcSum--hi" :class="{ 'calcSum--danger': calcBoostCandyOver > 0 }">
+            <div class="calcSum__k">{{ t("calc.export.sumBoostTotal") }}</div>
+            <div class="calcSum__v">{{ fmtNum(calcTotalBoostCandyUsed) }}</div>
           </div>
           <div class="calcSum calcSum--hi" :class="{ 'calcSum--danger': calcShardsOver > 0 }">
-            <div class="calcSum__k">{{ calcShardsOver > 0 ? t("calc.over") : t("calc.shardsUnused") }}</div>
-            <div class="calcSum__v">{{ fmtNum(calcShardsOver > 0 ? calcShardsOver : -calcShardsOver) }}</div>
+            <div class="calcSum__k">{{ t("calc.shardsTotal") }}</div>
+            <div class="calcSum__v">{{ fmtNum(calcTotalShardsUsed) }}</div>
           </div>
         </div>
         <div
@@ -89,11 +86,42 @@
             'calcSum--muted': calcShardsCap <= 0,
           }"
         >
+          <div class="calcBarBlock calcBarBlock--candy" :class="{ 'calcBarBlock--danger': calcBoostCandyOver > 0 }">
+            <div class="calcSum__head">
+              <div class="calcSum__k">
+                {{ t("calc.boostCandyUsage", { pct: calcBoostCandyUsagePctRounded }) }}
+                <span v-if="showBoostCandyFire" aria-hidden="true"> 🔥</span>
+                <span v-if="calcBoostCandyOver > 0" class="calcSum__overVal"> (+{{ fmtNum(calcBoostCandyOver) }})</span>
+              </div>
+              <div class="calcSum__k calcSum__k--right">
+                {{ t("calc.cap", { cap: fmtNum(calcBoostCandyCap) }) }}
+              </div>
+            </div>
+            <div
+              class="calcBar"
+              role="progressbar"
+              :aria-valuenow="Math.max(0, calcTotalBoostCandyUsed)"
+              aria-valuemin="0"
+              :aria-valuemax="Math.max(1, calcBoostCandyCap)"
+              :aria-label="t('calc.boostCandyUsageAria', { pct: calcBoostCandyUsagePctRounded, cap: fmtNum(calcBoostCandyCap) })"
+            >
+              <div class="calcBar__track">
+                <div class="calcBar__fill calcBar__fill--candy" :style="{ width: `${calcBoostCandyFillPctForBar}%` }"></div>
+                <div
+                  v-if="calcBoostCandyOver > 0 && calcBoostCandyCap > 0"
+                  class="calcBar__over"
+                  :style="{ width: `${calcBoostCandyOverPctForBar}%` }"
+                ></div>
+              </div>
+            </div>
+          </div>
+
           <div class="calcBarBlock">
             <div class="calcSum__head">
               <div class="calcSum__k">
                 {{ calcShardsCap > 0 ? t("calc.shardsUsage", { pct: calcShardsUsagePctRounded }) : t("calc.shardsUsageDash") }}
                 <span v-if="showShardsFire" aria-hidden="true"> 🔥</span>
+                <span v-if="calcShardsOver > 0" class="calcSum__overVal"> (+{{ fmtNum(calcShardsOver) }})</span>
               </div>
               <div class="calcSum__k calcSum__k--right">
                 {{ calcShardsCap > 0 ? t("calc.cap", { cap: fmtNum(calcShardsCap) }) : t("calc.capUnset") }}
@@ -121,43 +149,15 @@
               </div>
             </div>
           </div>
-
-          <div class="calcBarBlock calcBarBlock--candy" :class="{ 'calcBarBlock--danger': calcBoostCandyOver > 0 }">
-            <div class="calcSum__head">
-              <div class="calcSum__k">
-                {{ t("calc.boostCandyUsage", { pct: calcBoostCandyUsagePctRounded }) }}
-              </div>
-              <div class="calcSum__k calcSum__k--right">
-                {{ t("calc.cap", { cap: fmtNum(calcBoostCandyCap) }) }}
-              </div>
-            </div>
-            <div
-              class="calcBar"
-              role="progressbar"
-              :aria-valuenow="Math.max(0, calcTotalBoostCandyUsed)"
-              aria-valuemin="0"
-              :aria-valuemax="Math.max(1, calcBoostCandyCap)"
-              :aria-label="t('calc.boostCandyUsageAria', { pct: calcBoostCandyUsagePctRounded, cap: fmtNum(calcBoostCandyCap) })"
-            >
-              <div class="calcBar__track">
-                <div class="calcBar__fill calcBar__fill--candy" :style="{ width: `${calcBoostCandyFillPctForBar}%` }"></div>
-                <div
-                  v-if="calcBoostCandyOver > 0 && calcBoostCandyCap > 0"
-                  class="calcBar__over"
-                  :style="{ width: `${calcBoostCandyOverPctForBar}%` }"
-                ></div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
       <div class="calcActions">
-        <button class="btn btn--danger" type="button" @click="onCalcClear" :disabled="!calcRowsView.length">
-          {{ t("calc.clearPokemons") }}
-        </button>
         <button class="btn btn--primary" type="button" @click="openCalcExport" :disabled="!calcRowsView.length">
           {{ t("calc.export.open") }}
+        </button>
+        <button class="btn btn--danger" type="button" @click="onCalcClear" :disabled="!calcRowsView.length">
+          {{ t("calc.clearPokemons") }}
         </button>
         <button class="btn btn--ghost" type="button" @click="onCalcUndo" :disabled="!canCalcUndo">
           {{ t("common.undo") }}
@@ -168,21 +168,34 @@
       </div>
 
       <div class="calcSlots">
-        <div v-for="i in 3" :key="i" class="calcSlot" :class="{ 'calcSlot--empty': !calcSlots[i - 1] }">
-          <div class="calcSlot__head">
-            <div class="calcSlot__label">{{ t("calc.slot", { n: i }) }}</div>
-            <div class="calcSlot__state">{{ calcSlots[i - 1] ? formatCalcSlotSavedAt(calcSlots[i - 1]?.savedAt) : t("calc.slotEmpty") }}</div>
-          </div>
+        <div class="slotTabs">
+          <button
+            v-for="i in 3"
+            :key="i"
+            class="slotTab"
+            :class="{ 'slotTab--active': activeCalcSlotTab === i - 1 }"
+            @click="activeCalcSlotTab = i - 1"
+          >
+            {{ t("calc.slot", { n: i }) }}
+            <span v-if="calcSlots[i - 1]" class="tab__count" title="保存済み">●</span>
+            <span v-else class="tab__count" title="空">-</span>
+          </button>
+        </div>
+
+        <div class="slotContent" :class="{ 'calcSlot--empty': !calcSlots[activeCalcSlotTab] }">
           <div class="calcSlot__actions">
-            <button class="btn btn--ghost btn--xs" type="button" @click="onCalcSlotLoad(i - 1)" :disabled="!calcSlots[i - 1]">
+            <button class="btn btn--ghost btn--xs calcSlot__btn" type="button" @click="onCalcSlotLoad(activeCalcSlotTab)" :disabled="!calcSlots[activeCalcSlotTab]">
               {{ t("common.load") }}
             </button>
-            <button class="btn btn--xs" type="button" @click="onCalcSlotSave(i - 1)" :disabled="!calcRowsView.length">
+            <button class="btn btn--xs calcSlot__btn" type="button" @click="onCalcSlotSave(activeCalcSlotTab)" :disabled="!calcRowsView.length">
               {{ t("common.save") }}
             </button>
-            <button class="btn btn--ghost btn--xs" type="button" @click="onCalcSlotDelete(i - 1)" :disabled="!calcSlots[i - 1]">
+            <button class="btn btn--ghost btn--xs calcSlot__btn" type="button" @click="onCalcSlotDelete(activeCalcSlotTab)" :disabled="!calcSlots[activeCalcSlotTab]">
               {{ t("common.delete") }}
             </button>
+          </div>
+          <div class="calcSlot__state">
+            {{ calcSlots[activeCalcSlotTab] ? formatCalcSlotSavedAt(calcSlots[activeCalcSlotTab]?.savedAt) : t("calc.slotEmpty") }}
           </div>
         </div>
       </div>
@@ -223,22 +236,22 @@
               <div class="calcRow__title">{{ r.title }}</div>
             </div>
             <div class="calcRow__headRight">
-              <button class="btn btn--ghost btn--xs" type="button" @click.stop="moveCalcRowUp(r.id)" :disabled="!canMoveCalcRowUp(r.id)">
+              <button class="linkBtn" type="button" @click.stop="moveCalcRowUp(r.id)" :disabled="!canMoveCalcRowUp(r.id)">
                 ↑
               </button>
-              <button class="btn btn--ghost btn--xs" type="button" @click.stop="moveCalcRowDown(r.id)" :disabled="!canMoveCalcRowDown(r.id)">
+              <button class="linkBtn" type="button" @click.stop="moveCalcRowDown(r.id)" :disabled="!canMoveCalcRowDown(r.id)">
                 ↓
               </button>
-              <button class="btn btn--danger btn--xs" type="button" @click.stop="onCalcRemoveRow(r.id)">{{ t("common.delete") }}</button>
               <button
                 v-if="r.boxId"
-                class="btn btn--xs calcRow__applyBtn"
+                class="linkBtn"
                 type="button"
                 @click.stop="applyCalculatorToBox(r.id)"
                 :title="t('calc.applyToBoxTitle')"
               >
-                {{ t("common.applyToBox") }}
+                {{ t("calc.applyToBox") }}
               </button>
+              <button class="linkBtn linkBtn--danger" type="button" @click.stop="onCalcRemoveRow(r.id)">{{ t("common.delete") }}</button>
             </div>
           </div>
 
@@ -381,11 +394,14 @@
             </label>
             <label class="field field--sm">
               <span class="field__label">{{ t("calc.row.nature") }}</span>
-              <select :value="r.nature" class="field__input" @change="onCalcRowNature(r.id, ($event.target as HTMLSelectElement).value)">
-                <option value="normal">{{ t("calc.row.natureNormal") }}</option>
-                <option value="up">{{ t("calc.row.natureUp") }}</option>
-                <option value="down">{{ t("calc.row.natureDown") }}</option>
-              </select>
+              <NatureSelect
+                :model-value="r.nature"
+                @update:model-value="(val) => onCalcRowNature(r.id, val)"
+                :label="t('calc.row.nature')"
+                :label-normal="t('calc.row.natureNormal')"
+                :label-up="t('calc.row.natureUp')"
+                :label-down="t('calc.row.natureDown')"
+              />
             </label>
 
             <label class="field field--sm">
@@ -426,19 +442,20 @@
 
           <div class="calcRow__result">
             <div class="calcRow__res">
-              <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
-              <span class="calcRow__v"><span class="calcRow__num">{{ fmtNum(r.result.shards) }}</span></span>
+              <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
+              <span class="calcRow__v"><span class="calcRow__num">{{ fmtNum(r.result.boostCandy) }}</span></span>
+            </div>
+            <div class="calcRow__res">
+              <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
+              <span class="calcRow__v"><span class="calcRow__num">{{ fmtNum(r.result.normalCandy) }}</span></span>
             </div>
             <div class="calcRow__res">
               <span class="calcRow__k">{{ t("calc.row.candyTotal") }}</span>
               <span class="calcRow__v"><span class="calcRow__num">{{ fmtNum(r.result.normalCandy + r.result.boostCandy) }}</span></span>
             </div>
             <div class="calcRow__res">
-              <span class="calcRow__k">{{ t("calc.row.breakdown") }}</span>
-              <span class="calcRow__v">
-                {{ t("calc.row.breakdownBoost") }}<span class="calcRow__num">{{ fmtNum(r.result.boostCandy) }}</span> /
-                {{ t("calc.row.breakdownNormal") }}<span class="calcRow__num">{{ fmtNum(r.result.normalCandy) }}</span>
-              </span>
+              <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
+              <span class="calcRow__v"><span class="calcRow__num">{{ fmtNum(r.result.shards) }}</span></span>
             </div>
           </div>
         </div>
@@ -447,7 +464,7 @@
 
     </section>
 
-    <section class="panel" v-else>
+    <section id="neo-box" class="panel panel--box">
       <div class="panel__head">
         <h2 class="panel__title">{{ t("box.title") }}</h2>
         <div class="panel__side">
@@ -514,13 +531,15 @@
                 <span class="field__label">{{ t("box.add.level") }}</span>
                 <input v-model.number="addLevel" type="number" min="1" max="65" class="field__input" />
               </label>
-              <label class="field">
+              <label class="field field--sm">
                 <span class="field__label">{{ t("box.add.nature") }}</span>
-                <select v-model="addNature" class="field__input">
-                  <option value="normal">{{ t("calc.row.natureNormal") }}</option>
-                  <option value="up">{{ t("calc.row.natureUp") }}</option>
-                  <option value="down">{{ t("calc.row.natureDown") }}</option>
-                </select>
+                <NatureSelect
+                  v-model="addNature"
+                  :label="t('box.add.nature')"
+                  :label-normal="t('calc.row.natureNormal')"
+                  :label-up="t('calc.row.natureUp')"
+                  :label-down="t('calc.row.natureDown')"
+                />
               </label>
               <label class="field">
                 <span class="field__label">{{ t("box.add.specialtyOpt") }}</span>
@@ -685,7 +704,7 @@
           </p>
 
           <div class="boxFilters">
-            <div class="boxFilters__row">
+            <div class="boxFilters__row boxFilters__row--main">
               <div class="boxFilters__group">
                 <span class="boxFilters__label">{{ t("box.list.join") }}</span>
                 <select v-model="filterJoinMode" class="field__input boxFilters__select" :aria-label="t('box.list.join')">
@@ -698,7 +717,7 @@
                 <span class="boxFilters__label">{{ t("box.list.favorites") }}</span>
                 <div class="boxFilters__chips">
                   <button
-                    class="chipBtn"
+                    class="chipBtn chipBtn--iconOnly"
                     :class="{ 'chipBtn--on': favoritesOnly }"
                     type="button"
                     @click="favoritesOnly = !favoritesOnly"
@@ -709,7 +728,9 @@
                   </button>
                 </div>
               </div>
+            </div>
 
+            <div class="boxFilters__row boxFilters__row--chips">
               <div class="boxFilters__group">
                 <span class="boxFilters__label">{{ t("box.list.specialty") }}</span>
                 <div class="boxFilters__chips">
@@ -1013,17 +1034,16 @@
                     <div class="boxDetail__kv">
                       <div class="boxDetail__k">{{ t("calc.row.nature") }}</div>
                       <div class="boxDetail__v">
-                        <select
-                          class="field__input"
-                          :value="selectedDetail?.expGainNature ?? 'normal'"
-                          @change="onEditSelectedNature(($event.target as HTMLSelectElement).value)"
-                        >
-                          <option value="normal">{{ t("calc.row.natureNormal") }}</option>
-                          <option value="up">{{ t("calc.row.natureUp") }}</option>
-                          <option value="down">{{ t("calc.row.natureDown") }}</option>
-                        </select>
+                        <NatureSelect
+                          v-model="selectedNature"
+                          @update:model-value="onBoxItemNatureChange"
+                          :label="t('calc.row.nature')"
+                          :label-normal="t('calc.row.natureNormal')"
+                          :label-up="t('calc.row.natureUp')"
+                          :label-down="t('calc.row.natureDown')"
+                        />
                         <span class="boxDetail__minor" v-if="selectedDetail?.decoded?.natureName">
-                          （{{ gt(selectedDetail.decoded.natureName) }}）
+                          （{{ localizeNature(selectedDetail.decoded.natureName, locale as any) }}）
                         </span>
                       </div>
                     </div>
@@ -1074,7 +1094,12 @@
                     <div class="boxDetail__kv">
                       <div class="boxDetail__k">{{ t("box.list.favorite") }}</div>
                       <div class="boxDetail__v">
-                        <button class="chipBtn" :class="{ 'chipBtn--on': !!selectedBox.favorite }" type="button" @click="toggleSelectedFavorite">
+                        <button
+                          class="chipBtn chipBtn--iconOnly"
+                          :class="{ 'chipBtn--on': !!selectedBox.favorite }"
+                          type="button"
+                          @click="toggleSelectedFavorite"
+                        >
                           <span class="chipBtn__icon" v-html="iconStarSvg" aria-hidden="true"></span>
                         </button>
                       </div>
@@ -1102,47 +1127,72 @@
         >
           <div class="exportHead">
             <div>
-              <div class="exportBrand">{{ t("app.title") }}</div>
+              <div class="exportBrand">🍬 {{ t("calc.export.brand") }}</div>
             </div>
             <div class="exportActions" @click.stop>
-              <button class="btn btn--primary btn--xs" type="button" @click="downloadCalcExportPng" :disabled="exportBusy">
+              <button class="linkBtn" type="button" @click="downloadCalcExportPng" :disabled="exportBusy">
                 {{ t("calc.export.saveImage") }}
               </button>
-              <button class="btn btn--ghost btn--xs" type="button" @click="toggleCalcExportCsvMenu" :disabled="exportBusy">
-                {{ t("calc.export.csv") }}
-              </button>
-              <div v-if="exportCsvMenuOpen" class="exportCsvMenu" role="menu" :aria-label="t('calc.export.csv')">
-                <button class="exportCsvMenu__item" type="button" @click="downloadCalcExportCsv" :disabled="exportBusy">
-                  {{ t("calc.export.csvDownload") }}
+              <div class="exportCsvMenuTrigger">
+                <button
+                  class="linkBtn"
+                  type="button"
+                  @click.stop="exportCsvMenuOpen = !exportCsvMenuOpen"
+                  :disabled="exportBusy"
+                  :aria-expanded="exportCsvMenuOpen"
+                  aria-haspopup="menu"
+                >
+                  {{ t("calc.export.csv") }} ▾
                 </button>
-                <button class="exportCsvMenu__item" type="button" @click="copyCalcExportCsv" :disabled="exportBusy">
-                  {{ t("calc.export.csvCopy") }}
-                </button>
+                <div v-if="exportCsvMenuOpen" class="exportCsvMenu" role="menu" :aria-label="t('calc.export.csv')">
+                  <button class="exportCsvMenu__item" type="button" @click="downloadCalcExportCsv" :disabled="exportBusy">
+                    {{ t("calc.export.csvDownload") }}
+                  </button>
+                  <button class="exportCsvMenu__item" type="button" @click="copyCalcExportCsv" :disabled="exportBusy">
+                    {{ t("calc.export.csvCopy") }}
+                  </button>
+                </div>
               </div>
-              <button class="btn btn--ghost btn--xs" type="button" @click="closeCalcExport" :disabled="exportBusy">{{ t("calc.export.close") }}</button>
+              <button class="linkBtn linkBtn--basic" type="button" @click="closeCalcExport" :disabled="exportBusy">{{ t("calc.export.close") }}</button>
             </div>
           </div>
           <div v-if="exportStatus" class="exportStatus" role="status">{{ exportStatus }}</div>
 
           <div class="exportCalc">
             <div class="exportCalcTop">
-              <div class="exportCalcTop__nums calcSticky__summary">
-                <div class="calcSum calcSum--hi">
-                  <div class="calcSum__k">{{ t("calc.export.sumShardsTotal") }}</div>
-                  <div class="calcSum__v">{{ fmtNum(calcTotalShardsUsed) }}</div>
+              <div class="exportStats">
+                <div class="statCard statCard--accent">
+                  <div class="statCard__icon">🍬</div>
+                  <div class="statCard__content">
+                    <div class="statCard__label">{{ t("calc.export.sumBoostTotal") }}</div>
+                    <div class="statCard__value" :class="{ 'statCard__value--danger': calcBoostCandyOver > 0 }">
+                      {{ fmtNum(calcTotalBoostCandyUsed) }}
+                    </div>
+                  </div>
                 </div>
-                  <div class="calcSum calcSum--hi">
-                    <div class="calcSum__k">{{ t("calc.export.sumBoostTotal") }}</div>
-                    <div class="calcSum__v">{{ fmtNum(calcTotalBoostCandyUsed) }}</div>
+                <div class="statCard">
+                  <div class="statCard__icon">⚪</div>
+                  <div class="statCard__content">
+                    <div class="statCard__label">{{ t("calc.export.sumNormalTotal") }}</div>
+                    <div class="statCard__value">{{ fmtNum(calcExportTotals.normalCandy) }}</div>
                   </div>
-                  <div class="calcSum calcSum--hi">
-                    <div class="calcSum__k">{{ t("calc.export.sumNormalTotal") }}</div>
-                    <div class="calcSum__v">{{ fmtNum(calcExportTotals.normalCandy) }}</div>
+                </div>
+                <div class="statCard" :class="{ 'statCard--danger': calcBoostCandyOver > 0 }">
+                  <div class="statCard__icon">⚠️</div>
+                  <div class="statCard__content">
+                    <div class="statCard__label">{{ t("calc.export.sumBoostUnused") }}</div>
+                    <div class="statCard__value">{{ fmtNum(calcBoostCandyUnused) }}</div>
                   </div>
-                  <div class="calcSum calcSum--hi" :class="{ 'calcSum--danger': calcBoostCandyOver > 0 }">
-                    <div class="calcSum__k">{{ t("calc.export.sumBoostUnused") }}</div>
-                    <div class="calcSum__v">{{ fmtNum(calcBoostCandyUnused) }}</div>
+                </div>
+                <div class="statCard statCard--primary">
+                  <div class="statCard__icon">💎</div>
+                  <div class="statCard__content">
+                    <div class="statCard__label">{{ t("calc.export.sumShardsTotal") }}</div>
+                    <div class="statCard__value" :class="{ 'statCard__value--danger': calcShardsCap > 0 && calcShardsOver > 0 }">
+                      {{ fmtNum(calcTotalShardsUsed) }}
+                    </div>
                   </div>
+                </div>
               </div>
 
               <div
@@ -1152,11 +1202,42 @@
                   'calcSum--muted': calcShardsCap <= 0,
                 }"
               >
+                <div class="calcBarBlock calcBarBlock--candy" :class="{ 'calcBarBlock--danger': calcBoostCandyOver > 0 }">
+                  <div class="calcSum__head">
+                    <div class="calcSum__k">
+                      {{ t("calc.boostCandyUsage", { pct: calcBoostCandyUsagePctRounded }) }}
+                      <span v-if="showBoostCandyFire" aria-hidden="true"> 🔥</span>
+                      <span v-if="calcBoostCandyOver > 0" class="calcSum__overVal"> (+{{ fmtNum(calcBoostCandyOver) }})</span>
+                    </div>
+                    <div class="calcSum__k calcSum__k--right">
+                      {{ t("calc.cap", { cap: fmtNum(calcBoostCandyCap) }) }}
+                    </div>
+                  </div>
+                  <div
+                    class="calcBar"
+                    role="progressbar"
+                    :aria-valuenow="Math.max(0, calcTotalBoostCandyUsed)"
+                    aria-valuemin="0"
+                    :aria-valuemax="Math.max(1, calcBoostCandyCap)"
+                    :aria-label="t('calc.boostCandyUsageAria', { pct: calcBoostCandyUsagePctRounded, cap: fmtNum(calcBoostCandyCap) })"
+                  >
+                    <div class="calcBar__track">
+                      <div class="calcBar__fill calcBar__fill--candy" :style="{ width: `${calcBoostCandyFillPctForBar}%` }"></div>
+                      <div
+                        v-if="calcBoostCandyOver > 0 && calcBoostCandyCap > 0"
+                        class="calcBar__over"
+                        :style="{ width: `${calcBoostCandyOverPctForBar}%` }"
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+
                 <div class="calcBarBlock">
                   <div class="calcSum__head">
                     <div class="calcSum__k">
                       {{ calcShardsCap > 0 ? t("calc.shardsUsage", { pct: calcShardsUsagePctRounded }) : t("calc.shardsUsageDash") }}
                       <span v-if="showShardsFire" aria-hidden="true"> 🔥</span>
+                      <span v-if="calcShardsOver > 0" class="calcSum__overVal"> (+{{ fmtNum(calcShardsOver) }})</span>
                     </div>
                     <div class="calcSum__k calcSum__k--right">
                       {{ calcShardsCap > 0 ? t("calc.cap", { cap: fmtNum(calcShardsCap) }) : t("calc.capUnset") }}
@@ -1184,77 +1265,76 @@
                     </div>
                   </div>
                 </div>
-
-                <div class="calcBarBlock calcBarBlock--candy" :class="{ 'calcBarBlock--danger': calcBoostCandyOver > 0 }">
-                  <div class="calcSum__head">
-                    <div class="calcSum__k">
-                      {{ t("calc.boostCandyUsage", { pct: calcBoostCandyUsagePctRounded }) }}
-                    </div>
-                    <div class="calcSum__k calcSum__k--right">
-                      {{ t("calc.cap", { cap: fmtNum(calcBoostCandyCap) }) }}
-                    </div>
-                  </div>
-                  <div
-                    class="calcBar"
-                    role="progressbar"
-                    :aria-valuenow="Math.max(0, calcTotalBoostCandyUsed)"
-                    aria-valuemin="0"
-                    :aria-valuemax="Math.max(1, calcBoostCandyCap)"
-                    :aria-label="t('calc.boostCandyUsageAria', { pct: calcBoostCandyUsagePctRounded, cap: fmtNum(calcBoostCandyCap) })"
-                  >
-                    <div class="calcBar__track">
-                      <div class="calcBar__fill calcBar__fill--candy" :style="{ width: `${calcBoostCandyFillPctForBar}%` }"></div>
-                      <div
-                        v-if="calcBoostCandyOver > 0 && calcBoostCandyCap > 0"
-                        class="calcBar__over"
-                        :style="{ width: `${calcBoostCandyOverPctForBar}%` }"
-                      ></div>
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
 
-            <div class="exportCalcGrid">
-              <div v-for="row in calcExportRows" :key="row.id" class="exportCard">
-                <div class="exportCard__head">
-                  <div class="exportCard__name">{{ row.title }}</div>
-                  <div v-if="row.natureLabel" class="exportCard__badge" :aria-label="t('calc.export.colExpAdj')">
-                    {{ t("calc.export.colExpAdj") }} {{ row.natureLabel }}
-                  </div>
-                </div>
+            <div class="exportList">
+              <div class="exportList__head">
+                <div class="exportList__col">{{ t("calc.export.colPokemon") }}</div>
+                <div class="exportList__col u-align-center">{{ t("calc.row.srcLevel") }} → {{ t("calc.row.dstLevel") }}</div>
+                <div class="exportList__col u-align-right">{{ t("calc.export.colBoost") }}</div>
+                <div class="exportList__col u-align-right">{{ t("calc.export.colNormal") }}</div>
+                <div class="exportList__col u-align-right">{{ t("calc.export.colTotal") }}</div>
+                <div class="exportList__col u-align-right">{{ t("calc.export.colShards") }}</div>
+              </div>
 
-                <div class="exportCard__chips">
-                  <div class="exportChip">
-                    <span class="exportChip__k">{{ t("calc.row.srcLevel") }}</span>
-                    <span class="exportChip__v">{{ row.srcLevel }}</span>
-                  </div>
-                  <div class="exportChip">
-                    <span class="exportChip__k">{{ t("calc.row.dstLevel") }}</span>
-                    <span class="exportChip__v">{{ row.dstLevel }}</span>
-                  </div>
-                  <div class="exportChip exportChip--num">
-                    <span class="exportChip__k">{{ t("calc.export.colBoost") }}</span>
-                    <span class="exportChip__v"><span class="calcRow__num">{{ fmtNum(row.boostCandy) }}</span></span>
-                  </div>
-                  <div class="exportChip exportChip--num">
-                    <span class="exportChip__k">{{ t("calc.export.colNormal") }}</span>
-                    <span class="exportChip__v"><span class="calcRow__num">{{ fmtNum(row.normalCandy) }}</span></span>
-                  </div>
-                  <div class="exportChip exportChip--num">
-                    <span class="exportChip__k">{{ t("calc.export.colTotal") }}</span>
-                    <span class="exportChip__v"><span class="calcRow__num">{{ fmtNum(row.totalCandy) }}</span></span>
-                  </div>
-                  <div class="exportChip exportChip--num">
-                    <span class="exportChip__k">{{ t("calc.export.colShards") }}</span>
-                    <span class="exportChip__v"><span class="calcRow__num">{{ fmtNum(row.shards) }}</span></span>
-                  </div>
+              <div v-for="row in calcExportRows" :key="row.id" class="exportList__row">
+                <div class="exportList__col exportList__nameCol">
+                  <span class="exportList__name">{{ row.title }}</span>
+                  <span v-if="row.natureLabel" class="exportList__badge">{{ row.natureLabel }}</span>
+                </div>
+                <div class="exportList__col u-align-center exportList__lvCol">
+                   <div class="exportList__lvWrap">
+                      <span class="exportList__lvVal">{{ row.srcLevel }}</span>
+                      <span class="exportList__arrow">→</span>
+                      <span class="exportList__lvVal">{{ row.dstLevel }}</span>
+                   </div>
+                </div>
+                <div class="exportList__col u-align-right exportList__numCol">
+                  <span class="u-mobile-label">{{ t("calc.export.colBoost") }}</span>
+                  <span class="calcRow__num">{{ fmtNum(row.boostCandy) }}</span>
+                </div>
+                <div class="exportList__col u-align-right exportList__numCol">
+                  <span class="u-mobile-label">{{ t("calc.export.colNormal") }}</span>
+                  <span class="calcRow__num">{{ fmtNum(row.normalCandy) }}</span>
+                </div>
+                <div class="exportList__col u-align-right exportList__numCol">
+                   <span class="u-mobile-label">{{ t("calc.export.colTotal") }}</span>
+                  <span class="calcRow__num">{{ fmtNum(row.totalCandy) }}</span>
+                </div>
+                <div class="exportList__col u-align-right exportList__numCol">
+                   <span class="u-mobile-label">{{ t("calc.export.colShards") }}</span>
+                  <span class="calcRow__num">{{ fmtNum(row.shards) }}</span>
+                </div>
+              </div>
+
+              <div class="exportList__row exportList__row--total" aria-label="total">
+                <div class="exportList__col exportList__nameCol">
+                  <span class="exportList__name" aria-hidden="true"></span>
+                </div>
+                <div class="exportList__col u-align-center exportList__lvCol"></div>
+                <div class="exportList__col u-align-right exportList__numCol">
+                  <span class="u-mobile-label">{{ t("calc.export.colBoost") }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': calcBoostCandyOver > 0 }">{{ fmtNum(calcExportTotals.boostCandy) }}</span>
+                </div>
+                <div class="exportList__col u-align-right exportList__numCol">
+                  <span class="u-mobile-label">{{ t("calc.export.colNormal") }}</span>
+                  <span class="calcRow__num">{{ fmtNum(calcExportTotals.normalCandy) }}</span>
+                </div>
+                <div class="exportList__col u-align-right exportList__numCol">
+                  <span class="u-mobile-label">{{ t("calc.export.colTotal") }}</span>
+                  <span class="calcRow__num">{{ fmtNum(calcExportTotals.totalCandy) }}</span>
+                </div>
+                <div class="exportList__col u-align-right exportList__numCol">
+                  <span class="u-mobile-label">{{ t("calc.export.colShards") }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': calcShardsCap > 0 && calcShardsOver > 0 }">{{ fmtNum(calcExportTotals.shards) }}</span>
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
+    </div>
     </div>
   </main>
 </template>
@@ -1264,7 +1344,7 @@ import { computed, nextTick, ref, toRaw, watch } from "vue";
 import { onMounted, onUnmounted } from "vue";
 import { toPng } from "html-to-image";
 import { useI18n } from "vue-i18n";
-import { localizeGameTerm } from "./i18n/terms";
+import { localizeGameTerm, localizeNature } from "./i18n/terms";
 import type { BoostEvent, ExpGainNature, ExpType } from "./domain";
 import { calcExp, calcExpAndCandy, calcExpAndCandyByBoostExpRatio, calcExpAndCandyMixed, calcLevelByCandy } from "./domain/pokesleep";
 import { boostRules } from "./domain/pokesleep/boost-config";
@@ -1273,6 +1353,7 @@ import { decodeNitoyonIvDetail, decodeNitoyonIvMinimal, parseNitoyonBoxLine } fr
 import { cryptoRandomId, loadBox, saveBox } from "./persistence/box";
 import type { CalcRowV1, CalcSaveSlotV1 } from "./persistence/calc";
 import { loadCalcAutosave, loadCalcSlots, loadLegacyTotalShards, saveCalcAutosave, saveCalcSlots } from "./persistence/calc";
+import NatureSelect from "./components/NatureSelect.vue";
 import {
   findPokemonByNameJa,
   getPokemonExpType,
@@ -1867,6 +1948,13 @@ function getIvFromRawText(rawText: string): string | null {
 // 依存元の computed を先に宣言すること。
 const selectedBox = computed(() => boxEntries.value.find((x) => x.id === selectedBoxId.value) ?? null);
 
+const selectedNature = computed({
+  get: () => selectedDetail.value?.expGainNature ?? "normal",
+  set: (val: ExpGainNature) => {
+    onEditSelectedNature(val);
+  },
+});
+
 const selectedDetail = computed(() => {
   const e = selectedBox.value;
   if (!e) return null;
@@ -2185,8 +2273,30 @@ type CalcRow = CalcRowV1;
 
 const boostKind = ref<Exclude<BoostEvent, "none">>(calcAutosave0?.boostKind ?? "full");
 const totalShards = ref<number>(calcAutosave0?.totalShards ?? loadLegacyTotalShards());
+const totalShardsText = ref<string>("");
 const calcRows = ref<CalcRow[]>(calcAutosave0?.rows ?? []);
 const activeCalcRowId = ref<string | null>(calcAutosave0?.activeRowId ?? calcRows.value[0]?.id ?? null);
+
+function clampNonNegInt(n: unknown): number {
+  return Math.max(0, Math.floor(Number(n) || 0));
+}
+
+function onTotalShardsInput(v: string) {
+  const digits = String(v ?? "").replace(/[^\d]/g, "");
+  const n = clampNonNegInt(digits);
+  totalShards.value = n;
+  totalShardsText.value = fmtNum(n);
+}
+
+watch(
+  totalShards,
+  (n) => {
+    const nn = clampNonNegInt(n);
+    const s = fmtNum(nn);
+    if (totalShardsText.value !== s) totalShardsText.value = s;
+  },
+  { immediate: true }
+);
 
 const fullLabel = computed(() =>
   t("calc.boostKindFull", {
@@ -2209,7 +2319,7 @@ function cloneCalcRows(entries: CalcRow[]): CalcRow[] {
 function saveCalcAutosaveNow() {
   saveCalcAutosave({
     schemaVersion: 1,
-    totalShards: Math.max(0, Math.floor(Number(totalShards.value) || 0)),
+    totalShards: clampNonNegInt(totalShards.value),
     boostKind: boostKind.value,
     rows: cloneCalcRows(calcRows.value),
     activeRowId: activeCalcRowId.value,
@@ -2570,6 +2680,7 @@ const calcRowsView = computed(() =>
   })
 );
 
+const activeCalcSlotTab = ref(0);
 const calcExportOpen = ref(false);
 const exportSheetEl = ref<HTMLElement | null>(null);
 const exportBusy = ref(false);
@@ -2625,7 +2736,7 @@ function buildCalcExportCsv(): string {
   );
 
   const total = [
-    t("calc.export.total"),
+    "",
     "",
     "",
     "",
@@ -2716,7 +2827,7 @@ async function downloadCalcExportPng() {
       cacheBust: true,
       pixelRatio: 2,
       // Export sheet has its own gradient background; keep fallback close to --paper.
-      backgroundColor: "#fbf6ee",
+      backgroundColor: "#f7f7f7",
       width: w,
       height: h,
       style: {
@@ -2775,8 +2886,9 @@ async function downloadCalcExportPng() {
 }
 
 function natureLabel(n: ExpGainNature): string {
-  if (n === "up") return "↑";
-  if (n === "down") return "↓";
+  // Export/summary badge uses symbols; keep "normal" hidden via empty string.
+  if (n === "up") return "▲";
+  if (n === "down") return "▼";
   return "";
 }
 
@@ -2826,7 +2938,7 @@ const calcShardsCap = computed(() => Math.max(0, Math.floor(Number(totalShards.v
 const calcShardsOver = computed(() => calcTotalShardsUsed.value - calcShardsCap.value);
 const calcShardsUsedPct = computed(() => (calcShardsCap.value > 0 ? (calcTotalShardsUsed.value / calcShardsCap.value) * 100 : 0));
 const calcShardsUsagePctRounded = computed(() => (calcShardsCap.value > 0 ? Math.round(calcShardsUsedPct.value) : 0));
-const showShardsFire = computed(() => calcShardsCap.value > 0 && calcShardsUsedPct.value >= 90);
+const showShardsFire = computed(() => calcShardsCap.value > 0 && calcTotalShardsUsed.value > calcShardsCap.value);
 // Bar rendering:
 // - under cap: fill = used/cap
 // - over cap:  fill = cap/used, over = (used-cap)/used (so green+red = 100%)
@@ -2851,6 +2963,7 @@ const calcBoostCandyOver = computed(() => calcTotalBoostCandyUsed.value - calcBo
 const calcBoostCandyUnused = computed(() => Math.max(0, calcBoostCandyCap.value - calcTotalBoostCandyUsed.value));
 const calcBoostCandyUsedPct = computed(() => (calcBoostCandyCap.value > 0 ? (calcTotalBoostCandyUsed.value / calcBoostCandyCap.value) * 100 : 0));
 const calcBoostCandyUsagePctRounded = computed(() => (calcBoostCandyCap.value > 0 ? Math.round(calcBoostCandyUsedPct.value) : 0));
+const showBoostCandyFire = computed(() => calcBoostCandyCap.value > 0 && calcTotalBoostCandyUsed.value > calcBoostCandyCap.value);
 const calcBoostCandyFillPctForBar = computed(() => {
   const cap = calcBoostCandyCap.value;
   const used = Math.max(0, calcTotalBoostCandyUsed.value);
@@ -3219,6 +3332,11 @@ function onEditSelectedNature(v: string) {
   importStatus.value = t("status.natureUpdated");
 }
 
+function onBoxItemNatureChange() {
+  // This function is called by v-model's @update:model-value listener
+  // The actual update is handled by the selectedNature computed setter
+}
+
 function onEditSelectedIngredientType(v: string) {
   const e = selectedBox.value;
   if (!e) return;
@@ -3283,13 +3401,58 @@ function onBoxEditSubBlur(lvLike: unknown) {
   });
   importStatus.value = t("status.subSkillsUpdated");
 }
+
+function scrollToPanel(id: string) {
+  const el = document.getElementById(id);
+  if (el) {
+    // Offset for sticky nav
+    const y = el.getBoundingClientRect().top + window.scrollY - 60;
+    window.scrollTo({ top: y, behavior: "smooth" });
+  }
+}
 </script>
 
 <style scoped>
 .shell {
-  max-width: 980px;
+  max-width: 1280px;
   margin: 0 auto;
   padding: 28px 18px 64px;
+}
+.mobileNav {
+  display: none;
+}
+@media (max-width: 1023px) {
+  .shell {
+    padding-top: 0; /* sticky nav sits at top */
+  }
+  .mobileNav {
+    display: flex;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: color-mix(in oklab, var(--paper) 95%, var(--ink) 5%);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
+    margin: 0 -18px 16px; /* Negate shell padding */
+    padding: 0 18px;
+  }
+  .mobileNav__item {
+    flex: 1;
+    text-align: center;
+    padding: 10px 0;
+    font-weight: 700;
+    font-size: 14px;
+    color: color-mix(in oklab, var(--ink) 50%, transparent);
+    border-bottom: 3px solid transparent;
+    cursor: pointer;
+  }
+  .mobileNav__item:hover {
+    background: rgba(0,0,0,0.02);
+    color: var(--ink);
+  }
+  .calcSticky {
+    top: 45px; /* ナビゲーションにより近く */
+  }
 }
 .hero {
   display: grid;
@@ -3437,7 +3600,6 @@ function onBoxEditSubBlur(lvLike: unknown) {
 
 /* --- Calculator (multi) --- */
 .calcTop {
-  max-width: 660px;
   margin-top: 12px;
 }
 .calcTop__grid {
@@ -3452,14 +3614,13 @@ function onBoxEditSubBlur(lvLike: unknown) {
   }
 }
 .calcSticky {
-  max-width: 660px;
   position: sticky;
   top: 10px;
   z-index: 30;
   margin-top: 10px;
   padding: 8px;
   border-radius: 16px;
-  background: color-mix(in oklab, var(--paper) 88%, transparent);
+  background: var(--paper);
   border: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
   box-shadow: 0 14px 36px color-mix(in oklab, var(--ink) 12%, transparent);
 }
@@ -3469,20 +3630,9 @@ function onBoxEditSubBlur(lvLike: unknown) {
   flex-wrap: wrap;
   margin-bottom: 10px;
 }
-.calcSum {
-  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
-  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
-  border-radius: 14px;
-  padding: 10px 12px;
-  min-width: 160px;
-  position: relative;
-}
-.calcSum__k {
-  font-family: var(--font-body);
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: color-mix(in oklab, var(--ink) 60%, transparent);
+.calcSticky__summary .calcSum {
+  flex: 1 1 0; /* 均等幅で横並びに */
+  min-width: 140px;
 }
 .calcSum__v {
   font-family: var(--font-heading);
@@ -3491,30 +3641,29 @@ function onBoxEditSubBlur(lvLike: unknown) {
   margin-top: 2px;
 }
 .calcSum--hi .calcSum__v {
-  display: inline-block;
-  padding: 6px 10px;
-  border-radius: 12px;
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--accent-warm) 34%, var(--paper) 66%),
-    color-mix(in oklab, var(--accent-warm) 24%, var(--paper) 76%)
-  );
-  box-shadow:
-    inset 0 1px 0 color-mix(in oklab, var(--paper) 65%, transparent),
-    0 10px 18px color-mix(in oklab, var(--accent-warm) 14%, transparent);
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  color: var(--ink);
+  font-size: 1.5rem; /* Slightly larger for emphasis */
 }
 .calcSum--danger .calcSum__v {
   color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 10%);
 }
+.calcSum__overVal {
+  color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 10%);
+  font-weight: 700;
+  margin-left: 4px;
+}
 .calcSum--bar {
-  flex: 1;
+  flex: 2; /* バーは少し広めに */
   min-width: 220px;
 }
 
 /* Mobile: keep "Shards" and "Remaining" compact and side-by-side */
 @media (max-width: 560px) {
   .calcSticky {
-    top: 6px;
+    top: 45px; /* ナビゲーションにより近く */
     padding: 6px;
     border-radius: 14px;
   }
@@ -3524,25 +3673,8 @@ function onBoxEditSubBlur(lvLike: unknown) {
     gap: 8px;
     margin-bottom: 8px;
   }
-  .calcSticky__summary .calcSum {
-    min-width: 0;
-    padding: 8px 10px;
-    border-radius: 12px;
-  }
-  .calcSum__k {
-    font-size: 11px;
-    letter-spacing: 0.05em;
-  }
-  .calcSum__v {
-    font-size: 16px;
-  }
-  .calcSum--hi .calcSum__v {
-    padding: 5px 8px;
-    border-radius: 10px;
-    box-shadow:
-      inset 0 1px 0 color-mix(in oklab, var(--paper) 65%, transparent),
-      0 8px 14px color-mix(in oklab, var(--accent-warm) 12%, transparent);
-  }
+
+
 
   /* Mobile: shrink header texts (calc title / editing / pokemon name / apply button) */
   .panel__title {
@@ -3577,28 +3709,8 @@ function onBoxEditSubBlur(lvLike: unknown) {
 
   /* Mobile: keep shards + candy(total) side-by-side under inputs (moved near base rules for correct cascade) */
 }
-.calcSum--sparkle::after {
-  content: "";
-  position: absolute;
-  inset: -10px -10px -14px -10px;
-  pointer-events: none;
-  background:
-    radial-gradient(10px 10px at 18% 22%, color-mix(in oklab, var(--accent-warm) 42%, transparent), transparent 65%),
-    radial-gradient(8px 8px at 32% 68%, color-mix(in oklab, var(--accent) 32%, transparent), transparent 70%),
-    radial-gradient(12px 12px at 78% 34%, color-mix(in oklab, var(--accent-warm) 38%, transparent), transparent 68%),
-    radial-gradient(7px 7px at 86% 72%, color-mix(in oklab, var(--accent-cool) 26%, transparent), transparent 70%);
-  filter: blur(0.2px);
-  opacity: 0.65;
-}
-.calcSum--sparkle::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: 14px;
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent-warm) 10%, transparent);
-  opacity: 0.6;
-}
+
+
 .calcSum__head {
   display: flex;
   align-items: baseline;
@@ -3612,10 +3724,15 @@ function onBoxEditSubBlur(lvLike: unknown) {
 .calcBar {
   margin-top: 8px;
 }
+/* Default behavior for stacked bars */
 .calcBarBlock + .calcBarBlock {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed color-mix(in oklab, var(--ink) 14%, transparent);
+  margin-top: 12px;
+}
+/* When bars are inside .calcSum--bar (e.g. usage bars), remove separation border fully */
+.calcSum--bar .calcBarBlock + .calcBarBlock {
+  border-top: 0;
+  padding-top: 0;
+  margin-top: 12px;
 }
 .calcBarBlock--candy .calcBar {
   margin-top: 6px;
@@ -3677,12 +3794,6 @@ function onBoxEditSubBlur(lvLike: unknown) {
   gap: 10px;
   margin-top: 10px;
   margin-bottom: 6px;
-  max-width: 660px;
-}
-@media (min-width: 860px) {
-  .calcSlots {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
 }
 .calcSlot {
   border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
@@ -3694,46 +3805,17 @@ function onBoxEditSubBlur(lvLike: unknown) {
   background: color-mix(in oklab, var(--paper) 96%, var(--ink) 4%);
   border-style: dashed;
 }
-.calcSlot__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-.calcSlot__label {
-  font-family: var(--font-heading);
-  font-weight: 800;
-  letter-spacing: -0.01em;
-}
-.calcSlot__state {
-  font-family: var(--font-body);
-  font-size: 12px;
-  color: color-mix(in oklab, var(--ink) 62%, transparent);
-}
-.calcSlot__actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.calcHint {
-  font-family: var(--font-body);
-  margin: 14px 0 8px;
-  color: color-mix(in oklab, var(--ink) 68%, transparent);
-  font-size: 13px;
-  line-height: 1.6;
-}
+/* Removed old exportCard styles */
 .calcRows {
   display: grid;
-  gap: 12px;
-  margin-top: 10px;
+  gap: 10px;
+  margin-top: 8px;
 }
 .calcRow {
   border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
   background: color-mix(in oklab, var(--paper) 97%, var(--ink) 3%);
   border-radius: 16px;
-  padding: 12px;
+  padding: 6px;
 }
 .calcRow--active {
   border-color: color-mix(in oklab, var(--accent-warm) 34%, var(--ink) 10%);
@@ -3757,7 +3839,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
 .calcRow__headLeft {
   display: flex;
@@ -3769,7 +3851,8 @@ function onBoxEditSubBlur(lvLike: unknown) {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-shrink: 0;
+  margin-left: auto; /* 右寄せ */
 }
 .calcRow__dragHandle {
   cursor: grab;
@@ -3782,6 +3865,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
 .calcRow__dragHandle:active {
   cursor: grabbing;
 }
+/* .calcRow__subHead removed */
 .calcRow__title {
   font-family: var(--font-heading);
   font-weight: 800;
@@ -3793,8 +3877,8 @@ function onBoxEditSubBlur(lvLike: unknown) {
 .calcRow__grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 8px;
+  gap: 5px;
+  margin-top: 1px;
 }
 .calcRow__grid > * {
   min-width: 0;
@@ -3805,21 +3889,29 @@ function onBoxEditSubBlur(lvLike: unknown) {
   }
 }
 .calcRow__result {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-top: 8px;
-  padding-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)); /* 4列で一覧性向上 */
+  gap: 4px 12px; /* コンパクトに */
+  margin-top: 5px;
+  padding-top: 5px;
   border-top: 1px dashed color-mix(in oklab, var(--ink) 14%, transparent);
 }
+/* モバイルでは2列×2行に */
+@media (max-width: 640px) {
+  .calcRow__result {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 16px;
+  }
+}
 .calcRow__res {
-  display: grid;
-  gap: 2px;
-  min-width: 180px;
+  display: flex;
+  justify-content: space-between; /* ラベル左、数字右 */
+  align-items: baseline;
+  min-width: 0;
 }
 .calcRow__k {
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: 11px;
   color: color-mix(in oklab, var(--ink) 60%, transparent);
 }
 .calcRow__v {
@@ -3831,69 +3923,92 @@ function onBoxEditSubBlur(lvLike: unknown) {
   font-size: 16px;
 }
 .calcRow__num {
-  display: inline-block;
-  padding: 6px 10px;
-  border-radius: 12px;
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--accent-warm) 34%, var(--paper) 66%),
-    color-mix(in oklab, var(--accent-warm) 24%, var(--paper) 76%)
-  );
-  box-shadow:
-    inset 0 1px 0 color-mix(in oklab, var(--paper) 65%, transparent),
-    0 10px 18px color-mix(in oklab, var(--accent-warm) 14%, transparent);
+  font-weight: 700;
+  font-size: 19px; /* 数字を大きく統一 */
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  color: var(--ink);
 }
 
-@media (max-width: 560px) {
-  .calcRow__head {
-    flex-wrap: wrap;
-    align-items: flex-start;
-  }
-  .calcRow__headRight {
-    width: 100%;
-    justify-content: flex-end;
-    margin-top: 6px;
-  }
-  /* Mobile: put "Apply to Box" on the next line (narrower, right-aligned) */
-  .calcRow__applyBtn {
-    flex: 0 0 auto;
-    order: 99;
-    margin-left: auto;
-    width: fit-content;
-    max-width: 72%;
-    justify-content: center;
-    white-space: nowrap;
-  }
-  /* Mobile: make results two columns (shards + candy total), breakdown full-width */
-  .calcRow__result {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 10px;
-  }
-  .calcRow__res {
-    min-width: 0;
-  }
-  .calcRow__res:nth-child(3) {
-    grid-column: 1 / -1;
-  }
-  .calcRow__result .calcRow__v {
-    font-size: 15px;
-  }
-}
+
 
 .field--sm {
-  gap: 4px;
+  gap: 1px; /* ラベルと入力の距離を詰める */
 }
 .field--sm .field__label {
-  font-size: 10.5px;
-  letter-spacing: 0.05em;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  height: 14px; /* さらに圧縮 */
+  display: flex;
+  align-items: center;
+  line-height: 1.1;
+  padding-bottom: 0;
+  margin-top: 3px; /* ラベルの上に余白を作り、上の入力欄から離す */
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .field--sm .field__input {
-  padding: 7px 10px;
+  padding: 0 10px; /* Vertical centering via height/flex is safer for inputs, but for simple fix: */
+  height: 32px;
+  display: flex;
+  align-items: center;
   border-radius: 10px;
 }
+/* Ensure select/input text is vertically centered */
+input.field__input, select.field__input {
+  line-height: normal;
+  padding-top: 0;
+  padding-bottom: 0;
+}
 .field--sm .field__sub {
-  font-size: 10.5px;
+  font-size: 10px;
+}
+.field--sm .field__range {
+  /* margin は環境によって効きが弱いので、視覚的に確実に下げる */
+  transform: translateY(4px);
+  margin-bottom: -2px; /* サブ表示との距離を詰める */
+}
+
+.linkBtn {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  font-family: var(--font-body);
+  font-size: 12px; /* 小さめ */
+  text-decoration: underline dotted;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 0;
+}
+.linkBtn:hover:not(:disabled) {
+  color: var(--accent);
+}
+.linkBtn:disabled {
+  opacity: 0.3;
+  cursor: default;
+  text-decoration: none;
+}
+.linkBtn--danger {
+  color: var(--danger);
+  opacity: 0.8;
+}
+.linkBtn--danger:hover:not(:disabled) {
+  color: #b91c1c; /* darker red */
+  opacity: 1;
+}
+.linkBtn--basic {
+  text-decoration: underline dotted;
+  color: var(--ink);
+  opacity: 0.7;
+}
+.linkBtn--basic:hover {
+  color: var(--accent);
+  opacity: 1;
 }
 
 /* --- Export sheet (SNS screenshot) --- */
@@ -3917,11 +4032,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
   width: 100%;
   border-radius: 12px;
   border: 4px double #D4AC0D;
-  background:
-    radial-gradient(1200px 740px at 12% 8%, color-mix(in oklab, var(--accent-warm) 22%, transparent), transparent 68%),
-    radial-gradient(1100px 680px at 86% 12%, color-mix(in oklab, var(--accent-cool) 16%, transparent), transparent 70%),
-    radial-gradient(900px 600px at 55% 30%, color-mix(in oklab, var(--accent) 14%, transparent), transparent 72%),
-    var(--paper);
+  background: #f7f7f7; /* 計算機の背景と同じグレー */
   box-shadow: 0 4px 12px rgba(74, 66, 56, 0.1);
   padding: 16px 22px 16px;
   position: relative;
@@ -3933,12 +4044,18 @@ function onBoxEditSubBlur(lvLike: unknown) {
   border-radius: 0;
   box-shadow: none;
 }
+.exportCalc {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  flex: 1;
+}
 .exportHead {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: flex-start;
   gap: 10px;
-  margin-bottom: 14px;
+  margin-bottom: 4px;
   padding: 0 2px 6px;
   border-radius: 0;
   background: transparent;
@@ -3967,11 +4084,18 @@ function onBoxEditSubBlur(lvLike: unknown) {
   color: color-mix(in oklab, var(--ink) 58%, transparent);
 }
 .exportActions {
-  display: inline-flex;
-  gap: 8px;
+  display: flex;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  gap: 16px;
   align-items: center;
   justify-self: end;
   position: relative;
+}
+.exportCsvMenuTrigger {
+  position: relative;
+  display: flex;
+  align-items: center;
 }
 .exportCsvMenu {
   position: absolute;
@@ -4024,218 +4148,160 @@ function onBoxEditSubBlur(lvLike: unknown) {
   color: color-mix(in oklab, var(--ink) 62%, transparent);
 }
 
-/* Export (reusing calculator UI) */
-.exportCalcTop__nums {
-  margin-bottom: 10px;
+/* Export styles moved to main.css */
+/* --- Export List (New) --- */
+.exportList {
+  display: flex;
+  flex-direction: column;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  border: 1px solid color-mix(in oklab, var(--ink) 6%, transparent);
+  overflow: hidden; /* for rounded corners */
+  margin: 20px 10px 0;
 }
-.exportCalcTop__nums {
+.exportList__head {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  margin-bottom: 10px;
+  grid-template-columns: 2fr 1.2fr 1fr 1fr 1fr 1.3fr;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #f7f7f7; /* match export sheet bg */
+  border-bottom: 2px solid #EBE6DE;
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 11px;
+  color: color-mix(in oklab, var(--ink) 60%, transparent);
+  align-items: center;
 }
-.exportCalcTop .calcSum {
+.exportList__row {
+  display: grid;
+  grid-template-columns: 2fr 1.2fr 1fr 1fr 1fr 1.3fr;
+  gap: 10px;
+  padding: 12px 16px;
+  align-items: center;
+  border-bottom: 1px solid #F0EBE5;
+}
+.exportList__row:last-child {
+  border-bottom: 0;
+}
+.exportList__row:nth-child(even) {
+  background: #FAFAFA;
+}
+.exportList__row--total {
+  background: #f7f7f7;
+  border-top: 2px solid #EBE6DE;
+}
+.exportList__row--total .exportList__col {
+  font-weight: 800;
+}
+.exportList__row--total .exportList__name {
+  font-weight: 900;
+}
+.exportList__col {
   min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
 }
-.exportCalcTop .calcSum__v {
-  font-variant-numeric: tabular-nums;
+.exportList__col.u-align-right { text-align: right; }
+.exportList__col.u-align-center { text-align: center; }
+
+.exportList__nameCol {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
-.exportCalcTop .calcSum--bar {
-  padding: 10px 12px;
-  border-radius: 14px;
+.exportList__name {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 14px;
+  line-height: 1.2;
+  color: var(--ink);
 }
-.exportCalcTop .calcBarBlock + .calcBarBlock {
-  margin-top: 8px;
-  padding-top: 8px;
-}
-.exportCalcTop .calcBar__track {
-  height: 9px;
+.exportList__badge {
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #F0EBE5;
+  color: color-mix(in oklab, var(--ink) 65%, transparent);
+  white-space: nowrap;
 }
 
-.exportCalcGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px;
-  margin-top: 10px;
-}
-.exportCard {
-  border: 1px solid #E5E0D8;
-  background: #FBF7EF;
-  border-radius: 14px;
-  padding: 9px 10px 8px;
-  box-shadow:
-    0 10px 18px rgba(74, 66, 56, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.6);
-}
-.exportCard__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-.exportCard__name {
-  font-family: var(--font-heading);
-  font-weight: 900;
-  letter-spacing: -0.01em;
-  color: #4A4238;
-  line-height: 1.15;
-  overflow-wrap: anywhere;
-}
-.exportCard__badge {
-  flex: 0 0 auto;
-  font-family: var(--font-heading);
-  font-weight: 900;
-  font-size: 11px;
-  line-height: 1;
-  padding: 6px 8px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in oklab, var(--ink) 12%, transparent);
-  background: #FDFBF7;
-  color: color-mix(in oklab, var(--ink) 70%, transparent);
-  min-width: 44px;
-  text-align: center;
-  white-space: nowrap;
-}
-.exportCard__chips {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-.exportChip {
+.exportList__lvWrap {
   display: inline-flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 7px 9px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
-  background: #FDFBF7;
-  font-variant-numeric: tabular-nums;
-}
-.exportChip__k {
-  font-family: var(--font-body);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  color: color-mix(in oklab, var(--ink) 62%, transparent);
-  white-space: nowrap;
-}
-.exportChip__v {
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-weight: 800;
   font-family: var(--font-heading);
-  font-weight: 900;
-  color: #4A4238;
-  white-space: nowrap;
+  background: #F5F2EF;
+  padding: 4px 8px;
+  border-radius: 6px;
+  min-width: 60px;
 }
-.exportChip--num .exportChip__v {
-  font-size: 14px;
+.exportList__arrow {
+  color: color-mix(in oklab, var(--ink) 30%, transparent);
+  font-size: 10px;
 }
+.exportList__numCol .calcRow__num {
+  font-size: 15px;
+  color: #333;
+}
+.exportList__numCol .calcRow__num.calcRow__num--danger {
+  color: var(--danger);
+}
+.u-mobile-label { display: none; }
 
 @media (max-width: 560px) {
-  .exportSheetWrap {
-    width: min(760px, calc(100vw - 24px));
+  .exportStats {
+    grid-template-columns: repeat(2, 1fr);
   }
-  .exportSheet {
-    padding: 18px 16px 14px;
+  .exportList__head { display: none; }
+  .exportList__row {
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px 6px;
+    padding: 14px;
   }
-  /* Mobile: avoid vertical wrapping of header buttons by giving them full row width */
-  .exportHead {
-    grid-template-columns: 1fr;
-    gap: 10px;
-    margin-bottom: 12px;
-    padding-bottom: 0;
-  }
-  .exportHead::before {
-    content: none;
-    display: none;
-  }
-  .exportActions {
-    justify-self: stretch;
+  .exportList__nameCol {
+    grid-column: 1 / -1;
+    margin-bottom: 4px;
+    border-bottom: 1px dashed #EBE6DE;
+    padding-bottom: 8px;
     width: 100%;
-    flex-wrap: nowrap;
   }
-  .exportActions .btn {
-    flex: 1 1 0;
+  .exportList__lvWrap {
+    background: transparent;
+    padding: 0;
+    gap: 4px;
+    font-size: 12px;
+    justify-content: flex-start;
+  }
+  .exportList__lvCol {
+    display: flex; /* Align left on mobile? Or keep center? Let's align left/start for 1st col */
+    align-items: center;
+    justify-content: flex-start;
+    text-align: left;
+    margin-top: auto; /* Push to bottom align with numbers */
+  }
+  .exportList__col.u-align-center { text-align: left; }
+
+  .exportList__numCol {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  .u-mobile-label {
+    display: block;
+    font-size: 9px;
+    color: color-mix(in oklab, var(--ink) 45%, transparent);
+    margin-bottom: 0px;
     white-space: nowrap;
   }
-  .exportCalcTop__nums {
-    grid-template-columns: 1fr 1fr;
+  .exportList__numCol .calcRow__num {
+    font-size: 14px;
   }
-  .exportCalcGrid {
-    grid-template-columns: 1fr;
-  }
-}
-.exportTable {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  table-layout: fixed;
-  font-family: var(--font-body);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  overflow: hidden;
-  border-radius: 0; /* 指定: 表の角は丸めない */
-  border: 1px solid #E5E0D8;
-}
-.exportTable .col-name { width: 32%; }
-.exportTable .col-exp { width: 10%; }
-.exportTable .col-lv { width: 7%; }
-.exportTable .col-num { width: 10%; }
-.exportTable .col-shards { width: 14%; }
-.exportTable th,
-.exportTable td {
-  padding: 7px 8px;
-  border-bottom: 1px solid #E5E0D8;
-  background: #FDFBF7;
-  color: #4A4238;
-}
-.exportTable thead th {
-  font-family: var(--font-heading);
-  font-weight: 900;
-  letter-spacing: 0.01em;
-  font-size: 11.5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  background: #FDFBF7;
-  color: #4A4238;
-}
-.exportSheet:not(.exportSheet--capture) .exportTable thead th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-}
-.exportTable tbody tr:nth-child(2n) td {
-  background: #FBF7EF;
-}
-.exportTable tfoot td {
-  font-family: var(--font-heading);
-  font-weight: 900;
-  border-bottom: 0;
-  background: #FDFBF7;
-  color: #4A4238;
-  border-top: 2px solid var(--xmas-gold);
-  border-bottom: 2px solid var(--xmas-gold);
-}
-.exportTotalLabel {
-  text-align: left;
-}
-.exportTotal {
-  font-variant-numeric: tabular-nums;
-}
-.exportTable tfoot td.ta-r {
-  box-shadow: none;
-}
-.exportName {
-  font-family: var(--font-heading);
-  font-weight: 900;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-.ta-r {
-  text-align: right;
-}
-.ta-c {
-  text-align: center;
 }
 
 
@@ -4423,61 +4489,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
   background: color-mix(in oklab, var(--ink) 10%, transparent);
 }
 
-.btn {
-  font: inherit;
-  cursor: pointer;
-  border: 1px solid color-mix(in oklab, var(--ink) 16%, transparent);
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--paper) 99%, var(--ink) 1%),
-    color-mix(in oklab, var(--paper) 95%, var(--ink) 5%)
-  );
-  padding: 10px 12px;
-  border-radius: 12px;
-  box-shadow: 0 1px 0 color-mix(in oklab, var(--paper) 60%, transparent);
-}
-.btn:hover {
-  border-color: color-mix(in oklab, var(--ink) 26%, transparent);
-  box-shadow:
-    0 1px 0 color-mix(in oklab, var(--paper) 60%, transparent),
-    0 12px 26px color-mix(in oklab, var(--ink) 10%, transparent);
-}
-.btn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 18%, transparent);
-}
-.btn:active:not(:disabled) {
-  transform: translateY(1px);
-  box-shadow: 0 1px 0 color-mix(in oklab, var(--paper) 60%, transparent);
-}
-.btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-.btn--primary {
-  border-color: color-mix(in oklab, var(--accent) 40%, transparent);
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--accent) 18%, var(--paper) 82%),
-    color-mix(in oklab, var(--accent) 14%, var(--paper) 86%)
-  );
-}
-.btn--ghost {
-  background: transparent;
-}
-.btn--danger {
-  border-color: color-mix(in oklab, var(--danger) 40%, transparent);
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--danger) 12%, var(--paper) 88%),
-    color-mix(in oklab, var(--danger) 8%, var(--paper) 92%)
-  );
-}
-.btn--xs {
-  padding: 6px 10px;
-  border-radius: 10px;
-  font-size: 12px;
-}
+/* .btn styles moved to main.css */
 
 .chip {
   display: inline-flex;
@@ -4550,14 +4562,25 @@ function onBoxEditSubBlur(lvLike: unknown) {
   display: inline-flex;
   gap: 8px;
   align-items: center;
+  --boxSortH: 36px;
 }
 .boxSort .btn {
   white-space: nowrap;
   min-width: 56px; /* 「昇順/降順」が2行にならない程度 */
-  justify-content: center;
+  height: var(--boxSortH);
+  padding-top: 0;
+  padding-bottom: 0;
+  display: inline-flex; /* justify-content を効かせる */
+  align-items: center;
+  justify-content: center; /* 「昇順」を中央ぞろえ */
+  text-align: center;
 }
 .boxSort__select {
-  padding: 10px 12px;
+  height: var(--boxSortH);
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
 }
 
 /* ENは文言が長めなので、ソートUIの幅を少しだけ広げて崩れを防ぐ */
@@ -4578,13 +4601,55 @@ function onBoxEditSubBlur(lvLike: unknown) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+/* 新規追加フォームの高さを統一 - グリッド行の固定化で親の伸縮を防止 */
+.boxAddGrid .field:not(.field--wide) {
+  display: grid !important;
+  grid-template-rows: 20px 40px min-content !important; /* ラベル・入力・サブテキスト */
+  align-content: start !important;
+  gap: 6px !important;
+}
+.boxAddGrid .field__label {
+  height: 20px !important;
+  min-height: 20px !important;
+  max-height: 20px !important;
+  display: flex !important;
+  align-items: flex-end !important;
+  line-height: 1 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+}
+.boxAddGrid .field__input,
+.boxAddGrid select.field__input {
+  height: 40px !important;
+  min-height: 40px !important;
+  max-height: 40px !important;
+  box-sizing: border-box !important;
+}
+/* field--sm も同様に */
+.boxAddGrid .field--sm {
+  grid-template-rows: 20px 40px min-content !important;
+}
+.boxAddGrid .field--sm .field__label {
+  height: 20px !important;
+  min-height: 20px !important;
+  max-height: 20px !important;
+}
+.boxAddGrid .field--sm .field__input {
+  height: 40px !important;
+  min-height: 40px !important;
+  max-height: 40px !important;
+}
 .boxAddActions {
   grid-column: 1 / -1;
   display: flex;
   justify-content: flex-end;
   align-items: end;
   gap: 10px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+}
+.boxAddActions .btn {
+  white-space: nowrap;
 }
 @media (min-width: 860px) {
   .boxAddActions {
@@ -4621,7 +4686,8 @@ function onBoxEditSubBlur(lvLike: unknown) {
   display: flex;
   gap: 8px;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap; /* 「検索」と「検索クリア」を1行に固定 */
+  min-width: 0;
 }
 .boxCard__title {
   font-family: var(--font-heading);
@@ -4666,12 +4732,19 @@ function onBoxEditSubBlur(lvLike: unknown) {
 }
 .boxSearch {
   font: inherit;
-  padding: 10px 12px;
+  font-size: 0.875rem; /* btn と同じサイズ感に寄せて高さを揃える */
+  padding: 8px 12px; /* btn の縦paddingに合わせる */
   border-radius: 12px;
   border: 1px solid color-mix(in oklab, var(--ink) 16%, transparent);
   background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
   outline: none;
-  min-width: 220px;
+  min-width: 0; /* flexで縮められるように */
+  flex: 1 1 auto;
+  width: auto;
+}
+.boxCard__tools .btn {
+  white-space: nowrap; /* 「検索クリア」を折り返さない */
+  flex: 0 0 auto;
 }
 .boxSearch:focus-visible {
   border-color: color-mix(in oklab, var(--accent) 60%, var(--ink) 20%);
@@ -4693,104 +4766,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
-.boxTile {
-  width: 100%;
-  text-align: left;
-  cursor: pointer;
-  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
-  --type-wash: transparent;
-  background:
-    radial-gradient(
-      140% 160% at 12% 0%,
-      color-mix(in oklab, var(--type-wash) 32%, transparent),
-      transparent 58%
-    ),
-    linear-gradient(
-      90deg,
-      color-mix(in oklab, var(--box-tile-left, #f1dfc8) 84%, var(--type-wash) 16%),
-      color-mix(in oklab, var(--box-tile-right, #f5f2ea) 86%, var(--type-wash) 14%)
-    );
-  border-radius: 14px;
-  padding: 12px 12px;
-  display: grid;
-  gap: 8px;
-  min-height: 76px;
-}
-.boxTile--type-Normal {
-  --type-wash: #d7d7d7;
-}
-.boxTile--type-Fire {
-  --type-wash: #f84c4cf0;
-}
-.boxTile--type-Water {
-  --type-wash: #68aaf0;
-}
-.boxTile--type-Electric {
-  --type-wash: #f8e130;
-}
-.boxTile--type-Grass {
-  --type-wash: #78C850;
-}
-.boxTile--type-Ice {
-  --type-wash: #98D8D8;
-}
-.boxTile--type-Fighting {
-  --type-wash: #eb9131f4;
-}
-.boxTile--type-Poison {
-  --type-wash: #a256b0;
-}
-.boxTile--type-Ground {
-  --type-wash: #d29d41;
-}
-.boxTile--type-Flying {
-  --type-wash: #6992f2;
-}
-.boxTile--type-Psychic {
-  --type-wash: #ff6e9c;
-}
-.boxTile--type-Bug {
-  --type-wash: #93b219;
-}
-.boxTile--type-Rock {
-  --type-wash: #b88738;
-}
-.boxTile--type-Ghost {
-  --type-wash: #705898;
-}
-.boxTile--type-Dragon {
-  --type-wash: #633bf3;
-}
-.boxTile--type-Dark {
-  --type-wash: #705848;
-}
-.boxTile--type-Steel {
-  --type-wash: #959595;
-}
-.boxTile--type-Fairy {
-  --type-wash: #ffa4cb;
-}
-.boxTile--type-unknown {
-  --type-wash: transparent;
-}
-.boxTile:hover {
-  border-color: color-mix(in oklab, var(--ink) 26%, transparent);
-}
-.boxTile--active {
-  border-color: color-mix(in oklab, var(--accent-warm) 52%, transparent);
-  background:
-    radial-gradient(
-      140% 160% at 12% 0%,
-      color-mix(in oklab, var(--type-wash) 26%, transparent),
-      transparent 60%
-    ),
-    linear-gradient(
-      180deg,
-      color-mix(in oklab, var(--accent-warm) 12%, var(--paper) 88%),
-      color-mix(in oklab, var(--paper) 96%, var(--ink) 4%)
-    );
-  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent-warm) 12%, transparent);
-}
+/* .boxTile styles moved to main.css */
 .boxTile__name {
   font-family: var(--font-heading);
   font-weight: 800;
@@ -4800,6 +4776,167 @@ function onBoxEditSubBlur(lvLike: unknown) {
   font-family: var(--font-body);
   font-size: 12px;
   color: color-mix(in oklab, var(--ink) 62%, transparent);
+}
+.exportStats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin: 15px 10px 12px;
+}
+
+.statCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: white;
+  border-radius: 12px;
+  padding: 10px 14px;
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.04),
+    0 0 0 1px color-mix(in oklab, var(--ink) 6%, transparent);
+}
+
+.calcSlots {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 14px; /* 「結果を1枚にまとめる」下の余白を少し広げる */
+}
+
+/* --- Slot Tabs --- */
+.slotTabs {
+  display: flex;
+  align-items: flex-end;
+  padding: 0 4px;
+}
+.slotTab {
+  appearance: none;
+  font: inherit;
+  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: color-mix(in oklab, var(--paper) 92%, var(--ink) 8%);
+  color: color-mix(in oklab, var(--ink) 60%, transparent);
+  padding: 8px 16px;
+  cursor: pointer;
+  margin-right: -1px;
+  position: relative;
+  font-weight: 700;
+  font-size: 13px;
+  flex: 1;
+  text-align: center;
+  transition: background 0.2s, color 0.2s;
+}
+.slotTab:first-child {
+  border-top-left-radius: 12px;
+}
+.slotTab:last-child {
+  border-top-right-radius: 12px;
+  margin-right: 0;
+}
+.slotTab--active {
+  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%); /* Match content bg */
+  color: var(--ink);
+  z-index: 2;
+  padding-top: 10px; /* Pop up slightly */
+  margin-top: -2px;
+  border-bottom: 1px solid transparent; /* Hide border */
+  margin-bottom: -1px; /* Overlap content border */
+}
+
+.slotContent {
+  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
+  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
+  border-radius: 0;
+
+  padding: 10px 12px;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  flex-wrap: wrap; /* 画面が狭い時は自然に折り返し */
+}
+.calcSlot__actions {
+  display: inline-flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.calcSlot__state {
+  margin-left: 8px; /* ボタンの右隣に寄せつつ、少しだけ間を空ける */
+  white-space: nowrap;
+}
+.calcSlot__btn {
+  white-space: nowrap;
+  padding: 4px 10px; /* 少し押しやすく */
+}
+/* If first tab is active, fix top-left corner */
+.slotTabs:has(.slotTab--active:first-child) + .slotContent {
+  border-top-left-radius: 0;
+}
+/* Fallback for no :has support (though modern browsers have it) or just keep 0 radius for top corners generally?
+   Let's keep top-left 0 as implied by the design where tabs are usually left-aligned. */
+
+
+.statCard--accent {
+  background: linear-gradient(135deg, #FFF5F7 0%, #FFF0F0 100%);
+  box-shadow:
+    0 2px 6px rgba(255, 100, 100, 0.1),
+    0 0 0 1px rgba(255, 100, 100, 0.15);
+}
+.statCard--primary {
+  background: linear-gradient(135deg, #F0F7FF 0%, #E6F2FF 100%);
+  box-shadow:
+    0 2px 6px rgba(50, 100, 255, 0.1),
+    0 0 0 1px rgba(50, 100, 255, 0.15);
+}
+.statCard--danger {
+  background: #FFF5F5;
+  color: #D32F2F;
+}
+
+.statCard__icon {
+  font-size: 20px;
+  line-height: 1;
+}
+.statCard__content {
+  min-width: 0;
+}
+.statCard__label {
+  font-size: 10px;
+  color: color-mix(in oklab, var(--ink) 50%, transparent);
+  line-height: 1;
+  margin-bottom: 4px;
+  white-space: nowrap;
+}
+.statCard__value {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 30px;
+  line-height: 1;
+  color: var(--ink);
+}
+.statCard__value--danger {
+  color: var(--danger);
+}
+.calcRow__num--danger {
+  color: var(--danger);
+}
+.statCard--danger .statCard__value {
+  color: #D32F2F;
+}
+.exportCalcTop__nums {
+  margin-left: 20px;
+}
+
+.exportCalc .calcBarBlock + .calcBarBlock {
+  border-top: 0;
+}
+
+.exportCalc .calcSum--bar {
+  margin: 0 20px;
 }
 .boxTile__fav {
   margin-left: 8px;
@@ -4838,7 +4975,30 @@ function onBoxEditSubBlur(lvLike: unknown) {
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
-  justify-content: space-between;
+  justify-content: flex-start;
+  min-width: 0;
+}
+.boxFilters__row--main {
+  flex-wrap: nowrap; /* 「条件結合 + AND/OR + お気に入り + ★」を1行固定 */
+}
+.boxFilters__row--main > .boxFilters__group:last-child {
+  margin-left: 0.9em; /* 「お気に入り」の左に1文字分くらいの余白 */
+}
+.boxFilters__row--chips {
+  margin-top: 8px;
+}
+.boxFilters__row--main .boxFilters__group {
+  flex-wrap: nowrap;
+}
+.boxFilters__row--main .boxFilters__select {
+  min-width: 0;
+  width: 140px;
+  flex: 0 1 auto;
+}
+@media (max-width: 420px) {
+  .boxFilters__row--main .boxFilters__select {
+    width: 120px;
+  }
 }
 .boxFilters__row--sub {
   margin-top: 10px;
@@ -4880,6 +5040,13 @@ function onBoxEditSubBlur(lvLike: unknown) {
   align-items: center;
   gap: 8px;
   box-shadow: 0 1px 0 color-mix(in oklab, var(--paper) 60%, transparent);
+}
+.chipBtn--iconOnly {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  gap: 0;
+  justify-content: center;
 }
 .chipBtn:hover {
   border-color: color-mix(in oklab, var(--ink) 26%, transparent);
@@ -5068,6 +5235,7 @@ function onBoxEditSubBlur(lvLike: unknown) {
 @media (min-width: 860px) {
   .boxDetail__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 18px; /* 左右列の間を少し広げる */
   }
 }
 .boxDetail__col {
@@ -5076,10 +5244,17 @@ function onBoxEditSubBlur(lvLike: unknown) {
   gap: 10px;
 }
 .boxDetail__kv {
-  border: 1px solid color-mix(in oklab, var(--ink) 12%, transparent);
-  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
-  border-radius: 14px;
-  padding: 10px 12px;
+  /* 多重の囲いに見えやすいので、項目カードの枠/面は消して入力欄を主役にする */
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  padding: 8px 0;
+}
+.boxDetail__col > .boxDetail__kv {
+  border-bottom: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
+}
+.boxDetail__col > .boxDetail__kv:last-child {
+  border-bottom: 0;
 }
 .boxDetail__k {
   font-family: var(--font-body);
@@ -5092,6 +5267,34 @@ function onBoxEditSubBlur(lvLike: unknown) {
   margin-top: 6px;
   font-family: var(--font-heading);
   font-weight: 800;
+}
+.boxDetail {
+  --boxFieldH: 30px;
+}
+/* Box詳細の入力高さを統一（ニックネーム基準で揃える） */
+.boxDetail .field__input,
+.boxDetail select.field__input,
+.boxDetail .field__input--button {
+  height: var(--boxFieldH);
+  min-height: var(--boxFieldH);
+  max-height: var(--boxFieldH);
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: normal;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+}
+/* monospace領域でも入力は同じ高さ・同じ縦センターに */
+.boxDetail__v--mono .field__input,
+.boxDetail__v--mono select.field__input,
+.boxDetail__v--mono .field__input--button {
+  height: var(--boxFieldH);
+  min-height: var(--boxFieldH);
+  max-height: var(--boxFieldH);
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: normal;
 }
 .boxDetail__minor {
   margin-left: 8px;
