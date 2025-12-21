@@ -761,14 +761,15 @@ async function downloadCalcExportPng() {
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
   }
-  .exportSheet { border-radius: 0; padding: 12px 14px 16px; border: 0; box-shadow: none; }
+  /* Mobile: remove the outer frame (the inner blocks already have their own borders) */
+  .exportSheet { border-radius: 0; padding: 0; border: 0; box-shadow: none; background: transparent; }
   .exportHead {
     position: sticky;
     top: 0;
     z-index: 2;
     background: #f7f7f7;
-    padding: 10px 0 8px;
-    margin: -12px 0 6px;
+    padding: 10px 14px 8px;
+    margin: 0 0 6px;
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -791,11 +792,11 @@ async function downloadCalcExportPng() {
   .exportActions { gap: 12px; }
   .linkBtn { line-height: 1.2; padding: 2px 0; }
   .exportBrand { font-size: 16px; margin-top: 0; }
-  .exportStats { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 12px 0 10px; gap: 10px; }
+  .exportStats { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 12px 14px 10px; gap: 10px; }
   .statCard { min-width: 0; padding: 9px 10px; gap: 8px; }
   .statCard__icon { display: none; }
   .statCard__value { font-size: clamp(18px, 6.2vw, 24px); letter-spacing: -0.02em; }
-  .exportBars { margin: 6px 0 0; padding: 12px 12px; }
+  .exportBars { margin: 6px 14px 0; padding: 12px 12px; }
   .exportList { margin: 16px 0 0; }
   .exportList__head { display: none; }
   .exportList__row { grid-template-columns: repeat(5, 1fr); gap: 8px 6px; padding: 14px; }
