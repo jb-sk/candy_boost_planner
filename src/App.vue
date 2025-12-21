@@ -1293,6 +1293,21 @@ input.field__input, select.field__input {
   white-space: nowrap; /* 「検索クリア」を折り返さない */
   flex: 0 0 auto;
 }
+
+/* Mobile: make search row more compact to avoid widening/clipping */
+@media (max-width: 560px) {
+  .boxCard__tools { gap: 6px; }
+  .boxSearch {
+    padding: 7px 10px;
+    font-size: 12px;
+    flex: 0 1 220px; /* slightly smaller than full width */
+    max-width: 260px;
+  }
+  .boxCard__tools .btn {
+    padding: 7px 8px;
+    font-size: 12px;
+  }
+}
 .boxSearch:focus-visible {
   border-color: color-mix(in oklab, var(--accent) 60%, var(--ink) 20%);
   box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 18%, transparent);
