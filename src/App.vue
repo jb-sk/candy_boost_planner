@@ -666,16 +666,16 @@
           </div>
         </details>
 
-        <details class="boxDisclosure">
-          <summary class="boxDisclosure__summary">
+        <div class="boxDisclosure">
+          <div class="boxDisclosure__summary" aria-hidden="true">
             <span class="boxDisclosure__title">{{ t("box.import.title") }}</span>
             <span class="boxDisclosure__hint">{{ t("box.import.hint") }}</span>
-          </summary>
+          </div>
           <div class="boxCard boxCard--inner">
             <p class="boxCard__desc">
               {{ t("box.import.desc") }}
             </p>
-            <textarea v-model="importText" class="boxTextarea" rows="7" :placeholder="t('box.import.ph')" />
+            <textarea v-model="importText" class="boxTextarea" rows="7" :placeholder="t('box.import.ph')"></textarea>
             <div class="boxCard__actions">
               <button class="btn btn--primary" type="button" @click="onImport">
                 {{ t("box.import.run") }}
@@ -686,7 +686,7 @@
               <span class="boxCard__status" v-if="importStatus">{{ importStatus }}</span>
             </div>
           </div>
-        </details>
+        </div>
 
         <div class="boxCard">
           <div class="boxCard__head">
@@ -4695,10 +4695,14 @@ input.field__input, select.field__input {
   gap: 10px;
   font-family: var(--font-heading);
   font-weight: 800;
+  width: 100%;
+  text-align: left;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
 }
-.boxDisclosure__summary::-webkit-details-marker {
-  display: none;
-}
+.boxDisclosure__summary::-webkit-details-marker { display: none; }
 .boxDisclosure__title {
   letter-spacing: -0.01em;
 }
@@ -4708,7 +4712,8 @@ input.field__input, select.field__input {
   font-size: 12px;
   color: color-mix(in oklab, var(--ink) 60%, transparent);
 }
-.boxDisclosure[open] .boxDisclosure__summary {
+.boxDisclosure[open] .boxDisclosure__summary,
+.boxDisclosure--open .boxDisclosure__summary {
   margin-bottom: 10px;
 }
 .boxSort {
@@ -4861,6 +4866,11 @@ input.field__input, select.field__input {
   background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
   outline: none;
   resize: vertical;
+  /* iOS Safari: explicitly allow native selection/callout + scrolling while focused */
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+  touch-action: pan-y;
 }
 .boxTextarea:focus-visible {
   border-color: color-mix(in oklab, var(--accent) 60%, var(--ink) 20%);

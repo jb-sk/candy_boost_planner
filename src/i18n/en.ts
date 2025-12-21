@@ -133,6 +133,7 @@ export const en = {
       hint: "(paste multiple lines)",
       desc: "1 line = 1 Pokémon (iv or iv＠nickname). Raw text is kept even if it includes extra data like ingredients/subskills.",
       ph: "Paste here (multiple lines)",
+      paste: "Paste",
       run: "Import",
     },
     list: {
@@ -186,6 +187,8 @@ export const en = {
   status: {
     undo: "Undid the last change",
     inputEmpty: "Input is empty",
+    pasted: "Pasted",
+    pasteNotAvailable: "Paste failed (use the native paste menu, or paste from another app)",
     importResult: "Imported: {added} / Skipped: {skipped}",
     subSkillUnknown: "Unknown Sub Skill (pick from suggestions to be safe)",
     subSkillUnknownIgnored: "Unknown Sub Skill (it will be ignored on save)",
