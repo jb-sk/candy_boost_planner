@@ -1101,6 +1101,37 @@ input.field__input, select.field__input {
     min-width: 120px;
   }
 }
+
+/* Mobile EN: prevent horizontal clipping caused by "nowrap" filter/search rows */
+@media (max-width: 560px) {
+  /* Filters row is forced to 1-line; shrink controls slightly for EN */
+  .shell[data-locale="en"] .boxFilters__row--main {
+    gap: 8px;
+  }
+  .shell[data-locale="en"] .boxFilters__row--main > .boxFilters__group:last-child {
+    margin-left: 0.5em;
+  }
+  .shell[data-locale="en"] .boxFilters__row--main .boxFilters__group {
+    gap: 6px;
+  }
+  .shell[data-locale="en"] .boxFilters__row--main .boxFilters__label {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+  }
+  .shell[data-locale="en"] .boxFilters__row--main .boxFilters__select {
+    width: 96px;
+  }
+  /* Make the star/favorite chips a bit tighter */
+  .shell[data-locale="en"] .boxFilters__row--main .chipBtn {
+    padding: 6px 8px;
+  }
+
+  /* Search row is forced to 1-line; tighten the "Clear search" button */
+  .shell[data-locale="en"] .boxCard__tools .btn {
+    padding: 7px 8px;
+    font-size: 12px;
+  }
+}
 .boxAddGrid {
   display: grid;
   grid-template-columns: 1fr;
