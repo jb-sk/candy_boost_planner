@@ -3465,6 +3465,7 @@ function scrollToPanel(id: string) {
     top: 45px; /* ナビゲーションにより近く */
   }
 }
+
 .hero {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -3572,6 +3573,37 @@ function scrollToPanel(id: string) {
   border-radius: 18px;
   padding: 18px 18px;
   box-shadow: var(--shadow-1);
+}
+
+/* --- Mobile layout polish (avoid horizontal clipping) --- */
+@media (max-width: 560px) {
+  .hero {
+    grid-template-columns: 1fr; /* stack support under title */
+    gap: 14px;
+  }
+  .support {
+    justify-items: start;
+  }
+  .support__links {
+    justify-content: flex-start;
+    max-width: 100%;
+  }
+  .support__link {
+    font-size: 11px;
+    padding: 6px 9px;
+    max-width: 100%;
+    white-space: normal; /* allow wrap instead of overflowing */
+  }
+
+  /* Mobile is narrow: remove outer "panel" frame so content can breathe */
+  .panel.panel--calc,
+  .panel.panel--box {
+    border: 0;
+    box-shadow: none;
+    background: transparent;
+    border-radius: 0;
+    padding: 0;
+  }
 }
 .panel__head {
   display: flex;
