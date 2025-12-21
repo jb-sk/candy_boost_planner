@@ -499,9 +499,25 @@ function scrollToPanel(id: string) {
   justify-content: space-between;
   gap: 10px;
 }
+.calcSum__head > .calcSum__k {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  white-space: nowrap; /* prevent wrap -> stable height on mobile */
+}
+.calcSum__kText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .calcSum__k--right {
   white-space: nowrap;
   text-align: right;
+}
+.calcSum__overVal {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 .calcBar {
   margin-top: 8px;

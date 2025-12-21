@@ -48,8 +48,10 @@
         <div class="calcBarBlock calcBarBlock--candy" :class="{ 'calcBarBlock--danger': calc.boostCandyOver.value > 0 }">
           <div class="calcSum__head">
             <div class="calcSum__k">
-              {{ t("calc.boostCandyUsage", { pct: calc.boostCandyUsagePctRounded.value }) }}
-              <span v-if="calc.showBoostCandyFire.value" aria-hidden="true"> 🔥</span>
+              <span class="calcSum__kText">
+                {{ t("calc.boostCandyUsage", { pct: calc.boostCandyUsagePctRounded.value }) }}
+                <span v-if="calc.showBoostCandyFire.value" aria-hidden="true"> 🔥</span>
+              </span>
               <span v-if="calc.boostCandyOver.value > 0" class="calcSum__overVal"> (+{{ calc.fmtNum(calc.boostCandyOver.value) }})</span>
             </div>
             <div class="calcSum__k calcSum__k--right">
@@ -78,12 +80,14 @@
         <div class="calcBarBlock">
           <div class="calcSum__head">
             <div class="calcSum__k">
-              {{
-                calc.shardsCap.value > 0
-                  ? t("calc.shardsUsage", { pct: calc.shardsUsagePctRounded.value })
-                  : t("calc.shardsUsageDash")
-              }}
-              <span v-if="calc.showShardsFire.value" aria-hidden="true"> 🔥</span>
+              <span class="calcSum__kText">
+                {{
+                  calc.shardsCap.value > 0
+                    ? t("calc.shardsUsage", { pct: calc.shardsUsagePctRounded.value })
+                    : t("calc.shardsUsageDash")
+                }}
+                <span v-if="calc.showShardsFire.value" aria-hidden="true"> 🔥</span>
+              </span>
               <span v-if="calc.shardsOver.value > 0" class="calcSum__overVal"> (+{{ calc.fmtNum(calc.shardsOver.value) }})</span>
             </div>
             <div class="calcSum__k calcSum__k--right">
