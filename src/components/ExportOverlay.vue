@@ -769,7 +769,7 @@ async function downloadCalcExportPng() {
     z-index: 2;
     background: #f7f7f7;
     padding: 10px 14px 8px;
-    margin: 0 0 6px;
+    margin: 0;
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -792,7 +792,8 @@ async function downloadCalcExportPng() {
   .exportActions { gap: 12px; }
   .linkBtn { line-height: 1.2; padding: 2px 0; }
   .exportBrand { font-size: 16px; margin-top: 0; }
-  .exportStats { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 12px 14px 10px; gap: 10px; }
+  /* Remove the subtle gap under the sticky header */
+  .exportStats { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0 14px 10px; gap: 10px; }
   .statCard { min-width: 0; padding: 9px 10px; gap: 8px; }
   .statCard__icon { display: none; }
   .statCard__value { font-size: clamp(18px, 6.2vw, 24px); letter-spacing: -0.02em; }
