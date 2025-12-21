@@ -1095,10 +1095,10 @@ input.field__input, select.field__input {
 /* ENは文言が長めなので、ソートUIの幅を少しだけ広げて崩れを防ぐ（モバイルでは逆に溢れるので適用しない） */
 @media (min-width: 640px) {
   .shell[data-locale="en"] .boxSort__select {
-    min-width: 120px;
+    min-width: 96px; /* "Label/Level" に合わせて少しコンパクトに */
   }
   .shell[data-locale="en"] .boxSort .btn {
-    min-width: 120px;
+    min-width: 64px; /* "ASC/DESC" に合わせて縮める */
   }
 }
 
