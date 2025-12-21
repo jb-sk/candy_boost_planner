@@ -135,6 +135,7 @@ export const ja = {
       desc: "1行=1匹（iv または iv＠nickname）。食材/サブスキル等の不要データも含めて raw を保持します。",
       ph: "ここに貼り付け（複数行）",
       paste: "貼り付け",
+      pasteHelp: "ペーストメニューが出ない場合はこちら",
       run: "取り込み",
     },
     list: {
@@ -189,7 +190,7 @@ export const ja = {
     undo: "Undoしました",
     inputEmpty: "入力が空です",
     pasted: "貼り付けました",
-    pasteNotAvailable: "貼り付けできませんでした（長押しメニューか、別アプリから貼り付けてください）",
+    pasteNotAvailable: "貼り付けできませんでした",
     importResult: "取り込み: {added}件 / スキップ: {skipped}件",
     subSkillUnknown: "未知のサブスキルです（補完から選ぶと確実です）",
     subSkillUnknownIgnored: "未知のサブスキルです（保存時は無視されます）",

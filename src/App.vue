@@ -677,6 +677,10 @@
             </p>
             <textarea v-model="importText" class="boxTextarea" rows="7" :placeholder="t('box.import.ph')"></textarea>
             <div class="boxCard__actions">
+              <button class="btn btn--ghost" type="button" @click="onPasteImport">
+                {{ t("box.import.paste") }}
+              </button>
+              <span class="boxCard__status" aria-hidden="true">{{ t("box.import.pasteHelp") }}</span>
               <button class="btn btn--primary" type="button" @click="onImport">
                 {{ t("box.import.run") }}
               </button>
@@ -1427,6 +1431,26 @@ const importStatus = ref("");
 const boxFilter = ref("");
 const boxSortKey = ref<"label" | "level">("label");
 const boxSortDir = ref<"asc" | "desc">("asc");
+
+async function onPasteImport() {
+  // Optional helper: may trigger a permission prompt depending on OS/browser settings.
+  // If it fails, users can still paste via the native menu.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const nav: any = navigator as any;
+    if (nav?.clipboard?.readText) {
+      const t0 = await nav.clipboard.readText();
+      if (typeof t0 === "string" && t0.length) {
+        importText.value = t0;
+        importStatus.value = t("status.pasted");
+        return;
+      }
+    }
+    importStatus.value = t("status.pasteNotAvailable");
+  } catch {
+    importStatus.value = t("status.pasteNotAvailable");
+  }
+}
 
 type FilterJoinMode = "and" | "or";
 const filterJoinMode = ref<FilterJoinMode>("and"); // とくい/サブスキル の結合
