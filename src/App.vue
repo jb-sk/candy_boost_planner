@@ -2834,7 +2834,10 @@ async function downloadCalcExportPng() {
     const w = Math.max(el.scrollWidth, el.clientWidth, 1);
     const h = Math.max(el.scrollHeight, el.clientHeight, 1);
     // iOS / 大きいデータで pixelRatio を上げすぎると描画が乱れやすいので控えめに
-    const pixelRatio = isLikelyIOS || h > 6000 ? 1.5 : 2;
+    // 基準: 面積（w*h）と高さで段階的に下げる
+    const area = w * h;
+    const pixelRatio =
+      isLikelyIOS ? 1.5 : h > 6500 || area > 11_000_000 ? 1.25 : h > 5000 || area > 8_000_000 ? 1.5 : 2;
     const dataUrl = await toPng(el, {
       cacheBust: true,
       pixelRatio,
@@ -4301,10 +4304,15 @@ input.field__input, select.field__input {
   }
   .exportActions {
     justify-self: start;
-    justify-content: flex-end;
+    justify-content: flex-start;
     flex-wrap: wrap;
     white-space: normal;
     gap: 12px;
+    max-width: 100%;
+  }
+  .linkBtn {
+    line-height: 1.2;
+    padding: 2px 0; /* タップしやすく＆見切れ防止 */
   }
   .exportBrand {
     font-size: 16px;
@@ -4316,8 +4324,19 @@ input.field__input, select.field__input {
     gap: 10px;
   }
   .statCard { min-width: 0; }
+  /* モバイルは横幅が厳しいので、合計カードのアイコンを省略して詰める */
+  .statCard__icon { display: none; }
+  .statCard {
+    padding: 9px 10px;
+    gap: 8px;
+  }
+  /* ラベルを折り返し可能にして、右側にはみ出さないように */
+  .statCard__label {
+    white-space: normal;
+    line-height: 1.15;
+  }
   .statCard__value {
-    font-size: clamp(20px, 7vw, 28px);
+    font-size: clamp(18px, 6.2vw, 24px);
     letter-spacing: -0.02em;
   }
   .exportList {
