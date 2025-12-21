@@ -153,15 +153,6 @@ function scrollToPanel(id: string) {
     window.scrollTo({ top: y, behavior: "smooth" });
   }
 }
-
-function scrollToPanel(id: string) {
-  const el = document.getElementById(id);
-  if (el) {
-    // Offset for sticky nav
-    const y = el.getBoundingClientRect().top + window.scrollY - 60;
-    window.scrollTo({ top: y, behavior: "smooth" });
-  }
-}
 </script>
 
 <style>
