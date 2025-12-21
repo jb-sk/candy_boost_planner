@@ -700,6 +700,15 @@ function scrollToPanel(id: string) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px 16px;
   }
+  /* Mobile EN: large numbers like "2,180,569" can force flex items to exceed width.
+     Allow wrapping/break opportunities so the layout doesn't widen and clip the right side. */
+  .shell[data-locale="en"] .calcRow__result .calcRow__v {
+    min-width: 0;
+  }
+  .shell[data-locale="en"] .calcRow__result .calcRow__num {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
 }
 .calcRow__res {
   display: flex;
