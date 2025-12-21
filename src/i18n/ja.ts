@@ -181,6 +181,7 @@ export const ja = {
       relinkNoCandidate: "候補なし",
       level: "レベル",
     },
+    deleteFromBox: "ボックスから削除",
     empty: "まだ1匹もありません。上でインポートするか、新規追加してください。",
   },
   status: {

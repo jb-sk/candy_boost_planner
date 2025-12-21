@@ -849,11 +849,11 @@
                 <div class="boxDetail__head">
                   <h4 class="boxDetail__title">{{ t("box.list.selected", { name: displayBoxTitle(selectedBox) }) }}</h4>
                   <div class="boxDetail__actions">
-                    <button class="btn btn--primary" type="button" @click="applyBoxToCalculator">
+                    <button class="btn btn--primary" type="button" @click="applyBoxToCalculator($event)">
                       {{ t("box.add.toCalc") }}
                     </button>
                     <button class="btn btn--danger" type="button" @click="onDeleteSelected">
-                      {{ t("common.delete") }}
+                      {{ t("box.deleteFromBox") }}
                     </button>
                   </div>
                 </div>
@@ -3109,9 +3109,14 @@ function onCalcRowBoostCandy(id: string, v: string) {
   updateCalcRow(id, { boostCandyInput: n, mode: "candy" });
 }
 
-function applyBoxToCalculator() {
+function applyBoxToCalculator(ev?: MouseEvent) {
   const e = selectedBox.value;
   if (!e) return;
+  // Mobile: updating the calculator (above the box) can trigger browser scroll-anchoring,
+  // causing a small "jump" while the user is viewing the box.
+  // Anchor to the clicked button's visual position and compensate after DOM updates.
+  const anchorEl = (ev?.currentTarget as HTMLElement | null) ?? null;
+  const prevTop = anchorEl ? anchorEl.getBoundingClientRect().top : null;
 
   const lvl = e.planner?.level ?? e.derived?.level ?? 10;
   const expT = (e.planner?.expType ?? e.derived?.expType ?? 600) as ExpType;
@@ -3158,7 +3163,16 @@ function applyBoxToCalculator() {
   }
 
   nextTick(() => {
-    activeTab.value = "calc";
+    // Compensate the browser's scroll-anchoring after layout settles.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (!anchorEl || prevTop == null) return;
+        if (!anchorEl.isConnected) return;
+        const nextTop = anchorEl.getBoundingClientRect().top;
+        const dy = nextTop - prevTop;
+        if (Math.abs(dy) > 1) window.scrollBy(0, dy);
+      });
+    });
   });
 }
 
@@ -3573,6 +3587,10 @@ function scrollToPanel(id: string) {
   border-radius: 18px;
   padding: 18px 18px;
   box-shadow: var(--shadow-1);
+}
+/* Prevent scroll anchoring jumps when calc content (above the box) changes */
+.panel--calc {
+  overflow-anchor: none;
 }
 
 /* --- Mobile layout polish (avoid horizontal clipping) --- */

@@ -180,6 +180,7 @@ export const en = {
       relinkNoCandidate: "No candidates",
       level: "Level",
     },
+    deleteFromBox: "Delete from Box",
     empty: "No Pokémon yet. Import above or add a new entry.",
   },
   status: {
