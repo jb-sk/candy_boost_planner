@@ -1296,16 +1296,27 @@ input.field__input, select.field__input {
 
 /* Mobile: make search row more compact to avoid widening/clipping */
 @media (max-width: 560px) {
+  /* Place search row under the "List" title to avoid squeezing the title (JP can look vertical) */
+  .boxCard__head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
   .boxCard__tools { gap: 6px; }
   .boxSearch {
     padding: 7px 10px;
     font-size: 12px;
-    flex: 0 1 220px; /* slightly smaller than full width */
+    flex: 0 1 220px; /* keep compact but left-aligned under the title */
     max-width: 260px;
   }
   .boxCard__tools .btn {
     padding: 7px 8px;
     font-size: 12px;
+  }
+  /* Now that it's under the title, align left and allow wrap if needed */
+  .boxCard__tools {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 }
 .boxSearch:focus-visible {
