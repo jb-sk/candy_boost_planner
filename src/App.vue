@@ -643,6 +643,7 @@ function scrollToPanel(id: string) {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex: 1 1 auto; /* allow title to shrink within the row */
   min-width: 0;
 }
 .calcRow__headRight {
@@ -668,6 +669,8 @@ function scrollToPanel(id: string) {
   font-family: var(--font-heading);
   font-weight: 800;
   letter-spacing: -0.01em;
+  flex: 1 1 auto;
+  min-width: 0; /* critical: allow shrinking even for long unbroken EN nicknames */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1353,6 +1356,10 @@ input.field__input, select.field__input {
   font-family: var(--font-heading);
   font-weight: 800;
   line-height: 1.2;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .boxTile__lv {
   font-family: var(--font-body);
