@@ -274,9 +274,10 @@ function fmtNum(n: number): string {
 
 const exportMonthLabel = computed(() => {
   const d = new Date();
-  const loc = locale.value === "en" ? "en" : "ja-JP";
-  // e.g. "2025年12月" / "December 2025"
-  return new Intl.DateTimeFormat(loc, { year: "numeric", month: "long" }).format(d).replace(/\s+/g, "");
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  // 日は不要。要望通り「YYYY年M月」で固定。
+  return `${y}年${m}月`;
 });
 
 function csvCell(v: unknown): string {
@@ -506,16 +507,24 @@ async function downloadCalcExportPng() {
   text-align: center;
 }
 .exportMeta {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
   min-width: 0;
 }
 .exportMonth {
-  font-family: var(--font-body);
-  font-size: 12px;
-  color: color-mix(in oklab, var(--ink) 58%, transparent);
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  font-family: var(--font-heading);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  font-size: 17px; /* タイトルに寄せる */
+  color: color-mix(in oklab, var(--ink) 88%, transparent);
+  line-height: 1.15;
   white-space: nowrap;
 }
 .exportBrand {
@@ -534,6 +543,7 @@ async function downloadCalcExportPng() {
   align-items: center;
   justify-content: flex-end;
   position: relative;
+  justify-self: end;
 }
 .exportActions .linkBtn { white-space: nowrap; }
 .exportCsvMenuTrigger { position: relative; display: flex; align-items: center; }
@@ -765,7 +775,19 @@ async function downloadCalcExportPng() {
     gap: 8px;
   }
   .exportHead__top { justify-content: flex-start; text-align: left; }
-  .exportMeta { gap: 10px; }
+  .exportMeta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .exportMonth {
+    position: static;
+    left: auto;
+    transform: none;
+    text-align: left;
+    font-size: 16px; /* モバイルはタイトルと同程度に */
+  }
   .exportActions { gap: 12px; }
   .linkBtn { line-height: 1.2; padding: 2px 0; }
   .exportBrand { font-size: 16px; margin-top: 0; }
