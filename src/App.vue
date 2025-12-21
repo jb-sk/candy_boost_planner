@@ -4348,9 +4348,6 @@ input.field__input, select.field__input {
     padding: 0 2px 6px;
     background: transparent;
   }
-  .exportStats {
-    grid-template-columns: repeat(2, 1fr);
-  }
   .exportList__head { display: none; }
   .exportList__row {
     grid-template-columns: repeat(5, 1fr);
