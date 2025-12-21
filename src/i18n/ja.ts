@@ -47,7 +47,7 @@ export const ja = {
     boostCandyUsageAria: "アメブ使用 {pct}% / 上限 {cap}",
     slot: "スロット{n}",
     slotEmpty: "空",
-    addHint: "追加方法: ポケモンボックスの詳細で「計算機に追加（反映）」を押すと、このリストに追加されます。",
+    addHint: "追加方法: ポケモンボックスの詳細で「計算する（反映）」を押すと、このリストに追加されます。",
     empty: "まだ計算対象がありません。ポケモンボックスから追加してください。",
     row: {
       dragReorder: "ドラッグして並び替え",
@@ -126,7 +126,7 @@ export const ja = {
       subSkillLvPh: "（任意）",
       subSkillExample: "例: きのみの数S",
       subSkillNote: "入力は日本語名。保存時に内部英名へ変換します。",
-      toCalc: "計算機に追加（反映）",
+      toCalc: "計算する（反映）",
       toBox: "ボックスに追加",
     },
     import: {
@@ -134,6 +134,8 @@ export const ja = {
       hint: "（複数行貼り付け）",
       desc: "1行=1匹（iv または iv＠nickname）。食材/サブスキル等の不要データも含めて raw を保持します。",
       ph: "ここに貼り付け（複数行）",
+      paste: "貼り付け",
+      pasteHelp: "ペーストメニューが出ない場合はこちら",
       run: "取り込み",
     },
     list: {
@@ -181,11 +183,14 @@ export const ja = {
       relinkNoCandidate: "候補なし",
       level: "レベル",
     },
+    deleteFromBox: "ボックスから削除",
     empty: "まだ1匹もありません。上でインポートするか、新規追加してください。",
   },
   status: {
     undo: "Undoしました",
     inputEmpty: "入力が空です",
+    pasted: "貼り付けました",
+    pasteNotAvailable: "貼り付けできませんでした",
     importResult: "取り込み: {added}件 / スキップ: {skipped}件",
     subSkillUnknown: "未知のサブスキルです（補完から選ぶと確実です）",
     subSkillUnknownIgnored: "未知のサブスキルです（保存時は無視されます）",
