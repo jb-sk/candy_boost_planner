@@ -589,10 +589,12 @@ async function downloadCalcExportPng() {
 }
 .statCard__value--danger { color: var(--danger); }
 
-.exportSheet--capture .statCard { box-shadow: none !important; background: #fff !important; }
-.exportSheet--capture .statCard--accent,
-.exportSheet--capture .statCard--primary,
-.exportSheet--capture .statCard--danger { background: #fff !important; }
+/* Capture mode: keep card shape (outline) but drop heavy shadows to avoid "dragged" artifacts */
+.exportSheet--capture .statCard {
+  box-shadow: none !important;
+  outline: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
+  outline-offset: -1px;
+}
 
 /* Bars (export-local) */
 .exportBars {

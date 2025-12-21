@@ -1303,7 +1303,12 @@ input.field__input, select.field__input {
   font-weight: 700;
   font-size: 13px;
   flex: 1;
-  text-align: center;
+  /* Prevent mobile wrap: keep "スロットN" + badge in one line */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  white-space: nowrap;
   transition: background 0.2s, color 0.2s;
 }
 .slotTab:first-child {
@@ -1321,6 +1326,24 @@ input.field__input, select.field__input {
   margin-top: -2px;
   border-bottom: 1px solid transparent; /* Hide border */
   margin-bottom: -1px; /* Overlap content border */
+}
+
+/* Mobile: remove excess padding so tabs don't wrap */
+@media (max-width: 520px) {
+  .slotTabs { padding: 0 2px; }
+  .slotTab {
+    padding: 7px 10px;
+    font-size: 12px;
+    gap: 8px;
+  }
+  .slotTab--active {
+    padding-top: 8px;
+    margin-top: -1px;
+  }
+  .tab__count {
+    padding: 2px 6px;
+    font-size: 11px;
+  }
 }
 
 .slotContent {
