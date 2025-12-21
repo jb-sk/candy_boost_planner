@@ -1,5 +1,5 @@
 <template>
-  <main class="shell" :data-locale="locale">
+  <main :class="['shell', { 'shell--exportOpen': calcExportOpen }]" :data-locale="locale">
     <header class="hero">
       <div>
         <p class="kicker">{{ t("app.kicker") }}</p>
@@ -2815,17 +2815,29 @@ async function downloadCalcExportPng() {
   exportStatus.value = "";
   exportCsvMenuOpen.value = false;
   try {
+    const ua = navigator.userAgent || "";
+    // iPadOS sometimes reports MacIntel; treat it as iOS if it has touch.
+    const isLikelyIOS =
+      /iPad|iPhone|iPod/i.test(ua) ||
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ((navigator as any).platform === "MacIntel" && (navigator as any).maxTouchPoints > 1);
+
     // 保存時は transform(scale) / sticky を外した状態で、全高を確実に取り込む
     // Webフォントが読み込まれる前にキャプチャすると崩れるので待つ
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const fontsReady = (document as any)?.fonts?.ready;
     if (fontsReady && typeof fontsReady.then === "function") await fontsReady;
     await nextTick();
+    // layout確定をもう1拍待つ（モバイルでの「引きずり」/崩れ対策）
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
     const w = Math.max(el.scrollWidth, el.clientWidth, 1);
     const h = Math.max(el.scrollHeight, el.clientHeight, 1);
+    // iOS / 大きいデータで pixelRatio を上げすぎると描画が乱れやすいので控えめに
+    const pixelRatio = isLikelyIOS || h > 6000 ? 1.5 : 2;
     const dataUrl = await toPng(el, {
       cacheBust: true,
-      pixelRatio: 2,
+      pixelRatio,
       // Export sheet has its own gradient background; keep fallback close to --paper.
       backgroundColor: "#f7f7f7",
       width: w,
@@ -2840,13 +2852,6 @@ async function downloadCalcExportPng() {
 
     // iOS Safari: prefer Share Sheet so users can "Save Image" to Photos.
     // (Direct download typically goes to Files on iPhone.)
-    const ua = navigator.userAgent || "";
-    // iPadOS sometimes reports MacIntel; treat it as iOS if it has touch.
-    const isLikelyIOS =
-      /iPad|iPhone|iPod/i.test(ua) ||
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ((navigator as any).platform === "MacIntel" && (navigator as any).maxTouchPoints > 1);
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const nav: any = navigator as any;
     if (isLikelyIOS && nav?.share) {
@@ -3424,6 +3429,9 @@ function scrollToPanel(id: string) {
 @media (max-width: 1023px) {
   .shell {
     padding-top: 0; /* sticky nav sits at top */
+  }
+  .shell--exportOpen .mobileNav {
+    display: none !important;
   }
   .mobileNav {
     display: flex;
@@ -4255,6 +4263,72 @@ input.field__input, select.field__input {
 .u-mobile-label { display: none; }
 
 @media (max-width: 560px) {
+  .exportOverlay {
+    padding: 0;
+    place-items: stretch;
+  }
+  .exportSheetWrap {
+    width: 100vw;
+    height: 100vh;
+    max-height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+  .exportSheet {
+    border-radius: 0;
+    padding: 12px 14px 16px;
+    border: 0;
+    box-shadow: none;
+  }
+  /* スクロール中も操作リンクが隠れないように（キャプチャ時は無効） */
+  .exportHead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #f7f7f7;
+    padding: 10px 0 8px;
+    margin: -12px 0 6px; /* exportSheetの上paddingと相殺して全幅っぽく */
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .exportHead::before { display: none; }
+  .exportHead > :first-child {
+    justify-self: start;
+    text-align: left;
+  }
+  .exportActions {
+    justify-self: start;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    white-space: normal;
+    gap: 12px;
+  }
+  .exportBrand {
+    font-size: 16px;
+    margin-top: 0;
+  }
+  .exportStats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: 12px 0 10px;
+    gap: 10px;
+  }
+  .statCard { min-width: 0; }
+  .statCard__value {
+    font-size: clamp(20px, 7vw, 28px);
+    letter-spacing: -0.02em;
+  }
+  .exportList {
+    margin: 16px 0 0;
+  }
+  .exportSheet--capture .exportHead {
+    position: static;
+    margin: 0 0 4px;
+    padding: 0 2px 6px;
+    background: transparent;
+  }
   .exportStats {
     grid-template-columns: repeat(2, 1fr);
   }
