@@ -1092,12 +1092,14 @@ input.field__input, select.field__input {
   box-sizing: border-box;
 }
 
-/* ENは文言が長めなので、ソートUIの幅を少しだけ広げて崩れを防ぐ */
-.shell[data-locale="en"] .boxSort__select {
-  min-width: 120px;
-}
-.shell[data-locale="en"] .boxSort .btn {
-  min-width: 120px;
+/* ENは文言が長めなので、ソートUIの幅を少しだけ広げて崩れを防ぐ（モバイルでは逆に溢れるので適用しない） */
+@media (min-width: 640px) {
+  .shell[data-locale="en"] .boxSort__select {
+    min-width: 120px;
+  }
+  .shell[data-locale="en"] .boxSort .btn {
+    min-width: 120px;
+  }
 }
 .boxAddGrid {
   display: grid;
