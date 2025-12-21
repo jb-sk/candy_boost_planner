@@ -740,8 +740,9 @@ async function downloadCalcExportPng() {
   .exportHead::before { display: none; }
   .exportHead > :first-child { justify-self: start; text-align: left; }
   .exportActions {
-    justify-self: start;
-    justify-content: flex-start;
+    justify-self: end;
+    justify-content: flex-end;
+    align-self: flex-end;
     flex-wrap: wrap;
     white-space: normal;
     gap: 12px;
@@ -776,5 +777,10 @@ async function downloadCalcExportPng() {
     white-space: nowrap;
   }
   .exportList__numCol .calcRow__num { font-size: 14px; }
+}
+
+/* When capturing PNG, never include action links in the exported image */
+.exportSheet--capture .exportActions {
+  display: none !important;
 }
 </style>
