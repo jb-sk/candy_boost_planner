@@ -9,34 +9,39 @@
         @click="exportCsvMenuOpen = false"
       >
         <div class="exportHead">
-          <div>
+          <div class="exportHead__top">
             <div class="exportBrand">🍬 {{ t("calc.export.brand") }}</div>
           </div>
-          <div class="exportActions" @click.stop>
-            <button class="linkBtn" type="button" @click="downloadCalcExportPng" :disabled="exportBusy">
-              {{ t("calc.export.saveImage") }}
-            </button>
-            <div class="exportCsvMenuTrigger">
-              <button
-                class="linkBtn"
-                type="button"
-                @click.stop="exportCsvMenuOpen = !exportCsvMenuOpen"
-                :disabled="exportBusy"
-                :aria-expanded="exportCsvMenuOpen"
-                aria-haspopup="menu"
-              >
-                {{ t("calc.export.csv") }} ▾
+
+          <div class="exportMeta">
+            <div class="exportMonth" aria-label="month">{{ exportMonthLabel }}</div>
+
+            <div class="exportActions" @click.stop>
+              <button class="linkBtn" type="button" @click="downloadCalcExportPng" :disabled="exportBusy">
+                {{ t("calc.export.saveImage") }}
               </button>
-              <div v-if="exportCsvMenuOpen" class="exportCsvMenu" role="menu" :aria-label="t('calc.export.csv')">
-                <button class="exportCsvMenu__item" type="button" @click="downloadCalcExportCsv" :disabled="exportBusy">
-                  {{ t("calc.export.csvDownload") }}
+              <div class="exportCsvMenuTrigger">
+                <button
+                  class="linkBtn"
+                  type="button"
+                  @click.stop="exportCsvMenuOpen = !exportCsvMenuOpen"
+                  :disabled="exportBusy"
+                  :aria-expanded="exportCsvMenuOpen"
+                  aria-haspopup="menu"
+                >
+                  {{ t("calc.export.csv") }} ▾
                 </button>
-                <button class="exportCsvMenu__item" type="button" @click="copyCalcExportCsv" :disabled="exportBusy">
-                  {{ t("calc.export.csvCopy") }}
-                </button>
+                <div v-if="exportCsvMenuOpen" class="exportCsvMenu" role="menu" :aria-label="t('calc.export.csv')">
+                  <button class="exportCsvMenu__item" type="button" @click="downloadCalcExportCsv" :disabled="exportBusy">
+                    {{ t("calc.export.csvDownload") }}
+                  </button>
+                  <button class="exportCsvMenu__item" type="button" @click="copyCalcExportCsv" :disabled="exportBusy">
+                    {{ t("calc.export.csvCopy") }}
+                  </button>
+                </div>
               </div>
+              <button class="linkBtn linkBtn--basic" type="button" @click="emit('close')" :disabled="exportBusy">{{ t("calc.export.close") }}</button>
             </div>
-            <button class="linkBtn linkBtn--basic" type="button" @click="emit('close')" :disabled="exportBusy">{{ t("calc.export.close") }}</button>
           </div>
         </div>
 
@@ -206,7 +211,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref } from "vue";
+import { computed, nextTick, ref } from "vue";
 import { toPng } from "html-to-image";
 import { useI18n } from "vue-i18n";
 
@@ -266,6 +271,13 @@ const exportCsvMenuOpen = ref(false);
 function fmtNum(n: number): string {
   return new Intl.NumberFormat(locale.value as any).format(n);
 }
+
+const exportMonthLabel = computed(() => {
+  const d = new Date();
+  const loc = locale.value === "en" ? "en" : "ja-JP";
+  // e.g. "2025年12月" / "December 2025"
+  return new Intl.DateTimeFormat(loc, { year: "numeric", month: "long" }).format(d).replace(/\s+/g, "");
+});
 
 function csvCell(v: unknown): string {
   const s = String(v ?? "");
@@ -481,16 +493,31 @@ async function downloadCalcExportPng() {
   box-shadow: none;
 }
 .exportHead {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: flex-start;
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   margin-bottom: 4px;
   padding: 0 2px 6px;
   background: transparent;
 }
-.exportHead::before { content: ""; }
-.exportHead > :first-child { justify-self: center; text-align: center; }
+.exportHead__top {
+  display: flex;
+  justify-content: center;
+  text-align: center;
+}
+.exportMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.exportMonth {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: color-mix(in oklab, var(--ink) 58%, transparent);
+  white-space: nowrap;
+}
 .exportBrand {
   font-family: var(--font-heading);
   font-weight: 800;
@@ -502,13 +529,13 @@ async function downloadCalcExportPng() {
 }
 .exportActions {
   display: flex;
-  flex-wrap: nowrap;
-  white-space: nowrap;
+  flex-wrap: wrap;
   gap: 16px;
   align-items: center;
-  justify-self: end;
+  justify-content: flex-end;
   position: relative;
 }
+.exportActions .linkBtn { white-space: nowrap; }
 .exportCsvMenuTrigger { position: relative; display: flex; align-items: center; }
 .exportCsvMenu {
   position: absolute;
@@ -737,17 +764,9 @@ async function downloadCalcExportPng() {
     align-items: stretch;
     gap: 8px;
   }
-  .exportHead::before { display: none; }
-  .exportHead > :first-child { justify-self: start; text-align: left; }
-  .exportActions {
-    justify-self: end;
-    justify-content: flex-end;
-    align-self: flex-end;
-    flex-wrap: wrap;
-    white-space: normal;
-    gap: 12px;
-    max-width: 100%;
-  }
+  .exportHead__top { justify-content: flex-start; text-align: left; }
+  .exportMeta { gap: 10px; }
+  .exportActions { gap: 12px; }
   .linkBtn { line-height: 1.2; padding: 2px 0; }
   .exportBrand { font-size: 16px; margin-top: 0; }
   .exportStats { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 12px 0 10px; gap: 10px; }
