@@ -4055,6 +4055,19 @@ input.field__input, select.field__input {
   border-radius: 0;
   box-shadow: none;
 }
+.exportSheet--capture .statCard {
+  /* html-to-image で「引きずり」になりやすい影/グラデを軽量化 */
+  box-shadow: none !important;
+  background: #fff !important;
+}
+.exportSheet--capture .statCard--accent,
+.exportSheet--capture .statCard--primary,
+.exportSheet--capture .statCard--danger {
+  background: #fff !important;
+}
+.exportSheet--capture .statCard__value {
+  text-shadow: none !important;
+}
 .exportCalc {
   display: flex;
   flex-direction: column;
@@ -4872,6 +4885,24 @@ input.field__input, select.field__input {
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
   margin: 15px 10px 12px;
+}
+
+/* Tablet/mobile: 4枚は幅が足りずはみ出しやすいので 2列へ */
+@media (max-width: 860px) {
+  .exportStats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: 12px 0 10px;
+    gap: 10px;
+  }
+  .statCard__label {
+    white-space: normal;
+    line-height: 1.15;
+  }
+  .statCard__value {
+    font-size: clamp(18px, 4.6vw, 26px);
+    white-space: normal;
+    overflow-wrap: anywhere; /* 948,735 のような数値を安全に折り返す */
+  }
 }
 
 .statCard {
