@@ -16,7 +16,7 @@ export const en = {
   },
   app: {
     title: "CandyBoost Planner",
-    kicker: "Holiday Candy Boost Planner",
+    kicker: "Candy Boost Event Planner",
     lede: "Plan Candy Boost allocation across multiple Pokémon in real time under total candy and Dream Shards constraints.",
   },
   nav: {
@@ -26,6 +26,7 @@ export const en = {
   calc: {
     title: "Calculator: Multiple Pokémon (Target Level)",
     applyToBoxTitle: "Save edits (current Lv / EXP to next / EXP type / nature) to Pokémon Box",
+    applyToBox: "To Box",
     maxShardsLabel: "Max Dream Shards (cap check)",
     maxShardsHelp: "Calculation continues even if you exceed the cap; the overage is shown in red.",
     boostKindLabel: "Candy Boost type",
@@ -57,9 +58,9 @@ export const en = {
       expType: "EXP type",
       expTypeFixedHint: "EXP type is fixed by species and cannot be edited.",
       nature: "Nature (EXP gains)",
-      natureNormal: "Normal",
-      natureUp: "EXP ↑",
-      natureDown: "EXP ↓",
+      natureNormal: "-",
+      natureUp: "▲",
+      natureDown: "▼",
       boostReachLevel: "Boost target Lv",
       boostRatio: "Candy Boost ratio vs EXP",
       boostCandyCount: "Candy Boost amount",
@@ -72,6 +73,7 @@ export const en = {
     export: {
       open: "Share as One Image",
       saveImage: "Save Image",
+      brand: "Pokémon Sleep Candy Boost Plan",
       csv: "CSV",
       csvDownload: "Download CSV",
       csvCopy: "Copy CSV",
@@ -207,6 +209,7 @@ export const en = {
   },
   confirm: {
     deleteOne: "Delete?\n{label}",
-    clearBox: "Clear Pokémon Box?\nRegistered: {n}\n\nThis action cannot be undone.",
+    clearBox:
+      "Clear Pokémon Box?\nRegistered: {n}\n\nNote: If you do it by mistake, you can undo it right away using the Undo button.",
   },
 } as const;
