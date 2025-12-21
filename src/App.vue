@@ -666,11 +666,11 @@
           </div>
         </details>
 
-        <div class="boxDisclosure">
-          <div class="boxDisclosure__summary" aria-hidden="true">
+        <details class="boxDisclosure">
+          <summary class="boxDisclosure__summary">
             <span class="boxDisclosure__title">{{ t("box.import.title") }}</span>
             <span class="boxDisclosure__hint">{{ t("box.import.hint") }}</span>
-          </div>
+          </summary>
           <div class="boxCard boxCard--inner">
             <p class="boxCard__desc">
               {{ t("box.import.desc") }}
@@ -690,7 +690,7 @@
               <span class="boxCard__status" v-if="importStatus">{{ importStatus }}</span>
             </div>
           </div>
-        </div>
+        </details>
 
         <div class="boxCard">
           <div class="boxCard__head">
