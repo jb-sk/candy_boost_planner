@@ -1,43 +1,7 @@
 <template>
   <main :class="['shell', { 'shell--exportOpen': calcExportOpen }]" :data-locale="locale">
-    <header class="hero">
-      <div>
-        <p class="kicker">{{ t("app.kicker") }}</p>
-        <h1 class="title">{{ t("app.title") }}</h1>
-        <p class="lede">
-          {{ t("app.lede") }}
-        </p>
-        <div class="lang">
-          <button class="lang__btn" type="button" :class="{ 'lang__btn--on': locale === 'ja' }" @click="setLocale('ja')">JP</button>
-          <button class="lang__btn" type="button" :class="{ 'lang__btn--on': locale === 'en' }" @click="setLocale('en')">EN</button>
-        </div>
-      </div>
-      <div class="support" v-if="supportLinks.length">
-        <p class="support__label">{{ t("common.support") }}</p>
-        <div class="support__links">
-          <a
-            v-for="l in supportLinks"
-            :key="l.id"
-            class="support__link"
-            :href="l.href"
-            target="_blank"
-            rel="noopener noreferrer"
-            :aria-label="l.ariaLabel"
-          >
-            {{ l.label }}
-          </a>
-        </div>
-      </div>
-    </header>
-
-    <nav class="mobileNav">
-      <a href="#neo-calc" class="mobileNav__item" @click.prevent="scrollToPanel('neo-calc')">
-        {{ t("nav.calc") }}
-      </a>
-      <a href="#neo-box" class="mobileNav__item" @click.prevent="scrollToPanel('neo-box')">
-        {{ t("nav.box") }}
-      </a>
-    </nav>
+    <HeroHeader :locale="uiLocale" :support-links="supportLinks" :set-locale="setLocale" />
+    <MobileNav :scroll-to-panel="scrollToPanel" />
 
     <div class="dashboard">
     <section id="neo-calc" class="panel panel--calc">
@@ -666,31 +630,7 @@
           </div>
         </details>
 
-        <details class="boxDisclosure">
-          <summary class="boxDisclosure__summary">
-            <span class="boxDisclosure__title">{{ t("box.import.title") }}</span>
-            <span class="boxDisclosure__hint">{{ t("box.import.hint") }}</span>
-          </summary>
-          <div class="boxCard boxCard--inner">
-            <p class="boxCard__desc">
-              {{ t("box.import.desc") }}
-            </p>
-            <textarea v-model="importText" class="boxTextarea" rows="7" :placeholder="t('box.import.ph')"></textarea>
-            <div class="boxCard__actions">
-              <button class="btn btn--ghost" type="button" @click="onPasteImport">
-                {{ t("box.import.paste") }}
-              </button>
-              <span class="boxCard__status" aria-hidden="true">{{ t("box.import.pasteHelp") }}</span>
-              <button class="btn btn--primary" type="button" @click="onImport">
-                {{ t("box.import.run") }}
-              </button>
-              <button class="btn btn--ghost" type="button" @click="importText = ''">
-                {{ t("common.clear") }}
-              </button>
-              <span class="boxCard__status" v-if="importStatus">{{ importStatus }}</span>
-            </div>
-          </div>
-        </details>
+        <BoxImportDisclosure v-model:importText="importText" v-model:importStatus="importStatus" @import="onImport" />
 
         <div class="boxCard">
           <div class="boxCard__head">
@@ -1118,235 +1058,36 @@
       </div>
 
     </section>
-
-    <!-- 1枚出力（スクショ用）: calc/boxタブに依存せず表示できるように main 直下へ -->
-    <div v-if="calcExportOpen" class="exportOverlay" @click.self="closeCalcExport" role="dialog" :aria-label="t('calc.export.open')">
-      <div class="exportSheetWrap">
-        <div
-          ref="exportSheetEl"
-          class="exportSheet"
-          :class="{ 'exportSheet--capture': exportBusy }"
-          :style="{ transform: exportBusy ? 'none' : `scale(${calcExportScale})` }"
-          @click="exportCsvMenuOpen = false"
-        >
-          <div class="exportHead">
-            <div>
-              <div class="exportBrand">🍬 {{ t("calc.export.brand") }}</div>
-            </div>
-            <div class="exportActions" @click.stop>
-              <button class="linkBtn" type="button" @click="downloadCalcExportPng" :disabled="exportBusy">
-                {{ t("calc.export.saveImage") }}
-              </button>
-              <div class="exportCsvMenuTrigger">
-                <button
-                  class="linkBtn"
-                  type="button"
-                  @click.stop="exportCsvMenuOpen = !exportCsvMenuOpen"
-                  :disabled="exportBusy"
-                  :aria-expanded="exportCsvMenuOpen"
-                  aria-haspopup="menu"
-                >
-                  {{ t("calc.export.csv") }} ▾
-                </button>
-                <div v-if="exportCsvMenuOpen" class="exportCsvMenu" role="menu" :aria-label="t('calc.export.csv')">
-                  <button class="exportCsvMenu__item" type="button" @click="downloadCalcExportCsv" :disabled="exportBusy">
-                    {{ t("calc.export.csvDownload") }}
-                  </button>
-                  <button class="exportCsvMenu__item" type="button" @click="copyCalcExportCsv" :disabled="exportBusy">
-                    {{ t("calc.export.csvCopy") }}
-                  </button>
-                </div>
-              </div>
-              <button class="linkBtn linkBtn--basic" type="button" @click="closeCalcExport" :disabled="exportBusy">{{ t("calc.export.close") }}</button>
-            </div>
-          </div>
-          <div v-if="exportStatus" class="exportStatus" role="status">{{ exportStatus }}</div>
-
-          <div class="exportCalc">
-            <div class="exportCalcTop">
-              <div class="exportStats">
-                <div class="statCard statCard--accent">
-                  <div class="statCard__icon">🍬</div>
-                  <div class="statCard__content">
-                    <div class="statCard__label">{{ t("calc.export.sumBoostTotal") }}</div>
-                    <div class="statCard__value" :class="{ 'statCard__value--danger': calcBoostCandyOver > 0 }">
-                      {{ fmtNum(calcTotalBoostCandyUsed) }}
-                    </div>
-                  </div>
-                </div>
-                <div class="statCard">
-                  <div class="statCard__icon">⚪</div>
-                  <div class="statCard__content">
-                    <div class="statCard__label">{{ t("calc.export.sumNormalTotal") }}</div>
-                    <div class="statCard__value">{{ fmtNum(calcExportTotals.normalCandy) }}</div>
-                  </div>
-                </div>
-                <div class="statCard" :class="{ 'statCard--danger': calcBoostCandyOver > 0 }">
-                  <div class="statCard__icon">⚠️</div>
-                  <div class="statCard__content">
-                    <div class="statCard__label">{{ t("calc.export.sumBoostUnused") }}</div>
-                    <div class="statCard__value">{{ fmtNum(calcBoostCandyUnused) }}</div>
-                  </div>
-                </div>
-                <div class="statCard statCard--primary">
-                  <div class="statCard__icon">💎</div>
-                  <div class="statCard__content">
-                    <div class="statCard__label">{{ t("calc.export.sumShardsTotal") }}</div>
-                    <div class="statCard__value" :class="{ 'statCard__value--danger': calcShardsCap > 0 && calcShardsOver > 0 }">
-                      {{ fmtNum(calcTotalShardsUsed) }}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div
-                class="calcSum calcSum--bar"
-                :class="{
-                  'calcSum--danger': calcShardsOver > 0 || calcBoostCandyOver > 0,
-                  'calcSum--muted': calcShardsCap <= 0,
-                }"
-              >
-                <div class="calcBarBlock calcBarBlock--candy" :class="{ 'calcBarBlock--danger': calcBoostCandyOver > 0 }">
-                  <div class="calcSum__head">
-                    <div class="calcSum__k">
-                      {{ t("calc.boostCandyUsage", { pct: calcBoostCandyUsagePctRounded }) }}
-                      <span v-if="showBoostCandyFire" aria-hidden="true"> 🔥</span>
-                      <span v-if="calcBoostCandyOver > 0" class="calcSum__overVal"> (+{{ fmtNum(calcBoostCandyOver) }})</span>
-                    </div>
-                    <div class="calcSum__k calcSum__k--right">
-                      {{ t("calc.cap", { cap: fmtNum(calcBoostCandyCap) }) }}
-                    </div>
-                  </div>
-                  <div
-                    class="calcBar"
-                    role="progressbar"
-                    :aria-valuenow="Math.max(0, calcTotalBoostCandyUsed)"
-                    aria-valuemin="0"
-                    :aria-valuemax="Math.max(1, calcBoostCandyCap)"
-                    :aria-label="t('calc.boostCandyUsageAria', { pct: calcBoostCandyUsagePctRounded, cap: fmtNum(calcBoostCandyCap) })"
-                  >
-                    <div class="calcBar__track">
-                      <div class="calcBar__fill calcBar__fill--candy" :style="{ width: `${calcBoostCandyFillPctForBar}%` }"></div>
-                      <div
-                        v-if="calcBoostCandyOver > 0 && calcBoostCandyCap > 0"
-                        class="calcBar__over"
-                        :style="{ width: `${calcBoostCandyOverPctForBar}%` }"
-                      ></div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="calcBarBlock">
-                  <div class="calcSum__head">
-                    <div class="calcSum__k">
-                      {{ calcShardsCap > 0 ? t("calc.shardsUsage", { pct: calcShardsUsagePctRounded }) : t("calc.shardsUsageDash") }}
-                      <span v-if="showShardsFire" aria-hidden="true"> 🔥</span>
-                      <span v-if="calcShardsOver > 0" class="calcSum__overVal"> (+{{ fmtNum(calcShardsOver) }})</span>
-                    </div>
-                    <div class="calcSum__k calcSum__k--right">
-                      {{ calcShardsCap > 0 ? t("calc.cap", { cap: fmtNum(calcShardsCap) }) : t("calc.capUnset") }}
-                    </div>
-                  </div>
-                  <div
-                    class="calcBar"
-                    role="progressbar"
-                    :aria-valuenow="Math.max(0, calcTotalShardsUsed)"
-                    aria-valuemin="0"
-                    :aria-valuemax="Math.max(1, calcShardsCap)"
-                    :aria-label="
-                      calcShardsCap > 0
-                        ? t('calc.shardsUsageAria', { pct: calcShardsUsagePctRounded, cap: fmtNum(calcShardsCap) })
-                        : t('calc.shardsCapUnsetAria')
-                    "
-                  >
-                    <div class="calcBar__track">
-                      <div class="calcBar__fill" :style="{ width: `${calcShardsFillPctForBar}%` }"></div>
-                      <div
-                        v-if="calcShardsOver > 0 && calcShardsCap > 0"
-                        class="calcBar__over"
-                        :style="{ width: `${calcShardsOverPctForBar}%` }"
-                      ></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="exportList">
-              <div class="exportList__head">
-                <div class="exportList__col">{{ t("calc.export.colPokemon") }}</div>
-                <div class="exportList__col u-align-center">{{ t("calc.row.srcLevel") }} → {{ t("calc.row.dstLevel") }}</div>
-                <div class="exportList__col u-align-right">{{ t("calc.export.colBoost") }}</div>
-                <div class="exportList__col u-align-right">{{ t("calc.export.colNormal") }}</div>
-                <div class="exportList__col u-align-right">{{ t("calc.export.colTotal") }}</div>
-                <div class="exportList__col u-align-right">{{ t("calc.export.colShards") }}</div>
-              </div>
-
-              <div v-for="row in calcExportRows" :key="row.id" class="exportList__row">
-                <div class="exportList__col exportList__nameCol">
-                  <span class="exportList__name">{{ row.title }}</span>
-                  <span v-if="row.natureLabel" class="exportList__badge">{{ row.natureLabel }}</span>
-                </div>
-                <div class="exportList__col u-align-center exportList__lvCol">
-                   <div class="exportList__lvWrap">
-                      <span class="exportList__lvVal">{{ row.srcLevel }}</span>
-                      <span class="exportList__arrow">→</span>
-                      <span class="exportList__lvVal">{{ row.dstLevel }}</span>
-                   </div>
-                </div>
-                <div class="exportList__col u-align-right exportList__numCol">
-                  <span class="u-mobile-label">{{ t("calc.export.colBoost") }}</span>
-                  <span class="calcRow__num">{{ fmtNum(row.boostCandy) }}</span>
-                </div>
-                <div class="exportList__col u-align-right exportList__numCol">
-                  <span class="u-mobile-label">{{ t("calc.export.colNormal") }}</span>
-                  <span class="calcRow__num">{{ fmtNum(row.normalCandy) }}</span>
-                </div>
-                <div class="exportList__col u-align-right exportList__numCol">
-                   <span class="u-mobile-label">{{ t("calc.export.colTotal") }}</span>
-                  <span class="calcRow__num">{{ fmtNum(row.totalCandy) }}</span>
-                </div>
-                <div class="exportList__col u-align-right exportList__numCol">
-                   <span class="u-mobile-label">{{ t("calc.export.colShards") }}</span>
-                  <span class="calcRow__num">{{ fmtNum(row.shards) }}</span>
-                </div>
-              </div>
-
-              <div class="exportList__row exportList__row--total" aria-label="total">
-                <div class="exportList__col exportList__nameCol">
-                  <span class="exportList__name" aria-hidden="true"></span>
-                </div>
-                <div class="exportList__col u-align-center exportList__lvCol"></div>
-                <div class="exportList__col u-align-right exportList__numCol">
-                  <span class="u-mobile-label">{{ t("calc.export.colBoost") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': calcBoostCandyOver > 0 }">{{ fmtNum(calcExportTotals.boostCandy) }}</span>
-                </div>
-                <div class="exportList__col u-align-right exportList__numCol">
-                  <span class="u-mobile-label">{{ t("calc.export.colNormal") }}</span>
-                  <span class="calcRow__num">{{ fmtNum(calcExportTotals.normalCandy) }}</span>
-                </div>
-                <div class="exportList__col u-align-right exportList__numCol">
-                  <span class="u-mobile-label">{{ t("calc.export.colTotal") }}</span>
-                  <span class="calcRow__num">{{ fmtNum(calcExportTotals.totalCandy) }}</span>
-                </div>
-                <div class="exportList__col u-align-right exportList__numCol">
-                  <span class="u-mobile-label">{{ t("calc.export.colShards") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': calcShardsCap > 0 && calcShardsOver > 0 }">{{ fmtNum(calcExportTotals.shards) }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
-    </div>
+
+    <ExportOverlay
+      v-if="calcExportOpen"
+      :scale="calcExportScale"
+      :rows="calcExportRows"
+      :totals="calcExportTotals"
+      :boost-used="calcTotalBoostCandyUsed"
+      :boost-unused="calcBoostCandyUnused"
+      :shards-used="calcTotalShardsUsed"
+      :boost-over="calcBoostCandyOver"
+      :shards-over="calcShardsOver"
+      :shards-cap="calcShardsCap"
+      :boost-usage-pct="calcBoostCandyUsagePctRounded"
+      :boost-cap="calcBoostCandyCap"
+      :boost-fill-pct="calcBoostCandyFillPctForBar"
+      :boost-over-pct="calcBoostCandyOverPctForBar"
+      :shards-usage-pct="calcShardsUsagePctRounded"
+      :shards-fill-pct="calcShardsFillPctForBar"
+      :shards-over-pct="calcShardsOverPctForBar"
+      :show-boost-fire="showBoostCandyFire"
+      :show-shards-fire="showShardsFire"
+      @close="closeCalcExport"
+    />
   </main>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, ref, toRaw, watch } from "vue";
 import { onMounted, onUnmounted } from "vue";
-import { toPng } from "html-to-image";
 import { useI18n } from "vue-i18n";
 import { localizeGameTerm, localizeNature } from "./i18n/terms";
 import type { BoostEvent, ExpGainNature, ExpType } from "./domain";
@@ -1375,8 +1116,14 @@ import iconIngredientsSvg from "./assets/icons/ingredients.svg?raw";
 import iconSkillsSvg from "./assets/icons/skills.svg?raw";
 import iconAllSvg from "./assets/icons/all.svg?raw";
 import iconStarSvg from "./assets/icons/star.svg?raw";
+import ExportOverlay from "./components/ExportOverlay.vue";
+import BoxImportDisclosure from "./components/BoxImportDisclosure.vue";
+import HeroHeader from "./components/HeroHeader.vue";
+import type { SupportLink } from "./components/HeroHeader.vue";
+import MobileNav from "./components/MobileNav.vue";
 
 const { t, locale } = useI18n();
+const uiLocale = computed<"ja" | "en">(() => (locale.value === "en" ? "en" : "ja"));
 function setLocale(next: "ja" | "en") {
   locale.value = next;
   localStorage.setItem("candy-boost-planner:lang", next);
@@ -1400,7 +1147,6 @@ function fmtNum(n: number): string {
 const OFUSE_URL = (import.meta.env.VITE_OFUSE_URL ?? "").trim();
 const BMAC_URL = (import.meta.env.VITE_BMAC_URL ?? "").trim();
 
-type SupportLink = { id: "ofuse" | "bmac"; label: string; href: string; ariaLabel: string };
 const supportLinks = computed<SupportLink[]>(() => {
   const out: SupportLink[] = [];
   if (OFUSE_URL) {
@@ -1422,8 +1168,6 @@ const supportLinks = computed<SupportLink[]>(() => {
   return out;
 });
 
-const activeTab = ref<"calc" | "box">("calc");
-
 const boxEntries = ref<PokemonBoxEntryV1[]>(loadBox());
 const selectedBoxId = ref<string | null>(null);
 const importText = ref("");
@@ -1431,26 +1175,6 @@ const importStatus = ref("");
 const boxFilter = ref("");
 const boxSortKey = ref<"label" | "level">("label");
 const boxSortDir = ref<"asc" | "desc">("asc");
-
-async function onPasteImport() {
-  // Optional helper: may trigger a permission prompt depending on OS/browser settings.
-  // If it fails, users can still paste via the native menu.
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const nav: any = navigator as any;
-    if (nav?.clipboard?.readText) {
-      const t0 = await nav.clipboard.readText();
-      if (typeof t0 === "string" && t0.length) {
-        importText.value = t0;
-        importStatus.value = t("status.pasted");
-        return;
-      }
-    }
-    importStatus.value = t("status.pasteNotAvailable");
-  } catch {
-    importStatus.value = t("status.pasteNotAvailable");
-  }
-}
 
 type FilterJoinMode = "and" | "or";
 const filterJoinMode = ref<FilterJoinMode>("and"); // とくい/サブスキル の結合
@@ -2268,10 +1992,7 @@ function onCreateManual(opts: { mode: "toCalc" | "toBox" }) {
   boxUndoAction.value = { kind: "add", addedIds: [entry.id], selectedId: undoSelectedId };
   selectedBoxId.value = entry.id;
   if (opts.mode === "toCalc") {
-    activeTab.value = "calc";
     applyBoxToCalculator();
-  } else {
-    activeTab.value = "box";
   }
 
   // フォーム初期化（名前は残しても良いが、ここでは軽くリセット）
@@ -2706,215 +2427,12 @@ const calcRowsView = computed(() =>
 
 const activeCalcSlotTab = ref(0);
 const calcExportOpen = ref(false);
-const exportSheetEl = ref<HTMLElement | null>(null);
-const exportBusy = ref(false);
-const exportStatus = ref<string>("");
-const exportCsvMenuOpen = ref(false);
 function openCalcExport() {
   if (!calcRowsView.value.length) return;
   calcExportOpen.value = true;
 }
 function closeCalcExport() {
   calcExportOpen.value = false;
-  exportCsvMenuOpen.value = false;
-}
-
-function toggleCalcExportCsvMenu() {
-  exportCsvMenuOpen.value = !exportCsvMenuOpen.value;
-  exportStatus.value = "";
-}
-
-function csvCell(v: unknown): string {
-  const s = String(v ?? "");
-  if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-  return s;
-}
-
-function buildCalcExportCsv(): string {
-  const head = [
-    t("calc.export.colPokemon"),
-    t("calc.row.srcLevel"),
-    t("calc.row.dstLevel"),
-    t("calc.export.colExpAdj"),
-    t("calc.export.colBoost"),
-    t("calc.export.colNormal"),
-    t("calc.export.colTotal"),
-    t("calc.export.colShards"),
-  ]
-    .map(csvCell)
-    .join(",");
-
-  const rows = calcExportRows.value.map((r) =>
-    [
-      r.title,
-      r.srcLevel,
-      r.dstLevel,
-      r.natureLabel || "",
-      r.boostCandy,
-      r.normalCandy,
-      r.totalCandy,
-      r.shards,
-    ]
-      .map(csvCell)
-      .join(",")
-  );
-
-  const total = [
-    "",
-    "",
-    "",
-    "",
-    calcExportTotals.value.boostCandy,
-    calcExportTotals.value.normalCandy,
-    calcExportTotals.value.totalCandy,
-    calcExportTotals.value.shards,
-  ]
-    .map(csvCell)
-    .join(",");
-
-  return [head, ...rows, total].join("\r\n") + "\r\n";
-}
-
-function downloadCalcExportCsv() {
-  exportCsvMenuOpen.value = false;
-  exportStatus.value = "";
-  try {
-    const csv = buildCalcExportCsv();
-    const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-    const filename = `CandyBoost-Planner_${ts}.csv`;
-    // Excel on Windows often expects BOM for UTF-8 CSV.
-    const blob = new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.download = filename;
-    a.href = url;
-    a.click();
-    URL.revokeObjectURL(url);
-    exportStatus.value = t("status.csvDownloaded");
-  } catch {
-    exportStatus.value = t("status.csvDownloadFailed");
-  }
-}
-
-async function copyCalcExportCsv() {
-  exportCsvMenuOpen.value = false;
-  exportStatus.value = "";
-  const csv = buildCalcExportCsv();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const nav: any = navigator as any;
-  try {
-    if (nav?.clipboard?.writeText) {
-      await nav.clipboard.writeText(csv);
-      exportStatus.value = t("status.csvCopied");
-      return;
-    }
-  } catch {
-    // fall through to legacy copy
-  }
-  try {
-    const ta = document.createElement("textarea");
-    ta.value = csv;
-    ta.setAttribute("readonly", "");
-    ta.style.position = "fixed";
-    ta.style.top = "0";
-    ta.style.left = "0";
-    ta.style.width = "1px";
-    ta.style.height = "1px";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    const ok = document.execCommand("copy");
-    document.body.removeChild(ta);
-    exportStatus.value = ok ? t("status.csvCopied") : t("status.csvCopyFailed");
-  } catch {
-    exportStatus.value = t("status.csvCopyFailed");
-  }
-}
-
-async function downloadCalcExportPng() {
-  const el = exportSheetEl.value;
-  if (!el) return;
-  exportBusy.value = true;
-  exportStatus.value = "";
-  exportCsvMenuOpen.value = false;
-  try {
-    const ua = navigator.userAgent || "";
-    // iPadOS sometimes reports MacIntel; treat it as iOS if it has touch.
-    const isLikelyIOS =
-      /iPad|iPhone|iPod/i.test(ua) ||
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ((navigator as any).platform === "MacIntel" && (navigator as any).maxTouchPoints > 1);
-
-    // 保存時は transform(scale) / sticky を外した状態で、全高を確実に取り込む
-    // Webフォントが読み込まれる前にキャプチャすると崩れるので待つ
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const fontsReady = (document as any)?.fonts?.ready;
-    if (fontsReady && typeof fontsReady.then === "function") await fontsReady;
-    await nextTick();
-    // layout確定をもう1拍待つ（モバイルでの「引きずり」/崩れ対策）
-    await new Promise<void>((r) => requestAnimationFrame(() => r()));
-    await new Promise<void>((r) => requestAnimationFrame(() => r()));
-    const w = Math.max(el.scrollWidth, el.clientWidth, 1);
-    const h = Math.max(el.scrollHeight, el.clientHeight, 1);
-    // iOS / 大きいデータで pixelRatio を上げすぎると描画が乱れやすいので控えめに
-    // 基準: 面積（w*h）と高さで段階的に下げる
-    const area = w * h;
-    const pixelRatio =
-      isLikelyIOS ? 1.5 : h > 6500 || area > 11_000_000 ? 1.25 : h > 5000 || area > 8_000_000 ? 1.5 : 2;
-    const dataUrl = await toPng(el, {
-      cacheBust: true,
-      pixelRatio,
-      // Export sheet has its own gradient background; keep fallback close to --paper.
-      backgroundColor: "#f7f7f7",
-      width: w,
-      height: h,
-      style: {
-        transform: "none",
-        transformOrigin: "top left",
-      },
-    });
-    const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-    const filename = `CandyBoost-Planner_${ts}.png`;
-
-    // iOS Safari: prefer Share Sheet so users can "Save Image" to Photos.
-    // (Direct download typically goes to Files on iPhone.)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const nav: any = navigator as any;
-    if (isLikelyIOS && nav?.share) {
-      try {
-        const blob = await (await fetch(dataUrl)).blob();
-        const file = new File([blob], filename, { type: "image/png" });
-        const canShareFiles = typeof nav.canShare !== "function" || nav.canShare({ files: [file] });
-        if (canShareFiles) {
-          await nav.share({ files: [file], title: t("app.title") });
-          exportStatus.value = "";
-          return;
-        }
-      } catch {
-        // fall through to fallback
-      }
-      // As a fallback on iOS, open the image in a new tab so the user can long-press and save to Photos.
-      try {
-        window.open(dataUrl, "_blank", "noopener,noreferrer");
-        exportStatus.value = "";
-        return;
-      } catch {
-        // fall through to download
-      }
-    }
-
-    // Default: download (desktop / Android / non-share iOS)
-    const a = document.createElement("a");
-    a.download = filename;
-    a.href = dataUrl;
-    a.click();
-    exportStatus.value = "";
-  } catch (e: any) {
-    exportStatus.value = t("status.exportFailed");
-  } finally {
-    exportBusy.value = false;
-  }
 }
 
 function natureLabel(n: ExpGainNature): string {
@@ -3458,7 +2976,7 @@ function scrollToPanel(id: string) {
 }
 </script>
 
-<style scoped>
+<style>
 .shell {
   max-width: 1280px;
   margin: 0 auto;
@@ -4096,392 +3614,6 @@ input.field__input, select.field__input {
   opacity: 1;
 }
 
-/* --- Export sheet (SNS screenshot) --- */
-.exportOverlay {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  padding: 18px;
-  background: color-mix(in oklab, var(--ink) 28%, transparent);
-  display: grid;
-  place-items: center;
-}
-.exportSheetWrap {
-  /* 横長になりすぎない（縦3:横4 目安） */
-  width: min(820px, calc(100vw - 36px));
-  max-height: calc(100vh - 36px);
-  overflow: auto;
-}
-.exportSheet {
-  transform-origin: top center;
-  width: 100%;
-  border-radius: 12px;
-  border: 4px double #D4AC0D;
-  background: #f7f7f7; /* 計算機の背景と同じグレー */
-  box-shadow: 0 4px 12px rgba(74, 66, 56, 0.1);
-  padding: 16px 22px 16px;
-  position: relative;
-  --xmas-gold: #D4AC0D;
-}
-.exportSheet--capture {
-  /* 画像保存時は「カード枠」を消してスクショ向けに */
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-.exportSheet--capture .statCard {
-  /* html-to-image で「引きずり」になりやすい影/グラデを軽量化 */
-  box-shadow: none !important;
-  background: #fff !important;
-}
-.exportSheet--capture .statCard--accent,
-.exportSheet--capture .statCard--primary,
-.exportSheet--capture .statCard--danger {
-  background: #fff !important;
-}
-.exportSheet--capture .statCard__value {
-  text-shadow: none !important;
-}
-.exportCalc {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  flex: 1;
-}
-.exportHead {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 4px;
-  padding: 0 2px 6px;
-  border-radius: 0;
-  background: transparent;
-  border-bottom: 0;
-}
-.exportHead::before {
-  content: "";
-}
-.exportHead > :first-child {
-  justify-self: center;
-  text-align: center;
-}
-.exportBrand {
-  font-family: var(--font-heading);
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  font-size: 17px;
-  color: color-mix(in oklab, var(--ink) 88%, transparent);
-  line-height: 1.15;
-  margin-top: -2px;
-}
-.exportMeta {
-  margin-top: 2px;
-  font-family: var(--font-body);
-  font-size: 12px;
-  color: color-mix(in oklab, var(--ink) 58%, transparent);
-}
-.exportActions {
-  display: flex;
-  flex-wrap: nowrap;
-  white-space: nowrap;
-  gap: 16px;
-  align-items: center;
-  justify-self: end;
-  position: relative;
-}
-.exportCsvMenuTrigger {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-.exportCsvMenu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 8px);
-  z-index: 5;
-  min-width: 180px;
-  display: grid;
-  gap: 6px;
-  padding: 10px;
-  border-radius: 14px;
-  border: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
-  background: color-mix(in oklab, var(--paper) 92%, white);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
-}
-.exportCsvMenu__item {
-  appearance: none;
-  border: 0;
-  width: 100%;
-  text-align: left;
-  cursor: pointer;
-  font-family: var(--font-body);
-  font-size: 12px;
-  padding: 9px 10px;
-  border-radius: 12px;
-  color: var(--ink);
-  background: color-mix(in oklab, var(--paper) 92%, white);
-  border: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
-}
-.exportCsvMenu__item:hover {
-  background: color-mix(in oklab, var(--accent) 10%, var(--paper));
-}
-.exportCsvMenu__item:active {
-  transform: translateY(0.5px);
-}
-.exportCsvMenu__item:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-.exportSheet--capture .exportActions {
-  display: none;
-}
-.exportSheet--capture .exportStatus {
-  display: none;
-}
-.exportStatus {
-  margin: 0 0 10px;
-  font-family: var(--font-body);
-  font-size: 12px;
-  color: color-mix(in oklab, var(--ink) 62%, transparent);
-}
-
-/* Export styles moved to main.css */
-/* --- Export List (New) --- */
-.exportList {
-  display: flex;
-  flex-direction: column;
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-  border: 1px solid color-mix(in oklab, var(--ink) 6%, transparent);
-  overflow: hidden; /* for rounded corners */
-  margin: 20px 10px 0;
-}
-.exportList__head {
-  display: grid;
-  grid-template-columns: 2fr 1.2fr 1fr 1fr 1fr 1.3fr;
-  gap: 10px;
-  padding: 12px 16px;
-  background: #f7f7f7; /* match export sheet bg */
-  border-bottom: 2px solid #EBE6DE;
-  font-family: var(--font-heading);
-  font-weight: 800;
-  font-size: 11px;
-  color: color-mix(in oklab, var(--ink) 60%, transparent);
-  align-items: center;
-}
-.exportList__row {
-  display: grid;
-  grid-template-columns: 2fr 1.2fr 1fr 1fr 1fr 1.3fr;
-  gap: 10px;
-  padding: 12px 16px;
-  align-items: center;
-  border-bottom: 1px solid #F0EBE5;
-}
-.exportList__row:last-child {
-  border-bottom: 0;
-}
-.exportList__row:nth-child(even) {
-  background: #FAFAFA;
-}
-.exportList__row--total {
-  background: #f7f7f7;
-  border-top: 2px solid #EBE6DE;
-}
-.exportList__row--total .exportList__col {
-  font-weight: 800;
-}
-.exportList__row--total .exportList__name {
-  font-weight: 900;
-}
-.exportList__col {
-  min-width: 0;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ink);
-}
-.exportList__col.u-align-right { text-align: right; }
-.exportList__col.u-align-center { text-align: center; }
-
-.exportList__nameCol {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.exportList__name {
-  font-family: var(--font-heading);
-  font-weight: 800;
-  font-size: 14px;
-  line-height: 1.2;
-  color: var(--ink);
-}
-.exportList__badge {
-  font-size: 9.5px;
-  font-weight: 800;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: #F0EBE5;
-  color: color-mix(in oklab, var(--ink) 65%, transparent);
-  white-space: nowrap;
-}
-
-.exportList__lvWrap {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-weight: 800;
-  font-family: var(--font-heading);
-  background: #F5F2EF;
-  padding: 4px 8px;
-  border-radius: 6px;
-  min-width: 60px;
-}
-.exportList__arrow {
-  color: color-mix(in oklab, var(--ink) 30%, transparent);
-  font-size: 10px;
-}
-.exportList__numCol .calcRow__num {
-  font-size: 15px;
-  color: #333;
-}
-.exportList__numCol .calcRow__num.calcRow__num--danger {
-  color: var(--danger);
-}
-.u-mobile-label { display: none; }
-
-@media (max-width: 560px) {
-  .exportOverlay {
-    padding: 0;
-    place-items: stretch;
-  }
-  .exportSheetWrap {
-    width: 100vw;
-    height: 100vh;
-    max-height: 100vh;
-    overflow-y: auto;
-    overflow-x: hidden;
-    -webkit-overflow-scrolling: touch;
-  }
-  .exportSheet {
-    border-radius: 0;
-    padding: 12px 14px 16px;
-    border: 0;
-    box-shadow: none;
-  }
-  /* スクロール中も操作リンクが隠れないように（キャプチャ時は無効） */
-  .exportHead {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    background: #f7f7f7;
-    padding: 10px 0 8px;
-    margin: -12px 0 6px; /* exportSheetの上paddingと相殺して全幅っぽく */
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
-  }
-  .exportHead::before { display: none; }
-  .exportHead > :first-child {
-    justify-self: start;
-    text-align: left;
-  }
-  .exportActions {
-    justify-self: start;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    white-space: normal;
-    gap: 12px;
-    max-width: 100%;
-  }
-  .linkBtn {
-    line-height: 1.2;
-    padding: 2px 0; /* タップしやすく＆見切れ防止 */
-  }
-  .exportBrand {
-    font-size: 16px;
-    margin-top: 0;
-  }
-  .exportStats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    margin: 12px 0 10px;
-    gap: 10px;
-  }
-  .statCard { min-width: 0; }
-  /* モバイルは横幅が厳しいので、合計カードのアイコンを省略して詰める */
-  .statCard__icon { display: none; }
-  .statCard {
-    padding: 9px 10px;
-    gap: 8px;
-  }
-  /* ラベルを折り返し可能にして、右側にはみ出さないように */
-  .statCard__label {
-    white-space: normal;
-    line-height: 1.15;
-  }
-  .statCard__value {
-    font-size: clamp(18px, 6.2vw, 24px);
-    letter-spacing: -0.02em;
-  }
-  .exportList {
-    margin: 16px 0 0;
-  }
-  .exportSheet--capture .exportHead {
-    position: static;
-    margin: 0 0 4px;
-    padding: 0 2px 6px;
-    background: transparent;
-  }
-  .exportList__head { display: none; }
-  .exportList__row {
-    grid-template-columns: repeat(5, 1fr);
-    gap: 8px 6px;
-    padding: 14px;
-  }
-  .exportList__nameCol {
-    grid-column: 1 / -1;
-    margin-bottom: 4px;
-    border-bottom: 1px dashed #EBE6DE;
-    padding-bottom: 8px;
-    width: 100%;
-  }
-  .exportList__lvWrap {
-    background: transparent;
-    padding: 0;
-    gap: 4px;
-    font-size: 12px;
-    justify-content: flex-start;
-  }
-  .exportList__lvCol {
-    display: flex; /* Align left on mobile? Or keep center? Let's align left/start for 1st col */
-    align-items: center;
-    justify-content: flex-start;
-    text-align: left;
-    margin-top: auto; /* Push to bottom align with numbers */
-  }
-  .exportList__col.u-align-center { text-align: left; }
-
-  .exportList__numCol {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-  }
-  .u-mobile-label {
-    display: block;
-    font-size: 9px;
-    color: color-mix(in oklab, var(--ink) 45%, transparent);
-    margin-bottom: 0px;
-    white-space: nowrap;
-  }
-  .exportList__numCol .calcRow__num {
-    font-size: 14px;
-  }
-}
-
-
 /* --- Level picker (nitoyon-like) --- */
 .levelPick {
   position: relative;
@@ -4964,43 +4096,6 @@ input.field__input, select.field__input {
   font-size: 12px;
   color: color-mix(in oklab, var(--ink) 62%, transparent);
 }
-.exportStats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  margin: 15px 10px 12px;
-}
-
-/* Tablet/mobile: 4枚は幅が足りずはみ出しやすいので 2列へ */
-@media (max-width: 860px) {
-  .exportStats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    margin: 12px 0 10px;
-    gap: 10px;
-  }
-  .statCard__label {
-    white-space: normal;
-    line-height: 1.15;
-  }
-  .statCard__value {
-    font-size: clamp(18px, 4.6vw, 26px);
-    white-space: normal;
-    overflow-wrap: anywhere; /* 948,735 のような数値を安全に折り返す */
-  }
-}
-
-.statCard {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: white;
-  border-radius: 12px;
-  padding: 10px 14px;
-  box-shadow:
-    0 2px 6px rgba(0, 0, 0, 0.04),
-    0 0 0 1px color-mix(in oklab, var(--ink) 6%, transparent);
-}
-
 .calcSlots {
   display: flex;
   flex-direction: column;
@@ -5085,64 +4180,6 @@ input.field__input, select.field__input {
    Let's keep top-left 0 as implied by the design where tabs are usually left-aligned. */
 
 
-.statCard--accent {
-  background: linear-gradient(135deg, #FFF5F7 0%, #FFF0F0 100%);
-  box-shadow:
-    0 2px 6px rgba(255, 100, 100, 0.1),
-    0 0 0 1px rgba(255, 100, 100, 0.15);
-}
-.statCard--primary {
-  background: linear-gradient(135deg, #F0F7FF 0%, #E6F2FF 100%);
-  box-shadow:
-    0 2px 6px rgba(50, 100, 255, 0.1),
-    0 0 0 1px rgba(50, 100, 255, 0.15);
-}
-.statCard--danger {
-  background: #FFF5F5;
-  color: #D32F2F;
-}
-
-.statCard__icon {
-  font-size: 20px;
-  line-height: 1;
-}
-.statCard__content {
-  min-width: 0;
-}
-.statCard__label {
-  font-size: 10px;
-  color: color-mix(in oklab, var(--ink) 50%, transparent);
-  line-height: 1;
-  margin-bottom: 4px;
-  white-space: nowrap;
-}
-.statCard__value {
-  font-family: var(--font-heading);
-  font-weight: 800;
-  font-size: 30px;
-  line-height: 1;
-  color: var(--ink);
-}
-.statCard__value--danger {
-  color: var(--danger);
-}
-.calcRow__num--danger {
-  color: var(--danger);
-}
-.statCard--danger .statCard__value {
-  color: #D32F2F;
-}
-.exportCalcTop__nums {
-  margin-left: 20px;
-}
-
-.exportCalc .calcBarBlock + .calcBarBlock {
-  border-top: 0;
-}
-
-.exportCalc .calcSum--bar {
-  margin: 0 20px;
-}
 .boxTile__fav {
   margin-left: 8px;
   display: inline-flex;
