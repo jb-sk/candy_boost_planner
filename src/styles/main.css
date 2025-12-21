@@ -1,25 +1,39 @@
 :root {
-  /* Palette (Dreamy Lab, a bit more pop) */
-  --paper: #fbf6ee;
-  --ink: #17171f;
-  --muted: #4b4f5c;
-  /* slightly higher saturation / brightness for “fun” */
-  --accent: #6fd0bd; /* mint (brighter) */
-  --accent-warm: #f0c46a; /* honey (brighter) */
-  --accent-cool: #8fb0ff; /* periwinkle (brighter) */
-  --danger: #d86b60;
+  /* Palette (Corporate/Professional) */
+  --paper: #ffffff;
+  --bg-decor: #f1f5f9;
+  /* Slate 100 */
+  --ink: #334155;
+  /* Slate 700 */
+  --muted: #64748b;
+  /* Slate 500 */
+
+  /* Accents */
+  --accent: #2563eb;
+  /* Royal Blue */
+  --accent-warm: #f59e0b;
+  /* Amber 500 */
+  --accent-cool: #3b82f6;
+  /* Blue 500 */
+  --accent-hot: #ef4444;
+  /* Red 500 */
+  --accent-push: #8b5cf6;
+  /* Violet 500 */
+
+  --danger: #ef4444;
 
   /* Effects */
-  --shadow-1: 0 10px 26px color-mix(in oklab, var(--ink) 12%, transparent);
-  --shadow-2: 0 22px 56px color-mix(in oklab, var(--ink) 16%, transparent);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
 
   /* Typography */
-  --font-heading: ui-serif, "Georgia", serif;
-  --font-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-
-  /* Pokemon Box (tile base) */
-  --box-tile-left: #f1dfc8;
-  --box-tile-right: #f5f2ea;
+  --font-heading: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 html,
@@ -30,15 +44,9 @@ body {
 body {
   margin: 0;
   color: var(--ink);
-  background:
-    radial-gradient(1200px 740px at 12% 8%, color-mix(in oklab, var(--accent-warm) 22%, transparent), transparent 68%),
-    radial-gradient(1100px 680px at 86% 12%, color-mix(in oklab, var(--accent-cool) 16%, transparent), transparent 70%),
-    radial-gradient(900px 600px at 55% 30%, color-mix(in oklab, var(--accent) 14%, transparent), transparent 72%),
-    url("../assets/textures/grain.svg"),
-    var(--paper);
-  background-repeat: no-repeat, no-repeat, no-repeat, repeat, no-repeat;
-  background-size: auto, auto, auto, 256px 256px, auto;
-  background-blend-mode: normal, normal, normal, soft-light, normal;
+  font-family: var(--font-body);
+  background-color: var(--bg-decor);
+  /* Corporate: Clean background, no playful patterns */
 }
 
 * {
@@ -46,5 +54,332 @@ body {
 }
 
 a {
-  color: inherit;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Layout */
+.shell {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+
+@media (min-width: 1024px) {
+  .dashboard {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+
+/* Panels */
+.panel {
+  background: var(--paper);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-md);
+  border: 1px solid #e2e8f0;
+  /* Slate 200 */
+}
+
+.panel--box {
+  min-height: 600px;
+}
+
+/* Hero update */
+.hero {
+  text-align: left;
+  /* Corporate standard */
+  margin-bottom: 24px;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 16px;
+}
+
+.title {
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--ink);
+  /* Dark slate */
+  text-shadow: none;
+  margin: 0;
+}
+
+.kicker {
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  font-size: 0.875rem;
+  letter-spacing: 0.05em;
+  margin: 0 0 4px;
+}
+
+.lede {
+  margin: 8px 0 0;
+  max-width: 600px;
+  color: var(--muted);
+  font-size: 1rem;
+}
+
+/* Buttons */
+.btn {
+  font-family: var(--font-body);
+  font-weight: 500;
+  border: 1px solid #cbd5e1;
+  /* Slate 300 */
+  border-radius: var(--radius-sm);
+  background: white;
+  color: var(--ink);
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: var(--shadow-sm);
+  font-size: 0.875rem;
+}
+
+.btn:hover:not(:disabled) {
+  background-color: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(0);
+  background-color: #f1f5f9;
+}
+
+.btn--primary {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background-color: #1d4ed8;
+  /* Darker blue */
+  border-color: #1d4ed8;
+}
+
+.btn--danger {
+  background: #fff;
+  color: var(--danger);
+  border-color: #fca5a5;
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Inputs */
+.field__input,
+.boxSearch,
+.boxTextarea {
+  border: 1px solid #cbd5e1;
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  width: 100%;
+  background: #fff;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.field__input:focus-visible,
+.boxSearch:focus-visible,
+.boxTextarea:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  /* Focus ring */
+  transform: none;
+}
+
+/* Calculator Summary */
+.calcSticky {
+  position: sticky;
+  top: 20px;
+  z-index: 10;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  box-shadow: var(--shadow-md);
+  margin-bottom: 20px;
+  color: var(--ink);
+}
+
+.calcSum__k {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Pokemon Tile */
+.boxTile {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-md);
+  padding: 12px;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.1s, box-shadow 0.1s;
+}
+
+.boxTile:hover {
+  transform: none;
+  border-color: var(--accent);
+  box-shadow: md;
+  z-index: 5;
+}
+
+/* Pokemon Type Colors */
+.boxTile[data-type="Normal"] {
+  background-color: #f5f5f5;
+  border-color: #e0e0e0;
+}
+
+.boxTile[data-type="Fire"] {
+  background-color: #ffebee;
+  border-color: #ffcdd2;
+}
+
+.boxTile[data-type="Water"] {
+  background-color: #e3f2fd;
+  border-color: #bbdefb;
+}
+
+.boxTile[data-type="Electric"] {
+  background-color: #fffde7;
+  border-color: #fff9c4;
+}
+
+.boxTile[data-type="Grass"] {
+  background-color: #f1f8e9;
+  border-color: #dcedc8;
+}
+
+.boxTile[data-type="Ice"] {
+  background-color: #e0f7fa;
+  border-color: #b2ebf2;
+}
+
+.boxTile[data-type="Fighting"] {
+  background-color: #fff3e0;
+  border-color: #ffe0b2;
+}
+
+.boxTile[data-type="Poison"] {
+  background-color: #f3e5f5;
+  border-color: #e1bee7;
+}
+
+.boxTile[data-type="Ground"] {
+  background-color: #efebe9;
+  border-color: #d7ccc8;
+}
+
+.boxTile[data-type="Flying"] {
+  background-color: #e1f5fe;
+  border-color: #b3e5fc;
+}
+
+.boxTile[data-type="Psychic"] {
+  background-color: #fce4ec;
+  border-color: #f8bbd0;
+}
+
+.boxTile[data-type="Bug"] {
+  background-color: #f9fbe7;
+  border-color: #f0f4c3;
+}
+
+.boxTile[data-type="Rock"] {
+  background-color: #eceff1;
+  border-color: #cfd8dc;
+}
+
+.boxTile[data-type="Ghost"] {
+  background-color: #ede7f6;
+  border-color: #d1c4e9;
+}
+
+.boxTile[data-type="Dragon"] {
+  background-color: #e8eaf6;
+  border-color: #c5cae9;
+}
+
+.boxTile[data-type="Dark"] {
+  background-color: #eceff1;
+  border-color: #cfd8dc;
+}
+
+.boxTile[data-type="Steel"] {
+  background-color: #eceff1;
+  border-color: #cfd8dc;
+}
+
+.boxTile[data-type="Fairy"] {
+  background-color: #fce4ec;
+  border-color: #f8bbd0;
+}
+
+
+/* Export Styles */
+.exportCalc {
+  background: white;
+  padding: 2px;
+}
+
+.exportCalcTop__nums {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.exportCalcGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.exportCard {
+  border: 1px solid #e2e8f0;
+  background: white;
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: none;
+  /* Corporate print-like style */
+}
+
+/* Enforce 4:3 for the export container if captured */
+.exportCalc {
+  aspect-ratio: 4/3;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
