@@ -99,6 +99,19 @@
           <div class="calcSum__k">{{ t("calc.shardsTotal") }}</div>
           <div class="calcSum__v">{{ calc.fmtNum(calc.totalShardsUsed.value) }}</div>
         </div>
+        <div class="calcSum calcSum--candy" v-if="universalCandyTotal > 0 && calc.allocationResult.value">
+          <div class="calcSum__k">
+            {{ t("calc.candy.usageLabel") }}
+            <span class="calcSum__candyPct" :class="{ 'calcSum__candyPct--over': calc.universalCandyUsagePct.value > 100 }">
+              {{ calc.universalCandyUsagePct.value }}%
+            </span>
+          </div>
+          <div class="calcSum__candyDetails">
+            <span>S: {{ calc.universalCandyNeeded.value.s }}/{{ candyStore.universalCandy.value.s }}</span>
+            <span>M: {{ calc.universalCandyNeeded.value.m }}/{{ candyStore.universalCandy.value.m }}</span>
+            <span>L: {{ calc.universalCandyNeeded.value.l }}/{{ candyStore.universalCandy.value.l }}</span>
+          </div>
+        </div>
       </div>
       <div
         class="calcSum calcSum--bar calcSum--sparkle"
@@ -177,25 +190,6 @@
               ></div>
             </div>
           </div>
-        </div>
-      </div>
-      <div class="calcSticky__candy" v-if="universalCandyTotal > 0 && calc.allocationResult.value">
-        <div class="calcSticky__candyRow">
-          <span class="calcSticky__candyLabel">{{ t("calc.candy.usageLabel") }}</span>
-          <span class="calcSticky__candyPct" :class="{ 'calcSticky__candyPct--over': calc.universalCandyUsagePct.value > 100 }">
-            {{ calc.universalCandyUsagePct.value }}%
-          </span>
-        </div>
-        <div class="calcSticky__candyDetails">
-          <span class="calcSticky__candyItem">
-            {{ t("calc.candy.universalS") }}: {{ calc.allocationResult.value.universalUsed.s }}/{{ candyStore.universalCandy.value.s }}
-          </span>
-          <span class="calcSticky__candyItem">
-            {{ t("calc.candy.universalM") }}: {{ calc.allocationResult.value.universalUsed.m }}/{{ candyStore.universalCandy.value.m }}
-          </span>
-          <span class="calcSticky__candyItem">
-            {{ t("calc.candy.universalL") }}: {{ calc.allocationResult.value.universalUsed.l }}/{{ candyStore.universalCandy.value.l }}
-          </span>
         </div>
       </div>
     </div>

@@ -209,7 +209,7 @@ function scrollToPanel(id: string) {
     color: var(--ink);
   }
   .calcSticky {
-    top: 45px; /* ナビゲーションにより近く */
+    top: 42px;
   }
 }
 
@@ -541,8 +541,8 @@ input.field__input--compact {
   margin-bottom: 10px;
 }
 .calcSticky__summary .calcSum {
-  flex: 1 1 0; /* 均等幅で横並びに */
-  min-width: 140px;
+  flex: 1 1 auto;
+  min-width: 100px;
 }
 .calcSum__v {
   font-family: var(--font-heading);
@@ -555,7 +555,51 @@ input.field__input--compact {
   box-shadow: none;
   padding: 0;
   color: var(--ink);
-  font-size: 1.5rem; /* Slightly larger for emphasis */
+  font-size: 1.4rem;
+}
+@media (max-width: 560px) {
+  .calcSum--hi .calcSum__v {
+    font-size: 1.1rem;
+  }
+}
+.calcSum--candy {
+  flex: 2 1 auto;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.calcSum--candy .calcSum__k {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
+}
+.calcSum__candyPct {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink);
+}
+.calcSum__candyPct--over {
+  color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 10%);
+}
+.calcSum__candyDetails {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 16px;
+  font-size: 18px;
+  font-weight: 700;
+  margin-top: 2px;
+  color: var(--ink);
+}
+.calcSum__candyDetails span {
+  white-space: nowrap;
+}
+@media (max-width: 560px) {
+  .calcSum__candyDetails {
+    font-size: 13px;
+    gap: 8px;
+  }
 }
 .calcSum--danger .calcSum__v {
   color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 10%);
@@ -606,9 +650,9 @@ input.field__input--compact {
 /* Mobile: keep "Shards" and "Remaining" compact and side-by-side */
 @media (max-width: 560px) {
   .calcSticky {
-    top: 45px; /* ナビゲーションにより近く */
-    padding: 6px;
-    border-radius: 14px;
+    top: 42px;
+    padding: 8px;
+    border-radius: 12px;
   }
   .calcSticky__summary {
     display: grid;

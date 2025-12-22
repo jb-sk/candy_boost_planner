@@ -107,6 +107,7 @@ export type CalcStore = {
   // candy allocation
   allocationResult: Readonly<Ref<AllocationSummary | null>>;
   universalCandyUsagePct: Readonly<Ref<number>>;
+  universalCandyNeeded: Readonly<Ref<{ s: number; m: number; l: number; total: number }>>;
 
   canUndo: Readonly<Ref<boolean>>;
   canRedo: Readonly<Ref<boolean>>;
@@ -831,12 +832,31 @@ export function useCalcStore(opts: {
     if (!allocationResult.value) return 0;
     const inv = candyStore.universalCandy.value;
     const used = allocationResult.value.universalUsed;
+    // 不足分も加算して必要量ベースで計算
+    const totalRemaining = allocationResult.value.pokemons.reduce((sum, p) => sum + p.remaining, 0);
 
     const totalValue = inv.s * CANDY_VALUES.universal.s + inv.m * CANDY_VALUES.universal.m + inv.l * CANDY_VALUES.universal.l;
     const usedValue = used.s * CANDY_VALUES.universal.s + used.m * CANDY_VALUES.universal.m + used.l * CANDY_VALUES.universal.l;
+    const neededValue = usedValue + totalRemaining;
 
     if (totalValue <= 0) return 0;
-    return Math.round((usedValue / totalValue) * 100);
+    return Math.round((neededValue / totalValue) * 100);
+  });
+
+  // 万能アメの必要数（上限を超える分も含む）
+  const universalCandyNeeded = computed(() => {
+    if (!allocationResult.value) return { s: 0, m: 0, l: 0, total: 0 };
+    const used = allocationResult.value.universalUsed;
+    // 残り不足分をS換算で加算
+    const totalRemaining = allocationResult.value.pokemons.reduce((sum, p) => sum + p.remaining, 0);
+    // 必要数 = 使用数 + 不足分をS個数換算
+    const neededS = used.s + Math.ceil(totalRemaining / CANDY_VALUES.universal.s);
+    return {
+      s: neededS,
+      m: used.m,
+      l: used.l,
+      total: neededS + used.m + used.l,
+    };
   });
 
   function upsertFromBox(p: {
@@ -969,6 +989,7 @@ export function useCalcStore(opts: {
 
     allocationResult,
     universalCandyUsagePct,
+    universalCandyNeeded,
 
     canUndo,
     canRedo,

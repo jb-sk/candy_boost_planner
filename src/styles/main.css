@@ -213,19 +213,7 @@ a:hover {
   transform: none;
 }
 
-/* Calculator Summary */
-.calcSticky {
-  position: sticky;
-  top: 20px;
-  z-index: 10;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: var(--radius-lg);
-  padding: 16px;
-  box-shadow: var(--shadow-md);
-  margin-bottom: 20px;
-  color: var(--ink);
-}
+/* Calculator Summary - styles moved to App.vue for responsive handling */
 
 .calcSum__k {
   font-weight: 600;
