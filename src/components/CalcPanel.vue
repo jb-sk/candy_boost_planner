@@ -572,7 +572,7 @@
           </span>
           <span class="calcRow__res">
             <span class="calcRow__k">{{ t("calc.row.candySupply") }}</span>
-            <span class="calcRow__num">-</span>
+            <span class="calcRow__num calcRow__num--text">{{ getCandySupplyText(r) }}</span>
           </span>
           <span class="calcRow__res">
             <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
@@ -588,10 +588,13 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import type { CalcStore } from "../composables/useCalcStore";
+import type { CalcStore, CalcRowView } from "../composables/useCalcStore";
 import { useCandyStore } from "../composables/useCandyStore";
 import NatureSelect from "./NatureSelect.vue";
 import { PokemonTypes, getTypeNameJa } from "../domain/pokesleep/pokemon-types";
+import { getPokemonType } from "../domain/pokesleep/pokemon-names";
+import { allocateCandy, type PokemonCandyNeed, type PokemonAllocation } from "../domain/candy-allocator";
+import { CANDY_VALUES } from "../persistence/candy";
 
 defineEmits<{
   (e: "apply-to-box", rowId: string): void;
@@ -624,5 +627,81 @@ function getRowPokedexId(r: { pokedexId?: number; boxId?: string }): number | un
     return props.resolvePokedexIdByBoxId(r.boxId);
   }
   return undefined;
+}
+
+// アメ配分計算
+const allocationResult = computed(() => {
+  const rows = calc.rowsView.value;
+  const needs: PokemonCandyNeed[] = [];
+
+  for (const r of rows) {
+    const pokedexId = getRowPokedexId(r);
+    if (!pokedexId) continue;
+
+    // アメ合計（アメブ + 通常アメ）が必要量
+    const candyNeed = Math.max(0, r.result.boostCandy + r.result.normalCandy);
+    if (candyNeed <= 0) continue;
+
+    const pokemonType = getPokemonType(pokedexId);
+    needs.push({
+      id: r.id,
+      pokedexId,
+      pokemonName: r.title,
+      type: pokemonType,
+      candyNeed,
+    });
+  }
+
+  if (needs.length === 0) return null;
+
+  const inventory = candyStore.getInventory();
+  return allocateCandy(needs, inventory);
+});
+
+// 特定の行のアメ配分結果を取得
+function getRowAllocation(rowId: string): PokemonAllocation | null {
+  if (!allocationResult.value) return null;
+  return allocationResult.value.pokemons.find(p => p.id === rowId) ?? null;
+}
+
+// アメ補填の表示テキストを生成
+function getCandySupplyText(r: CalcRowView): string {
+  const alloc = getRowAllocation(r.id);
+  if (!alloc) return "-";
+
+  const parts: string[] = [];
+
+  // 種族アメ
+  if (alloc.speciesCandyUsed > 0) {
+    parts.push(`${alloc.speciesCandyUsed}`);
+  }
+
+  // タイプアメ
+  if (alloc.typeSUsed > 0) {
+    const typeJa = getTypeNameJa(alloc.type);
+    parts.push(`${typeJa}S ${alloc.typeSUsed}`);
+  }
+  if (alloc.typeMUsed > 0) {
+    const typeJa = getTypeNameJa(alloc.type);
+    parts.push(`${typeJa}M ${alloc.typeMUsed}`);
+  }
+
+  // 万能アメ
+  if (alloc.uniSUsed > 0) {
+    parts.push(`万能S ${alloc.uniSUsed}`);
+  }
+  if (alloc.uniMUsed > 0) {
+    parts.push(`万能M ${alloc.uniMUsed}`);
+  }
+  if (alloc.uniLUsed > 0) {
+    parts.push(`万能L ${alloc.uniLUsed}`);
+  }
+
+  // 不足
+  if (alloc.remaining > 0) {
+    parts.push(`不足 ${alloc.remaining}`);
+  }
+
+  return parts.length > 0 ? parts.join(", ") : "-";
 }
 </script>

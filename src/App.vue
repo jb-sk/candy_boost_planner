@@ -874,6 +874,11 @@ button.calcRow__dragHandle {
   padding: 0;
   color: var(--ink);
 }
+.calcRow__num--text {
+  font-size: 12px;
+  font-weight: 500;
+  color: color-mix(in oklab, var(--ink) 70%, transparent);
+}
 
 
 
