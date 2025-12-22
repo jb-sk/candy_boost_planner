@@ -504,6 +504,10 @@ function scrollToPanel(id: string) {
     max-width: 100%;
     overflow: hidden;
   }
+  button.calcRow__dragHandle {
+    padding: 4px 2px;
+    font-size: 13px;
+  }
 
   /* Mobile: keep shards + candy(total) side-by-side under inputs (moved near base rules for correct cascade) */
 }
@@ -674,8 +678,10 @@ function scrollToPanel(id: string) {
   user-select: none;
   line-height: 1;
   letter-spacing: -2px;
-  padding-left: 8px;
-  padding-right: 8px;
+  min-width: 0;
+}
+button.calcRow__dragHandle {
+  padding: 6px 6px; /* Override .btn padding with higher specificity */
 }
 .calcRow__dragHandle:active {
   cursor: grabbing;
