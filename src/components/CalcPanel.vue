@@ -256,7 +256,7 @@
                 :aria-label="t('calc.row.pickLevelAria', { label: t('calc.row.srcLevel') })"
               >
                 <div class="levelPick__top">
-                  <div class="levelPick__title">{{ t("calc.row.srcLevel") }}</div>
+                  <div class="levelPick__title">{{ t("calc.row.srcLevel") }}: Lv{{ r.srcLevel }}</div>
                   <button class="btn btn--ghost btn--xs" type="button" @mousedown.stop.prevent @click.stop.prevent="calc.closeLevelPick()">
                     {{ t("common.close") }}
                   </button>
@@ -411,7 +411,7 @@
                 :aria-label="t('calc.row.pickLevelAria', { label: t('calc.row.boostReachLevel') })"
               >
                 <div class="levelPick__top">
-                  <div class="levelPick__title">{{ t("calc.row.boostReachLevel") }}</div>
+                  <div class="levelPick__title">Lv{{ r.srcLevel }} → Lv{{ r.ui.boostReachLevel }}</div>
                   <button class="btn btn--ghost btn--xs" type="button" @mousedown.stop.prevent @click.stop.prevent="calc.closeLevelPick()">
                     {{ t("common.close") }}
                   </button>
