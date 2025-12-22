@@ -134,7 +134,8 @@ export const en = {
       desc: "1 line = 1 Pokémon (iv or iv＠nickname). Raw text is kept even if it includes extra data like ingredients/subskills.",
       ph: "Paste here (multiple lines)",
       paste: "Paste",
-      pasteHelp: "If the native paste menu doesn't show, use this",
+      fileSelect: "Load from File",
+      pasteHelp: "On iOS: Tap the textarea, then paste from the keyboard above, or use file upload",
       run: "Import",
     },
     list: {
@@ -211,6 +212,9 @@ export const en = {
     csvCopyFailed: "Failed to copy CSV",
     relinkFailed: "Relink failed: no name match",
     relinkUpdated: "Updated species link (Dex No. {id})",
+    fileLoaded: "Loaded file: {name}",
+    fileEmpty: "File is empty",
+    fileReadError: "Failed to read file",
   },
   confirm: {
     deleteOne: "Delete?\n{label}",

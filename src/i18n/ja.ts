@@ -135,7 +135,8 @@ export const ja = {
       desc: "1行=1匹（iv または iv＠nickname）。食材/サブスキル等の不要データも含めて raw を保持します。",
       ph: "ここに貼り付け（複数行）",
       paste: "貼り付け",
-      pasteHelp: "ペーストメニューが出ない場合はこちら",
+      fileSelect: "ファイルから読込",
+      pasteHelp: "iOSでペーストできない場合: テキストエリアをタップ後、画面下部のキーボード上でペーストするか、ファイルで読み込んでください",
       run: "取り込み",
     },
     list: {
@@ -212,6 +213,9 @@ export const ja = {
     csvCopyFailed: "CSVのコピーに失敗しました",
     relinkFailed: "再リンク失敗：名前が一致しません",
     relinkUpdated: "種族リンクを更新しました（図鑑No.{id}）",
+    fileLoaded: "ファイルを読み込みました: {name}",
+    fileEmpty: "ファイルが空です",
+    fileReadError: "ファイルの読み込みに失敗しました",
   },
   confirm: {
     deleteOne: "削除しますか？\n{label}",
