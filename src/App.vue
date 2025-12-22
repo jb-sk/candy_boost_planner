@@ -706,7 +706,7 @@ button.calcRow__dragHandle {
 .calcRow__grid > * {
   min-width: 0;
 }
-@media (min-width: 860px) {
+@media (min-width: 560px) {
   .calcRow__grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
