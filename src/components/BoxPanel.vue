@@ -189,6 +189,10 @@
               </datalist>
               <span class="field__sub">{{ t("box.add.subSkillNote") }}</span>
             </label>
+            <label class="boxAddFav">
+              <input type="checkbox" v-model="box.addFavorite.value" />
+              {{ t("box.add.addFavorite") }}
+            </label>
             <div class="boxAddActions">
               <button class="btn btn--primary" type="button" @click="onCreateToCalc($event)">
                 {{ t("box.add.toCalc") }}
@@ -201,7 +205,7 @@
         </div>
       </details>
 
-      <BoxImportDisclosure v-model:importText="importText" v-model:importStatus="importStatus" @import="box.onImport" />
+      <BoxImportDisclosure v-model:importText="importText" v-model:importStatus="importStatus" @import="(fav) => box.onImport({ markFavorite: fav })" />
 
       <div class="boxCard">
         <div class="boxCard__head">

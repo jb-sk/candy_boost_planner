@@ -58,6 +58,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
   const addLookup = computed(() => findPokemonByNameJa(addName.value));
   const addSpecialty = ref<PokemonSpecialty | "">("");
   const addSpecialtyTouched = ref(false);
+  const addFavorite = ref(true); // デフォルトでお気に入りに追加
 
   const addIngredientType = ref<IngredientType | "">("");
   const addIngredientTypeTouched = ref(false);
@@ -872,6 +873,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
       source: "manual",
       rawText: "",
       label: nickname,
+      favorite: addFavorite.value,
       derived: {
         pokedexId,
         form,
@@ -914,7 +916,8 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     addSubErrors.value = { "10": null, "25": null, "50": null, "75": null, "100": null };
   }
 
-  function onImport() {
+  function onImport(opts?: { markFavorite?: boolean }) {
+    const markFav = opts?.markFavorite ?? false;
     const text = importText.value;
     const lines = text
       .split(/\r?\n/g)
@@ -950,6 +953,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
         rawText,
         // nickname がない場合は label を空にして「種族名表示」に任せる（locale で切り替え可能にする）
         label: parsed.nickname || (derived0 ? "" : name0 || "(imported)"),
+        favorite: markFav,
         derived: derived0
           ? {
             pokedexId: derived0.pokedexId,
@@ -1109,6 +1113,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     addSubLv75,
     addSubLv100,
     addSubErrors,
+    addFavorite,
 
     // computed
     subSkillOptionLabels,

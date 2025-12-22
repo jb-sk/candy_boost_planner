@@ -1231,9 +1231,21 @@ input.field__input, select.field__input {
   grid-column: 1 / -1;
   display: flex;
   justify-content: flex-end;
-  align-items: end;
+  align-items: center;
   gap: 10px;
   flex-wrap: nowrap;
+}
+.boxAddFav {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: color-mix(in oklab, var(--ink) 75%, transparent);
+  cursor: pointer;
+}
+.boxAddFav input {
+  margin: 0;
 }
 .boxAddActions .btn {
   white-space: nowrap;
@@ -1241,6 +1253,9 @@ input.field__input, select.field__input {
 @media (min-width: 860px) {
   .boxAddActions {
     grid-column: 2 / 3;
+  }
+  .boxAddFav {
+    grid-column: 1 / 2;
   }
 }
 
@@ -1312,10 +1327,32 @@ input.field__input, select.field__input {
   margin-top: 10px;
   flex-wrap: wrap;
 }
+.boxCard__actions--row {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
 .boxCard__actions--footer {
   justify-content: flex-end;
   padding-top: 12px;
   border-top: 1px dashed color-mix(in oklab, var(--ink) 18%, transparent);
+}
+.boxCard__hints {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+.boxImport__favCheck {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: color-mix(in oklab, var(--ink) 75%, transparent);
+  cursor: pointer;
+  margin-top: 10px;
+}
+.boxImport__favCheck input {
+  margin: 0;
 }
 .boxCard__status {
   font-family: var(--font-body);

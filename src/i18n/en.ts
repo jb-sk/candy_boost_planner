@@ -127,6 +127,7 @@ export const en = {
       subSkillNote: "Input is Japanese. On save, it will be converted to internal English keys.",
       toCalc: "Add to Calculator (Apply)",
       toBox: "Add to Box",
+      addFavorite: "Add to favorites",
     },
     import: {
       title: "Import (Nitoyon unofficial support)",
@@ -137,6 +138,7 @@ export const en = {
       fileSelect: "Load from File",
       pasteHelp: "On iOS: Tap the textarea, then paste from the keyboard above, or use file upload",
       run: "Import",
+      addAllFavorite: "Add all to favorites",
     },
     list: {
       title: "List",

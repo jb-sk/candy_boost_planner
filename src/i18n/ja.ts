@@ -128,6 +128,7 @@ export const ja = {
       subSkillNote: "入力は日本語名。保存時に内部英名へ変換します。",
       toCalc: "計算する（反映）",
       toBox: "ボックスに追加",
+      addFavorite: "お気に入りに追加",
     },
     import: {
       title: "インポート（にとよん非公式サポート）",
@@ -138,6 +139,7 @@ export const ja = {
       fileSelect: "ファイルから読込",
       pasteHelp: "iOSでペーストできない場合: テキストエリアをタップ後、画面下部のキーボード上でペーストするか、ファイルで読み込んでください",
       run: "取り込み",
+      addAllFavorite: "すべてお気に入りに追加",
     },
     list: {
       title: "一覧",
