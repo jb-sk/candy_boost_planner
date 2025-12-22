@@ -158,6 +158,8 @@ export const en = {
       subskillClear: "Clear selected",
       undoTitle: "Undo the last change",
       sortKeyAria: "Sort key",
+      sortLabelFav: "Label (Fav first)",
+      sortLevelFav: "Level (Fav first)",
       sortLabel: "Label",
       sortLevel: "Level",
       sortAsc: "ASC",

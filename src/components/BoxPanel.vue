@@ -332,6 +332,8 @@
           </div>
           <div class="boxSort">
             <select v-model="boxSortKey" class="field__input boxSort__select" :aria-label="t('box.list.sortKeyAria')">
+              <option value="labelFav">{{ t("box.list.sortLabelFav") }}</option>
+              <option value="levelFav">{{ t("box.list.sortLevelFav") }}</option>
               <option value="label">{{ t("box.list.sortLabel") }}</option>
               <option value="level">{{ t("box.list.sortLevel") }}</option>
             </select>

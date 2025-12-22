@@ -159,6 +159,8 @@ export const ja = {
       subskillClear: "サブスキル選択クリア",
       undoTitle: "直前の変更を取り消し",
       sortKeyAria: "ソート項目",
+      sortLabelFav: "表記名（お気に入り優先）",
+      sortLevelFav: "レベル（お気に入り優先）",
       sortLabel: "表記名",
       sortLevel: "レベル",
       sortAsc: "昇順",
