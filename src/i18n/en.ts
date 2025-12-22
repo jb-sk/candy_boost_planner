@@ -101,7 +101,6 @@ export const en = {
     title: "Pokémon Box",
     clearAll: "Clear Box",
     addNew: "Add New",
-    addNewHint: "(name / level / nature EXP / EXP type)",
     addNewDesc: "Auto-detect Pokédex number from \"Pokémon name\" and auto-fill the form.",
     add: {
       nameDex: "Pokémon name (required)",
@@ -128,7 +127,6 @@ export const en = {
     },
     import: {
       title: "Import (Nitoyon unofficial support)",
-      hint: "(paste multiple lines)",
       desc: "1 line = 1 Pokémon (iv or iv＠nickname). Raw text is kept even if it includes extra data like ingredients/subskills.",
       ph: "Paste here (multiple lines)",
       paste: "Paste",
@@ -138,11 +136,11 @@ export const en = {
       addAllFavorite: "Add all to favorites",
     },
     list: {
-      title: "List",
-      searchPh: "Search (label / ID)",
-      clearSearch: "Clear search",
-      hint: "Click to select (tile shows name/level only). When selected, details are shown right under the tile.",
-      join: "Join mode",
+      title: "Search",
+      searchPh: "Search (label / Dex#)",
+      clearSearch: "Clear",
+      advancedSettings: "Advanced",
+      join: "Filter join",
       joinAnd: "AND (all)",
       joinOr: "OR (any)",
       favorites: "Favorites",

@@ -2,7 +2,6 @@
   <details class="boxDisclosure">
     <summary class="boxDisclosure__summary">
       <span class="boxDisclosure__title">{{ t("box.import.title") }}</span>
-      <span class="boxDisclosure__hint">{{ t("box.import.hint") }}</span>
     </summary>
     <div class="boxCard boxCard--inner">
       <p class="boxCard__desc">

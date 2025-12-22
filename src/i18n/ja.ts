@@ -102,7 +102,6 @@ export const ja = {
     title: "ポケモンボックス",
     clearAll: "ボックス全消去",
     addNew: "新規追加",
-    addNewHint: "（名前/レベル/性格EXP/EXPタイプ）",
     addNewDesc: "「ポケモン名」から図鑑番号を自動判定してフォームを補完します。",
     add: {
       nameDex: "ポケモン名（必須）",
@@ -129,7 +128,6 @@ export const ja = {
     },
     import: {
       title: "インポート（にとよん非公式サポート）",
-      hint: "（複数行貼り付け）",
       desc: "1行=1匹（iv または iv＠nickname）。食材/サブスキル等の不要データも含めて raw を保持します。",
       ph: "ここに貼り付け（複数行）",
       paste: "貼り付け",
@@ -139,11 +137,11 @@ export const ja = {
       addAllFavorite: "すべてお気に入りに追加",
     },
     list: {
-      title: "一覧",
-      searchPh: "検索（ラベル/ID）",
-      clearSearch: "検索クリア",
-      hint: "クリックで選択（表示は「名前/レベル」のみ）。選択すると、そのタイルの直下に詳細を表示します。",
-      join: "条件結合",
+      title: "探す",
+      searchPh: "検索（ラベル/図鑑番号）",
+      clearSearch: "クリア",
+      advancedSettings: "詳細設定",
+      join: "フィルタ間の結合",
       joinAnd: "AND（両方）",
       joinOr: "OR（どちらか）",
       favorites: "お気に入り",

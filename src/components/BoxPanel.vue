@@ -13,14 +13,13 @@
       <details class="boxDisclosure">
         <summary class="boxDisclosure__summary">
           <span class="boxDisclosure__title">{{ t("box.addNew") }}</span>
-          <span class="boxDisclosure__hint">{{ t("box.addNewHint") }}</span>
         </summary>
         <div class="boxCard boxCard--inner">
           <p class="boxCard__desc">
             {{ t("box.addNewDesc") }}
           </p>
           <div class="boxAddGrid">
-            <label class="field field--wide">
+            <label class="field field--name">
               <span class="field__label">{{ t("box.add.nameDex") }}</span>
               <div class="suggest">
                 <input
@@ -58,7 +57,7 @@
               </span>
               <span class="field__sub" v-else>{{ t("box.add.noMatch") }}</span>
             </label>
-            <label class="field field--wide">
+            <label class="field field--name">
               <span class="field__label">{{ t("box.add.labelOpt") }}</span>
               <input v-model="addLabel" class="field__input" :placeholder="t('box.add.labelOptPh')" />
             </label>
@@ -209,123 +208,113 @@
       <div class="boxCard">
         <div class="boxCard__head">
           <h3 class="boxCard__title">{{ t("box.list.title") }}</h3>
-          <div class="boxCard__tools">
-            <input v-model="boxFilter" class="boxSearch" :placeholder="t('box.list.searchPh')" />
-            <button class="btn btn--ghost" type="button" @click="boxFilter = ''" :disabled="!boxFilter.trim()">
-              {{ t("box.list.clearSearch") }}
-            </button>
-          </div>
         </div>
 
-        <p class="boxListHint">
-          {{ t("box.list.hint") }}
-        </p>
+        <!-- 検索 -->
+        <div class="boxSearchRow">
+          <input v-model="boxFilter" class="boxSearch" :placeholder="t('box.list.searchPh')" />
+          <button class="btn btn--ghost btn--sm" type="button" @click="boxFilter = ''" :disabled="!boxFilter.trim()">
+            {{ t("box.list.clearSearch") }}
+          </button>
+        </div>
 
-        <div class="boxFilters">
-          <div class="boxFilters__row boxFilters__row--main">
-            <div class="boxFilters__group">
-              <span class="boxFilters__label">{{ t("box.list.join") }}</span>
-              <select v-model="filterJoinMode" class="field__input boxFilters__select" :aria-label="t('box.list.join')">
+        <!-- お気に入り＆とくいフィルタ -->
+        <div class="boxFilterRow">
+          <button
+            class="chipBtn"
+            :class="{ 'chipBtn--on': favoritesOnly }"
+            type="button"
+            @click="favoritesOnly = !favoritesOnly"
+            :title="t('box.list.favoritesOnlyTitle')"
+            :aria-label="t('box.list.favoritesOnlyAria')"
+          >
+            <span class="chipBtn__icon" v-html="iconStarSvg" aria-hidden="true"></span>
+            <span class="chipBtn__text">{{ t("box.list.favorites") }}</span>
+          </button>
+          <button
+            class="chipBtn"
+            :class="{ 'chipBtn--on': selectedSpecialties.includes('Berries') }"
+            type="button"
+            @click="box.toggleSpecialty('Berries')"
+            :aria-label="t('box.list.specialtyAria', { name: gt('きのみ') })"
+          >
+            <span class="chipBtn__icon" v-html="iconBerrySvg" aria-hidden="true"></span>
+            <span class="chipBtn__text">{{ gt("きのみ") }}</span>
+          </button>
+          <button
+            class="chipBtn"
+            :class="{ 'chipBtn--on': selectedSpecialties.includes('Ingredients') }"
+            type="button"
+            @click="box.toggleSpecialty('Ingredients')"
+            :aria-label="t('box.list.specialtyAria', { name: gt('食材') })"
+          >
+            <span class="chipBtn__icon" v-html="iconIngredientsSvg" aria-hidden="true"></span>
+            <span class="chipBtn__text">{{ gt("食材") }}</span>
+          </button>
+          <button
+            class="chipBtn"
+            :class="{ 'chipBtn--on': selectedSpecialties.includes('Skills') }"
+            type="button"
+            @click="box.toggleSpecialty('Skills')"
+            :aria-label="t('box.list.specialtyAria', { name: gt('スキル') })"
+          >
+            <span class="chipBtn__icon" v-html="iconSkillsSvg" aria-hidden="true"></span>
+            <span class="chipBtn__text">{{ gt("スキル") }}</span>
+          </button>
+          <button
+            class="chipBtn"
+            :class="{ 'chipBtn--on': selectedSpecialties.includes('All') }"
+            type="button"
+            @click="box.toggleSpecialty('All')"
+            :aria-label="t('box.list.specialtyAria', { name: gt('オール') })"
+          >
+            <span class="chipBtn__icon" v-html="iconAllSvg" aria-hidden="true"></span>
+            <span class="chipBtn__text">{{ gt("オール") }}</span>
+          </button>
+        </div>
+
+        <!-- 詳細設定 -->
+        <details class="boxAdvanced">
+          <summary class="boxAdvanced__summary">
+            <span>{{ t("box.list.advancedSettings") }}</span>
+          </summary>
+          <div class="boxAdvanced__content">
+            <div class="boxAdvanced__row">
+              <span class="boxAdvanced__label">{{ t("box.list.join") }}</span>
+              <select v-model="filterJoinMode" class="field__input boxAdvanced__select" :aria-label="t('box.list.join')">
                 <option value="and">{{ t("box.list.joinAnd") }}</option>
                 <option value="or">{{ t("box.list.joinOr") }}</option>
               </select>
             </div>
-
-            <div class="boxFilters__group">
-              <span class="boxFilters__label">{{ t("box.list.favorites") }}</span>
-              <div class="boxFilters__chips">
-                <button
-                  class="chipBtn chipBtn--iconOnly"
-                    :class="{ 'chipBtn--on': favoritesOnly }"
-                  type="button"
-                    @click="favoritesOnly = !favoritesOnly"
-                  :title="t('box.list.favoritesOnlyTitle')"
-                  :aria-label="t('box.list.favoritesOnlyAria')"
-                >
-                  <span class="chipBtn__icon" v-html="iconStarSvg" aria-hidden="true"></span>
-                </button>
+            <div class="boxAdvanced__section">
+              <div class="boxAdvanced__row">
+                <span class="boxAdvanced__label">{{ t("box.list.subskillFilter") }}</span>
+                <span class="boxAdvanced__count" v-if="selectedSubSkillEns.length">（{{ selectedSubSkillEns.length }}）</span>
               </div>
-            </div>
-          </div>
-
-          <div class="boxFilters__row boxFilters__row--chips">
-            <div class="boxFilters__group">
-              <span class="boxFilters__label">{{ t("box.list.specialty") }}</span>
-              <div class="boxFilters__chips">
-                <button
-                  class="chipBtn"
-                  :class="{ 'chipBtn--on': selectedSpecialties.includes('Berries') }"
-                  type="button"
-                  @click="box.toggleSpecialty('Berries')"
-                  :aria-label="t('box.list.specialtyAria', { name: gt('きのみ') })"
-                >
-                  <span class="chipBtn__icon" v-html="iconBerrySvg" aria-hidden="true"></span>
-                  <span class="chipBtn__text">{{ gt("きのみ") }}</span>
-                </button>
-                <button
-                  class="chipBtn"
-                  :class="{ 'chipBtn--on': selectedSpecialties.includes('Ingredients') }"
-                  type="button"
-                  @click="box.toggleSpecialty('Ingredients')"
-                  :aria-label="t('box.list.specialtyAria', { name: gt('食材') })"
-                >
-                  <span class="chipBtn__icon" v-html="iconIngredientsSvg" aria-hidden="true"></span>
-                  <span class="chipBtn__text">{{ gt("食材") }}</span>
-                </button>
-                <button
-                  class="chipBtn"
-                  :class="{ 'chipBtn--on': selectedSpecialties.includes('Skills') }"
-                  type="button"
-                  @click="box.toggleSpecialty('Skills')"
-                  :aria-label="t('box.list.specialtyAria', { name: gt('スキル') })"
-                >
-                  <span class="chipBtn__icon" v-html="iconSkillsSvg" aria-hidden="true"></span>
-                  <span class="chipBtn__text">{{ gt("スキル") }}</span>
-                </button>
-                <button
-                  class="chipBtn"
-                  :class="{ 'chipBtn--on': selectedSpecialties.includes('All') }"
-                  type="button"
-                  @click="box.toggleSpecialty('All')"
-                  :aria-label="t('box.list.specialtyAria', { name: gt('オール') })"
-                >
-                  <span class="chipBtn__icon" v-html="iconAllSvg" aria-hidden="true"></span>
-                  <span class="chipBtn__text">{{ gt("オール") }}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <details class="boxFilters__subskill">
-            <summary class="boxFilters__summary">
-              <span>{{ t("box.list.subskillFilter") }}</span>
-              <span class="boxFilters__summaryCount" v-if="selectedSubSkillEns.length">（{{ selectedSubSkillEns.length }}）</span>
-            </summary>
-            <div class="boxFilters__row boxFilters__row--sub">
-              <div class="boxFilters__group">
-                <span class="boxFilters__label">{{ t("box.list.subskillJoin") }}</span>
-                <select v-model="subSkillJoinMode" class="field__input boxFilters__select" :aria-label="t('box.list.subskillJoin')">
+              <div class="boxAdvanced__row">
+                <span class="boxAdvanced__label">{{ t("box.list.subskillJoin") }}</span>
+                <select v-model="subSkillJoinMode" class="field__input boxAdvanced__select" :aria-label="t('box.list.subskillJoin')">
                   <option value="or">{{ t("box.list.subskillJoinOr") }}</option>
                   <option value="and">{{ t("box.list.subskillJoinAnd") }}</option>
                 </select>
+                <button
+                  class="btn btn--ghost btn--sm"
+                  type="button"
+                  @click="selectedSubSkillEns = []"
+                  :disabled="!selectedSubSkillEns.length"
+                >
+                  {{ t("box.list.subskillClear") }}
+                </button>
               </div>
-              <button
-                class="btn btn--ghost"
-                type="button"
-                @click="selectedSubSkillEns = []"
-                :disabled="!selectedSubSkillEns.length"
-              >
-                {{ t("box.list.subskillClear") }}
-              </button>
+              <div class="boxAdvanced__list">
+                <label v-for="s in availableSubSkills" :key="s.nameEn" class="boxAdvanced__item">
+                  <input type="checkbox" class="boxAdvanced__check" :value="s.nameEn" v-model="selectedSubSkillEns" />
+                  <span class="boxAdvanced__itemLabel">{{ box.subSkillLabel(s) }}</span>
+                </label>
+              </div>
             </div>
-            <div class="boxFilters__list">
-              <label v-for="s in availableSubSkills" :key="s.nameEn" class="boxFilters__item">
-                <input type="checkbox" class="boxFilters__check" :value="s.nameEn" v-model="selectedSubSkillEns" />
-                <span class="boxFilters__itemLabel">{{ box.subSkillLabel(s) }}</span>
-              </label>
-            </div>
-          </details>
-        </div>
+          </div>
+        </details>
 
         <div class="boxSortRow">
           <div class="boxSortRow__left">
