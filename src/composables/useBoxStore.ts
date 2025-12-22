@@ -191,8 +191,8 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     const ingredientSlots =
       ingredients && ingredientType
         ? ingredientType
-            .split("")
-            .map((x) => (x === "A" ? ingredients.a : x === "B" ? ingredients.b : ingredients.c))
+          .split("")
+          .map((x) => (x === "A" ? ingredients.a : x === "B" ? ingredients.b : ingredients.c))
         : null;
 
     const subSkillsFromPlanner = (e.planner?.subSkills ?? []).map((s) => ({
@@ -209,15 +209,15 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
       decoded: decoded
         ? { ...decoded, subSkills }
         : {
-            pokedexId: pokedexId ?? 0,
-            form,
-            level: level ?? 1,
-            natureName: "",
-            expGainNature,
-            expType,
-            ingredientType,
-            subSkills,
-          },
+          pokedexId: pokedexId ?? 0,
+          form,
+          level: level ?? 1,
+          natureName: "",
+          expGainNature,
+          expType,
+          ingredientType,
+          subSkills,
+        },
       expType,
       expGainNature,
       level,
@@ -421,9 +421,9 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     const base = !q
       ? boxEntries.value
       : boxEntries.value.filter((e) => {
-          const id = e.derived?.pokedexId ? String(e.derived.pokedexId) : "";
-          return (e.label || "").toLowerCase().includes(q) || id.includes(q) || e.rawText.toLowerCase().includes(q);
-        });
+        const id = e.derived?.pokedexId ? String(e.derived.pokedexId) : "";
+        return (e.label || "").toLowerCase().includes(q) || id.includes(q) || e.rawText.toLowerCase().includes(q);
+      });
 
     const hasFavoriteFilter = favoritesOnly.value;
     const hasSpecialtyFilter = selectedSpecialties.value.length > 0;
@@ -944,13 +944,13 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
         label: parsed.nickname || (derived0 ? "" : name0 || "(imported)"),
         derived: derived0
           ? {
-              pokedexId: derived0.pokedexId,
-              form: derived0.form,
-              level: derived0.level,
-              expType: expT0,
-              expGainNature: derived0.expGainNature,
-              natureName: derived0.natureName,
-            }
+            pokedexId: derived0.pokedexId,
+            form: derived0.form,
+            level: derived0.level,
+            expType: expT0,
+            expGainNature: derived0.expGainNature,
+            natureName: derived0.natureName,
+          }
           : undefined,
         planner: undefined,
         createdAt: now,
