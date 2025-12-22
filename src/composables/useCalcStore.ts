@@ -160,6 +160,8 @@ export type CalcStore = {
     expRemaining?: number;
     title?: string;
     dstLevelDefault?: number;
+    pokedexId?: number;
+    pokemonType?: string;
     ev?: MouseEvent;
   }) => void;
   buildPlannerPatchFromRow: (rowId?: string) => CalcBoxPlannerPatch | null;
@@ -785,6 +787,8 @@ export function useCalcStore(opts: {
     expRemaining?: number;
     title?: string;
     dstLevelDefault?: number;
+    pokedexId?: number;
+    pokemonType?: string;
     ev?: MouseEvent;
   }) {
     const anchorEl = (p.ev?.currentTarget as HTMLElement | null) ?? null;
@@ -809,6 +813,8 @@ export function useCalcStore(opts: {
       expType: p.expType,
       nature: p.nature,
       expRemaining: remaining,
+      pokedexId: p.pokedexId,
+      pokemonType: p.pokemonType,
     };
 
     if (existing) {
@@ -819,6 +825,8 @@ export function useCalcStore(opts: {
         id: cryptoRandomId(),
         title,
         boxId: p.boxId,
+        pokedexId: p.pokedexId,
+        pokemonType: p.pokemonType,
         srcLevel,
         dstLevel,
         expRemaining: remaining,

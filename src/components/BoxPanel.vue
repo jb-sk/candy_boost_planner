@@ -428,6 +428,19 @@
                     </div>
                   </div>
 
+                  <div class="boxDetail__kv" v-if="selectedDetail?.pokedexId">
+                    <div class="boxDetail__k">{{ t("calc.row.speciesCandy") }}</div>
+                    <div class="boxDetail__v">
+                      <input
+                        type="number"
+                        min="0"
+                        class="field__input"
+                        :value="candyStore.getSpeciesCandyFor(selectedDetail.pokedexId)"
+                        @input="candyStore.updateSpeciesCandy(selectedDetail!.pokedexId, parseInt(($event.target as HTMLInputElement).value) || 0)"
+                      />
+                    </div>
+                  </div>
+
                   <div class="boxDetail__kv">
                     <div class="boxDetail__k">{{ t("box.detail.level") }}</div>
                     <div class="boxDetail__v">
@@ -631,6 +644,7 @@ import { localizeNature } from "../i18n/terms";
 import { IngredientTypes } from "../domain/box/nitoyon";
 import { getPokemonType } from "../domain/pokesleep/pokemon-names";
 import { getPokemonNameLocalized } from "../domain/pokesleep/pokemon-name-localize";
+import { useCandyStore } from "../composables/useCandyStore";
 import NatureSelect from "./NatureSelect.vue";
 import BoxImportDisclosure from "./BoxImportDisclosure.vue";
 import type { BoxStore } from "../composables/useBoxStore";
@@ -652,6 +666,7 @@ const emit = defineEmits<{
 const { t, locale } = useI18n();
 const box = props.box;
 const gt = props.gt;
+const candyStore = useCandyStore();
 
 // Aliases for v-model so the template compiler updates `.value` correctly.
 const boxEntries = box.boxEntries;

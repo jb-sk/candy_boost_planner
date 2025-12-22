@@ -4,7 +4,7 @@
     <MobileNav :scroll-to-panel="scrollToPanel" />
 
     <div class="dashboard">
-      <CalcPanel :calc="calc" @apply-to-box="applyCalculatorToBox($event)" />
+      <CalcPanel :calc="calc" :resolve-pokedex-id-by-box-id="resolvePokedexIdByBoxId" @apply-to-box="applyCalculatorToBox($event)" />
 
     <BoxPanel :box="box" :gt="gt" @apply-to-calc="applyBoxToCalculator($event)" />
     </div>
@@ -39,6 +39,7 @@ import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { localizeGameTerm } from "./i18n/terms";
 import type { ExpGainNature, ExpType } from "./domain/types";
+import { getPokemonType } from "./domain/pokesleep/pokemon-names";
 
 import ExportOverlay from "./components/ExportOverlay.vue";
 import CalcPanel from "./components/CalcPanel.vue";
@@ -102,12 +103,20 @@ const calc = useCalcStore({
   },
 });
 
+// CalcPanel用: boxId から pokedexId を解決
+function resolvePokedexIdByBoxId(boxId: string): number | undefined {
+  const e = box.boxEntries.value.find((x) => x.id === boxId) ?? null;
+  return e?.derived?.pokedexId;
+}
+
 function applyBoxToCalculator(ev?: MouseEvent) {
   const e = box.selectedBox.value;
   if (!e) return;
   const lvl = e.planner?.level ?? e.derived?.level ?? 10;
   const expT = (e.planner?.expType ?? e.derived?.expType ?? 600) as ExpType;
   const nat = (e.planner?.expGainNature ?? e.derived?.expGainNature ?? "normal") as ExpGainNature;
+  const pokedexId = e.derived?.pokedexId;
+  const pokemonType = pokedexId ? getPokemonType(pokedexId) : undefined;
 
   calc.upsertFromBox({
     boxId: e.id,
@@ -116,6 +125,8 @@ function applyBoxToCalculator(ev?: MouseEvent) {
     expType: expT,
     nature: nat,
     expRemaining: e.planner?.expRemaining,
+    pokedexId,
+    pokemonType,
     ev,
   });
 }
@@ -395,6 +406,74 @@ function scrollToPanel(id: string) {
     align-items: start;
   }
 }
+.calcTop__grid--candy {
+  margin-top: 12px;
+}
+@media (min-width: 860px) {
+  .calcTop__grid--candy {
+    grid-template-columns: 1fr;
+  }
+}
+.candyRow {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.candyInput {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.candyInput__label {
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 16px;
+}
+.candyInput--sm .candyInput__label {
+  font-size: 12px;
+}
+.field__input--sm {
+  width: 60px;
+  padding: 6px 8px;
+  font-size: 14px;
+}
+.field__input--xs {
+  width: 50px;
+  padding: 4px 6px;
+  font-size: 13px;
+}
+.calcTop__typeCandy {
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--ink) 4%, transparent);
+}
+.calcTop__typeCandyToggle {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: color-mix(in oklab, var(--ink) 70%, transparent);
+}
+.calcTop__typeCandyToggle:hover {
+  color: var(--ink);
+}
+.calcTop__typeCandyGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.typeRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+.typeRow__name {
+  font-size: 12px;
+  min-width: 60px;
+  color: color-mix(in oklab, var(--ink) 80%, transparent);
+}
 .calcSticky {
   position: sticky;
   top: 10px;
@@ -440,6 +519,22 @@ function scrollToPanel(id: string) {
 .calcSum--bar {
   flex: 2; /* バーは少し広めに */
   min-width: 220px;
+}
+.calcSticky__candy {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed color-mix(in oklab, var(--ink) 14%, transparent);
+  font-size: 13px;
+  color: color-mix(in oklab, var(--ink) 70%, transparent);
+}
+.calcSticky__candyLabel {
+  font-weight: 600;
+}
+.calcSticky__candyItem {
+  font-variant-numeric: tabular-nums;
 }
 
 /* Mobile: keep "Shards" and "Remaining" compact and side-by-side */
@@ -719,9 +814,26 @@ button.calcRow__dragHandle {
   padding-top: 5px;
   border-top: 1px dashed color-mix(in oklab, var(--ink) 14%, transparent);
 }
+.calcRow__result--inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+.calcRow__result--inline .calcRow__res {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.calcRow__result--inline .calcRow__k {
+  font-size: 12px;
+}
+.calcRow__result--inline .calcRow__num {
+  font-size: 15px;
+  font-weight: 700;
+}
 /* モバイルでは2列×2行に */
 @media (max-width: 640px) {
-  .calcRow__result {
+  .calcRow__result:not(.calcRow__result--inline) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px 16px;
   }
