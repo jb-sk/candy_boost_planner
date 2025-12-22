@@ -4,57 +4,54 @@
       <h2 class="panel__title">{{ t("calc.title") }}</h2>
     </div>
     <div class="calcTop">
-      <div class="calcTop__grid">
-        <label class="field">
-          <span class="field__label">{{ t("calc.maxShardsLabel") }}</span>
+      <div class="calcTop__row">
+        <div class="calcTop__field">
+          <span class="calcTop__label">{{ t("calc.boostKindLabel") }}</span>
+          <select v-model="calc.boostKind.value" class="calcTop__input">
+            <option value="full">{{ calc.fullLabel.value }}</option>
+            <option value="mini">{{ calc.miniLabel.value }}</option>
+          </select>
+        </div>
+        <div class="calcTop__field">
+          <span class="calcTop__label">{{ t("calc.maxShardsLabel") }}</span>
           <input
             :value="calc.totalShardsText.value"
             type="text"
             inputmode="numeric"
             autocomplete="off"
-            class="field__input"
+            class="calcTop__input calcTop__input--shards"
             @input="calc.onTotalShardsInput(($event.target as HTMLInputElement).value)"
           />
-          <span class="field__sub">{{ t("calc.maxShardsHelp") }}</span>
-        </label>
-        <label class="field">
-          <span class="field__label">{{ t("calc.boostKindLabel") }}</span>
-          <select v-model="calc.boostKind.value" class="field__input">
-            <option value="full">{{ calc.fullLabel.value }}</option>
-            <option value="mini">{{ calc.miniLabel.value }}</option>
-          </select>
-        </label>
-      </div>
-      <div class="calcTop__grid calcTop__grid--candy">
-        <div class="field">
-          <span class="field__label">{{ t("calc.candy.universalLabel") }}</span>
-          <div class="candyRow">
-            <label class="candyInput">
-              <span class="candyInput__label">{{ t("calc.candy.universalS") }}</span>
+        </div>
+        <div class="calcTop__field calcTop__field--candy">
+          <span class="calcTop__label">{{ t("calc.candy.universalLabel") }}</span>
+          <div class="calcTop__candyInputs">
+            <label class="calcTop__candyInput">
+              <span class="calcTop__candyLabel">{{ t("calc.candy.universalS") }}</span>
               <input
                 type="number"
                 min="0"
-                class="field__input field__input--sm"
+                class="calcTop__input calcTop__input--candy"
                 :value="candyStore.universalCandy.value.s"
                 @input="candyStore.updateUniversalCandy({ s: parseInt(($event.target as HTMLInputElement).value) || 0 })"
               />
             </label>
-            <label class="candyInput">
-              <span class="candyInput__label">{{ t("calc.candy.universalM") }}</span>
+            <label class="calcTop__candyInput">
+              <span class="calcTop__candyLabel">{{ t("calc.candy.universalM") }}</span>
               <input
                 type="number"
                 min="0"
-                class="field__input field__input--sm"
+                class="calcTop__input calcTop__input--candy"
                 :value="candyStore.universalCandy.value.m"
                 @input="candyStore.updateUniversalCandy({ m: parseInt(($event.target as HTMLInputElement).value) || 0 })"
               />
             </label>
-            <label class="candyInput">
-              <span class="candyInput__label">{{ t("calc.candy.universalL") }}</span>
+            <label class="calcTop__candyInput">
+              <span class="calcTop__candyLabel">{{ t("calc.candy.universalL") }}</span>
               <input
                 type="number"
                 min="0"
-                class="field__input field__input--sm"
+                class="calcTop__input calcTop__input--candy"
                 :value="candyStore.universalCandy.value.l"
                 @input="candyStore.updateUniversalCandy({ l: parseInt(($event.target as HTMLInputElement).value) || 0 })"
               />

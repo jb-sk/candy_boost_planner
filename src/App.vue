@@ -396,29 +396,65 @@ function scrollToPanel(id: string) {
 .calcTop {
   margin-top: 12px;
 }
-.calcTop__grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
+.calcTop__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px 24px;
 }
-@media (min-width: 860px) {
-  .calcTop__grid {
-    grid-template-columns: 1.2fr 0.8fr;
-    align-items: start;
+@media (min-width: 900px) {
+  .calcTop__row {
+    flex-wrap: nowrap;
   }
 }
-.calcTop__grid--candy {
-  margin-top: 12px;
+.calcTop__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
-@media (min-width: 860px) {
-  .calcTop__grid--candy {
-    grid-template-columns: 1fr;
-  }
+.calcTop__label {
+  font-size: 11px;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--ink) 60%, transparent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
-.candyRow {
+.calcTop__input {
+  height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in oklab, var(--ink) 16%, transparent);
+  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
+  color: var(--ink);
+  font-family: inherit;
+}
+.calcTop__input--shards {
+  width: 85px;
+  text-align: right;
+}
+.calcTop__field--candy {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.calcTop__candyInputs {
   display: flex;
   gap: 12px;
-  flex-wrap: wrap;
+}
+.calcTop__candyInput {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.calcTop__candyLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--ink) 70%, transparent);
+}
+.calcTop__input--candy {
+  width: 50px;
+  text-align: center;
+  padding: 0 4px;
 }
 .field__input--sm {
   width: 60px;
@@ -427,11 +463,19 @@ function scrollToPanel(id: string) {
 }
 .field__input--xs,
 input.field__input--xs {
-  width: 55px;
+  width: 50px;
   padding: 4px 6px;
   font-size: 13px;
   color: var(--ink);
   text-align: center;
+}
+.field__input--compact,
+input.field__input--compact {
+  width: 80px;
+  padding: 4px 8px;
+  font-size: 13px;
+  color: var(--ink);
+  text-align: right;
 }
 .calcTop__typeCandy {
   margin-top: 12px;

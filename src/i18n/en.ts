@@ -27,7 +27,7 @@ export const en = {
     title: "Calculator: Multiple Pokémon (Target Level)",
     applyToBoxTitle: "Save edits (current Lv / EXP to next / EXP type / nature) to Pokémon Box",
     applyToBox: "To Box",
-    maxShardsLabel: "Max Dream Shards (cap check)",
+    maxShardsLabel: "Max Shards",
     maxShardsHelp: "Calculation continues even if you exceed the cap; the overage is shown in red.",
     boostKindLabel: "Candy Boost type",
     boostKindFull: "Candy Boost (Shards ×{shards} / EXP ×{exp})",
