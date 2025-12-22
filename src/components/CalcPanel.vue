@@ -399,7 +399,7 @@
               :min="r.srcLevel"
               :max="r.dstLevel"
               class="field__input"
-              @input="calc.onRowBoostLevel(r.id, ($event.target as HTMLInputElement).value)"
+              @change="calc.onRowBoostLevel(r.id, ($event.target as HTMLInputElement).value)"
             />
           </label>
           <label class="field field--sm">
