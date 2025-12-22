@@ -487,6 +487,22 @@ function scrollToPanel(id: string) {
   }
   .calcRow__title {
     font-size: 15px;
+    max-width: calc(100vw - 280px); /* More restrictive for English UI buttons */
+  }
+  .calcRow__headRight {
+    gap: 4px; /* Tighter spacing on mobile */
+  }
+  .calcRow__headRight .linkBtn {
+    font-size: 12px;
+    padding: 2px 4px;
+  }
+  .calcRow {
+    overflow: hidden; /* Prevent horizontal overflow */
+    max-width: 100%;
+  }
+  .calcRow__head {
+    max-width: 100%;
+    overflow: hidden;
   }
 
   /* Mobile: keep shards + candy(total) side-by-side under inputs (moved near base rules for correct cascade) */
