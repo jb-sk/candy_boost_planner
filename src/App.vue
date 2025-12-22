@@ -853,6 +853,17 @@ input.field__input, select.field__input {
     0 16px 32px color-mix(in oklab, var(--ink) 18%, transparent),
     0 2px 0 color-mix(in oklab, var(--ink) 10%, transparent);
 }
+@media (max-width: 640px) {
+  .levelPick__popover {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(300px, 90vw);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+    border: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
+  }
+}
 .levelPick__top {
   display: flex;
   align-items: center;

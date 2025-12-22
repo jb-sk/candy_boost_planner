@@ -69,7 +69,7 @@ export type CalcStore = {
   // UI state
   exportOpen: Ref<boolean>;
   openLevelPickRowId: Ref<string | null>;
-  openLevelPickKind: Ref<"src" | "dst">;
+  openLevelPickKind: Ref<"src" | "dst" | "boost">;
   dragRowId: Ref<string | null>;
   dragOverRowId: Ref<string | null>;
 
@@ -126,11 +126,14 @@ export type CalcStore = {
   // row UI: level picker / drag reorder
   openDstLevelPick: (id: string) => void;
   openSrcLevelPick: (id: string) => void;
+  openBoostLevelPick: (id: string) => void;
   closeLevelPick: () => void;
   nudgeDstLevel: (id: string, delta: number) => void;
   nudgeSrcLevel: (id: string, delta: number) => void;
+  nudgeBoostLevel: (id: string, delta: number) => void;
   setDstLevel: (id: string, v: unknown) => void;
   setSrcLevel: (id: string, v: unknown) => void;
+  setBoostLevel: (id: string, v: unknown) => void;
 
   onRowExpRemaining: (id: string, v: string) => void;
   onRowNature: (id: string, v: string) => void;
@@ -352,7 +355,7 @@ export function useCalcStore(opts: {
   }
 
   const openLevelPickRowId = ref<string | null>(null);
-  const openLevelPickKind = ref<"src" | "dst">("dst");
+  const openLevelPickKind = ref<"src" | "dst" | "boost">("dst");
   const dragRowId = ref<string | null>(null);
   const dragOverRowId = ref<string | null>(null);
 
@@ -368,6 +371,10 @@ export function useCalcStore(opts: {
   }
   function openSrcLevelPick(id: string) {
     openLevelPickKind.value = "src";
+    openLevelPickRowId.value = openLevelPickRowId.value === id ? null : id;
+  }
+  function openBoostLevelPick(id: string) {
+    openLevelPickKind.value = "boost";
     openLevelPickRowId.value = openLevelPickRowId.value === id ? null : id;
   }
   function closeLevelPick() {
@@ -402,6 +409,17 @@ export function useCalcStore(opts: {
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
     setSrcLevel(id, r.srcLevel + delta);
+  }
+  function setBoostLevel(id: string, v: unknown) {
+    const r = rows.value.find((x) => x.id === id);
+    if (!r) return;
+    const mid = clampInt(v, r.srcLevel, r.dstLevel, r.srcLevel);
+    updateRow(id, { boostReachLevel: mid, mode: "boostLevel" });
+  }
+  function nudgeBoostLevel(id: string, delta: number) {
+    const r = rows.value.find((x) => x.id === id);
+    if (!r) return;
+    setBoostLevel(id, r.boostReachLevel + delta);
   }
 
   function onRowExpRemaining(id: string, v: string) {
@@ -904,11 +922,14 @@ export function useCalcStore(opts: {
 
     openDstLevelPick,
     openSrcLevelPick,
+    openBoostLevelPick,
     closeLevelPick,
     nudgeDstLevel,
     nudgeSrcLevel,
+    nudgeBoostLevel,
     setDstLevel,
     setSrcLevel,
+    setBoostLevel,
 
     onRowExpRemaining,
     onRowNature,
