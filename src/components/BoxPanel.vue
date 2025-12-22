@@ -76,26 +76,6 @@
               />
             </label>
             <label class="field">
-              <span class="field__label">{{ t("box.add.specialtyOpt") }}</span>
-              <select v-model="addSpecialty" class="field__input" :disabled="!!addLookup" @change="box.onAddSpecialtyChanged">
-                <option value="">{{ t("box.add.specialtyUnknown") }}</option>
-                <option value="Berries">{{ gt("きのみ") }}</option>
-                <option value="Ingredients">{{ gt("食材") }}</option>
-                <option value="Skills">{{ gt("スキル") }}</option>
-                <option value="All">{{ gt("オール") }}</option>
-              </select>
-            </label>
-            <label class="field">
-              <span class="field__label">{{ t("box.add.expType") }}</span>
-              <select v-model.number="addExpType" class="field__input" :disabled="!!addLookup" @change="box.onAddExpTypeChanged">
-                <option :value="600">600{{ !addLookup ? t("box.add.expType600Hint") : '' }}</option>
-                <option :value="900">900</option>
-                <option :value="1080">1080</option>
-                <option :value="1320">1320</option>
-              </select>
-            </label>
-
-            <label class="field">
               <span class="field__label">{{ t("box.add.ingredientType") }}</span>
               <select
                 v-model="addIngredientType"
@@ -116,6 +96,25 @@
                   <option value="ABB">ABB</option>
                   <option value="ABC">ABC</option>
                 </template>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field__label">{{ t("box.add.specialtyOpt") }}</span>
+              <select v-model="addSpecialty" class="field__input" :disabled="!!addLookup" @change="box.onAddSpecialtyChanged">
+                <option value="">{{ t("box.add.specialtyUnknown") }}</option>
+                <option value="Berries">{{ gt("きのみ") }}</option>
+                <option value="Ingredients">{{ gt("食材") }}</option>
+                <option value="Skills">{{ gt("スキル") }}</option>
+                <option value="All">{{ gt("オール") }}</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field__label">{{ t("box.add.expType") }}</span>
+              <select v-model.number="addExpType" class="field__input" :disabled="!!addLookup" @change="box.onAddExpTypeChanged">
+                <option :value="600">600{{ !addLookup ? t("box.add.expType600Hint") : '' }}</option>
+                <option :value="900">900</option>
+                <option :value="1080">1080</option>
+                <option :value="1320">1320</option>
               </select>
             </label>
 
@@ -367,20 +366,6 @@
               <div class="boxDetail__grid">
                 <div class="boxDetail__col">
                   <div class="boxDetail__kv">
-                    <div class="boxDetail__k">{{ t("box.detail.nickname") }}</div>
-                    <div class="boxDetail__v">
-                      <input
-                        class="field__input"
-                        :value="selectedBox.label ?? ''"
-                        :placeholder="box.displayPokemonName(selectedBox) ?? t('common.optional')"
-                        @change="box.onEditSelectedLabel(($event.target as HTMLInputElement).value)"
-                      />
-                      <div class="boxDetail__minor">{{ t("box.detail.nicknameClearHint") }}</div>
-                    </div>
-                  </div>
-
-                  <div class="boxDetail__kv">
-                    <div class="boxDetail__k">{{ t("box.detail.speciesLink") }}</div>
                     <div class="boxDetail__v">
                       <div>
                         <span class="boxDetail__strong">{{ box.displayPokemonName(selectedBox) ?? t("box.detail.unlinked") }}</span>
@@ -427,6 +412,19 @@
                       </div>
 
                       <div class="boxDetail__minor" v-if="relinkStatus">{{ relinkStatus }}</div>
+                    </div>
+                  </div>
+
+                  <div class="boxDetail__kv">
+                    <div class="boxDetail__k">{{ t("box.detail.nickname") }}</div>
+                    <div class="boxDetail__v">
+                      <input
+                        class="field__input"
+                        :value="selectedBox.label ?? ''"
+                        :placeholder="box.displayPokemonName(selectedBox) ?? t('common.optional')"
+                        @change="box.onEditSelectedLabel(($event.target as HTMLInputElement).value)"
+                      />
+                      <div class="boxDetail__minor">{{ t("box.detail.nicknameClearHint") }}</div>
                     </div>
                   </div>
 
@@ -504,6 +502,36 @@
                   </div>
 
                   <div class="boxDetail__kv">
+                    <div class="boxDetail__k">{{ t("calc.row.nature") }}</div>
+                    <div class="boxDetail__v">
+                      <NatureSelect
+                        v-model="selectedNature"
+                        @update:model-value="box.onBoxItemNatureChange"
+                        :label="t('calc.row.nature')"
+                        :label-normal="t('calc.row.natureNormal')"
+                        :label-up="t('calc.row.natureUp')"
+                        :label-down="t('calc.row.natureDown')"
+                      />
+                      <span class="boxDetail__minor" v-if="selectedDetail?.decoded?.natureName">
+                        （{{ localizeNature(selectedDetail.decoded.natureName, locale as any) }}）
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="boxDetail__kv">
+                    <div class="boxDetail__k">{{ t("box.list.specialty") }}</div>
+                    <div class="boxDetail__v">
+                      <select class="field__input" :value="selectedSpecialtySelectValue" @change="box.onEditSelectedSpecialty(($event.target as HTMLSelectElement).value)">
+                        <option value="">{{ t("box.detail.unknownAuto") }}</option>
+                        <option value="Berries">{{ gt("きのみ") }}</option>
+                        <option value="Ingredients">{{ gt("食材") }}</option>
+                        <option value="Skills">{{ gt("スキル") }}</option>
+                        <option value="All">{{ gt("オール") }}</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div class="boxDetail__kv">
                     <div class="boxDetail__k">{{ t("calc.row.expType") }}</div>
                     <div class="boxDetail__v">
                       <div
@@ -526,36 +554,6 @@
                       </select>
                       <span class="boxDetail__minor" v-if="(selectedDetail?.pokedexId ?? 0) <= 0">
                         {{ t("box.detail.speciesUnknownHint") }}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div class="boxDetail__kv">
-                    <div class="boxDetail__k">{{ t("box.list.specialty") }}</div>
-                    <div class="boxDetail__v">
-                      <select class="field__input" :value="selectedSpecialtySelectValue" @change="box.onEditSelectedSpecialty(($event.target as HTMLSelectElement).value)">
-                        <option value="">{{ t("box.detail.unknownAuto") }}</option>
-                        <option value="Berries">{{ gt("きのみ") }}</option>
-                        <option value="Ingredients">{{ gt("食材") }}</option>
-                        <option value="Skills">{{ gt("スキル") }}</option>
-                        <option value="All">{{ gt("オール") }}</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div class="boxDetail__kv">
-                    <div class="boxDetail__k">{{ t("calc.row.nature") }}</div>
-                    <div class="boxDetail__v">
-                      <NatureSelect
-                        v-model="selectedNature"
-                        @update:model-value="box.onBoxItemNatureChange"
-                        :label="t('calc.row.nature')"
-                        :label-normal="t('calc.row.natureNormal')"
-                        :label-up="t('calc.row.natureUp')"
-                        :label-down="t('calc.row.natureDown')"
-                      />
-                      <span class="boxDetail__minor" v-if="selectedDetail?.decoded?.natureName">
-                        （{{ localizeNature(selectedDetail.decoded.natureName, locale as any) }}）
                       </span>
                     </div>
                   </div>

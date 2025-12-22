@@ -1817,8 +1817,14 @@ input.field__input, select.field__input {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 8px;
-  align-items: center;
+  align-items: stretch;
   margin-top: 8px;
+}
+.relinkRow .field__input {
+  height: 40px;
+}
+.relinkRow .btn {
+  height: 40px;
 }
 .boxSortRow {
   margin-top: 10px;
