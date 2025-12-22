@@ -37,7 +37,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
   const importText = ref("");
   const importStatus = ref("");
   const boxFilter = ref("");
-  const boxSortKey = ref<"label" | "level">("label");
+  const boxSortKey = ref<"labelFav" | "levelFav" | "label" | "level">("labelFav");
   const boxSortDir = ref<"asc" | "desc">("asc");
 
   const filterJoinMode = ref<FilterJoinMode>("and"); // とくい/サブスキル の結合
@@ -58,6 +58,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
   const addLookup = computed(() => findPokemonByNameJa(addName.value));
   const addSpecialty = ref<PokemonSpecialty | "">("");
   const addSpecialtyTouched = ref(false);
+  const addFavorite = ref(true); // デフォルトでお気に入りに追加
 
   const addIngredientType = ref<IngredientType | "">("");
   const addIngredientTypeTouched = ref(false);
@@ -480,8 +481,16 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     const list = [...filteredBoxEntries.value];
     const dir = boxSortDir.value === "asc" ? 1 : -1;
     const key = boxSortKey.value;
+    const favPriority = key === "labelFav" || key === "levelFav";
+    const sortByLevel = key === "level" || key === "levelFav";
     list.sort((a, b) => {
-      if (key === "level") {
+      // お気に入り優先の場合、まずfavoriteで分ける
+      if (favPriority) {
+        const favA = a.favorite ? 1 : 0;
+        const favB = b.favorite ? 1 : 0;
+        if (favA !== favB) return (favB - favA); // favoriteは常に上（dirに関係なく）
+      }
+      if (sortByLevel) {
         const la = a.planner?.level ?? a.derived?.level ?? 0;
         const lb = b.planner?.level ?? b.derived?.level ?? 0;
         if (la !== lb) return (la - lb) * dir;
@@ -864,6 +873,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
       source: "manual",
       rawText: "",
       label: nickname,
+      favorite: addFavorite.value,
       derived: {
         pokedexId,
         form,
@@ -906,7 +916,8 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     addSubErrors.value = { "10": null, "25": null, "50": null, "75": null, "100": null };
   }
 
-  function onImport() {
+  function onImport(opts?: { markFavorite?: boolean }) {
+    const markFav = opts?.markFavorite ?? false;
     const text = importText.value;
     const lines = text
       .split(/\r?\n/g)
@@ -942,6 +953,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
         rawText,
         // nickname がない場合は label を空にして「種族名表示」に任せる（locale で切り替え可能にする）
         label: parsed.nickname || (derived0 ? "" : name0 || "(imported)"),
+        favorite: markFav,
         derived: derived0
           ? {
             pokedexId: derived0.pokedexId,
@@ -1101,6 +1113,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     addSubLv75,
     addSubLv100,
     addSubErrors,
+    addFavorite,
 
     // computed
     subSkillOptionLabels,

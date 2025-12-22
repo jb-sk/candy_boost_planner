@@ -13,14 +13,13 @@
       <details class="boxDisclosure">
         <summary class="boxDisclosure__summary">
           <span class="boxDisclosure__title">{{ t("box.addNew") }}</span>
-          <span class="boxDisclosure__hint">{{ t("box.addNewHint") }}</span>
         </summary>
         <div class="boxCard boxCard--inner">
           <p class="boxCard__desc">
             {{ t("box.addNewDesc") }}
           </p>
           <div class="boxAddGrid">
-            <label class="field">
+            <label class="field field--name">
               <span class="field__label">{{ t("box.add.nameDex") }}</span>
               <div class="suggest">
                 <input
@@ -58,7 +57,7 @@
               </span>
               <span class="field__sub" v-else>{{ t("box.add.noMatch") }}</span>
             </label>
-            <label class="field">
+            <label class="field field--name">
               <span class="field__label">{{ t("box.add.labelOpt") }}</span>
               <input v-model="addLabel" class="field__input" :placeholder="t('box.add.labelOptPh')" />
             </label>
@@ -77,47 +76,46 @@
               />
             </label>
             <label class="field">
+              <span class="field__label">{{ t("box.add.ingredientType") }}</span>
+              <select
+                v-model="addIngredientType"
+                class="field__input"
+                @change="box.onAddIngredientTypeChanged"
+              >
+                <option value="">{{ t("box.add.ingredientTypeNone") }}</option>
+                <template v-if="addLookup">
+                  <option v-for="x in ingredientTypeOptions" :key="x.type" :value="x.type">
+                    {{ x.type }} - {{ x.preview }}
+                  </option>
+                </template>
+                <template v-else>
+                  <option value="AAA">AAA</option>
+                  <option value="AAB">AAB</option>
+                  <option value="AAC">AAC</option>
+                  <option value="ABA">ABA</option>
+                  <option value="ABB">ABB</option>
+                  <option value="ABC">ABC</option>
+                </template>
+              </select>
+            </label>
+            <label class="field">
               <span class="field__label">{{ t("box.add.specialtyOpt") }}</span>
-              <select v-model="addSpecialty" class="field__input" @change="box.onAddSpecialtyChanged">
+              <select v-model="addSpecialty" class="field__input" :disabled="!!addLookup" @change="box.onAddSpecialtyChanged">
                 <option value="">{{ t("box.add.specialtyUnknown") }}</option>
                 <option value="Berries">{{ gt("きのみ") }}</option>
                 <option value="Ingredients">{{ gt("食材") }}</option>
                 <option value="Skills">{{ gt("スキル") }}</option>
                 <option value="All">{{ gt("オール") }}</option>
               </select>
-              <span class="field__sub">{{ t("box.add.specialtyAutoHint") }}</span>
             </label>
             <label class="field">
               <span class="field__label">{{ t("box.add.expType") }}</span>
               <select v-model.number="addExpType" class="field__input" :disabled="!!addLookup" @change="box.onAddExpTypeChanged">
-                <option :value="600">600</option>
+                <option :value="600">600{{ !addLookup ? t("box.add.expType600Hint") : '' }}</option>
                 <option :value="900">900</option>
                 <option :value="1080">1080</option>
                 <option :value="1320">1320</option>
               </select>
-              <span class="field__sub">
-                {{ addLookup ? t("box.add.expTypeAuto") : t("box.add.expTypeManual") }}
-              </span>
-            </label>
-
-            <label class="field">
-              <span class="field__label">{{ t("box.add.ingredientType") }}</span>
-              <input
-                v-model="addIngredientType"
-                class="field__input"
-                list="ingredientTypeOptions"
-                :placeholder="t('box.add.ingredientTypePh')"
-                @change="box.onAddIngredientTypeChanged"
-              />
-              <datalist id="ingredientTypeOptions">
-                <option v-for="x in ingredientTypeOptions" :key="x.type" :value="x.type">
-                  {{ x.preview }}
-                </option>
-              </datalist>
-              <span class="field__sub" v-if="addLookup && addIngredientType">
-                {{ ingredientTypeOptions.find((x) => x.type === addIngredientType)?.preview }}
-              </span>
-              <span class="field__sub" v-else>{{ t("box.add.ingredientPreviewHint") }}</span>
             </label>
 
             <label class="field field--wide">
@@ -187,7 +185,10 @@
               <datalist id="subSkillOptions">
                 <option v-for="label in subSkillOptionLabels" :key="label" :value="label" />
               </datalist>
-              <span class="field__sub">{{ t("box.add.subSkillNote") }}</span>
+            </label>
+            <label class="boxAddFav">
+              <input type="checkbox" v-model="box.addFavorite.value" />
+              {{ t("box.add.addFavorite") }}
             </label>
             <div class="boxAddActions">
               <button class="btn btn--primary" type="button" @click="onCreateToCalc($event)">
@@ -201,128 +202,118 @@
         </div>
       </details>
 
-      <BoxImportDisclosure v-model:importText="importText" v-model:importStatus="importStatus" @import="box.onImport" />
+      <BoxImportDisclosure v-model:importText="importText" v-model:importStatus="importStatus" @import="(fav) => box.onImport({ markFavorite: fav })" />
 
       <div class="boxCard">
         <div class="boxCard__head">
           <h3 class="boxCard__title">{{ t("box.list.title") }}</h3>
-          <div class="boxCard__tools">
-            <input v-model="boxFilter" class="boxSearch" :placeholder="t('box.list.searchPh')" />
-            <button class="btn btn--ghost" type="button" @click="boxFilter = ''" :disabled="!boxFilter.trim()">
-              {{ t("box.list.clearSearch") }}
-            </button>
-          </div>
         </div>
 
-        <p class="boxListHint">
-          {{ t("box.list.hint") }}
-        </p>
+        <!-- 検索 -->
+        <div class="boxSearchRow">
+          <input v-model="boxFilter" class="boxSearch" :placeholder="t('box.list.searchPh')" />
+          <button class="btn btn--ghost btn--sm" type="button" @click="boxFilter = ''" :disabled="!boxFilter.trim()">
+            {{ t("box.list.clearSearch") }}
+          </button>
+        </div>
 
-        <div class="boxFilters">
-          <div class="boxFilters__row boxFilters__row--main">
-            <div class="boxFilters__group">
-              <span class="boxFilters__label">{{ t("box.list.join") }}</span>
-              <select v-model="filterJoinMode" class="field__input boxFilters__select" :aria-label="t('box.list.join')">
+        <!-- お気に入り＆とくいフィルタ -->
+        <div class="boxFilterRow">
+          <button
+            class="chipBtn"
+            :class="{ 'chipBtn--on': favoritesOnly }"
+            type="button"
+            @click="favoritesOnly = !favoritesOnly"
+            :title="t('box.list.favoritesOnlyTitle')"
+            :aria-label="t('box.list.favoritesOnlyAria')"
+          >
+            <span class="chipBtn__icon" v-html="iconStarSvg" aria-hidden="true"></span>
+            <span class="chipBtn__text">{{ t("box.list.favorites") }}</span>
+          </button>
+          <button
+            class="chipBtn"
+            :class="{ 'chipBtn--on': selectedSpecialties.includes('Berries') }"
+            type="button"
+            @click="box.toggleSpecialty('Berries')"
+            :aria-label="t('box.list.specialtyAria', { name: gt('きのみ') })"
+          >
+            <span class="chipBtn__icon" v-html="iconBerrySvg" aria-hidden="true"></span>
+            <span class="chipBtn__text">{{ gt("きのみ") }}</span>
+          </button>
+          <button
+            class="chipBtn"
+            :class="{ 'chipBtn--on': selectedSpecialties.includes('Ingredients') }"
+            type="button"
+            @click="box.toggleSpecialty('Ingredients')"
+            :aria-label="t('box.list.specialtyAria', { name: gt('食材') })"
+          >
+            <span class="chipBtn__icon" v-html="iconIngredientsSvg" aria-hidden="true"></span>
+            <span class="chipBtn__text">{{ gt("食材") }}</span>
+          </button>
+          <button
+            class="chipBtn"
+            :class="{ 'chipBtn--on': selectedSpecialties.includes('Skills') }"
+            type="button"
+            @click="box.toggleSpecialty('Skills')"
+            :aria-label="t('box.list.specialtyAria', { name: gt('スキル') })"
+          >
+            <span class="chipBtn__icon" v-html="iconSkillsSvg" aria-hidden="true"></span>
+            <span class="chipBtn__text">{{ gt("スキル") }}</span>
+          </button>
+          <button
+            class="chipBtn"
+            :class="{ 'chipBtn--on': selectedSpecialties.includes('All') }"
+            type="button"
+            @click="box.toggleSpecialty('All')"
+            :aria-label="t('box.list.specialtyAria', { name: gt('オール') })"
+          >
+            <span class="chipBtn__icon" v-html="iconAllSvg" aria-hidden="true"></span>
+            <span class="chipBtn__text">{{ gt("オール") }}</span>
+          </button>
+        </div>
+
+        <!-- 詳細設定 -->
+        <details class="boxAdvanced">
+          <summary class="boxAdvanced__summary">
+            <span>{{ t("box.list.advancedSettings") }}</span>
+          </summary>
+          <div class="boxAdvanced__content">
+            <div class="boxAdvanced__row">
+              <span class="boxAdvanced__label">{{ t("box.list.join") }}</span>
+              <select v-model="filterJoinMode" class="field__input boxAdvanced__select" :aria-label="t('box.list.join')">
                 <option value="and">{{ t("box.list.joinAnd") }}</option>
                 <option value="or">{{ t("box.list.joinOr") }}</option>
               </select>
             </div>
-
-            <div class="boxFilters__group">
-              <span class="boxFilters__label">{{ t("box.list.favorites") }}</span>
-              <div class="boxFilters__chips">
-                <button
-                  class="chipBtn chipBtn--iconOnly"
-                    :class="{ 'chipBtn--on': favoritesOnly }"
-                  type="button"
-                    @click="favoritesOnly = !favoritesOnly"
-                  :title="t('box.list.favoritesOnlyTitle')"
-                  :aria-label="t('box.list.favoritesOnlyAria')"
-                >
-                  <span class="chipBtn__icon" v-html="iconStarSvg" aria-hidden="true"></span>
-                </button>
+            <div class="boxAdvanced__section">
+              <div class="boxAdvanced__row">
+                <span class="boxAdvanced__label">{{ t("box.list.subskillFilter") }}</span>
+                <span class="boxAdvanced__count" v-if="selectedSubSkillEns.length">（{{ selectedSubSkillEns.length }}）</span>
               </div>
-            </div>
-          </div>
-
-          <div class="boxFilters__row boxFilters__row--chips">
-            <div class="boxFilters__group">
-              <span class="boxFilters__label">{{ t("box.list.specialty") }}</span>
-              <div class="boxFilters__chips">
-                <button
-                  class="chipBtn"
-                  :class="{ 'chipBtn--on': selectedSpecialties.includes('Berries') }"
-                  type="button"
-                  @click="box.toggleSpecialty('Berries')"
-                  :aria-label="t('box.list.specialtyAria', { name: gt('きのみ') })"
-                >
-                  <span class="chipBtn__icon" v-html="iconBerrySvg" aria-hidden="true"></span>
-                  <span class="chipBtn__text">{{ gt("きのみ") }}</span>
-                </button>
-                <button
-                  class="chipBtn"
-                  :class="{ 'chipBtn--on': selectedSpecialties.includes('Ingredients') }"
-                  type="button"
-                  @click="box.toggleSpecialty('Ingredients')"
-                  :aria-label="t('box.list.specialtyAria', { name: gt('食材') })"
-                >
-                  <span class="chipBtn__icon" v-html="iconIngredientsSvg" aria-hidden="true"></span>
-                  <span class="chipBtn__text">{{ gt("食材") }}</span>
-                </button>
-                <button
-                  class="chipBtn"
-                  :class="{ 'chipBtn--on': selectedSpecialties.includes('Skills') }"
-                  type="button"
-                  @click="box.toggleSpecialty('Skills')"
-                  :aria-label="t('box.list.specialtyAria', { name: gt('スキル') })"
-                >
-                  <span class="chipBtn__icon" v-html="iconSkillsSvg" aria-hidden="true"></span>
-                  <span class="chipBtn__text">{{ gt("スキル") }}</span>
-                </button>
-                <button
-                  class="chipBtn"
-                  :class="{ 'chipBtn--on': selectedSpecialties.includes('All') }"
-                  type="button"
-                  @click="box.toggleSpecialty('All')"
-                  :aria-label="t('box.list.specialtyAria', { name: gt('オール') })"
-                >
-                  <span class="chipBtn__icon" v-html="iconAllSvg" aria-hidden="true"></span>
-                  <span class="chipBtn__text">{{ gt("オール") }}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <details class="boxFilters__subskill">
-            <summary class="boxFilters__summary">
-              <span>{{ t("box.list.subskillFilter") }}</span>
-              <span class="boxFilters__summaryCount" v-if="selectedSubSkillEns.length">（{{ selectedSubSkillEns.length }}）</span>
-            </summary>
-            <div class="boxFilters__row boxFilters__row--sub">
-              <div class="boxFilters__group">
-                <span class="boxFilters__label">{{ t("box.list.subskillJoin") }}</span>
-                <select v-model="subSkillJoinMode" class="field__input boxFilters__select" :aria-label="t('box.list.subskillJoin')">
+              <div class="boxAdvanced__row">
+                <span class="boxAdvanced__label">{{ t("box.list.subskillJoin") }}</span>
+                <select v-model="subSkillJoinMode" class="field__input boxAdvanced__select" :aria-label="t('box.list.subskillJoin')">
                   <option value="or">{{ t("box.list.subskillJoinOr") }}</option>
                   <option value="and">{{ t("box.list.subskillJoinAnd") }}</option>
                 </select>
+                <button
+                  class="btn btn--ghost btn--sm"
+                  type="button"
+                  @click="selectedSubSkillEns = []"
+                  :disabled="!selectedSubSkillEns.length"
+                >
+                  {{ t("box.list.subskillClear") }}
+                </button>
               </div>
-              <button
-                class="btn btn--ghost"
-                type="button"
-                @click="selectedSubSkillEns = []"
-                :disabled="!selectedSubSkillEns.length"
-              >
-                {{ t("box.list.subskillClear") }}
-              </button>
+              <div class="boxAdvanced__list">
+                <label v-for="s in availableSubSkills" :key="s.nameEn" class="boxAdvanced__item">
+                  <input type="checkbox" class="boxAdvanced__check" :value="s.nameEn" v-model="selectedSubSkillEns" />
+                  <span class="boxAdvanced__itemLabel">{{ box.subSkillLabel(s) }}</span>
+                </label>
+              </div>
             </div>
-            <div class="boxFilters__list">
-              <label v-for="s in availableSubSkills" :key="s.nameEn" class="boxFilters__item">
-                <input type="checkbox" class="boxFilters__check" :value="s.nameEn" v-model="selectedSubSkillEns" />
-                <span class="boxFilters__itemLabel">{{ box.subSkillLabel(s) }}</span>
-              </label>
-            </div>
-          </details>
-        </div>
+          </div>
+        </details>
 
         <div class="boxSortRow">
           <div class="boxSortRow__left">
@@ -332,6 +323,8 @@
           </div>
           <div class="boxSort">
             <select v-model="boxSortKey" class="field__input boxSort__select" :aria-label="t('box.list.sortKeyAria')">
+              <option value="labelFav">{{ t("box.list.sortLabelFav") }}</option>
+              <option value="levelFav">{{ t("box.list.sortLevelFav") }}</option>
               <option value="label">{{ t("box.list.sortLabel") }}</option>
               <option value="level">{{ t("box.list.sortLevel") }}</option>
             </select>
@@ -373,20 +366,6 @@
               <div class="boxDetail__grid">
                 <div class="boxDetail__col">
                   <div class="boxDetail__kv">
-                    <div class="boxDetail__k">{{ t("box.detail.nickname") }}</div>
-                    <div class="boxDetail__v">
-                      <input
-                        class="field__input"
-                        :value="selectedBox.label ?? ''"
-                        :placeholder="box.displayPokemonName(selectedBox) ?? t('common.optional')"
-                        @change="box.onEditSelectedLabel(($event.target as HTMLInputElement).value)"
-                      />
-                      <div class="boxDetail__minor">{{ t("box.detail.nicknameClearHint") }}</div>
-                    </div>
-                  </div>
-
-                  <div class="boxDetail__kv">
-                    <div class="boxDetail__k">{{ t("box.detail.speciesLink") }}</div>
                     <div class="boxDetail__v">
                       <div>
                         <span class="boxDetail__strong">{{ box.displayPokemonName(selectedBox) ?? t("box.detail.unlinked") }}</span>
@@ -433,6 +412,19 @@
                       </div>
 
                       <div class="boxDetail__minor" v-if="relinkStatus">{{ relinkStatus }}</div>
+                    </div>
+                  </div>
+
+                  <div class="boxDetail__kv">
+                    <div class="boxDetail__k">{{ t("box.detail.nickname") }}</div>
+                    <div class="boxDetail__v">
+                      <input
+                        class="field__input"
+                        :value="selectedBox.label ?? ''"
+                        :placeholder="box.displayPokemonName(selectedBox) ?? t('common.optional')"
+                        @change="box.onEditSelectedLabel(($event.target as HTMLInputElement).value)"
+                      />
+                      <div class="boxDetail__minor">{{ t("box.detail.nicknameClearHint") }}</div>
                     </div>
                   </div>
 
@@ -510,6 +502,36 @@
                   </div>
 
                   <div class="boxDetail__kv">
+                    <div class="boxDetail__k">{{ t("calc.row.nature") }}</div>
+                    <div class="boxDetail__v">
+                      <NatureSelect
+                        v-model="selectedNature"
+                        @update:model-value="box.onBoxItemNatureChange"
+                        :label="t('calc.row.nature')"
+                        :label-normal="t('calc.row.natureNormal')"
+                        :label-up="t('calc.row.natureUp')"
+                        :label-down="t('calc.row.natureDown')"
+                      />
+                      <span class="boxDetail__minor" v-if="selectedDetail?.decoded?.natureName">
+                        （{{ localizeNature(selectedDetail.decoded.natureName, locale as any) }}）
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="boxDetail__kv">
+                    <div class="boxDetail__k">{{ t("box.list.specialty") }}</div>
+                    <div class="boxDetail__v">
+                      <select class="field__input" :value="selectedSpecialtySelectValue" @change="box.onEditSelectedSpecialty(($event.target as HTMLSelectElement).value)">
+                        <option value="">{{ t("box.detail.unknownAuto") }}</option>
+                        <option value="Berries">{{ gt("きのみ") }}</option>
+                        <option value="Ingredients">{{ gt("食材") }}</option>
+                        <option value="Skills">{{ gt("スキル") }}</option>
+                        <option value="All">{{ gt("オール") }}</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div class="boxDetail__kv">
                     <div class="boxDetail__k">{{ t("calc.row.expType") }}</div>
                     <div class="boxDetail__v">
                       <div
@@ -532,36 +554,6 @@
                       </select>
                       <span class="boxDetail__minor" v-if="(selectedDetail?.pokedexId ?? 0) <= 0">
                         {{ t("box.detail.speciesUnknownHint") }}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div class="boxDetail__kv">
-                    <div class="boxDetail__k">{{ t("box.list.specialty") }}</div>
-                    <div class="boxDetail__v">
-                      <select class="field__input" :value="selectedSpecialtySelectValue" @change="box.onEditSelectedSpecialty(($event.target as HTMLSelectElement).value)">
-                        <option value="">{{ t("box.detail.unknownAuto") }}</option>
-                        <option value="Berries">{{ gt("きのみ") }}</option>
-                        <option value="Ingredients">{{ gt("食材") }}</option>
-                        <option value="Skills">{{ gt("スキル") }}</option>
-                        <option value="All">{{ gt("オール") }}</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div class="boxDetail__kv">
-                    <div class="boxDetail__k">{{ t("calc.row.nature") }}</div>
-                    <div class="boxDetail__v">
-                      <NatureSelect
-                        v-model="selectedNature"
-                        @update:model-value="box.onBoxItemNatureChange"
-                        :label="t('calc.row.nature')"
-                        :label-normal="t('calc.row.natureNormal')"
-                        :label-up="t('calc.row.natureUp')"
-                        :label-down="t('calc.row.natureDown')"
-                      />
-                      <span class="boxDetail__minor" v-if="selectedDetail?.decoded?.natureName">
-                        （{{ localizeNature(selectedDetail.decoded.natureName, locale as any) }}）
                       </span>
                     </div>
                   </div>
