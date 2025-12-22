@@ -94,6 +94,12 @@ const supportLinks = computed<SupportLink[]>(() => {
 
 const box = useBoxStore({ locale, t });
 
+// boxId から pokedexId を解決する関数
+function resolvePokedexIdByBoxId(boxId: string): number | undefined {
+  const e = box.boxEntries.value.find((x) => x.id === boxId) ?? null;
+  return e?.derived?.pokedexId;
+}
+
 const calc = useCalcStore({
   locale,
   t,
@@ -101,13 +107,8 @@ const calc = useCalcStore({
     const e = box.boxEntries.value.find((x) => x.id === boxId) ?? null;
     return e ? box.displayBoxTitle(e) : null;
   },
+  resolvePokedexIdByBoxId,
 });
-
-// CalcPanel用: boxId から pokedexId を解決
-function resolvePokedexIdByBoxId(boxId: string): number | undefined {
-  const e = box.boxEntries.value.find((x) => x.id === boxId) ?? null;
-  return e?.derived?.pokedexId;
-}
 
 function applyBoxToCalculator(ev?: MouseEvent) {
   const e = box.selectedBox.value;
@@ -419,28 +420,18 @@ function scrollToPanel(id: string) {
   gap: 12px;
   flex-wrap: wrap;
 }
-.candyInput {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.candyInput__label {
-  font-size: 13px;
-  font-weight: 600;
-  min-width: 16px;
-}
-.candyInput--sm .candyInput__label {
-  font-size: 12px;
-}
 .field__input--sm {
   width: 60px;
   padding: 6px 8px;
   font-size: 14px;
 }
-.field__input--xs {
-  width: 50px;
+.field__input--xs,
+input.field__input--xs {
+  width: 55px;
   padding: 4px 6px;
   font-size: 13px;
+  color: var(--ink);
+  text-align: center;
 }
 .calcTop__typeCandy {
   margin-top: 12px;
@@ -459,20 +450,34 @@ function scrollToPanel(id: string) {
 }
 .calcTop__typeCandyGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 6px 16px;
   margin-top: 10px;
 }
 .typeRow {
-  display: flex;
+  display: grid;
+  grid-template-columns: 55px 1fr 1fr;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 4px 0;
 }
 .typeRow__name {
   font-size: 12px;
-  min-width: 60px;
+  font-weight: 500;
   color: color-mix(in oklab, var(--ink) 80%, transparent);
+}
+.candyInput {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.candyInput__label {
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 14px;
+}
+.candyInput--sm .candyInput__label {
+  font-size: 11px;
 }
 .calcSticky {
   position: sticky;
@@ -521,17 +526,34 @@ function scrollToPanel(id: string) {
   min-width: 220px;
 }
 .calcSticky__candy {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px dashed color-mix(in oklab, var(--ink) 14%, transparent);
   font-size: 13px;
   color: color-mix(in oklab, var(--ink) 70%, transparent);
 }
+.calcSticky__candyRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
 .calcSticky__candyLabel {
   font-weight: 600;
+}
+.calcSticky__candyPct {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--ink);
+}
+.calcSticky__candyPct--over {
+  color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 10%);
+}
+.calcSticky__candyDetails {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
 }
 .calcSticky__candyItem {
   font-variant-numeric: tabular-nums;

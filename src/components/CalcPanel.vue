@@ -182,17 +182,24 @@
           </div>
         </div>
       </div>
-      <div class="calcSticky__candy" v-if="universalCandyTotal > 0">
-        <span class="calcSticky__candyLabel">{{ t("calc.candy.usageLabel") }}:</span>
-        <span class="calcSticky__candyItem">
-          {{ t("calc.candy.universalS") }} {{ candyStore.universalCandy.value.s }}
-        </span>
-        <span class="calcSticky__candyItem">
-          {{ t("calc.candy.universalM") }} {{ candyStore.universalCandy.value.m }}
-        </span>
-        <span class="calcSticky__candyItem">
-          {{ t("calc.candy.universalL") }} {{ candyStore.universalCandy.value.l }}
-        </span>
+      <div class="calcSticky__candy" v-if="universalCandyTotal > 0 && calc.allocationResult.value">
+        <div class="calcSticky__candyRow">
+          <span class="calcSticky__candyLabel">{{ t("calc.candy.usageLabel") }}</span>
+          <span class="calcSticky__candyPct" :class="{ 'calcSticky__candyPct--over': calc.universalCandyUsagePct.value > 100 }">
+            {{ calc.universalCandyUsagePct.value }}%
+          </span>
+        </div>
+        <div class="calcSticky__candyDetails">
+          <span class="calcSticky__candyItem">
+            {{ t("calc.candy.universalS") }}: {{ calc.allocationResult.value.universalUsed.s }}/{{ candyStore.universalCandy.value.s }}
+          </span>
+          <span class="calcSticky__candyItem">
+            {{ t("calc.candy.universalM") }}: {{ calc.allocationResult.value.universalUsed.m }}/{{ candyStore.universalCandy.value.m }}
+          </span>
+          <span class="calcSticky__candyItem">
+            {{ t("calc.candy.universalL") }}: {{ calc.allocationResult.value.universalUsed.l }}/{{ candyStore.universalCandy.value.l }}
+          </span>
+        </div>
       </div>
     </div>
 
@@ -592,9 +599,7 @@ import type { CalcStore, CalcRowView } from "../composables/useCalcStore";
 import { useCandyStore } from "../composables/useCandyStore";
 import NatureSelect from "./NatureSelect.vue";
 import { PokemonTypes, getTypeNameJa } from "../domain/pokesleep/pokemon-types";
-import { getPokemonType } from "../domain/pokesleep/pokemon-names";
-import { allocateCandy, type PokemonCandyNeed, type PokemonAllocation } from "../domain/candy-allocator";
-import { CANDY_VALUES } from "../persistence/candy";
+import type { PokemonAllocation } from "../domain/candy-allocator";
 
 defineEmits<{
   (e: "apply-to-box", rowId: string): void;
@@ -629,39 +634,10 @@ function getRowPokedexId(r: { pokedexId?: number; boxId?: string }): number | un
   return undefined;
 }
 
-// アメ配分計算
-const allocationResult = computed(() => {
-  const rows = calc.rowsView.value;
-  const needs: PokemonCandyNeed[] = [];
-
-  for (const r of rows) {
-    const pokedexId = getRowPokedexId(r);
-    if (!pokedexId) continue;
-
-    // アメ合計（アメブ + 通常アメ）が必要量
-    const candyNeed = Math.max(0, r.result.boostCandy + r.result.normalCandy);
-    if (candyNeed <= 0) continue;
-
-    const pokemonType = getPokemonType(pokedexId);
-    needs.push({
-      id: r.id,
-      pokedexId,
-      pokemonName: r.title,
-      type: pokemonType,
-      candyNeed,
-    });
-  }
-
-  if (needs.length === 0) return null;
-
-  const inventory = candyStore.getInventory();
-  return allocateCandy(needs, inventory);
-});
-
-// 特定の行のアメ配分結果を取得
+// 特定の行のアメ配分結果を取得（calc.allocationResult から）
 function getRowAllocation(rowId: string): PokemonAllocation | null {
-  if (!allocationResult.value) return null;
-  return allocationResult.value.pokemons.find(p => p.id === rowId) ?? null;
+  if (!calc.allocationResult.value) return null;
+  return calc.allocationResult.value.pokemons.find(p => p.id === rowId) ?? null;
 }
 
 // アメ補填の表示テキストを生成
@@ -671,10 +647,7 @@ function getCandySupplyText(r: CalcRowView): string {
 
   const parts: string[] = [];
 
-  // 種族アメ
-  if (alloc.speciesCandyUsed > 0) {
-    parts.push(`${alloc.speciesCandyUsed}`);
-  }
+  // 種族アメは在庫使用なので補填に含めない
 
   // タイプアメ
   if (alloc.typeSUsed > 0) {

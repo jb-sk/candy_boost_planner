@@ -6,6 +6,10 @@ import { boostRules } from "../domain/pokesleep/boost-config";
 import type { CalcRowV1, CalcSaveSlotV1 } from "../persistence/calc";
 import { loadCalcAutosave, loadCalcSlots, loadLegacyTotalShards, saveCalcAutosave, saveCalcSlots } from "../persistence/calc";
 import { cryptoRandomId } from "../persistence/box";
+import { useCandyStore } from "./useCandyStore";
+import { allocateCandy, type AllocationSummary, type PokemonCandyNeed } from "../domain/candy-allocator";
+import { getPokemonType } from "../domain/pokesleep/pokemon-names";
+import { CANDY_VALUES } from "../persistence/candy";
 
 export type CalcRow = CalcRowV1;
 
@@ -100,6 +104,10 @@ export type CalcStore = {
   boostCandyOverPctForBar: Readonly<Ref<number>>;
   showBoostCandyFire: Readonly<Ref<boolean>>;
 
+  // candy allocation
+  allocationResult: Readonly<Ref<AllocationSummary | null>>;
+  universalCandyUsagePct: Readonly<Ref<number>>;
+
   canUndo: Readonly<Ref<boolean>>;
   canRedo: Readonly<Ref<boolean>>;
 
@@ -171,8 +179,9 @@ export function useCalcStore(opts: {
   locale: Ref<string>;
   t: Composer["t"];
   resolveTitleByBoxId?: (boxId: string) => string | null;
+  resolvePokedexIdByBoxId?: (boxId: string) => number | undefined;
 }): CalcStore {
-  const { locale, t, resolveTitleByBoxId } = opts;
+  const { locale, t, resolveTitleByBoxId, resolvePokedexIdByBoxId } = opts;
 
   function fmtNum(n: number): string {
     return new Intl.NumberFormat(locale.value as any).format(n);
@@ -779,6 +788,57 @@ export function useCalcStore(opts: {
     return Math.min(100, Math.max(0, 100 - boostCandyFillPctForBar.value));
   });
 
+  // --- アメ配分計算 ---
+  const candyStore = useCandyStore();
+
+  // 行から pokedexId を取得（保存済み or boxId から解決）
+  function getRowPokedexId(r: CalcRowView): number | undefined {
+    if (r.pokedexId) return r.pokedexId;
+    if (r.boxId && resolvePokedexIdByBoxId) {
+      return resolvePokedexIdByBoxId(r.boxId);
+    }
+    return undefined;
+  }
+
+  const allocationResult = computed<AllocationSummary | null>(() => {
+    const rv = rowsView.value;
+    const needs: PokemonCandyNeed[] = [];
+
+    for (const r of rv) {
+      const pokedexId = getRowPokedexId(r);
+      if (!pokedexId) continue;
+
+      const candyNeed = Math.max(0, r.result.boostCandy + r.result.normalCandy);
+      if (candyNeed <= 0) continue;
+
+      const pokemonType = r.pokemonType || getPokemonType(pokedexId);
+      needs.push({
+        id: r.id,
+        pokedexId,
+        pokemonName: r.title,
+        type: pokemonType,
+        candyNeed,
+      });
+    }
+
+    if (needs.length === 0) return null;
+
+    const inventory = candyStore.getInventory();
+    return allocateCandy(needs, inventory);
+  });
+
+  const universalCandyUsagePct = computed(() => {
+    if (!allocationResult.value) return 0;
+    const inv = candyStore.universalCandy.value;
+    const used = allocationResult.value.universalUsed;
+
+    const totalValue = inv.s * CANDY_VALUES.universal.s + inv.m * CANDY_VALUES.universal.m + inv.l * CANDY_VALUES.universal.l;
+    const usedValue = used.s * CANDY_VALUES.universal.s + used.m * CANDY_VALUES.universal.m + used.l * CANDY_VALUES.universal.l;
+
+    if (totalValue <= 0) return 0;
+    return Math.round((usedValue / totalValue) * 100);
+  });
+
   function upsertFromBox(p: {
     boxId: string;
     srcLevel: number;
@@ -906,6 +966,9 @@ export function useCalcStore(opts: {
     boostCandyFillPctForBar,
     boostCandyOverPctForBar,
     showBoostCandyFire,
+
+    allocationResult,
+    universalCandyUsagePct,
 
     canUndo,
     canRedo,
