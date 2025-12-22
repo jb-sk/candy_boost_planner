@@ -2,7 +2,6 @@
   <details class="boxDisclosure">
     <summary class="boxDisclosure__summary">
       <span class="boxDisclosure__title">{{ t("box.import.title") }}</span>
-      <span class="boxDisclosure__hint">{{ t("box.import.hint") }}</span>
     </summary>
     <div class="boxCard boxCard--inner">
       <p class="boxCard__desc">
@@ -17,7 +16,14 @@
         @input="emit('update:importText', ($event.target as HTMLTextAreaElement).value)"
         @paste="onPasteEvent"
       ></textarea>
-      <div class="boxCard__actions boxCard__actions--wrap">
+      <label class="boxImport__favCheck">
+        <input type="checkbox" v-model="importFavorite" />
+        {{ t("box.import.addAllFavorite") }}
+      </label>
+      <div class="boxCard__actions boxCard__actions--row">
+        <button class="btn btn--primary" type="button" @click="emit('import', importFavorite)">
+          {{ t("box.import.run") }}
+        </button>
         <button class="btn btn--ghost" type="button" @click="onPasteImport">
           {{ t("box.import.paste") }}
         </button>
@@ -30,15 +36,12 @@
             @change="onFileSelect"
           />
         </label>
-        <span class="boxCard__status boxCard__status--hint" aria-hidden="true">{{ t("box.import.pasteHelp") }}</span>
-      </div>
-      <div class="boxCard__actions">
-        <button class="btn btn--primary" type="button" @click="emit('import')">
-          {{ t("box.import.run") }}
-        </button>
         <button class="btn btn--ghost" type="button" @click="emit('update:importText', '')">
           {{ t("common.clear") }}
         </button>
+      </div>
+      <div class="boxCard__hints">
+        <span class="boxCard__status boxCard__status--hint" aria-hidden="true">{{ t("box.import.pasteHelp") }}</span>
         <span class="boxCard__status" v-if="importStatus">{{ importStatus }}</span>
       </div>
     </div>
@@ -57,11 +60,12 @@ defineProps<{
 const emit = defineEmits<{
   (e: "update:importText", v: string): void;
   (e: "update:importStatus", v: string): void;
-  (e: "import"): void;
+  (e: "import", markFavorite: boolean): void;
 }>();
 
 const { t } = useI18n();
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
+const importFavorite = ref(false);
 
 // 案1: ファイル選択による読み込み
 function onFileSelect(ev: Event) {

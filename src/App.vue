@@ -706,7 +706,7 @@ button.calcRow__dragHandle {
 .calcRow__grid > * {
   min-width: 0;
 }
-@media (min-width: 860px) {
+@media (min-width: 560px) {
   .calcRow__grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
@@ -1147,53 +1147,69 @@ input.field__input, select.field__input {
   }
 }
 
-/* Mobile EN: prevent horizontal clipping caused by "nowrap" filter/search rows */
-@media (max-width: 560px) {
-  /* Filters row is forced to 1-line; shrink controls slightly for EN */
-  .shell[data-locale="en"] .boxFilters__row--main {
-    gap: 8px;
-  }
-  .shell[data-locale="en"] .boxFilters__row--main > .boxFilters__group:last-child {
-    margin-left: 0.5em;
-  }
-  .shell[data-locale="en"] .boxFilters__row--main .boxFilters__group {
+/* 日本語モバイル：ソート行を1行に収める */
+@media (max-width: 480px) {
+  .boxSortRow {
+    flex-wrap: nowrap;
     gap: 6px;
   }
-  .shell[data-locale="en"] .boxFilters__row--main .boxFilters__label {
-    font-size: 11px;
-    letter-spacing: 0.04em;
+  .boxSortRow__left .btn {
+    padding: 6px 10px;
+    font-size: 12px;
   }
-  .shell[data-locale="en"] .boxFilters__row--main .boxFilters__select {
-    width: 96px;
+  .boxSort {
+    gap: 4px;
   }
-  /* Make the star/favorite chips a bit tighter */
-  .shell[data-locale="en"] .boxFilters__row--main .chipBtn {
+  .boxSort__select {
+    padding: 0 8px;
+    font-size: 12px;
+    min-width: 0;
+    max-width: 180px;
+  }
+  .boxSort .btn {
+    min-width: 44px;
     padding: 6px 8px;
-  }
-
-  /* Search row is forced to 1-line; tighten the "Clear search" button */
-  .shell[data-locale="en"] .boxCard__tools .btn {
-    padding: 7px 8px;
     font-size: 12px;
   }
 }
 .boxAddGrid {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
   margin-top: 10px;
 }
+/* モバイル：ポケモン名と表記名は全幅 */
+.boxAddGrid .field--name {
+  grid-column: 1 / -1;
+}
+/* PC向け：6列グリッドで柔軟なレイアウト */
 @media (min-width: 860px) {
   .boxAddGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  /* ポケモン名と表記名は各3列（50%）、高さも揃える */
+  .boxAddGrid .field--name {
+    grid-column: span 3;
+    display: grid !important;
+    grid-template-rows: 20px 40px 20px !important; /* ラベル・入力・サブテキスト固定 */
+    align-content: start !important;
+    gap: 4px !important;
+  }
+  /* 通常のフィールドは各2列（33%）*/
+  .boxAddGrid .field:not(.field--wide):not(.field--name) {
+    grid-column: span 2;
+  }
+  /* サブスキルは全幅 */
+  .boxAddGrid .field--wide {
+    grid-column: 1 / -1;
   }
 }
-/* 新規追加フォームの高さを統一 - グリッド行の固定化で親の伸縮を防止 */
-.boxAddGrid .field:not(.field--wide) {
+/* 新規追加フォームの高さを統一 - field--wide, field--name以外に適用 */
+.boxAddGrid .field:not(.field--wide):not(.field--name) {
   display: grid !important;
   grid-template-rows: 20px 40px min-content !important; /* ラベル・入力・サブテキスト */
   align-content: start !important;
-  gap: 6px !important;
+  gap: 4px !important;
 }
 .boxAddGrid .field__label {
   height: 20px !important;
@@ -1231,16 +1247,32 @@ input.field__input, select.field__input {
   grid-column: 1 / -1;
   display: flex;
   justify-content: flex-end;
-  align-items: end;
+  align-items: center;
   gap: 10px;
   flex-wrap: nowrap;
+}
+.boxAddFav {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 24px;
+  font-size: 15px;
+  color: color-mix(in oklab, var(--ink) 80%, transparent);
+  cursor: pointer;
+}
+.boxAddFav input {
+  margin: 0;
 }
 .boxAddActions .btn {
   white-space: nowrap;
 }
 @media (min-width: 860px) {
+  .boxAddFav {
+    grid-column: 1 / 4;
+  }
   .boxAddActions {
-    grid-column: 2 / 3;
+    grid-column: 4 / -1;
   }
 }
 
@@ -1312,10 +1344,32 @@ input.field__input, select.field__input {
   margin-top: 10px;
   flex-wrap: wrap;
 }
+.boxCard__actions--row {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
 .boxCard__actions--footer {
   justify-content: flex-end;
   padding-top: 12px;
   border-top: 1px dashed color-mix(in oklab, var(--ink) 18%, transparent);
+}
+.boxCard__hints {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+.boxImport__favCheck {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: color-mix(in oklab, var(--ink) 75%, transparent);
+  cursor: pointer;
+  margin-top: 10px;
+}
+.boxImport__favCheck input {
+  margin: 0;
 }
 .boxCard__status {
   font-family: var(--font-body);
@@ -1525,74 +1579,121 @@ input.field__input, select.field__input {
   font-size: 14px;
   line-height: 1;
 }
-.boxListHint {
-  margin: 6px 0 0;
-  font-family: var(--font-body);
-  font-size: 12px;
-  color: color-mix(in oklab, var(--ink) 58%, transparent);
-}
-.boxFilters {
+/* 検索行 */
+.boxSearchRow {
   margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: 14px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.boxSearchRow .boxSearch {
+  flex: 1;
+}
+
+/* フィルタ行（お気に入り＆とくい） */
+.boxFilterRow {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* 詳細設定 */
+.boxAdvanced {
+  margin-top: 10px;
+}
+.boxAdvanced__summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: color-mix(in oklab, var(--ink) 60%, transparent);
+}
+.boxAdvanced__summary::-webkit-details-marker {
+  display: none;
+}
+.boxAdvanced__summary::before {
+  content: "▶";
+  font-size: 10px;
+  transition: transform 0.2s;
+}
+.boxAdvanced[open] .boxAdvanced__summary::before {
+  transform: rotate(90deg);
+}
+.boxAdvanced__content {
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 12px;
   border: 1px solid color-mix(in oklab, var(--ink) 12%, transparent);
   background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
 }
-.boxFilters__row {
+.boxAdvanced__row {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
   flex-wrap: wrap;
-  justify-content: flex-start;
-  min-width: 0;
 }
-.boxFilters__row--main {
-  flex-wrap: nowrap; /* 「条件結合 + AND/OR + お気に入り + ★」を1行固定 */
-}
-.boxFilters__row--main > .boxFilters__group:last-child {
-  margin-left: 0.9em; /* 「お気に入り」の左に1文字分くらいの余白 */
-}
-.boxFilters__row--chips {
+.boxAdvanced__row + .boxAdvanced__row {
   margin-top: 8px;
 }
-.boxFilters__row--main .boxFilters__group {
-  flex-wrap: nowrap;
+.boxAdvanced__section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed color-mix(in oklab, var(--ink) 16%, transparent);
 }
-.boxFilters__row--main .boxFilters__select {
-  min-width: 0;
-  width: 140px;
-  flex: 0 1 auto;
+.boxAdvanced__label {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: color-mix(in oklab, var(--ink) 70%, transparent);
 }
-@media (max-width: 420px) {
-  .boxFilters__row--main .boxFilters__select {
-    width: 120px;
-  }
-}
-.boxFilters__row--sub {
-  margin-top: 10px;
-  justify-content: flex-start;
-}
-.boxFilters__group {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.boxFilters__label {
+.boxAdvanced__count {
   font-family: var(--font-body);
   font-size: 12px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: color-mix(in oklab, var(--ink) 58%, transparent);
+  color: color-mix(in oklab, var(--ink) 60%, transparent);
 }
-.boxFilters__select {
-  min-width: 160px;
+.boxAdvanced__select {
+  min-width: 140px;
 }
-.boxFilters__chips {
-  display: inline-flex;
+.boxAdvanced__list {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  max-height: 200px;
+  overflow: auto;
+  padding-right: 6px;
+}
+@media (min-width: 600px) {
+  .boxAdvanced__list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.boxAdvanced__item {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
+  background: color-mix(in oklab, var(--paper) 99%, var(--ink) 1%);
+  cursor: pointer;
 }
+.boxAdvanced__item:hover {
+  background: color-mix(in oklab, var(--paper) 96%, var(--ink) 4%);
+}
+.boxAdvanced__check {
+  width: 16px;
+  height: 16px;
+}
+.boxAdvanced__itemLabel {
+  font-family: var(--font-body);
+  font-size: 13px;
+}
+
 .chipBtn {
   font: inherit;
   cursor: pointer;
@@ -1654,59 +1755,30 @@ input.field__input, select.field__input {
   font-size: 12px;
   color: color-mix(in oklab, var(--ink) 72%, transparent);
 }
-.boxFilters__subskill {
-  margin-top: 10px;
-  border-top: 1px dashed color-mix(in oklab, var(--ink) 16%, transparent);
-  padding-top: 10px;
-}
-.boxFilters__summary {
-  list-style: none;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
-  font-family: var(--font-heading);
-  font-weight: 800;
-}
-.boxFilters__summary::-webkit-details-marker {
-  display: none;
-}
-.boxFilters__summaryCount {
-  font-family: var(--font-body);
-  font-weight: 500;
-  font-size: 12px;
-  color: color-mix(in oklab, var(--ink) 60%, transparent);
-}
-.boxFilters__list {
-  margin-top: 10px;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;
-  max-height: 240px;
-  overflow: auto;
-  padding-right: 6px;
-}
-@media (min-width: 860px) {
-  .boxFilters__list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+
+/* モバイルでフィルタチップを1行に収める */
+@media (max-width: 480px) {
+  .boxCard {
+    padding: 10px;
   }
-}
-.boxFilters__item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
-  background: color-mix(in oklab, var(--paper) 99%, var(--ink) 1%);
-}
-.boxFilters__check {
-  width: 16px;
-  height: 16px;
-}
-.boxFilters__itemLabel {
-  font-family: var(--font-body);
-  font-size: 13px;
+  .boxFilterRow {
+    gap: 4px;
+  }
+  .boxFilterRow > .chipBtn {
+    padding: 5px 6px;
+    gap: 4px;
+  }
+  .boxFilterRow > .chipBtn .chipBtn__icon {
+    width: 14px;
+    height: 14px;
+  }
+  .boxFilterRow > .chipBtn .chipBtn__icon svg {
+    width: 14px;
+    height: 14px;
+  }
+  .boxFilterRow > .chipBtn .chipBtn__text {
+    font-size: 10px;
+  }
 }
 
 .suggest {
@@ -1745,8 +1817,14 @@ input.field__input, select.field__input {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 8px;
-  align-items: center;
+  align-items: stretch;
   margin-top: 8px;
+}
+.relinkRow .field__input {
+  height: 40px;
+}
+.relinkRow .btn {
+  height: 40px;
 }
 .boxSortRow {
   margin-top: 10px;
