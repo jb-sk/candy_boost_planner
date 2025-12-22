@@ -487,6 +487,26 @@ function scrollToPanel(id: string) {
   }
   .calcRow__title {
     font-size: 15px;
+    max-width: calc(100vw - 280px); /* More restrictive for English UI buttons */
+  }
+  .calcRow__headRight {
+    gap: 4px; /* Tighter spacing on mobile */
+  }
+  .calcRow__headRight .linkBtn {
+    font-size: 12px;
+    padding: 2px 4px;
+  }
+  .calcRow {
+    overflow: hidden; /* Prevent horizontal overflow */
+    max-width: 100%;
+  }
+  .calcRow__head {
+    max-width: 100%;
+    overflow: hidden;
+  }
+  button.calcRow__dragHandle {
+    padding: 4px 2px;
+    font-size: 13px;
   }
 
   /* Mobile: keep shards + candy(total) side-by-side under inputs (moved near base rules for correct cascade) */
@@ -658,8 +678,10 @@ function scrollToPanel(id: string) {
   user-select: none;
   line-height: 1;
   letter-spacing: -2px;
-  padding-left: 8px;
-  padding-right: 8px;
+  min-width: 0;
+}
+button.calcRow__dragHandle {
+  padding: 6px 6px; /* Override .btn padding with higher specificity */
 }
 .calcRow__dragHandle:active {
   cursor: grabbing;
@@ -852,6 +874,17 @@ input.field__input, select.field__input {
   box-shadow:
     0 16px 32px color-mix(in oklab, var(--ink) 18%, transparent),
     0 2px 0 color-mix(in oklab, var(--ink) 10%, transparent);
+}
+@media (max-width: 640px) {
+  .levelPick__popover {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(300px, 90vw);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+    border: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
+  }
 }
 .levelPick__top {
   display: flex;

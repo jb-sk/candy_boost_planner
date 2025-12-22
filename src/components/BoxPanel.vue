@@ -539,7 +539,7 @@
                   <div class="boxDetail__kv">
                     <div class="boxDetail__k">{{ t("box.list.specialty") }}</div>
                     <div class="boxDetail__v">
-                      <select class="field__input" :value="box.selectedSpecialtySelectValue" @change="box.onEditSelectedSpecialty(($event.target as HTMLSelectElement).value)">
+                      <select class="field__input" :value="selectedSpecialtySelectValue" @change="box.onEditSelectedSpecialty(($event.target as HTMLSelectElement).value)">
                         <option value="">{{ t("box.detail.unknownAuto") }}</option>
                         <option value="Berries">{{ gt("きのみ") }}</option>
                         <option value="Ingredients">{{ gt("食材") }}</option>

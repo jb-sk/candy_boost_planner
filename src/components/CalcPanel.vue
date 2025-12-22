@@ -393,14 +393,63 @@
 
           <label class="field field--sm">
             <span class="field__label">{{ t("calc.row.boostReachLevel") }}</span>
-            <input
-              :value="r.ui.boostReachLevel"
-              type="number"
-              :min="r.srcLevel"
-              :max="r.dstLevel"
-              class="field__input"
-              @input="calc.onRowBoostLevel(r.id, ($event.target as HTMLInputElement).value)"
-            />
+            <div class="levelPick">
+              <button
+                type="button"
+                class="field__input field__input--button levelPick__button"
+                @click.stop="calc.openBoostLevelPick(r.id)"
+                aria-haspopup="dialog"
+                :aria-expanded="calc.openLevelPickRowId.value === r.id && calc.openLevelPickKind.value === 'boost'"
+              >
+                {{ r.ui.boostReachLevel }}
+              </button>
+
+              <div
+                v-if="calc.openLevelPickRowId.value === r.id && calc.openLevelPickKind.value === 'boost'"
+                class="levelPick__popover"
+                role="dialog"
+                :aria-label="t('calc.row.pickLevelAria', { label: t('calc.row.boostReachLevel') })"
+              >
+                <div class="levelPick__top">
+                  <div class="levelPick__title">{{ t("calc.row.boostReachLevel") }}</div>
+                  <button class="btn btn--ghost btn--xs" type="button" @mousedown.stop.prevent @click.stop.prevent="calc.closeLevelPick()">
+                    {{ t("common.close") }}
+                  </button>
+                </div>
+
+                <div class="levelPick__sliderRow">
+                  <button class="btn btn--ghost btn--xs" type="button" @click="calc.nudgeBoostLevel(r.id, -1)" :disabled="r.ui.boostReachLevel <= r.srcLevel">
+                    ◀
+                  </button>
+                  <input
+                    class="levelPick__range"
+                    type="range"
+                    :min="r.srcLevel"
+                    :max="r.dstLevel"
+                    step="1"
+                    :value="r.ui.boostReachLevel"
+                    @input="calc.setBoostLevel(r.id, ($event.target as HTMLInputElement).value)"
+                  />
+                  <button class="btn btn--ghost btn--xs" type="button" @click="calc.nudgeBoostLevel(r.id, 1)" :disabled="r.ui.boostReachLevel >= r.dstLevel">
+                    ▶
+                  </button>
+                </div>
+
+                <div class="levelPick__chips">
+                  <button
+                    v-for="lv in levelPresets"
+                    :key="`boost_${lv}`"
+                    type="button"
+                    class="levelChip"
+                    :class="{ 'levelChip--on': lv === r.ui.boostReachLevel }"
+                    @click="calc.setBoostLevel(r.id, lv)"
+                    :disabled="lv < r.srcLevel || lv > r.dstLevel"
+                  >
+                    {{ lv }}
+                  </button>
+                </div>
+              </div>
+            </div>
           </label>
           <label class="field field--sm">
             <span class="field__label">{{ t("calc.row.boostRatio") }}</span>
