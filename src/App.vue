@@ -1179,14 +1179,9 @@ input.field__input, select.field__input {
 }
 .boxAddGrid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   margin-top: 10px;
-}
-@media (min-width: 860px) {
-  .boxAddGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 /* 新規追加フォームの高さを統一 - グリッド行の固定化で親の伸縮を防止 */
 .boxAddGrid .field:not(.field--wide) {

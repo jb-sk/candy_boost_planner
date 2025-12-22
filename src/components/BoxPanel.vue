@@ -20,7 +20,7 @@
             {{ t("box.addNewDesc") }}
           </p>
           <div class="boxAddGrid">
-            <label class="field">
+            <label class="field field--wide">
               <span class="field__label">{{ t("box.add.nameDex") }}</span>
               <div class="suggest">
                 <input
@@ -58,7 +58,7 @@
               </span>
               <span class="field__sub" v-else>{{ t("box.add.noMatch") }}</span>
             </label>
-            <label class="field">
+            <label class="field field--wide">
               <span class="field__label">{{ t("box.add.labelOpt") }}</span>
               <input v-model="addLabel" class="field__input" :placeholder="t('box.add.labelOptPh')" />
             </label>
@@ -78,46 +78,46 @@
             </label>
             <label class="field">
               <span class="field__label">{{ t("box.add.specialtyOpt") }}</span>
-              <select v-model="addSpecialty" class="field__input" @change="box.onAddSpecialtyChanged">
+              <select v-model="addSpecialty" class="field__input" :disabled="!!addLookup" @change="box.onAddSpecialtyChanged">
                 <option value="">{{ t("box.add.specialtyUnknown") }}</option>
                 <option value="Berries">{{ gt("きのみ") }}</option>
                 <option value="Ingredients">{{ gt("食材") }}</option>
                 <option value="Skills">{{ gt("スキル") }}</option>
                 <option value="All">{{ gt("オール") }}</option>
               </select>
-              <span class="field__sub">{{ t("box.add.specialtyAutoHint") }}</span>
             </label>
             <label class="field">
               <span class="field__label">{{ t("box.add.expType") }}</span>
               <select v-model.number="addExpType" class="field__input" :disabled="!!addLookup" @change="box.onAddExpTypeChanged">
-                <option :value="600">600</option>
+                <option :value="600">600{{ !addLookup ? t("box.add.expType600Hint") : '' }}</option>
                 <option :value="900">900</option>
                 <option :value="1080">1080</option>
                 <option :value="1320">1320</option>
               </select>
-              <span class="field__sub">
-                {{ addLookup ? t("box.add.expTypeAuto") : t("box.add.expTypeManual") }}
-              </span>
             </label>
 
             <label class="field">
               <span class="field__label">{{ t("box.add.ingredientType") }}</span>
-              <input
+              <select
                 v-model="addIngredientType"
                 class="field__input"
-                list="ingredientTypeOptions"
-                :placeholder="t('box.add.ingredientTypePh')"
                 @change="box.onAddIngredientTypeChanged"
-              />
-              <datalist id="ingredientTypeOptions">
-                <option v-for="x in ingredientTypeOptions" :key="x.type" :value="x.type">
-                  {{ x.preview }}
-                </option>
-              </datalist>
-              <span class="field__sub" v-if="addLookup && addIngredientType">
-                {{ ingredientTypeOptions.find((x) => x.type === addIngredientType)?.preview }}
-              </span>
-              <span class="field__sub" v-else>{{ t("box.add.ingredientPreviewHint") }}</span>
+              >
+                <option value="">{{ t("box.add.ingredientTypeNone") }}</option>
+                <template v-if="addLookup">
+                  <option v-for="x in ingredientTypeOptions" :key="x.type" :value="x.type">
+                    {{ x.type }} - {{ x.preview }}
+                  </option>
+                </template>
+                <template v-else>
+                  <option value="AAA">AAA</option>
+                  <option value="AAB">AAB</option>
+                  <option value="AAC">AAC</option>
+                  <option value="ABA">ABA</option>
+                  <option value="ABB">ABB</option>
+                  <option value="ABC">ABC</option>
+                </template>
+              </select>
             </label>
 
             <label class="field field--wide">
@@ -187,7 +187,6 @@
               <datalist id="subSkillOptions">
                 <option v-for="label in subSkillOptionLabels" :key="label" :value="label" />
               </datalist>
-              <span class="field__sub">{{ t("box.add.subSkillNote") }}</span>
             </label>
             <label class="boxAddFav">
               <input type="checkbox" v-model="box.addFavorite.value" />
