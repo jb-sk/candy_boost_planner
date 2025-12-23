@@ -108,6 +108,18 @@ export type CalcStore = {
   allocationResult: Readonly<Ref<AllocationSummary | null>>;
   universalCandyUsagePct: Readonly<Ref<number>>;
   universalCandyNeeded: Readonly<Ref<{ s: number; m: number; l: number; total: number }>>;
+  universalCandyRanking: Readonly<Ref<Array<{
+    id: string;
+    pokemonName: string;
+    universalValue: number;
+    usagePct: number;
+    uniSUsed: number;
+    uniMUsed: number;
+    uniLUsed: number;
+    typeSUsed: number;
+    typeMUsed: number;
+  }>>>;
+  universalCandyUsedTotal: Readonly<Ref<{ s: number; m: number; l: number }>>;
 
   canUndo: Readonly<Ref<boolean>>;
   canRedo: Readonly<Ref<boolean>>;
@@ -887,6 +899,45 @@ export function useCalcStore(opts: {
     };
   });
 
+  // 万能アメ使用ランキング（使用率が高い順）
+  const universalCandyRanking = computed(() => {
+    if (!allocationResult.value) return [];
+    const totalUniversalValue =
+      allocationResult.value.universalUsed.s * CANDY_VALUES.universal.s +
+      allocationResult.value.universalUsed.m * CANDY_VALUES.universal.m +
+      allocationResult.value.universalUsed.l * CANDY_VALUES.universal.l;
+
+    if (totalUniversalValue <= 0) return [];
+
+    return allocationResult.value.pokemons
+      .map(p => {
+        const uniValue =
+          p.uniSUsed * CANDY_VALUES.universal.s +
+          p.uniMUsed * CANDY_VALUES.universal.m +
+          p.uniLUsed * CANDY_VALUES.universal.l;
+        const usagePct = totalUniversalValue > 0 ? (uniValue / totalUniversalValue) * 100 : 0;
+        return {
+          id: p.id,
+          pokemonName: p.pokemonName,
+          universalValue: uniValue,
+          usagePct: Math.round(usagePct),
+          uniSUsed: p.uniSUsed,
+          uniMUsed: p.uniMUsed,
+          uniLUsed: p.uniLUsed,
+          typeSUsed: p.typeSUsed,
+          typeMUsed: p.typeMUsed,
+        };
+      })
+      .filter(x => x.universalValue > 0)
+      .sort((a, b) => b.usagePct - a.usagePct);
+  });
+
+  // 万能アメ合計使用数
+  const universalCandyUsedTotal = computed(() => {
+    if (!allocationResult.value) return { s: 0, m: 0, l: 0 };
+    return allocationResult.value.universalUsed;
+  });
+
   function upsertFromBox(p: {
     boxId: string;
     srcLevel: number;
@@ -1018,6 +1069,8 @@ export function useCalcStore(opts: {
     allocationResult,
     universalCandyUsagePct,
     universalCandyNeeded,
+    universalCandyRanking,
+    universalCandyUsedTotal,
 
     canUndo,
     canRedo,

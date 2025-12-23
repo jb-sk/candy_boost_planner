@@ -29,6 +29,8 @@
       :shards-over-pct="calc.shardsOverPctForBar.value"
       :show-boost-fire="calc.showBoostCandyFire.value"
       :show-shards-fire="calc.showShardsFire.value"
+      :universal-candy-ranking="calc.universalCandyRanking.value"
+      :universal-candy-used-total="calc.universalCandyUsedTotal.value"
       @close="calc.closeExport()"
     />
   </main>
@@ -578,10 +580,9 @@ input.field__input--compact {
 }
 @media (max-width: 560px) {
   .calcSum__candyDetails {
-    display: block;
-    margin-left: 0;
-    margin-top: 2px;
-    font-size: 12px;
+    /* 改行しない */
+    margin-left: 6px;
+    font-size: 13px;
   }
 }
 .calcSum--danger .calcSum__v {
@@ -642,6 +643,9 @@ input.field__input--compact {
     grid-template-columns: 1fr 1fr;
     gap: 8px;
     margin-bottom: 8px;
+  }
+  .calcSticky__summary .calcSum--candy {
+    grid-column: 1 / -1;
   }
 
 

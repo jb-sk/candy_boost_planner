@@ -122,6 +122,13 @@ export const ja = {
       summaryBoost: "合計アメブ",
       summaryShards: "かけら合計",
       summaryCount: "使用ポケモン",
+      universalRankingTitle: "万能アメ消費ランキング",
+      rankingTotal: "合計",
+      labelType: "タイプ",
+      labelUni: "万能",
+      totalUniversalS: "万能アメS",
+      totalUniversalM: "万能アメM",
+      totalUniversalL: "万能アメL",
     },
   },
   box: {

@@ -120,6 +120,13 @@ export const en = {
       summaryBoost: "Boost total",
       summaryShards: "Shards total",
       summaryCount: "Pokémon",
+      universalRankingTitle: "Handy Candy Consumption Ranking",
+      rankingTotal: "Total",
+      labelType: "Type",
+      labelUni: "Handy",
+      totalUniversalS: "Handy Candy S",
+      totalUniversalM: "Handy Candy M",
+      totalUniversalL: "Handy Candy L",
     },
   },
   box: {
