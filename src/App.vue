@@ -4,7 +4,7 @@
     <MobileNav :scroll-to-panel="scrollToPanel" />
 
     <div class="dashboard">
-      <CalcPanel :calc="calc" @apply-to-box="applyCalculatorToBox($event)" />
+      <CalcPanel :calc="calc" :resolve-pokedex-id-by-box-id="resolvePokedexIdByBoxId" @apply-to-box="applyCalculatorToBox($event)" />
 
     <BoxPanel :box="box" :gt="gt" @apply-to-calc="applyBoxToCalculator($event)" />
     </div>
@@ -29,6 +29,8 @@
       :shards-over-pct="calc.shardsOverPctForBar.value"
       :show-boost-fire="calc.showBoostCandyFire.value"
       :show-shards-fire="calc.showShardsFire.value"
+      :universal-candy-ranking="calc.universalCandyRanking.value"
+      :universal-candy-used-total="calc.universalCandyUsedTotal.value"
       @close="calc.closeExport()"
     />
   </main>
@@ -39,6 +41,7 @@ import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { localizeGameTerm } from "./i18n/terms";
 import type { ExpGainNature, ExpType } from "./domain/types";
+import { getPokemonType } from "./domain/pokesleep/pokemon-names";
 
 import ExportOverlay from "./components/ExportOverlay.vue";
 import CalcPanel from "./components/CalcPanel.vue";
@@ -93,6 +96,12 @@ const supportLinks = computed<SupportLink[]>(() => {
 
 const box = useBoxStore({ locale, t });
 
+// boxId から pokedexId を解決する関数
+function resolvePokedexIdByBoxId(boxId: string): number | undefined {
+  const e = box.boxEntries.value.find((x) => x.id === boxId) ?? null;
+  return e?.derived?.pokedexId;
+}
+
 const calc = useCalcStore({
   locale,
   t,
@@ -100,6 +109,7 @@ const calc = useCalcStore({
     const e = box.boxEntries.value.find((x) => x.id === boxId) ?? null;
     return e ? box.displayBoxTitle(e) : null;
   },
+  resolvePokedexIdByBoxId,
 });
 
 function applyBoxToCalculator(ev?: MouseEvent) {
@@ -108,6 +118,8 @@ function applyBoxToCalculator(ev?: MouseEvent) {
   const lvl = e.planner?.level ?? e.derived?.level ?? 10;
   const expT = (e.planner?.expType ?? e.derived?.expType ?? 600) as ExpType;
   const nat = (e.planner?.expGainNature ?? e.derived?.expGainNature ?? "normal") as ExpGainNature;
+  const pokedexId = e.derived?.pokedexId;
+  const pokemonType = pokedexId ? getPokemonType(pokedexId) : undefined;
 
   calc.upsertFromBox({
     boxId: e.id,
@@ -116,6 +128,8 @@ function applyBoxToCalculator(ev?: MouseEvent) {
     expType: expT,
     nature: nat,
     expRemaining: e.planner?.expRemaining,
+    pokedexId,
+    pokemonType,
     ev,
   });
 }
@@ -197,7 +211,7 @@ function scrollToPanel(id: string) {
     color: var(--ink);
   }
   .calcSticky {
-    top: 45px; /* ナビゲーションにより近く */
+    top: 42px;
   }
 }
 
@@ -384,16 +398,132 @@ function scrollToPanel(id: string) {
 .calcTop {
   margin-top: 12px;
 }
-.calcTop__grid {
-  display: grid;
-  grid-template-columns: 1fr;
+.calcTop__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px 24px;
+}
+@media (min-width: 900px) {
+  .calcTop__row {
+    flex-wrap: nowrap;
+  }
+}
+.calcTop__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.calcTop__label {
+  font-size: 11px;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--ink) 60%, transparent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.calcTop__input {
+  height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in oklab, var(--ink) 16%, transparent);
+  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
+  color: var(--ink);
+  font-family: inherit;
+}
+.calcTop__input--shards {
+  width: 85px;
+  text-align: right;
+}
+.calcTop__field--candy {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.calcTop__candyInputs {
+  display: flex;
   gap: 12px;
 }
-@media (min-width: 860px) {
-  .calcTop__grid {
-    grid-template-columns: 1.2fr 0.8fr;
-    align-items: start;
-  }
+.calcTop__candyInput {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.calcTop__candyLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--ink) 70%, transparent);
+}
+.calcTop__input--candy {
+  width: 50px;
+  text-align: center;
+  padding: 0 4px;
+}
+.field__input--sm {
+  width: 60px;
+  padding: 6px 8px;
+  font-size: 14px;
+}
+.field__input--xs,
+input.field__input--xs {
+  width: 50px;
+  padding: 4px 6px;
+  font-size: 13px;
+  color: var(--ink);
+  text-align: center;
+}
+.field__input--compact,
+input.field__input--compact {
+  width: 80px;
+  padding: 4px 8px;
+  font-size: 13px;
+  color: var(--ink);
+  text-align: right;
+}
+.calcTop__typeCandy {
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--ink) 4%, transparent);
+}
+.calcTop__typeCandyToggle {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: color-mix(in oklab, var(--ink) 70%, transparent);
+}
+.calcTop__typeCandyToggle:hover {
+  color: var(--ink);
+}
+.calcTop__typeCandyGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 6px 16px;
+  margin-top: 10px;
+}
+.typeRow {
+  display: grid;
+  grid-template-columns: 55px 1fr 1fr;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+.typeRow__name {
+  font-size: 12px;
+  font-weight: 500;
+  color: color-mix(in oklab, var(--ink) 80%, transparent);
+}
+.candyInput {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.candyInput__label {
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 14px;
+}
+.candyInput--sm .candyInput__label {
+  font-size: 11px;
 }
 .calcSticky {
   position: sticky;
@@ -413,21 +543,47 @@ function scrollToPanel(id: string) {
   margin-bottom: 10px;
 }
 .calcSticky__summary .calcSum {
-  flex: 1 1 0; /* 均等幅で横並びに */
-  min-width: 140px;
+  flex: 1 1 auto;
+  min-width: 100px;
 }
 .calcSum__v {
   font-family: var(--font-heading);
   font-weight: 800;
   font-size: 18px;
   margin-top: 2px;
+  color: var(--ink);
 }
 .calcSum--hi .calcSum__v {
   background: transparent;
   box-shadow: none;
   padding: 0;
   color: var(--ink);
-  font-size: 1.5rem; /* Slightly larger for emphasis */
+  font-size: 1.4rem;
+}
+@media (max-width: 560px) {
+  .calcSum--hi .calcSum__v {
+    font-size: 1.1rem;
+  }
+}
+.calcSum--candy {
+  flex: 2 1 auto;
+  min-width: 180px;
+}
+.calcSum__v--over {
+  color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 10%);
+}
+.calcSum__candyDetails {
+  font-size: 14px;
+  font-weight: 600;
+  margin-left: 8px;
+  color: var(--ink);
+}
+@media (max-width: 560px) {
+  .calcSum__candyDetails {
+    /* 改行しない */
+    margin-left: 6px;
+    font-size: 13px;
+  }
 }
 .calcSum--danger .calcSum__v {
   color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 10%);
@@ -441,19 +597,55 @@ function scrollToPanel(id: string) {
   flex: 2; /* バーは少し広めに */
   min-width: 220px;
 }
+.calcSticky__candy {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed color-mix(in oklab, var(--ink) 14%, transparent);
+  font-size: 13px;
+  color: color-mix(in oklab, var(--ink) 70%, transparent);
+}
+.calcSticky__candyRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.calcSticky__candyLabel {
+  font-weight: 600;
+}
+.calcSticky__candyPct {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--ink);
+}
+.calcSticky__candyPct--over {
+  color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 10%);
+}
+.calcSticky__candyDetails {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+.calcSticky__candyItem {
+  font-variant-numeric: tabular-nums;
+}
 
 /* Mobile: keep "Shards" and "Remaining" compact and side-by-side */
 @media (max-width: 560px) {
   .calcSticky {
-    top: 45px; /* ナビゲーションにより近く */
-    padding: 6px;
-    border-radius: 14px;
+    top: 42px;
+    padding: 8px;
+    border-radius: 12px;
   }
   .calcSticky__summary {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
     margin-bottom: 8px;
+  }
+  .calcSticky__summary .calcSum--candy {
+    grid-column: 1 / -1;
   }
 
 
@@ -719,9 +911,26 @@ button.calcRow__dragHandle {
   padding-top: 5px;
   border-top: 1px dashed color-mix(in oklab, var(--ink) 14%, transparent);
 }
+.calcRow__result--inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+.calcRow__result--inline .calcRow__res {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.calcRow__result--inline .calcRow__k {
+  font-size: 12px;
+}
+.calcRow__result--inline .calcRow__num {
+  font-size: 15px;
+  font-weight: 700;
+}
 /* モバイルでは2列×2行に */
 @media (max-width: 640px) {
-  .calcRow__result {
+  .calcRow__result:not(.calcRow__result--inline) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px 16px;
   }
@@ -762,8 +971,36 @@ button.calcRow__dragHandle {
   padding: 0;
   color: var(--ink);
 }
+.calcRow__num--text {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+}
 
-
+/* 万能アメ配分説明 */
+.calcAllocInfo {
+  margin: 12px 0;
+  padding: 8px 12px;
+  background: color-mix(in oklab, var(--ink) 5%, transparent);
+  border-radius: 8px;
+  font-size: 12px;
+  color: color-mix(in oklab, var(--ink) 70%, transparent);
+}
+.calcAllocInfo__title {
+  cursor: pointer;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--ink) 80%, transparent);
+}
+.calcAllocInfo__title:hover {
+  color: var(--ink);
+}
+.calcAllocInfo__desc {
+  margin: 8px 0 0 0;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
 
 .field--sm {
   gap: 1px; /* ラベルと入力の距離を詰める */
@@ -1655,8 +1892,8 @@ input.field__input, select.field__input {
   font-size: 12px;
   color: color-mix(in oklab, var(--ink) 60%, transparent);
 }
-.boxAdvanced__select {
-  min-width: 140px;
+.boxAdvanced__row .boxAdvanced__select {
+  width: 180px;
 }
 .boxAdvanced__list {
   margin-top: 10px;
@@ -1820,11 +2057,16 @@ input.field__input, select.field__input {
   align-items: stretch;
   margin-top: 8px;
 }
-.relinkRow .field__input {
+.relinkRow .field__input,
+.boxDetail .relinkRow .field__input {
   height: 40px;
+  min-height: 40px;
+  max-height: none;
 }
-.relinkRow .btn {
+.relinkRow .btn,
+.boxDetail .relinkRow .btn {
   height: 40px;
+  min-height: 40px;
 }
 .boxSortRow {
   margin-top: 10px;
@@ -1896,8 +2138,27 @@ input.field__input, select.field__input {
   border-radius: 0;
   padding: 8px 0;
 }
+.boxDetail__nickRow {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.boxDetail__nickInput {
+  flex: 1;
+  min-width: 0;
+}
+.boxDetail__specs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 12px;
+}
+@media (min-width: 860px) {
+  .boxDetail__specs {
+    gap: 0 18px;
+  }
+}
 .boxDetail__col > .boxDetail__kv {
-  border-bottom: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
+  border-bottom: 0;
 }
 .boxDetail__col > .boxDetail__kv:last-child {
   border-bottom: 0;

@@ -6,6 +6,10 @@ import { boostRules } from "../domain/pokesleep/boost-config";
 import type { CalcRowV1, CalcSaveSlotV1 } from "../persistence/calc";
 import { loadCalcAutosave, loadCalcSlots, loadLegacyTotalShards, saveCalcAutosave, saveCalcSlots } from "../persistence/calc";
 import { cryptoRandomId } from "../persistence/box";
+import { useCandyStore } from "./useCandyStore";
+import { allocateCandy, type AllocationSummary, type PokemonCandyNeed } from "../domain/candy-allocator";
+import { getPokemonType } from "../domain/pokesleep/pokemon-names";
+import { CANDY_VALUES } from "../persistence/candy";
 
 export type CalcRow = CalcRowV1;
 
@@ -38,9 +42,10 @@ export type CalcExportRow = {
   normalCandy: number;
   totalCandy: number;
   shards: number;
+  shortage: number;
 };
 
-export type CalcExportTotals = { boostCandy: number; normalCandy: number; totalCandy: number; shards: number };
+export type CalcExportTotals = { boostCandy: number; normalCandy: number; totalCandy: number; shards: number; shortage: number };
 
 export type CalcBoxPlannerPatch = {
   boxId: string;
@@ -99,6 +104,23 @@ export type CalcStore = {
   boostCandyFillPctForBar: Readonly<Ref<number>>;
   boostCandyOverPctForBar: Readonly<Ref<number>>;
   showBoostCandyFire: Readonly<Ref<boolean>>;
+
+  // candy allocation
+  allocationResult: Readonly<Ref<AllocationSummary | null>>;
+  universalCandyUsagePct: Readonly<Ref<number>>;
+  universalCandyNeeded: Readonly<Ref<{ s: number; m: number; l: number; total: number }>>;
+  universalCandyRanking: Readonly<Ref<Array<{
+    id: string;
+    pokemonName: string;
+    universalValue: number;
+    usagePct: number;
+    uniSUsed: number;
+    uniMUsed: number;
+    uniLUsed: number;
+    typeSUsed: number;
+    typeMUsed: number;
+  }>>>;
+  universalCandyUsedTotal: Readonly<Ref<{ s: number; m: number; l: number }>>;
 
   canUndo: Readonly<Ref<boolean>>;
   canRedo: Readonly<Ref<boolean>>;
@@ -160,6 +182,8 @@ export type CalcStore = {
     expRemaining?: number;
     title?: string;
     dstLevelDefault?: number;
+    pokedexId?: number;
+    pokemonType?: string;
     ev?: MouseEvent;
   }) => void;
   buildPlannerPatchFromRow: (rowId?: string) => CalcBoxPlannerPatch | null;
@@ -169,8 +193,9 @@ export function useCalcStore(opts: {
   locale: Ref<string>;
   t: Composer["t"];
   resolveTitleByBoxId?: (boxId: string) => string | null;
+  resolvePokedexIdByBoxId?: (boxId: string) => number | undefined;
 }): CalcStore {
-  const { locale, t, resolveTitleByBoxId } = opts;
+  const { locale, t, resolveTitleByBoxId, resolvePokedexIdByBoxId } = opts;
 
   function fmtNum(n: number): string {
     return new Intl.NumberFormat(locale.value as any).format(n);
@@ -701,6 +726,35 @@ export function useCalcStore(opts: {
       const boostCandy = Math.max(0, Math.floor(r.result.boostCandy || 0));
       const normalCandy = Math.max(0, Math.floor(r.result.normalCandy || 0));
       const shards = Math.max(0, Math.floor(r.result.shards || 0));
+
+      // アメ補填情報を取得
+      let candySupply = "";
+      let shortage = 0;
+      if (allocationResult.value) {
+        const alloc = allocationResult.value.pokemons.find(p => p.id === r.id);
+        if (alloc) {
+          shortage = alloc.remaining;
+          const parts: string[] = [];
+          if (alloc.typeSUsed > 0 || alloc.typeMUsed > 0) {
+            const typeParts: string[] = [];
+            if (alloc.typeMUsed > 0) typeParts.push(`M${alloc.typeMUsed}`);
+            if (alloc.typeSUsed > 0) typeParts.push(`S${alloc.typeSUsed}`);
+            parts.push(`${t("calc.candy.typeAbbr")}${typeParts.join(",")}`);
+          }
+          if (alloc.uniSUsed > 0 || alloc.uniMUsed > 0 || alloc.uniLUsed > 0) {
+            const uniParts: string[] = [];
+            if (alloc.uniLUsed > 0) uniParts.push(`L${alloc.uniLUsed}`);
+            if (alloc.uniMUsed > 0) uniParts.push(`M${alloc.uniMUsed}`);
+            if (alloc.uniSUsed > 0) uniParts.push(`S${alloc.uniSUsed}`);
+            parts.push(`${t("calc.candy.uniAbbr")}${uniParts.join(",")}`);
+          }
+          if (alloc.remaining > 0) {
+            parts.push(`${t("calc.candy.shortage")}${alloc.remaining}`);
+          }
+          candySupply = parts.join(" ");
+        }
+      }
+
       return {
         id: r.id,
         title: String(r.title ?? "").trim() || "(no name)",
@@ -711,6 +765,8 @@ export function useCalcStore(opts: {
         normalCandy,
         totalCandy: boostCandy + normalCandy,
         shards,
+        candySupply,
+        shortage,
       };
     })
   );
@@ -724,7 +780,8 @@ export function useCalcStore(opts: {
       normalCandy += r.normalCandy;
       shards += r.shards;
     }
-    return { boostCandy, normalCandy, totalCandy: boostCandy + normalCandy, shards };
+    const shortage = exportRows.value.reduce((sum, r) => sum + r.shortage, 0);
+    return { boostCandy, normalCandy, totalCandy: boostCandy + normalCandy, shards, shortage };
   });
 
   const exportScale = computed(() => {
@@ -777,6 +834,115 @@ export function useCalcStore(opts: {
     return Math.min(100, Math.max(0, 100 - boostCandyFillPctForBar.value));
   });
 
+  // --- アメ配分計算 ---
+  const candyStore = useCandyStore();
+
+  // 行から pokedexId を取得（保存済み or boxId から解決）
+  function getRowPokedexId(r: CalcRowView): number | undefined {
+    if (r.pokedexId) return r.pokedexId;
+    if (r.boxId && resolvePokedexIdByBoxId) {
+      return resolvePokedexIdByBoxId(r.boxId);
+    }
+    return undefined;
+  }
+
+  const allocationResult = computed<AllocationSummary | null>(() => {
+    const rv = rowsView.value;
+    const needs: PokemonCandyNeed[] = [];
+
+    for (const r of rv) {
+      const pokedexId = getRowPokedexId(r);
+      if (!pokedexId) continue;
+
+      const candyNeed = Math.max(0, r.result.boostCandy + r.result.normalCandy);
+      if (candyNeed <= 0) continue;
+
+      const pokemonType = r.pokemonType || getPokemonType(pokedexId);
+      needs.push({
+        id: r.id,
+        pokedexId,
+        pokemonName: r.title,
+        type: pokemonType,
+        candyNeed,
+      });
+    }
+
+    if (needs.length === 0) return null;
+
+    const inventory = candyStore.getInventory();
+    return allocateCandy(needs, inventory);
+  });
+
+  const universalCandyUsagePct = computed(() => {
+    if (!allocationResult.value) return 0;
+    const inv = candyStore.universalCandy.value;
+    const used = allocationResult.value.universalUsed;
+    // 不足分も加算して必要量ベースで計算
+    const totalRemaining = allocationResult.value.pokemons.reduce((sum, p) => sum + p.remaining, 0);
+
+    const totalValue = inv.s * CANDY_VALUES.universal.s + inv.m * CANDY_VALUES.universal.m + inv.l * CANDY_VALUES.universal.l;
+    const usedValue = used.s * CANDY_VALUES.universal.s + used.m * CANDY_VALUES.universal.m + used.l * CANDY_VALUES.universal.l;
+    const neededValue = usedValue + totalRemaining;
+
+    if (totalValue <= 0) return 0;
+    return Math.round((neededValue / totalValue) * 100);
+  });
+
+  // 万能アメの必要数（上限を超える分も含む）
+  const universalCandyNeeded = computed(() => {
+    if (!allocationResult.value) return { s: 0, m: 0, l: 0, total: 0 };
+    const used = allocationResult.value.universalUsed;
+    // 残り不足分をS換算で加算
+    const totalRemaining = allocationResult.value.pokemons.reduce((sum, p) => sum + p.remaining, 0);
+    // 必要数 = 使用数 + 不足分をS個数換算
+    const neededS = used.s + Math.ceil(totalRemaining / CANDY_VALUES.universal.s);
+    return {
+      s: neededS,
+      m: used.m,
+      l: used.l,
+      total: neededS + used.m + used.l,
+    };
+  });
+
+  // 万能アメ使用ランキング（使用率が高い順）
+  const universalCandyRanking = computed(() => {
+    if (!allocationResult.value) return [];
+    const totalUniversalValue =
+      allocationResult.value.universalUsed.s * CANDY_VALUES.universal.s +
+      allocationResult.value.universalUsed.m * CANDY_VALUES.universal.m +
+      allocationResult.value.universalUsed.l * CANDY_VALUES.universal.l;
+
+    if (totalUniversalValue <= 0) return [];
+
+    return allocationResult.value.pokemons
+      .map(p => {
+        const uniValue =
+          p.uniSUsed * CANDY_VALUES.universal.s +
+          p.uniMUsed * CANDY_VALUES.universal.m +
+          p.uniLUsed * CANDY_VALUES.universal.l;
+        const usagePct = totalUniversalValue > 0 ? (uniValue / totalUniversalValue) * 100 : 0;
+        return {
+          id: p.id,
+          pokemonName: p.pokemonName,
+          universalValue: uniValue,
+          usagePct: Math.round(usagePct),
+          uniSUsed: p.uniSUsed,
+          uniMUsed: p.uniMUsed,
+          uniLUsed: p.uniLUsed,
+          typeSUsed: p.typeSUsed,
+          typeMUsed: p.typeMUsed,
+        };
+      })
+      .filter(x => x.universalValue > 0)
+      .sort((a, b) => b.usagePct - a.usagePct);
+  });
+
+  // 万能アメ合計使用数
+  const universalCandyUsedTotal = computed(() => {
+    if (!allocationResult.value) return { s: 0, m: 0, l: 0 };
+    return allocationResult.value.universalUsed;
+  });
+
   function upsertFromBox(p: {
     boxId: string;
     srcLevel: number;
@@ -785,6 +951,8 @@ export function useCalcStore(opts: {
     expRemaining?: number;
     title?: string;
     dstLevelDefault?: number;
+    pokedexId?: number;
+    pokemonType?: string;
     ev?: MouseEvent;
   }) {
     const anchorEl = (p.ev?.currentTarget as HTMLElement | null) ?? null;
@@ -809,6 +977,8 @@ export function useCalcStore(opts: {
       expType: p.expType,
       nature: p.nature,
       expRemaining: remaining,
+      pokedexId: p.pokedexId,
+      pokemonType: p.pokemonType,
     };
 
     if (existing) {
@@ -819,6 +989,8 @@ export function useCalcStore(opts: {
         id: cryptoRandomId(),
         title,
         boxId: p.boxId,
+        pokedexId: p.pokedexId,
+        pokemonType: p.pokemonType,
         srcLevel,
         dstLevel,
         expRemaining: remaining,
@@ -898,6 +1070,12 @@ export function useCalcStore(opts: {
     boostCandyFillPctForBar,
     boostCandyOverPctForBar,
     showBoostCandyFire,
+
+    allocationResult,
+    universalCandyUsagePct,
+    universalCandyNeeded,
+    universalCandyRanking,
+    universalCandyUsedTotal,
 
     canUndo,
     canRedo,

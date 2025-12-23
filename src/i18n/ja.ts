@@ -48,6 +48,13 @@ export const ja = {
     slot: "スロット{n}",
     slotEmpty: "空",
     addHint: "追加方法: ポケモンボックスの詳細で「計算する（反映）」を押すと、このリストに追加されます。",
+    candyAllocTitle: "万能アメの自動配分について",
+    candyAllocDesc: `・タイプアメは積極的に使用（万能Sで端数調整）
+・万能アメの必要S量を計算（端数調整で余り0-2/ポケモン）
+・Sが十分なら → Sのみ使用（M/Lは使わない）
+・Sが不足なら → M→Lの順で使用し、Sで端数調整
+※リスト上位のポケモンに優先的に使用
+※バッグ圧縮のための参考値として`,
     empty: "まだ計算対象がありません。ポケモンボックスから追加してください。",
     row: {
       dragReorder: "ドラッグして並び替え",
@@ -69,6 +76,25 @@ export const ja = {
       breakdown: "内訳",
       breakdownBoost: "アメブ",
       breakdownNormal: "通常アメ",
+      candySupply: "アイテム",
+      speciesCandy: "アメ在庫",
+    },
+    candy: {
+      universalLabel: "万能",
+      universalS: "S",
+      universalM: "M",
+      universalL: "L",
+      typeCandyLabel: "タイプアメ",
+      typeCandyToggle: "タイプアメを設定",
+      typeS: "S",
+      typeM: "M",
+      usageLabel: "万能アメ使用",
+      usagePct: "{pct}%",
+      // 補填表示用
+      typeAbbr: "タ",
+      uniAbbr: "万",
+      shortage: "不足",
+      surplus: "余り",
     },
     export: {
       open: "結果を1枚にまとめる",
@@ -81,6 +107,7 @@ export const ja = {
       close: "閉じる",
       sheetTitle: "ホリデーアメブ計画シート",
       sumShardsTotal: "かけら合計",
+      sumShortage: "アメ不足",
       sumBoostTotal: "アメブ合計",
       sumNormalTotal: "通常アメ合計",
       sumBoostUnused: "アメブ未使用",
@@ -96,6 +123,13 @@ export const ja = {
       summaryBoost: "合計アメブ",
       summaryShards: "かけら合計",
       summaryCount: "使用ポケモン",
+      universalRankingTitle: "万能アメ消費ランキング",
+      rankingTotal: "合計",
+      labelType: "タイプ",
+      labelUni: "万能",
+      totalUniversalS: "万能アメS",
+      totalUniversalM: "万能アメM",
+      totalUniversalL: "万能アメL",
     },
   },
   box: {

@@ -49,7 +49,7 @@
 
         <div class="exportCalc">
           <div class="exportCalcTop">
-            <div class="exportStats" :class="{ 'exportStats--hasShortage': totals.shortage > 0 }">
+            <div class="exportStats">
               <div class="statCard statCard--accent">
                 <div class="statCard__icon">🍬</div>
                 <div class="statCard__content">
@@ -80,14 +80,6 @@
                   <div class="statCard__value" :class="{ 'statCard__value--danger': shardsCap > 0 && shardsOver > 0 }">
                     {{ fmtNum(shardsUsed) }}
                   </div>
-                </div>
-              </div>
-
-              <div class="statCard statCard--danger" v-if="totals.shortage > 0">
-                <div class="statCard__icon">🔥</div>
-                <div class="statCard__content">
-                  <div class="statCard__label">{{ t("calc.export.sumShortage") }}</div>
-                  <div class="statCard__value statCard__value--danger">{{ fmtNum(totals.shortage) }}</div>
                 </div>
               </div>
             </div>
@@ -212,42 +204,6 @@
               </div>
             </div>
           </div>
-
-          <!-- 万能アメ使用ランキング -->
-          <div v-if="universalCandyRanking.length > 0" class="exportRanking">
-            <div class="exportRanking__title">{{ t("calc.export.universalRankingTitle") }}</div>
-            <div class="exportRanking__total">
-              <span>{{ t("calc.export.rankingTotal") }}</span>
-              <span v-if="universalCandyUsedTotal.s > 0">{{ t("calc.export.totalUniversalS") }} {{ fmtNum(universalCandyUsedTotal.s) }}</span>
-              <span v-if="universalCandyUsedTotal.m > 0">{{ t("calc.export.totalUniversalM") }} {{ fmtNum(universalCandyUsedTotal.m) }}</span>
-              <span v-if="universalCandyUsedTotal.l > 0">{{ t("calc.export.totalUniversalL") }} {{ fmtNum(universalCandyUsedTotal.l) }}</span>
-            </div>
-            <div class="exportRanking__list">
-              <div v-for="item in universalCandyRanking" :key="item.id" class="exportRanking__item">
-                <div class="exportRanking__name">{{ item.pokemonName }}</div>
-                <div class="exportRanking__pct">{{ item.usagePct }}%</div>
-                <div class="exportRanking__barWrap">
-                  <div class="exportRanking__bar" :style="{ width: `${item.usagePct}%` }"></div>
-                </div>
-                <div class="exportRanking__items">
-                  <span v-if="item.typeSUsed > 0 || item.typeMUsed > 0" class="exportRanking__itemGroup">
-                    <span class="exportRanking__itemLabel">{{ t("calc.export.labelType") }}</span>
-                    <span v-if="item.typeSUsed > 0">S{{ item.typeSUsed }}</span>
-                    <span v-if="item.typeSUsed > 0 && item.typeMUsed > 0"> / </span>
-                    <span v-if="item.typeMUsed > 0">M{{ item.typeMUsed }}</span>
-                  </span>
-                  <span v-if="item.uniSUsed > 0 || item.uniMUsed > 0 || item.uniLUsed > 0" class="exportRanking__itemGroup">
-                    <span class="exportRanking__itemLabel">{{ t("calc.export.labelUni") }}</span>
-                    <span v-if="item.uniSUsed > 0">S{{ item.uniSUsed }}</span>
-                    <span v-if="item.uniSUsed > 0 && (item.uniMUsed > 0 || item.uniLUsed > 0)"> / </span>
-                    <span v-if="item.uniMUsed > 0">M{{ item.uniMUsed }}</span>
-                    <span v-if="item.uniMUsed > 0 && item.uniLUsed > 0"> / </span>
-                    <span v-if="item.uniLUsed > 0">L{{ item.uniLUsed }}</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -269,8 +225,6 @@ type ExportRow = {
   normalCandy: number;
   totalCandy: number;
   shards: number;
-  candySupply?: string; // アメ補填
-  shortage?: number;
 };
 
 type ExportTotals = {
@@ -278,7 +232,6 @@ type ExportTotals = {
   normalCandy: number;
   totalCandy: number;
   shards: number;
-  shortage: number;
 };
 
 const props = defineProps<{
@@ -305,19 +258,6 @@ const props = defineProps<{
 
   showBoostFire: boolean;
   showShardsFire: boolean;
-
-  universalCandyRanking: Array<{
-    id: string;
-    pokemonName: string;
-    universalValue: number;
-    usagePct: number;
-    uniSUsed: number;
-    uniMUsed: number;
-    uniLUsed: number;
-    typeSUsed: number;
-    typeMUsed: number;
-  }>;
-  universalCandyUsedTotal: { s: number; m: number; l: number };
 }>();
 
 const emit = defineEmits<{ close: [] }>();
@@ -542,6 +482,7 @@ async function downloadCalcExportPng() {
   transform-origin: top center;
   width: 100%;
   border-radius: 12px;
+  border: 4px double #d4ac0d;
   background: #f7f7f7;
   box-shadow: 0 4px 12px rgba(74, 66, 56, 0.1);
   padding: 16px 22px 16px;
@@ -559,9 +500,6 @@ async function downloadCalcExportPng() {
   margin-bottom: 4px;
   padding: 0 2px 6px;
   background: transparent;
-}
-.exportSheet--capture .exportHead {
-  margin-bottom: 12px;
 }
 .exportHead__top {
   display: flex;
@@ -652,9 +590,6 @@ async function downloadCalcExportPng() {
   gap: 12px;
   margin: 15px 10px 12px;
 }
-.exportStats--hasShortage {
-  grid-template-columns: repeat(5, 1fr);
-}
 .statCard {
   display: flex;
   align-items: center;
@@ -728,29 +663,16 @@ async function downloadCalcExportPng() {
   position: absolute;
   inset: 0 auto 0 0;
   width: 0%;
-  background: linear-gradient(
-    90deg,
-    color-mix(in oklab, var(--accent) 74%, var(--paper) 26%),
-    color-mix(in oklab, var(--accent-warm) 56%, var(--paper) 44%)
-  );
+  background: color-mix(in oklab, var(--accent-cool) 70%, var(--ink) 10%);
 }
 .exportBar__fill--candy {
-  background: linear-gradient(
-    90deg,
-    color-mix(in oklab, var(--accent) 74%, var(--paper) 26%),
-    color-mix(in oklab, var(--accent-warm) 56%, var(--paper) 44%)
-  );
+  background: color-mix(in oklab, var(--accent-warm) 72%, var(--ink) 10%);
 }
 .exportBar__over {
   position: absolute;
   inset: 0 0 0 auto;
   width: 0%;
-  background: repeating-linear-gradient(
-    135deg,
-    color-mix(in oklab, hsl(6 78% 52%) 78%, var(--paper) 22%) 0 6px,
-    color-mix(in oklab, hsl(6 78% 52%) 62%, var(--paper) 38%) 6px 12px
-  );
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, hsl(6 78% 52%) 55%, transparent);
+  background: color-mix(in oklab, var(--danger) 70%, var(--ink) 10%);
 }
 
 /* --- Export List --- */
@@ -766,11 +688,11 @@ async function downloadCalcExportPng() {
 }
 .exportList__head {
   display: grid;
-  grid-template-columns: 2fr 0.9fr 0.7fr 0.7fr 0.7fr 1.5fr;
-  gap: 8px;
-  padding: 8px 16px;
+  grid-template-columns: 2fr 1.2fr 1fr 1fr 1fr 1.3fr;
+  gap: 10px;
+  padding: 12px 16px;
   background: #f7f7f7;
-  border-bottom: 2px solid #e5e7eb;
+  border-bottom: 2px solid #ebe6de;
   font-family: var(--font-heading);
   font-weight: 800;
   font-size: 11px;
@@ -779,20 +701,20 @@ async function downloadCalcExportPng() {
 }
 .exportList__row {
   display: grid;
-  grid-template-columns: 2fr 0.9fr 0.7fr 0.7fr 0.7fr 1.5fr;
-  gap: 8px;
-  padding: 8px 16px;
+  grid-template-columns: 2fr 1.2fr 1fr 1fr 1fr 1.3fr;
+  gap: 10px;
+  padding: 12px 16px;
   align-items: center;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #f0ebe5;
 }
 .exportList__row:last-child { border-bottom: 0; }
 .exportList__row:nth-child(even) { background: #fafafa; }
-.exportList__row--total { background: #f7f7f7; border-top: 2px solid #e5e7eb; }
+.exportList__row--total { background: #f7f7f7; border-top: 2px solid #ebe6de; }
 .exportList__col { min-width: 0; font-size: 13px; font-weight: 500; color: var(--ink); }
 .exportList__col.u-align-right { text-align: right; }
 .exportList__col.u-align-center { text-align: center; }
 .exportList__nameCol { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.exportList__name { font-family: var(--font-heading); font-weight: 800; font-size: 15px; line-height: 1.2; }
+.exportList__name { font-family: var(--font-heading); font-weight: 800; font-size: 14px; line-height: 1.2; }
 .exportList__badge {
   font-size: 9.5px;
   font-weight: 800;
@@ -815,7 +737,7 @@ async function downloadCalcExportPng() {
   min-width: 60px;
 }
 .exportList__arrow { color: color-mix(in oklab, var(--ink) 30%, transparent); font-size: 10px; }
-.exportList__numCol .calcRow__num { font-size: 16px; color: #333; }
+.exportList__numCol .calcRow__num { font-size: 15px; color: #333; }
 .exportList__numCol .calcRow__num.calcRow__num--danger { color: var(--danger); }
 .u-mobile-label { display: none; }
 
@@ -826,7 +748,7 @@ async function downloadCalcExportPng() {
     gap: 10px;
   }
   .statCard__label { white-space: normal; line-height: 1.15; }
-  .statCard__value { font-size: clamp(20px, 5vw, 28px); white-space: normal; overflow-wrap: anywhere; }
+  .statCard__value { font-size: clamp(18px, 4.6vw, 26px); white-space: normal; overflow-wrap: anywhere; }
 }
 
 @media (max-width: 560px) {
@@ -845,8 +767,7 @@ async function downloadCalcExportPng() {
     position: sticky;
     top: 0;
     z-index: 2;
-    background: rgba(255, 255, 255, 0.96);
-    backdrop-filter: blur(8px);
+    background: #f7f7f7;
     padding: 10px 14px 8px;
     margin: 0;
     display: flex;
@@ -879,11 +800,11 @@ async function downloadCalcExportPng() {
   .exportBars { margin: 6px 14px 0; padding: 12px 12px; }
   .exportList { margin: 16px 0 0; }
   .exportList__head { display: none; }
-  .exportList__row { grid-template-columns: 0.9fr 1fr 0.8fr 1.2fr 1.8fr; gap: 8px 4px; padding: 10px; }
+  .exportList__row { grid-template-columns: repeat(5, 1fr); gap: 8px 6px; padding: 14px; }
   .exportList__nameCol {
     grid-column: 1 / -1;
     margin-bottom: 4px;
-    border-bottom: 1px dashed #e5e7eb;
+    border-bottom: 1px dashed #ebe6de;
     padding-bottom: 8px;
     width: 100%;
   }
@@ -898,183 +819,7 @@ async function downloadCalcExportPng() {
     margin-bottom: 0px;
     white-space: nowrap;
   }
-  .exportList__numCol .calcRow__num { font-size: 15px; }
-}
-
-/* --- Export Ranking (Universal Candy Usage) --- */
-.exportRanking {
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-  border: 1px solid color-mix(in oklab, var(--ink) 6%, transparent);
-  overflow: hidden;
-  margin: 20px 10px 0;
-  padding: 16px 18px;
-}
-/* ランキングセクションをカードスタイルにする */
-.exportRanking {
-  display: flex;
-  flex-direction: column;
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-  border: 1px solid color-mix(in oklab, var(--ink) 6%, transparent);
-  overflow: hidden;
-  margin: 20px 10px 0;
-  padding: 16px 18px;
-}
-
-.exportRanking__title {
-  font-family: var(--font-heading);
-  font-weight: 800;
-  font-size: 16px;
-  color: var(--ink);
-  margin-bottom: 12px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.exportRanking__title::before {
-  content: "";
-  display: block;
-  width: 6px;
-  height: 20px;
-  background: var(--accent);
-  border-radius: 3px;
-}
-.exportRanking__total {
-  font-size: 13px;
-  color: var(--ink);
-  background: color-mix(in oklab, var(--accent) 8%, transparent);
-  margin-bottom: 16px;
-  padding: 10px 14px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  font-weight: 600;
-}
-.exportRanking__total span:first-child {
-  color: color-mix(in oklab, var(--ink) 70%, transparent);
-  font-weight: 700;
-  font-size: 12px;
-}
-.exportRanking__list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.exportRanking__item {
-  display: grid;
-  grid-template-columns: minmax(80px, 1.2fr) 40px 120px minmax(0, 3fr);
-  gap: 0 12px;
-  align-items: center;
-  padding: 10px 6px;
-  border-bottom: 1px solid color-mix(in oklab, var(--ink) 6%, transparent);
-}
-.exportRanking__item:last-child {
-  border-bottom: none;
-}
-.exportRanking__name {
-  font-family: var(--font-heading);
-  font-weight: 700;
-  font-size: 14px;
-  color: var(--ink);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  grid-column: 1 / 2;
-  grid-row: 1 / 2;
-}
-.exportRanking__pct {
-  font-family: var(--font-heading);
-  font-weight: 700;
-  font-size: 15px;
-  color: #222;
-  text-align: right;
-  grid-column: 2 / 3;
-  grid-row: 1 / 2;
-}
-.exportRanking__barWrap {
-  position: relative;
-  height: 8px;
-  background: color-mix(in oklab, var(--ink) 8%, transparent);
-  border-radius: 4px;
-  overflow: hidden;
-  grid-column: 3 / 4;
-  grid-row: 1 / 2;
-}
-.exportRanking__bar {
-  position: absolute;
-  inset: 0 auto 0 0;
-  height: 100%;
-  background: color-mix(in oklab, var(--accent-warm) 85%, var(--ink) 5%);
-  border-radius: 4px;
-  transition: width 240ms ease;
-}
-.exportRanking__items {
-  grid-column: 4 / 5;
-  grid-row: 1 / 2;
-  display: flex;
-  gap: 8px;
-  flex-wrap: nowrap;
-  font-size: 13px;
-  color: color-mix(in oklab, var(--ink) 60%, transparent);
-  margin-top: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.exportRanking__itemGroup {
-  display: inline-flex;
-  gap: 3px;
-  align-items: center;
-  font-weight: 700;
-  font-size: 14px;
-  color: #222;
-}
-.exportRanking__itemLabel {
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 700;
-  color: color-mix(in oklab, var(--ink) 70%, transparent);
-  background-color: color-mix(in oklab, var(--ink) 6%, transparent);
-  padding: 1px 6px;
-  border-radius: 4px;
-  line-height: 1.4;
-}
-
-@media (max-width: 530px) {
-  .exportRanking__item {
-    grid-template-columns: 1fr auto;
-    grid-template-rows: auto auto auto;
-    gap: 6px 12px;
-    padding: 12px 6px;
-  }
-  .exportRanking__name {
-    grid-column: 1 / 2;
-    grid-row: 1 / 2;
-    font-size: 13px;
-  }
-  .exportRanking__pct {
-    grid-column: 2 / 3;
-    grid-row: 1 / 2;
-  }
-  .exportRanking__barWrap {
-    display: block;
-    grid-column: 1 / 3;
-    grid-row: 2 / 3;
-    height: 6px;
-  }
-  .exportRanking__items {
-    grid-column: 1 / 3;
-    grid-row: 3 / 4;
-    flex-wrap: wrap;
-    white-space: normal;
-    font-size: 11px;
-    gap: 8px;
-  }
+  .exportList__numCol .calcRow__num { font-size: 14px; }
 }
 
 /* When capturing PNG, never include action links in the exported image */
