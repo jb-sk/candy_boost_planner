@@ -4,27 +4,89 @@
       <h2 class="panel__title">{{ t("calc.title") }}</h2>
     </div>
     <div class="calcTop">
-      <div class="calcTop__grid">
-        <label class="field">
-          <span class="field__label">{{ t("calc.maxShardsLabel") }}</span>
+      <div class="calcTop__row">
+        <div class="calcTop__field">
+          <span class="calcTop__label">{{ t("calc.boostKindLabel") }}</span>
+          <select v-model="calc.boostKind.value" class="calcTop__input">
+            <option value="full">{{ calc.fullLabel.value }}</option>
+            <option value="mini">{{ calc.miniLabel.value }}</option>
+          </select>
+        </div>
+        <div class="calcTop__field">
+          <span class="calcTop__label">{{ t("calc.maxShardsLabel") }}</span>
           <input
             :value="calc.totalShardsText.value"
             type="text"
             inputmode="numeric"
             autocomplete="off"
-            class="field__input"
+            class="calcTop__input calcTop__input--shards"
             @input="calc.onTotalShardsInput(($event.target as HTMLInputElement).value)"
           />
-          <span class="field__sub">{{ t("calc.maxShardsHelp") }}</span>
-        </label>
-        <label class="field">
-          <span class="field__label">{{ t("calc.boostKindLabel") }}</span>
-          <select v-model="calc.boostKind.value" class="field__input">
-            <option value="full">{{ calc.fullLabel.value }}</option>
-            <option value="mini">{{ calc.miniLabel.value }}</option>
-          </select>
-        </label>
+        </div>
+        <div class="calcTop__field calcTop__field--candy">
+          <span class="calcTop__label">{{ t("calc.candy.universalLabel") }}</span>
+          <div class="calcTop__candyInputs">
+            <label class="calcTop__candyInput">
+              <span class="calcTop__candyLabel">{{ t("calc.candy.universalS") }}</span>
+              <input
+                type="number"
+                min="0"
+                class="calcTop__input calcTop__input--candy"
+                :value="candyStore.universalCandy.value.s"
+                @input="candyStore.updateUniversalCandy({ s: parseInt(($event.target as HTMLInputElement).value) || 0 })"
+              />
+            </label>
+            <label class="calcTop__candyInput">
+              <span class="calcTop__candyLabel">{{ t("calc.candy.universalM") }}</span>
+              <input
+                type="number"
+                min="0"
+                class="calcTop__input calcTop__input--candy"
+                :value="candyStore.universalCandy.value.m"
+                @input="candyStore.updateUniversalCandy({ m: parseInt(($event.target as HTMLInputElement).value) || 0 })"
+              />
+            </label>
+            <label class="calcTop__candyInput">
+              <span class="calcTop__candyLabel">{{ t("calc.candy.universalL") }}</span>
+              <input
+                type="number"
+                min="0"
+                class="calcTop__input calcTop__input--candy"
+                :value="candyStore.universalCandy.value.l"
+                @input="candyStore.updateUniversalCandy({ l: parseInt(($event.target as HTMLInputElement).value) || 0 })"
+              />
+            </label>
+          </div>
+        </div>
       </div>
+      <details class="calcTop__typeCandy">
+        <summary class="calcTop__typeCandyToggle">{{ t("calc.candy.typeCandyToggle") }}</summary>
+        <div class="calcTop__typeCandyGrid">
+          <div v-for="typeName in pokemonTypes" :key="typeName" class="typeRow">
+            <span class="typeRow__name">{{ getTypeName(typeName, locale) }}</span>
+            <label class="candyInput candyInput--sm">
+              <span class="candyInput__label">{{ t("calc.candy.typeS") }}</span>
+              <input
+                type="number"
+                min="0"
+                class="field__input field__input--xs"
+                :value="candyStore.getTypeCandyFor(typeName).s"
+                @input="candyStore.updateTypeCandy(typeName, { s: parseInt(($event.target as HTMLInputElement).value) || 0 })"
+              />
+            </label>
+            <label class="candyInput candyInput--sm">
+              <span class="candyInput__label">{{ t("calc.candy.typeM") }}</span>
+              <input
+                type="number"
+                min="0"
+                class="field__input field__input--xs"
+                :value="candyStore.getTypeCandyFor(typeName).m"
+                @input="candyStore.updateTypeCandy(typeName, { m: parseInt(($event.target as HTMLInputElement).value) || 0 })"
+              />
+            </label>
+          </div>
+        </div>
+      </details>
     </div>
 
     <div class="calcSticky">
@@ -36,6 +98,19 @@
         <div class="calcSum calcSum--hi" :class="{ 'calcSum--danger': calc.shardsOver.value > 0 }">
           <div class="calcSum__k">{{ t("calc.shardsTotal") }}</div>
           <div class="calcSum__v">{{ calc.fmtNum(calc.totalShardsUsed.value) }}</div>
+        </div>
+        <div class="calcSum calcSum--candy" v-if="calc.allocationResult.value">
+          <div class="calcSum__k">{{ t("calc.candy.usageLabel") }}</div>
+          <div class="calcSum__v">
+            <span :class="{ 'calcSum__v--over': calc.universalCandyUsagePct.value > 100 }">
+              {{ calc.universalCandyUsagePct.value }}%
+            </span>
+            <span class="calcSum__candyDetails">
+              S: {{ calc.universalCandyNeeded.value.s }}/{{ candyStore.universalCandy.value.s }},
+              M: {{ calc.universalCandyNeeded.value.m }}/{{ candyStore.universalCandy.value.m }},
+              L: {{ calc.universalCandyNeeded.value.l }}/{{ candyStore.universalCandy.value.l }}
+            </span>
+          </div>
         </div>
       </div>
       <div
@@ -188,6 +263,11 @@
 
     <p class="calcHint">{{ t("calc.addHint") }}</p>
 
+    <details class="calcAllocInfo">
+      <summary class="calcAllocInfo__title">{{ t("calc.candyAllocTitle") }}</summary>
+      <pre class="calcAllocInfo__desc">{{ t("calc.candyAllocDesc") }}</pre>
+    </details>
+
     <div class="calcRows" v-if="calc.rowsView.value.length">
       <div
         v-for="r in calc.rowsView.value"
@@ -317,7 +397,10 @@
                 :aria-label="t('calc.row.pickLevelAria', { label: t('calc.row.dstLevel') })"
               >
                 <div class="levelPick__top">
-                  <div class="levelPick__title">Lv{{ r.srcLevel }} → Lv{{ r.dstLevel }}</div>
+                  <div class="levelPick__title">
+                    Lv{{ r.srcLevel }} → Lv{{ r.dstLevel }}
+                    <span v-if="isCandyShort(r)" title="アメ不足" style="font-size: 1.2em; vertical-align: middle; margin-left: 4px;">🍬</span>
+                  </div>
                   <button class="btn btn--ghost btn--xs" type="button" @mousedown.stop.prevent @click.stop.prevent="calc.closeLevelPick()">
                     {{ t("common.close") }}
                   </button>
@@ -373,11 +456,15 @@
               @input="calc.onRowExpRemaining(r.id, ($event.target as HTMLInputElement).value)"
             />
           </label>
-          <label class="field field--sm">
-            <span class="field__label">{{ t("calc.row.expType") }}</span>
-            <div class="field__input field__input--static" :title="t('calc.row.expTypeFixedHint')">
-              {{ r.expType }}
-            </div>
+          <label class="field field--sm" v-if="getRowPokedexId(r)">
+            <span class="field__label">{{ t("calc.row.speciesCandy") }}</span>
+            <input
+              type="number"
+              min="0"
+              class="field__input"
+              :value="candyStore.getSpeciesCandyFor(getRowPokedexId(r)!)"
+              @input="candyStore.updateSpeciesCandy(getRowPokedexId(r)!, parseInt(($event.target as HTMLInputElement).value) || 0)"
+            />
           </label>
           <label class="field field--sm">
             <span class="field__label">{{ t("calc.row.nature") }}</span>
@@ -411,7 +498,10 @@
                 :aria-label="t('calc.row.pickLevelAria', { label: t('calc.row.boostReachLevel') })"
               >
                 <div class="levelPick__top">
-                  <div class="levelPick__title">Lv{{ r.srcLevel }} → Lv{{ r.ui.boostReachLevel }}</div>
+                  <div class="levelPick__title">
+                    Lv{{ r.srcLevel }} → Lv{{ r.ui.boostReachLevel }}
+                    <span v-if="isCandyShort(r)" title="アメ不足" style="font-size: 1.2em; vertical-align: middle; margin-left: 4px;">🍬</span>
+                  </div>
                   <button class="btn btn--ghost btn--xs" type="button" @mousedown.stop.prevent @click.stop.prevent="calc.closeLevelPick()">
                     {{ t("common.close") }}
                   </button>
@@ -476,23 +566,27 @@
           </label>
         </div>
 
-        <div class="calcRow__result">
-          <div class="calcRow__res">
+        <div class="calcRow__result calcRow__result--inline">
+          <span class="calcRow__res">
             <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
-            <span class="calcRow__v"><span class="calcRow__num">{{ calc.fmtNum(r.result.boostCandy) }}</span></span>
-          </div>
-          <div class="calcRow__res">
+            <span class="calcRow__num">{{ calc.fmtNum(r.result.boostCandy) }}</span>
+          </span>
+          <span class="calcRow__res">
             <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
-            <span class="calcRow__v"><span class="calcRow__num">{{ calc.fmtNum(r.result.normalCandy) }}</span></span>
-          </div>
-          <div class="calcRow__res">
+            <span class="calcRow__num">{{ calc.fmtNum(r.result.normalCandy) }}</span>
+          </span>
+          <span class="calcRow__res">
             <span class="calcRow__k">{{ t("calc.row.candyTotal") }}</span>
-            <span class="calcRow__v"><span class="calcRow__num">{{ calc.fmtNum(r.result.normalCandy + r.result.boostCandy) }}</span></span>
-          </div>
-          <div class="calcRow__res">
+            <span class="calcRow__num">{{ calc.fmtNum(r.result.boostCandy + r.result.normalCandy) }}</span>
+          </span>
+          <span class="calcRow__res">
             <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
-            <span class="calcRow__v"><span class="calcRow__num">{{ calc.fmtNum(r.result.shards) }}</span></span>
-          </div>
+            <span class="calcRow__num">{{ calc.fmtNum(r.result.shards) }}</span>
+          </span>
+          <span class="calcRow__res">
+            <span class="calcRow__k">{{ t("calc.row.candySupply") }}</span>
+            <span class="calcRow__num calcRow__num--text">{{ getCandySupplyText(r) }}</span>
+          </span>
         </div>
       </div>
     </div>
@@ -501,9 +595,13 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import type { CalcStore } from "../composables/useCalcStore";
+import type { CalcStore, CalcRowView } from "../composables/useCalcStore";
+import { useCandyStore } from "../composables/useCandyStore";
 import NatureSelect from "./NatureSelect.vue";
+import { PokemonTypes, getTypeNameJa, getTypeName } from "../domain/pokesleep/pokemon-types";
+import type { PokemonAllocation } from "../domain/candy-allocator";
 
 defineEmits<{
   (e: "apply-to-box", rowId: string): void;
@@ -511,10 +609,93 @@ defineEmits<{
 
 const props = defineProps<{
   calc: CalcStore;
+  resolvePokedexIdByBoxId?: (boxId: string) => number | undefined;
 }>();
 
 const calc = props.calc;
-const { t } = useI18n();
+const { t, locale } = useI18n();
+const candyStore = useCandyStore();
 
 const levelPresets = [10, 25, 30, 40, 50, 55, 57, 60, 65] as const;
+
+// ポケモンタイプ一覧（英語名）
+const pokemonTypes = PokemonTypes;
+
+// 万能アメ合計
+const universalCandyTotal = computed(() => {
+  const u = candyStore.universalCandy.value;
+  return u.s + u.m + u.l;
+});
+
+// 行から pokedexId を取得（保存済み or boxId から解決）
+function getRowPokedexId(r: { pokedexId?: number; boxId?: string }): number | undefined {
+  if (r.pokedexId) return r.pokedexId;
+  if (r.boxId && props.resolvePokedexIdByBoxId) {
+    return props.resolvePokedexIdByBoxId(r.boxId);
+  }
+  return undefined;
+}
+
+// 特定の行のアメ配分結果を取得（calc.allocationResult から）
+function getRowAllocation(rowId: string): PokemonAllocation | null {
+  if (!calc.allocationResult.value) return null;
+  return calc.allocationResult.value.pokemons.find(p => p.id === rowId) ?? null;
+}
+
+// アメ補填の表示テキストを生成
+function getCandySupplyText(r: CalcRowView): string {
+  const alloc = getRowAllocation(r.id);
+  if (!alloc) return "-";
+
+  const parts: string[] = [];
+
+  // 種族アメは在庫使用なので補填に含めない
+
+  // タイプアメ
+  if (alloc.typeSUsed > 0) {
+    const typeName = getTypeName(alloc.type, locale.value);
+    parts.push(`${typeName}S ${alloc.typeSUsed}`);
+  }
+  if (alloc.typeMUsed > 0) {
+    const typeName = getTypeName(alloc.type, locale.value);
+    parts.push(`${typeName}M ${alloc.typeMUsed}`);
+  }
+
+  // 万能アメ
+  if (alloc.uniSUsed > 0) {
+    parts.push(`${t("calc.candy.universalLabel")} S ${alloc.uniSUsed}`);
+  }
+  if (alloc.uniMUsed > 0) {
+    parts.push(`${t("calc.candy.universalLabel")} M ${alloc.uniMUsed}`);
+  }
+  if (alloc.uniLUsed > 0) {
+    parts.push(`${t("calc.candy.universalLabel")} L ${alloc.uniLUsed}`);
+  }
+
+  // 不足
+  if (alloc.remaining > 0) {
+    parts.push(`${t("calc.candy.shortage")} ${alloc.remaining}`);
+  }
+
+  // 余り（surplus > 0 の場合のみ表示）
+  if (alloc.surplus > 0) {
+    parts.push(`${t("calc.candy.surplus")} ${alloc.surplus}`);
+  }
+
+  return parts.length > 0 ? parts.join(", ") : "-";
+}
+
+// アイテム（万能アメ・タイプアメ）使用またはアメ不足があるか判定
+function isCandyShort(r: CalcRowView): boolean {
+  const alloc = getRowAllocation(r.id);
+  if (!alloc) return false;
+  return (
+    alloc.uniSUsed > 0 ||
+    alloc.uniMUsed > 0 ||
+    alloc.uniLUsed > 0 ||
+    alloc.typeSUsed > 0 ||
+    alloc.typeMUsed > 0 ||
+    alloc.remaining > 0
+  );
+}
 </script>

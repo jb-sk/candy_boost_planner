@@ -6,6 +6,10 @@ export type CalcRowV1 = {
   id: string;
   /** 元のボックスID（ボックス由来の場合のみ） */
   boxId?: string;
+  /** ポケモン図鑑ID（アメ管理用） */
+  pokedexId?: number;
+  /** ポケモンタイプ（タイプアメ用、英語名） */
+  pokemonType?: string;
   /** 表示名 */
   title: string;
   srcLevel: number;
@@ -146,9 +150,13 @@ function toRows(v: unknown): CalcRowV1[] {
     const mode: CalcMode = o.mode === "boostLevel" || o.mode === "candy" || o.mode === "ratio" ? o.mode : "ratio";
     const boxId = typeof o.boxId === "string" && o.boxId.trim() ? o.boxId : undefined;
     const dstLevelText = typeof o.dstLevelText === "string" ? o.dstLevelText : undefined;
+    const pokedexId = typeof o.pokedexId === "number" && o.pokedexId > 0 ? o.pokedexId : undefined;
+    const pokemonType = typeof o.pokemonType === "string" && o.pokemonType.trim() ? o.pokemonType : undefined;
     out.push({
       id,
       boxId,
+      pokedexId,
+      pokemonType,
       title,
       srcLevel,
       dstLevel,

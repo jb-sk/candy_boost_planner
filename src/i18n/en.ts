@@ -27,7 +27,7 @@ export const en = {
     title: "Calculator: Multiple Pokémon (Target Level)",
     applyToBoxTitle: "Save edits (current Lv / EXP to next / EXP type / nature) to Pokémon Box",
     applyToBox: "To Box",
-    maxShardsLabel: "Max Dream Shards (cap check)",
+    maxShardsLabel: "Max Shards",
     maxShardsHelp: "Calculation continues even if you exceed the cap; the overage is shown in red.",
     boostKindLabel: "Candy Boost type",
     boostKindFull: "Candy Boost (Shards ×{shards} / EXP ×{exp})",
@@ -49,6 +49,13 @@ export const en = {
     slotEmpty: "Empty",
     addHint: "How to add: In Pokémon Box details, press “Add to Calculator (Apply)” to add it to this list.",
     empty: "No Pokémon selected yet. Add them from Pokémon Box.",
+    candyAllocTitle: "About Handy Candy Auto-Allocation",
+    candyAllocDesc: `• Type Candy used aggressively (Handy S for fine-tuning)
+• Calculate Handy S needed (surplus 0-2 per Pokémon)
+• If S is sufficient → Use S only (save M/L)
+• If S is insufficient → Use M→L, then S for fine-tuning
+* Pokémon higher in the list get priority
+* For reference to reduce bag space`,
     row: {
       dragReorder: "Drag to reorder",
       pickLevelAria: "Select {label}",
@@ -69,6 +76,24 @@ export const en = {
       breakdown: "Breakdown",
       breakdownBoost: "Boost",
       breakdownNormal: "Normal candy",
+      candySupply: "Items",
+      speciesCandy: "Candy stock",
+    },
+    candy: {
+      universalLabel: "Handy",
+      universalS: "S",
+      universalM: "M",
+      universalL: "L",
+      typeCandyLabel: "Type Candy",
+      typeCandyToggle: "Set Type Candy",
+      typeS: "S",
+      typeM: "M",
+      usageLabel: "Handy Candy usage",
+      usagePct: "{pct}%",
+      typeAbbr: "T",
+      uniAbbr: "H",
+      shortage: "Short",
+      surplus: "Surplus",
     },
     export: {
       open: "Share as One Image",
@@ -80,6 +105,7 @@ export const en = {
       close: "Close",
       sheetTitle: "Holiday Candy Boost Plan",
       sumShardsTotal: "Shards total",
+      sumShortage: "Shortage",
       sumBoostTotal: "Boost total",
       sumNormalTotal: "Normal total",
       sumBoostUnused: "Boost unused",
@@ -95,6 +121,13 @@ export const en = {
       summaryBoost: "Boost total",
       summaryShards: "Shards total",
       summaryCount: "Pokémon",
+      universalRankingTitle: "Handy Candy Consumption Ranking",
+      rankingTotal: "Total",
+      labelType: "Type",
+      labelUni: "Handy",
+      totalUniversalS: "Handy Candy S",
+      totalUniversalM: "Handy Candy M",
+      totalUniversalL: "Handy Candy L",
     },
   },
   box: {
