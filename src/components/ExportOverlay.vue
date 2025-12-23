@@ -49,7 +49,7 @@
 
         <div class="exportCalc">
           <div class="exportCalcTop">
-            <div class="exportStats">
+            <div class="exportStats" :class="{ 'exportStats--hasShortage': totals.shortage > 0 }">
               <div class="statCard statCard--accent">
                 <div class="statCard__icon">🍬</div>
                 <div class="statCard__content">
@@ -80,6 +80,14 @@
                   <div class="statCard__value" :class="{ 'statCard__value--danger': shardsCap > 0 && shardsOver > 0 }">
                     {{ fmtNum(shardsUsed) }}
                   </div>
+                </div>
+              </div>
+
+              <div class="statCard statCard--danger" v-if="totals.shortage > 0">
+                <div class="statCard__icon">🔥</div>
+                <div class="statCard__content">
+                  <div class="statCard__label">{{ t("calc.export.sumShortage") }}</div>
+                  <div class="statCard__value statCard__value--danger">{{ fmtNum(totals.shortage) }}</div>
                 </div>
               </div>
             </div>
@@ -262,6 +270,7 @@ type ExportRow = {
   totalCandy: number;
   shards: number;
   candySupply?: string; // アメ補填
+  shortage?: number;
 };
 
 type ExportTotals = {
@@ -269,6 +278,7 @@ type ExportTotals = {
   normalCandy: number;
   totalCandy: number;
   shards: number;
+  shortage: number;
 };
 
 const props = defineProps<{
@@ -550,6 +560,9 @@ async function downloadCalcExportPng() {
   padding: 0 2px 6px;
   background: transparent;
 }
+.exportSheet--capture .exportHead {
+  margin-bottom: 12px;
+}
 .exportHead__top {
   display: flex;
   justify-content: center;
@@ -638,6 +651,9 @@ async function downloadCalcExportPng() {
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
   margin: 15px 10px 12px;
+}
+.exportStats--hasShortage {
+  grid-template-columns: repeat(5, 1fr);
 }
 .statCard {
   display: flex;
@@ -951,7 +967,7 @@ async function downloadCalcExportPng() {
 }
 .exportRanking__item {
   display: grid;
-  grid-template-columns: minmax(80px, 1.2fr) 40px 60px minmax(0, 3fr);
+  grid-template-columns: minmax(80px, 1.2fr) 40px 120px minmax(0, 3fr);
   gap: 0 12px;
   align-items: center;
   padding: 10px 6px;
@@ -975,7 +991,7 @@ async function downloadCalcExportPng() {
   font-family: var(--font-heading);
   font-weight: 700;
   font-size: 15px;
-  color: color-mix(in oklab, var(--ink) 50%, transparent);
+  color: #222;
   text-align: right;
   grid-column: 2 / 3;
   grid-row: 1 / 2;
@@ -1014,6 +1030,9 @@ async function downloadCalcExportPng() {
   display: inline-flex;
   gap: 3px;
   align-items: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: #222;
 }
 .exportRanking__itemLabel {
   display: inline-block;

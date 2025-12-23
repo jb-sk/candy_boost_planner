@@ -2134,7 +2134,7 @@ input.field__input, select.field__input {
   padding: 8px 0;
 }
 .boxDetail__col > .boxDetail__kv {
-  border-bottom: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
+  border-bottom: 0;
 }
 .boxDetail__col > .boxDetail__kv:last-child {
   border-bottom: 0;

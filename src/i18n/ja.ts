@@ -107,6 +107,7 @@ export const ja = {
       close: "閉じる",
       sheetTitle: "ホリデーアメブ計画シート",
       sumShardsTotal: "かけら合計",
+      sumShortage: "アメ不足",
       sumBoostTotal: "アメブ合計",
       sumNormalTotal: "通常アメ合計",
       sumBoostUnused: "アメブ未使用",

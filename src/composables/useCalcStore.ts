@@ -42,9 +42,10 @@ export type CalcExportRow = {
   normalCandy: number;
   totalCandy: number;
   shards: number;
+  shortage: number;
 };
 
-export type CalcExportTotals = { boostCandy: number; normalCandy: number; totalCandy: number; shards: number };
+export type CalcExportTotals = { boostCandy: number; normalCandy: number; totalCandy: number; shards: number; shortage: number };
 
 export type CalcBoxPlannerPatch = {
   boxId: string;
@@ -728,9 +729,11 @@ export function useCalcStore(opts: {
 
       // アメ補填情報を取得
       let candySupply = "";
+      let shortage = 0;
       if (allocationResult.value) {
         const alloc = allocationResult.value.pokemons.find(p => p.id === r.id);
         if (alloc) {
+          shortage = alloc.remaining;
           const parts: string[] = [];
           if (alloc.typeSUsed > 0 || alloc.typeMUsed > 0) {
             const typeParts: string[] = [];
@@ -763,6 +766,7 @@ export function useCalcStore(opts: {
         totalCandy: boostCandy + normalCandy,
         shards,
         candySupply,
+        shortage,
       };
     })
   );
@@ -776,7 +780,8 @@ export function useCalcStore(opts: {
       normalCandy += r.normalCandy;
       shards += r.shards;
     }
-    return { boostCandy, normalCandy, totalCandy: boostCandy + normalCandy, shards };
+    const shortage = exportRows.value.reduce((sum, r) => sum + r.shortage, 0);
+    return { boostCandy, normalCandy, totalCandy: boostCandy + normalCandy, shards, shortage };
   });
 
   const exportScale = computed(() => {

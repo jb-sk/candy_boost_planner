@@ -397,7 +397,10 @@
                 :aria-label="t('calc.row.pickLevelAria', { label: t('calc.row.dstLevel') })"
               >
                 <div class="levelPick__top">
-                  <div class="levelPick__title">Lv{{ r.srcLevel }} → Lv{{ r.dstLevel }}</div>
+                  <div class="levelPick__title">
+                    Lv{{ r.srcLevel }} → Lv{{ r.dstLevel }}
+                    <span v-if="isCandyShort(r)" title="アメ不足" style="font-size: 1.2em; vertical-align: middle; margin-left: 4px;">🍬</span>
+                  </div>
                   <button class="btn btn--ghost btn--xs" type="button" @mousedown.stop.prevent @click.stop.prevent="calc.closeLevelPick()">
                     {{ t("common.close") }}
                   </button>
@@ -453,6 +456,16 @@
               @input="calc.onRowExpRemaining(r.id, ($event.target as HTMLInputElement).value)"
             />
           </label>
+          <label class="field field--sm" v-if="getRowPokedexId(r)">
+            <span class="field__label">{{ t("calc.row.speciesCandy") }}</span>
+            <input
+              type="number"
+              min="0"
+              class="field__input"
+              :value="candyStore.getSpeciesCandyFor(getRowPokedexId(r)!)"
+              @input="candyStore.updateSpeciesCandy(getRowPokedexId(r)!, parseInt(($event.target as HTMLInputElement).value) || 0)"
+            />
+          </label>
           <label class="field field--sm">
             <span class="field__label">{{ t("calc.row.nature") }}</span>
             <NatureSelect
@@ -462,16 +475,6 @@
               :label-normal="t('calc.row.natureNormal')"
               :label-up="t('calc.row.natureUp')"
               :label-down="t('calc.row.natureDown')"
-            />
-          </label>
-          <label class="field field--sm" v-if="getRowPokedexId(r)">
-            <span class="field__label">{{ t("calc.row.speciesCandy") }}</span>
-            <input
-              type="number"
-              min="0"
-              class="field__input"
-              :value="candyStore.getSpeciesCandyFor(getRowPokedexId(r)!)"
-              @input="candyStore.updateSpeciesCandy(getRowPokedexId(r)!, parseInt(($event.target as HTMLInputElement).value) || 0)"
             />
           </label>
 
@@ -495,7 +498,10 @@
                 :aria-label="t('calc.row.pickLevelAria', { label: t('calc.row.boostReachLevel') })"
               >
                 <div class="levelPick__top">
-                  <div class="levelPick__title">Lv{{ r.srcLevel }} → Lv{{ r.ui.boostReachLevel }}</div>
+                  <div class="levelPick__title">
+                    Lv{{ r.srcLevel }} → Lv{{ r.ui.boostReachLevel }}
+                    <span v-if="isCandyShort(r)" title="アメ不足" style="font-size: 1.2em; vertical-align: middle; margin-left: 4px;">🍬</span>
+                  </div>
                   <button class="btn btn--ghost btn--xs" type="button" @mousedown.stop.prevent @click.stop.prevent="calc.closeLevelPick()">
                     {{ t("common.close") }}
                   </button>
@@ -677,5 +683,19 @@ function getCandySupplyText(r: CalcRowView): string {
   }
 
   return parts.length > 0 ? parts.join(", ") : "-";
+}
+
+// アイテム（万能アメ・タイプアメ）使用またはアメ不足があるか判定
+function isCandyShort(r: CalcRowView): boolean {
+  const alloc = getRowAllocation(r.id);
+  if (!alloc) return false;
+  return (
+    alloc.uniSUsed > 0 ||
+    alloc.uniMUsed > 0 ||
+    alloc.uniLUsed > 0 ||
+    alloc.typeSUsed > 0 ||
+    alloc.typeMUsed > 0 ||
+    alloc.remaining > 0
+  );
 }
 </script>

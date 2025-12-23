@@ -105,6 +105,7 @@ export const en = {
       close: "Close",
       sheetTitle: "Holiday Candy Boost Plan",
       sumShardsTotal: "Shards total",
+      sumShortage: "Shortage",
       sumBoostTotal: "Boost total",
       sumNormalTotal: "Normal total",
       sumBoostUnused: "Boost unused",
