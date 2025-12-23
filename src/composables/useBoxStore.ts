@@ -205,6 +205,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     const subSkills = decoded?.subSkills?.length ? decoded.subSkills : subSkillsFromPlanner;
 
     const specialty = (e.planner?.specialty ?? (pokedexId ? getPokemonSpecialty(pokedexId, form) : "unknown")) as PokemonSpecialty;
+    const expRemaining = e.planner?.expRemaining ?? 0;
 
     return {
       decoded: decoded
@@ -229,6 +230,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
       ingredientSlots,
       subSkills,
       specialty,
+      expRemaining,
     };
   });
 
@@ -720,6 +722,25 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     writeSelectedLevel(lvl);
   }
 
+  function onEditSelectedExpRemaining(v: string) {
+    const e = selectedBox.value;
+    if (!e) return;
+    const n = parseInt(v, 10);
+    // 負の数は0、NaN（空）はundefined（未設定）として扱う
+    const val = Number.isFinite(n) && n >= 0 ? n : undefined;
+    const now = new Date().toISOString();
+    boxEntries.value = boxEntries.value.map((x) => {
+      if (x.id !== e.id) return x;
+      return {
+        ...x,
+        planner: { ...(x.planner ?? {}), expRemaining: val },
+        updatedAt: now,
+      };
+    });
+    // 専用の文言がないので汎用の更新メッセージ、または既存の近いものを使用
+    importStatus.value = t("status.updated");
+  }
+
   function onEditSelectedExpType(v: string) {
     const e = selectedBox.value;
     if (!e) return;
@@ -1172,6 +1193,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     onPickBoxLevel,
     onEditSelectedLabel,
     onEditSelectedLevel,
+    onEditSelectedExpRemaining,
     onEditSelectedExpType,
     onEditSelectedNature,
     onBoxItemNatureChange,

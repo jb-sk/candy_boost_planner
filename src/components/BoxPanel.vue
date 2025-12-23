@@ -286,10 +286,7 @@
               </select>
             </div>
             <div class="boxAdvanced__section">
-              <div class="boxAdvanced__row">
-                <span class="boxAdvanced__label">{{ t("box.list.subskillFilter") }}</span>
-                <span class="boxAdvanced__count" v-if="selectedSubSkillEns.length">（{{ selectedSubSkillEns.length }}）</span>
-              </div>
+
               <div class="boxAdvanced__row">
                 <span class="boxAdvanced__label">{{ t("box.list.subskillJoin") }}</span>
                 <select v-model="subSkillJoinMode" class="field__input boxAdvanced__select" :aria-label="t('box.list.subskillJoin')">
@@ -418,16 +415,30 @@
                   <div class="boxDetail__kv">
                     <div class="boxDetail__k">{{ t("box.detail.nickname") }}</div>
                     <div class="boxDetail__v">
-                      <input
-                        class="field__input"
-                        :value="selectedBox.label ?? ''"
-                        :placeholder="box.displayPokemonName(selectedBox) ?? t('common.optional')"
-                        @change="box.onEditSelectedLabel(($event.target as HTMLInputElement).value)"
-                      />
-                      <div class="boxDetail__minor">{{ t("box.detail.nicknameClearHint") }}</div>
+                      <div class="boxDetail__nickRow">
+                        <div class="boxDetail__nickInput">
+                          <input
+                            class="field__input"
+                            :value="selectedBox.label ?? ''"
+                            :placeholder="box.displayPokemonName(selectedBox) ?? t('common.optional')"
+                            @change="box.onEditSelectedLabel(($event.target as HTMLInputElement).value)"
+                          />
+                          <div class="boxDetail__minor">{{ t("box.detail.nicknameClearHint") }}</div>
+                        </div>
+                        <button
+                          class="chipBtn chipBtn--iconOnly"
+                          :class="{ 'chipBtn--on': !!selectedBox.favorite }"
+                          type="button"
+                          @click="box.toggleSelectedFavorite"
+                          :title="t('box.list.favorite')"
+                        >
+                          <span class="chipBtn__icon" v-html="iconStarSvg" aria-hidden="true"></span>
+                        </button>
+                      </div>
                     </div>
                   </div>
 
+                  <div class="boxDetail__specs">
                   <div class="boxDetail__kv" v-if="selectedDetail?.pokedexId">
                     <div class="boxDetail__k">{{ t("calc.row.speciesCandy") }}</div>
                     <div class="boxDetail__v">
@@ -515,6 +526,20 @@
                   </div>
 
                   <div class="boxDetail__kv">
+                    <div class="boxDetail__k">{{ t("calc.row.expRemaining") }}</div>
+                    <div class="boxDetail__v">
+                      <input
+                        type="number"
+                        min="0"
+                        class="field__input"
+                        :value="selectedDetail?.expRemaining"
+                        @input="box.onEditSelectedExpRemaining(($event.target as HTMLInputElement).value)"
+                        :placeholder="t('common.optional')"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="boxDetail__kv">
                     <div class="boxDetail__k">{{ t("calc.row.nature") }}</div>
                     <div class="boxDetail__v">
                       <NatureSelect
@@ -534,7 +559,29 @@
                   <div class="boxDetail__kv">
                     <div class="boxDetail__k">{{ t("box.list.specialty") }}</div>
                     <div class="boxDetail__v">
-                      <select class="field__input" :value="selectedSpecialtySelectValue" @change="box.onEditSelectedSpecialty(($event.target as HTMLSelectElement).value)">
+                      <div
+                        v-if="(selectedDetail?.pokedexId ?? 0) > 0"
+                        class="field__input field__input--static"
+                        :title="t('calc.row.expTypeFixedHint')"
+                      >
+                        {{
+                          selectedDetail?.specialty === 'Berries'
+                            ? gt('きのみ')
+                            : selectedDetail?.specialty === 'Ingredients'
+                              ? gt('食材')
+                              : selectedDetail?.specialty === 'Skills'
+                                ? gt('スキル')
+                                : selectedDetail?.specialty === 'All'
+                                  ? gt('オール')
+                                  : t('box.detail.unknown')
+                        }}
+                      </div>
+                      <select
+                        v-else
+                        class="field__input"
+                        :value="selectedSpecialtySelectValue"
+                        @change="box.onEditSelectedSpecialty(($event.target as HTMLSelectElement).value)"
+                      >
                         <option value="">{{ t("box.detail.unknownAuto") }}</option>
                         <option value="Berries">{{ gt("きのみ") }}</option>
                         <option value="Ingredients">{{ gt("食材") }}</option>
@@ -569,6 +616,7 @@
                         {{ t("box.detail.speciesUnknownHint") }}
                       </span>
                     </div>
+                  </div>
                   </div>
                 </div>
 
@@ -614,19 +662,7 @@
                     </div>
                   </div>
 
-                  <div class="boxDetail__kv">
-                    <div class="boxDetail__k">{{ t("box.list.favorite") }}</div>
-                    <div class="boxDetail__v">
-                      <button
-                        class="chipBtn chipBtn--iconOnly"
-                        :class="{ 'chipBtn--on': !!selectedBox.favorite }"
-                        type="button"
-                        @click="box.toggleSelectedFavorite"
-                      >
-                        <span class="chipBtn__icon" v-html="iconStarSvg" aria-hidden="true"></span>
-                      </button>
-                    </div>
-                  </div>
+
                 </div>
               </div>
             </div>

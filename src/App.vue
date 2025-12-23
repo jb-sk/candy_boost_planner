@@ -1892,8 +1892,8 @@ input.field__input, select.field__input {
   font-size: 12px;
   color: color-mix(in oklab, var(--ink) 60%, transparent);
 }
-.boxAdvanced__select {
-  min-width: 140px;
+.boxAdvanced__row .boxAdvanced__select {
+  width: 180px;
 }
 .boxAdvanced__list {
   margin-top: 10px;
@@ -2057,11 +2057,16 @@ input.field__input, select.field__input {
   align-items: stretch;
   margin-top: 8px;
 }
-.relinkRow .field__input {
+.relinkRow .field__input,
+.boxDetail .relinkRow .field__input {
   height: 40px;
+  min-height: 40px;
+  max-height: none;
 }
-.relinkRow .btn {
+.relinkRow .btn,
+.boxDetail .relinkRow .btn {
   height: 40px;
+  min-height: 40px;
 }
 .boxSortRow {
   margin-top: 10px;
@@ -2132,6 +2137,25 @@ input.field__input, select.field__input {
   background: transparent;
   border-radius: 0;
   padding: 8px 0;
+}
+.boxDetail__nickRow {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.boxDetail__nickInput {
+  flex: 1;
+  min-width: 0;
+}
+.boxDetail__specs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 12px;
+}
+@media (min-width: 860px) {
+  .boxDetail__specs {
+    gap: 0 18px;
+  }
 }
 .boxDetail__col > .boxDetail__kv {
   border-bottom: 0;
