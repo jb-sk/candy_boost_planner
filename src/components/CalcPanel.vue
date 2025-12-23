@@ -13,6 +13,19 @@
           </select>
         </div>
         <div class="calcTop__field">
+          <span class="calcTop__label">{{ t("calc.boostRemainingLabel") }}</span>
+          <input
+            :value="calc.boostCandyRemainingText.value"
+            type="text"
+            inputmode="numeric"
+            autocomplete="off"
+            class="calcTop__input calcTop__input--remaining"
+            :placeholder="t('calc.boostRemainingPlaceholder', { cap: calc.fmtNum(calc.boostCandyDefaultCap.value) })"
+            :title="t('calc.boostRemainingHelp')"
+            @input="calc.onBoostCandyRemainingInput(($event.target as HTMLInputElement).value)"
+          />
+        </div>
+        <div class="calcTop__field">
           <span class="calcTop__label">{{ t("calc.maxShardsLabel") }}</span>
           <input
             :value="calc.totalShardsText.value"

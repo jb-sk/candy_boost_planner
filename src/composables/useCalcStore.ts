@@ -66,6 +66,9 @@ export type CalcStore = {
   boostKind: Ref<Exclude<BoostEvent, "none">>;
   totalShards: Ref<number>;
   totalShardsText: Ref<string>;
+  boostCandyRemaining: Ref<number | null>;
+  boostCandyRemainingText: Ref<string>;
+  boostCandyDefaultCap: Readonly<Ref<number>>;
   slots: Ref<Array<CalcSaveSlotV1 | null>>;
   rows: Ref<CalcRow[]>;
   activeRowId: Ref<string | null>;
@@ -131,6 +134,8 @@ export type CalcStore = {
 
   // actions
   onTotalShardsInput: (v: string) => void;
+  onBoostCandyRemainingInput: (v: string) => void;
+  resetBoostCandyRemaining: () => void;
   openExport: () => void;
   closeExport: () => void;
 
@@ -207,6 +212,9 @@ export function useCalcStore(opts: {
   const boostKind = ref<Exclude<BoostEvent, "none">>(calcAutosave0?.boostKind ?? "full");
   const totalShards = ref<number>(calcAutosave0?.totalShards ?? loadLegacyTotalShards());
   const totalShardsText = ref<string>("");
+  // アメブ残数（nullの場合はboostKindによる上限を使用）
+  const boostCandyRemaining = ref<number | null>(calcAutosave0?.boostCandyRemaining ?? null);
+  const boostCandyRemainingText = ref<string>("");
 
   const rows = ref<CalcRow[]>(calcAutosave0?.rows ?? []);
   const activeRowId = ref<string | null>(calcAutosave0?.activeRowId ?? rows.value[0]?.id ?? null);
@@ -223,6 +231,23 @@ export function useCalcStore(opts: {
     totalShardsText.value = fmtNum(n);
   }
 
+  function onBoostCandyRemainingInput(v: string) {
+    const digits = String(v ?? "").replace(/[^\d]/g, "");
+    if (digits === "") {
+      boostCandyRemaining.value = null;
+      boostCandyRemainingText.value = "";
+    } else {
+      const n = clampNonNegInt(digits);
+      boostCandyRemaining.value = n;
+      boostCandyRemainingText.value = fmtNum(n);
+    }
+  }
+
+  function resetBoostCandyRemaining() {
+    boostCandyRemaining.value = null;
+    boostCandyRemainingText.value = "";
+  }
+
   watch(
     totalShards,
     (n) => {
@@ -232,6 +257,26 @@ export function useCalcStore(opts: {
     },
     { immediate: true }
   );
+
+  // boostCandyRemainingのテキスト更新
+  watch(
+    boostCandyRemaining,
+    (n) => {
+      if (n === null) {
+        boostCandyRemainingText.value = "";
+      } else {
+        const s = fmtNum(n);
+        if (boostCandyRemainingText.value !== s) boostCandyRemainingText.value = s;
+      }
+    },
+    { immediate: true }
+  );
+
+  // boostKindが変わったらboostCandyRemainingをリセット
+  watch(boostKind, () => {
+    boostCandyRemaining.value = null;
+    boostCandyRemainingText.value = "";
+  });
 
   const fullLabel = computed(() =>
     t("calc.boostKindFull", {
@@ -260,12 +305,13 @@ export function useCalcStore(opts: {
       schemaVersion: 1,
       totalShards: clampNonNegInt(totalShards.value),
       boostKind: boostKind.value,
+      boostCandyRemaining: boostCandyRemaining.value ?? undefined,
       rows: cloneCalcRows(rows.value),
       activeRowId: activeRowId.value,
     });
   }
 
-  watch([rows, activeRowId, boostKind, totalShards], () => saveCalcAutosaveNow(), { deep: true });
+  watch([rows, activeRowId, boostKind, totalShards, boostCandyRemaining], () => saveCalcAutosaveNow(), { deep: true });
   watch(slots, (v) => saveCalcSlots(v), { deep: true });
 
   watch(
@@ -814,7 +860,10 @@ export function useCalcStore(opts: {
   });
 
   const totalBoostCandyUsed = computed(() => rowsView.value.reduce((a, r) => a + (r.result.boostCandy || 0), 0));
-  const boostCandyCap = computed(() => (boostKind.value === "mini" ? 350 : 3500));
+  // アメブ種別による上限（デフォルト値）
+  const boostCandyDefaultCap = computed(() => (boostKind.value === "mini" ? 350 : 3500));
+  // 実際に使う上限（手入力の残数があればそれを使う）
+  const boostCandyCap = computed(() => boostCandyRemaining.value ?? boostCandyDefaultCap.value);
   const boostCandyOver = computed(() => totalBoostCandyUsed.value - boostCandyCap.value);
   const boostCandyUnused = computed(() => Math.max(0, boostCandyCap.value - totalBoostCandyUsed.value));
   const boostCandyUsedPct = computed(() => (boostCandyCap.value > 0 ? (totalBoostCandyUsed.value / boostCandyCap.value) * 100 : 0));
@@ -1034,6 +1083,9 @@ export function useCalcStore(opts: {
     boostKind,
     totalShards,
     totalShardsText,
+    boostCandyRemaining,
+    boostCandyRemainingText,
+    boostCandyDefaultCap,
     slots,
     rows,
     activeRowId,
@@ -1084,6 +1136,8 @@ export function useCalcStore(opts: {
     formatSlotSavedAt,
 
     onTotalShardsInput,
+    onBoostCandyRemainingInput,
+    resetBoostCandyRemaining,
     openExport,
     closeExport,
 

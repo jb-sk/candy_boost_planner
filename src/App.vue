@@ -432,7 +432,11 @@ function scrollToPanel(id: string) {
   font-family: inherit;
 }
 .calcTop__input--shards {
-  width: 85px;
+  width: 95px;
+  text-align: right;
+}
+.calcTop__input--remaining {
+  width: 90px;
   text-align: right;
 }
 .calcTop__field--candy {

@@ -29,6 +29,8 @@ export type CalcAutosaveV1 = {
   schemaVersion: 1;
   totalShards: number;
   boostKind: Exclude<BoostEvent, "none">;
+  /** アメブ残数（未設定の場合はboostKindによる上限を使用） */
+  boostCandyRemaining?: number;
   rows: CalcRowV1[];
   activeRowId: string | null;
 };
@@ -114,10 +116,13 @@ export function loadLegacyTotalShards(): number {
 function normalizeAutosave(x: any): CalcAutosaveV1 {
   const totalShards = toInt(x.totalShards, 0);
   const boostKind: Exclude<BoostEvent, "none"> = x.boostKind === "mini" ? "mini" : "full";
+  const boostCandyRemaining = typeof x.boostCandyRemaining === "number" && x.boostCandyRemaining >= 0
+    ? Math.floor(x.boostCandyRemaining)
+    : undefined;
   const rows = toRows(x.rows);
   const activeRowId = typeof x.activeRowId === "string" ? x.activeRowId : null;
   // legacy compatibility: previous versions used `version`
-  return { schemaVersion: 1, totalShards, boostKind, rows, activeRowId };
+  return { schemaVersion: 1, totalShards, boostKind, boostCandyRemaining, rows, activeRowId };
 }
 
 function normalizeSlot(x: any): CalcSaveSlotV1 | null {
