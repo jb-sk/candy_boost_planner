@@ -460,7 +460,7 @@ async function downloadCalcExportPng() {
     const dataUrl = await toPng(el, {
       cacheBust: true,
       pixelRatio,
-      backgroundColor: "#f7f7f7",
+      backgroundColor: "#ffffff",
       width: w,
       height: h,
       style: { transform: "none", transformOrigin: "top left" },
@@ -551,18 +551,17 @@ async function downloadCalcExportPng() {
   border: 0;
   border-radius: 0;
   box-shadow: none;
+  background: #ffffff;
 }
 .exportHead {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-bottom: 4px;
+  margin-bottom: 12px;
   padding: 0 2px 6px;
   background: transparent;
 }
-.exportSheet--capture .exportHead {
-  margin-bottom: 12px;
-}
+
 .exportHead__top {
   display: flex;
   justify-content: center;
