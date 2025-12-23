@@ -49,3 +49,10 @@ export const PokemonTypeMapEnToJa: Record<string, string> = {
 export function getTypeNameJa(typeEn: string): string {
   return PokemonTypeMapEnToJa[typeEn] ?? typeEn;
 }
+
+export function getTypeName(typeEn: string, locale: string): string {
+  if (locale === "en") {
+    return typeEn;
+  }
+  return PokemonTypeMapEnToJa[typeEn] ?? typeEn;
+}

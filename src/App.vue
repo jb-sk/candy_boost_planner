@@ -549,6 +549,7 @@ input.field__input--compact {
   font-weight: 800;
   font-size: 18px;
   margin-top: 2px;
+  color: var(--ink);
 }
 .calcSum--hi .calcSum__v {
   background: transparent;
@@ -565,40 +566,22 @@ input.field__input--compact {
 .calcSum--candy {
   flex: 2 1 auto;
   min-width: 180px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
 }
-.calcSum--candy .calcSum__k {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  white-space: nowrap;
-}
-.calcSum__candyPct {
-  font-weight: 700;
-  font-size: 14px;
-  color: var(--ink);
-}
-.calcSum__candyPct--over {
+.calcSum__v--over {
   color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 10%);
 }
 .calcSum__candyDetails {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 16px;
-  font-size: 18px;
-  font-weight: 700;
-  margin-top: 2px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-left: 8px;
   color: var(--ink);
-}
-.calcSum__candyDetails span {
-  white-space: nowrap;
 }
 @media (max-width: 560px) {
   .calcSum__candyDetails {
-    font-size: 13px;
-    gap: 8px;
+    display: block;
+    margin-left: 0;
+    margin-top: 2px;
+    font-size: 12px;
   }
 }
 .calcSum--danger .calcSum__v {
@@ -987,10 +970,33 @@ button.calcRow__dragHandle {
 .calcRow__num--text {
   font-size: 12px;
   font-weight: 500;
-  color: color-mix(in oklab, var(--ink) 70%, transparent);
+  color: var(--ink);
 }
 
-
+/* 万能アメ配分説明 */
+.calcAllocInfo {
+  margin: 12px 0;
+  padding: 8px 12px;
+  background: color-mix(in oklab, var(--ink) 5%, transparent);
+  border-radius: 8px;
+  font-size: 12px;
+  color: color-mix(in oklab, var(--ink) 70%, transparent);
+}
+.calcAllocInfo__title {
+  cursor: pointer;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--ink) 80%, transparent);
+}
+.calcAllocInfo__title:hover {
+  color: var(--ink);
+}
+.calcAllocInfo__desc {
+  margin: 8px 0 0 0;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
 
 .field--sm {
   gap: 1px; /* ラベルと入力の距離を詰める */

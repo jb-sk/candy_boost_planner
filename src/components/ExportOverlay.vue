@@ -149,6 +149,7 @@
               <div class="exportList__col u-align-right">{{ t("calc.export.colNormal") }}</div>
               <div class="exportList__col u-align-right">{{ t("calc.export.colTotal") }}</div>
               <div class="exportList__col u-align-right">{{ t("calc.export.colShards") }}</div>
+              <div class="exportList__col u-align-right">{{ t("calc.row.candySupply") }}</div>
             </div>
 
             <div v-for="row in rows" :key="row.id" class="exportList__row">
@@ -179,6 +180,10 @@
                 <span class="u-mobile-label">{{ t("calc.export.colShards") }}</span>
                 <span class="calcRow__num">{{ fmtNum(row.shards) }}</span>
               </div>
+              <div class="exportList__col u-align-right exportList__numCol exportList__supplyCol">
+                <span class="u-mobile-label">{{ t("calc.row.candySupply") }}</span>
+                <span class="calcRow__num calcRow__num--supply">{{ row.candySupply || "-" }}</span>
+              </div>
             </div>
 
             <div class="exportList__row exportList__row--total" aria-label="total">
@@ -201,6 +206,10 @@
               <div class="exportList__col u-align-right exportList__numCol">
                 <span class="u-mobile-label">{{ t("calc.export.colShards") }}</span>
                 <span class="calcRow__num" :class="{ 'calcRow__num--danger': shardsCap > 0 && shardsOver > 0 }">{{ fmtNum(totals.shards) }}</span>
+              </div>
+              <div class="exportList__col u-align-right exportList__numCol exportList__supplyCol">
+                <span class="u-mobile-label">{{ t("calc.row.candySupply") }}</span>
+                <span class="calcRow__num">-</span>
               </div>
             </div>
           </div>
@@ -225,6 +234,7 @@ type ExportRow = {
   normalCandy: number;
   totalCandy: number;
   shards: number;
+  candySupply?: string; // アメ補填
 };
 
 type ExportTotals = {
@@ -688,8 +698,8 @@ async function downloadCalcExportPng() {
 }
 .exportList__head {
   display: grid;
-  grid-template-columns: 2fr 1.2fr 1fr 1fr 1fr 1.3fr;
-  gap: 10px;
+  grid-template-columns: 2fr 0.9fr 0.7fr 0.7fr 0.7fr 1.5fr 1fr;
+  gap: 8px;
   padding: 12px 16px;
   background: #f7f7f7;
   border-bottom: 2px solid #ebe6de;
@@ -701,8 +711,8 @@ async function downloadCalcExportPng() {
 }
 .exportList__row {
   display: grid;
-  grid-template-columns: 2fr 1.2fr 1fr 1fr 1fr 1.3fr;
-  gap: 10px;
+  grid-template-columns: 2fr 0.9fr 0.7fr 0.7fr 0.7fr 1.5fr 1fr;
+  gap: 8px;
   padding: 12px 16px;
   align-items: center;
   border-bottom: 1px solid #f0ebe5;

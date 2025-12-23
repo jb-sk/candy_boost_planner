@@ -63,7 +63,7 @@
         <summary class="calcTop__typeCandyToggle">{{ t("calc.candy.typeCandyToggle") }}</summary>
         <div class="calcTop__typeCandyGrid">
           <div v-for="typeName in pokemonTypes" :key="typeName" class="typeRow">
-            <span class="typeRow__name">{{ getTypeNameJa(typeName) }}</span>
+            <span class="typeRow__name">{{ getTypeName(typeName, locale) }}</span>
             <label class="candyInput candyInput--sm">
               <span class="candyInput__label">{{ t("calc.candy.typeS") }}</span>
               <input
@@ -99,17 +99,17 @@
           <div class="calcSum__k">{{ t("calc.shardsTotal") }}</div>
           <div class="calcSum__v">{{ calc.fmtNum(calc.totalShardsUsed.value) }}</div>
         </div>
-        <div class="calcSum calcSum--candy" v-if="universalCandyTotal > 0 && calc.allocationResult.value">
-          <div class="calcSum__k">
-            {{ t("calc.candy.usageLabel") }}
-            <span class="calcSum__candyPct" :class="{ 'calcSum__candyPct--over': calc.universalCandyUsagePct.value > 100 }">
+        <div class="calcSum calcSum--candy" v-if="calc.allocationResult.value">
+          <div class="calcSum__k">{{ t("calc.candy.usageLabel") }}</div>
+          <div class="calcSum__v">
+            <span :class="{ 'calcSum__v--over': calc.universalCandyUsagePct.value > 100 }">
               {{ calc.universalCandyUsagePct.value }}%
             </span>
-          </div>
-          <div class="calcSum__candyDetails">
-            <span>S: {{ calc.universalCandyNeeded.value.s }}/{{ candyStore.universalCandy.value.s }}</span>
-            <span>M: {{ calc.universalCandyNeeded.value.m }}/{{ candyStore.universalCandy.value.m }}</span>
-            <span>L: {{ calc.universalCandyNeeded.value.l }}/{{ candyStore.universalCandy.value.l }}</span>
+            <span class="calcSum__candyDetails">
+              S: {{ calc.universalCandyNeeded.value.s }}/{{ candyStore.universalCandy.value.s }},
+              M: {{ calc.universalCandyNeeded.value.m }}/{{ candyStore.universalCandy.value.m }},
+              L: {{ calc.universalCandyNeeded.value.l }}/{{ candyStore.universalCandy.value.l }}
+            </span>
           </div>
         </div>
       </div>
@@ -262,6 +262,11 @@
     </div>
 
     <p class="calcHint">{{ t("calc.addHint") }}</p>
+
+    <details class="calcAllocInfo">
+      <summary class="calcAllocInfo__title">{{ t("calc.candyAllocTitle") }}</summary>
+      <pre class="calcAllocInfo__desc">{{ t("calc.candyAllocDesc") }}</pre>
+    </details>
 
     <div class="calcRows" v-if="calc.rowsView.value.length">
       <div
@@ -569,12 +574,12 @@
             <span class="calcRow__num">{{ calc.fmtNum(r.result.boostCandy + r.result.normalCandy) }}</span>
           </span>
           <span class="calcRow__res">
-            <span class="calcRow__k">{{ t("calc.row.candySupply") }}</span>
-            <span class="calcRow__num calcRow__num--text">{{ getCandySupplyText(r) }}</span>
-          </span>
-          <span class="calcRow__res">
             <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
             <span class="calcRow__num">{{ calc.fmtNum(r.result.shards) }}</span>
+          </span>
+          <span class="calcRow__res">
+            <span class="calcRow__k">{{ t("calc.row.candySupply") }}</span>
+            <span class="calcRow__num calcRow__num--text">{{ getCandySupplyText(r) }}</span>
           </span>
         </div>
       </div>
@@ -589,7 +594,7 @@ import { useI18n } from "vue-i18n";
 import type { CalcStore, CalcRowView } from "../composables/useCalcStore";
 import { useCandyStore } from "../composables/useCandyStore";
 import NatureSelect from "./NatureSelect.vue";
-import { PokemonTypes, getTypeNameJa } from "../domain/pokesleep/pokemon-types";
+import { PokemonTypes, getTypeNameJa, getTypeName } from "../domain/pokesleep/pokemon-types";
 import type { PokemonAllocation } from "../domain/candy-allocator";
 
 defineEmits<{
@@ -602,7 +607,7 @@ const props = defineProps<{
 }>();
 
 const calc = props.calc;
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const candyStore = useCandyStore();
 
 const levelPresets = [10, 25, 30, 40, 50, 55, 57, 60, 65] as const;
@@ -642,28 +647,33 @@ function getCandySupplyText(r: CalcRowView): string {
 
   // タイプアメ
   if (alloc.typeSUsed > 0) {
-    const typeJa = getTypeNameJa(alloc.type);
-    parts.push(`${typeJa}S ${alloc.typeSUsed}`);
+    const typeName = getTypeName(alloc.type, locale.value);
+    parts.push(`${typeName}S ${alloc.typeSUsed}`);
   }
   if (alloc.typeMUsed > 0) {
-    const typeJa = getTypeNameJa(alloc.type);
-    parts.push(`${typeJa}M ${alloc.typeMUsed}`);
+    const typeName = getTypeName(alloc.type, locale.value);
+    parts.push(`${typeName}M ${alloc.typeMUsed}`);
   }
 
   // 万能アメ
   if (alloc.uniSUsed > 0) {
-    parts.push(`万能S ${alloc.uniSUsed}`);
+    parts.push(`${t("calc.candy.universalLabel")} S ${alloc.uniSUsed}`);
   }
   if (alloc.uniMUsed > 0) {
-    parts.push(`万能M ${alloc.uniMUsed}`);
+    parts.push(`${t("calc.candy.universalLabel")} M ${alloc.uniMUsed}`);
   }
   if (alloc.uniLUsed > 0) {
-    parts.push(`万能L ${alloc.uniLUsed}`);
+    parts.push(`${t("calc.candy.universalLabel")} L ${alloc.uniLUsed}`);
   }
 
   // 不足
   if (alloc.remaining > 0) {
-    parts.push(`不足 ${alloc.remaining}`);
+    parts.push(`${t("calc.candy.shortage")} ${alloc.remaining}`);
+  }
+
+  // 余り（surplus > 0 の場合のみ表示）
+  if (alloc.surplus > 0) {
+    parts.push(`${t("calc.candy.surplus")} ${alloc.surplus}`);
   }
 
   return parts.length > 0 ? parts.join(", ") : "-";

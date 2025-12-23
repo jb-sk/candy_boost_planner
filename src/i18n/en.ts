@@ -49,6 +49,13 @@ export const en = {
     slotEmpty: "Empty",
     addHint: "How to add: In Pokémon Box details, press “Add to Calculator (Apply)” to add it to this list.",
     empty: "No Pokémon selected yet. Add them from Pokémon Box.",
+    candyAllocTitle: "About Handy Candy Auto-Allocation",
+    candyAllocDesc: `• Type Candy used aggressively (Handy S for fine-tuning)
+• Calculate Handy S needed (surplus 0-2 per Pokémon)
+• If S is sufficient → Use S only (save M/L)
+• If S is insufficient → Use M→L, then S for fine-tuning
+* Pokémon higher in the list get priority
+* For reference to reduce bag space`,
     row: {
       dragReorder: "Drag to reorder",
       pickLevelAria: "Select {label}",
@@ -69,11 +76,11 @@ export const en = {
       breakdown: "Breakdown",
       breakdownBoost: "Boost",
       breakdownNormal: "Normal candy",
-      candySupply: "Candy supply",
+      candySupply: "Items",
       speciesCandy: "Candy stock",
     },
     candy: {
-      universalLabel: "Universal Candy",
+      universalLabel: "Handy",
       universalS: "S",
       universalM: "M",
       universalL: "L",
@@ -81,8 +88,12 @@ export const en = {
       typeCandyToggle: "Set Type Candy",
       typeS: "S",
       typeM: "M",
-      usageLabel: "Universal Candy usage",
+      usageLabel: "Handy Candy usage",
       usagePct: "{pct}%",
+      typeAbbr: "T",
+      uniAbbr: "H",
+      shortage: "Short",
+      surplus: "Surplus",
     },
     export: {
       open: "Share as One Image",

@@ -713,6 +713,33 @@ export function useCalcStore(opts: {
       const boostCandy = Math.max(0, Math.floor(r.result.boostCandy || 0));
       const normalCandy = Math.max(0, Math.floor(r.result.normalCandy || 0));
       const shards = Math.max(0, Math.floor(r.result.shards || 0));
+
+      // アメ補填情報を取得
+      let candySupply = "";
+      if (allocationResult.value) {
+        const alloc = allocationResult.value.pokemons.find(p => p.id === r.id);
+        if (alloc) {
+          const parts: string[] = [];
+          if (alloc.typeSUsed > 0 || alloc.typeMUsed > 0) {
+            const typeParts: string[] = [];
+            if (alloc.typeMUsed > 0) typeParts.push(`M${alloc.typeMUsed}`);
+            if (alloc.typeSUsed > 0) typeParts.push(`S${alloc.typeSUsed}`);
+            parts.push(`${t("calc.candy.typeAbbr")}${typeParts.join(",")}`);
+          }
+          if (alloc.uniSUsed > 0 || alloc.uniMUsed > 0 || alloc.uniLUsed > 0) {
+            const uniParts: string[] = [];
+            if (alloc.uniLUsed > 0) uniParts.push(`L${alloc.uniLUsed}`);
+            if (alloc.uniMUsed > 0) uniParts.push(`M${alloc.uniMUsed}`);
+            if (alloc.uniSUsed > 0) uniParts.push(`S${alloc.uniSUsed}`);
+            parts.push(`${t("calc.candy.uniAbbr")}${uniParts.join(",")}`);
+          }
+          if (alloc.remaining > 0) {
+            parts.push(`${t("calc.candy.shortage")}${alloc.remaining}`);
+          }
+          candySupply = parts.join(" ");
+        }
+      }
+
       return {
         id: r.id,
         title: String(r.title ?? "").trim() || "(no name)",
@@ -723,6 +750,7 @@ export function useCalcStore(opts: {
         normalCandy,
         totalCandy: boostCandy + normalCandy,
         shards,
+        candySupply,
       };
     })
   );
