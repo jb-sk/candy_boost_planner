@@ -45,6 +45,7 @@ export const en = {
     shardsUsageDash: "Shards used -",
     boostCandyUsage: "Boost used {pct}%",
     cap: "Cap {cap}",
+    selectedUsage: "(Selected Pokémon {pct}%)",
     capUnset: "Cap not set",
     shardsUsageAria: "Shards used {pct}% / Cap {cap}",
     shardsCapUnsetAria: "Dream Shards cap not set",

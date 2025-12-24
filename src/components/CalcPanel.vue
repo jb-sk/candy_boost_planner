@@ -143,6 +143,7 @@
                 <span v-if="calc.showBoostCandyFire.value" aria-hidden="true"> 🔥</span>
               </span>
               <span v-if="calc.boostCandyOver.value > 0" class="calcSum__overVal"> (+{{ calc.fmtNum(calc.boostCandyOver.value) }})</span>
+              <span v-if="calc.activeRowId.value && calc.activeRowBoostCandyUsed.value > 0" class="calcSum__selectedVal">{{ t("calc.selectedUsage", { pct: calc.activeRowBoostCandyUsagePct.value }) }}</span>
             </div>
             <div class="calcSum__k calcSum__k--right">
               {{ t("calc.cap", { cap: calc.fmtNum(calc.boostCandyCap.value) }) }}
@@ -157,7 +158,11 @@
             :aria-label="t('calc.boostCandyUsageAria', { pct: calc.boostCandyUsagePctRounded.value, cap: calc.fmtNum(calc.boostCandyCap.value) })"
           >
             <div class="calcBar__track">
-              <div class="calcBar__fill calcBar__fill--candy" :style="{ width: `${calc.boostCandyFillPctForBar.value}%` }"></div>
+              <!-- 選択中ポケモン分 -->
+              <div class="calcBar__fill calcBar__fill--candy calcBar__fill--active" :style="{ width: `${calc.activeRowBoostCandyFillPct.value}%` }"></div>
+              <!-- 他ポケモン分 -->
+              <div class="calcBar__fill calcBar__fill--candy calcBar__fill--others" :style="{ width: `${calc.otherRowsBoostCandyFillPct.value}%` }"></div>
+              <!-- 超過分 -->
               <div
                 v-if="calc.boostCandyOver.value > 0 && calc.boostCandyCap.value > 0"
                 class="calcBar__over"
@@ -179,6 +184,7 @@
                 <span v-if="calc.showShardsFire.value" aria-hidden="true"> 🔥</span>
               </span>
               <span v-if="calc.shardsOver.value > 0" class="calcSum__overVal"> (+{{ calc.fmtNum(calc.shardsOver.value) }})</span>
+              <span v-if="calc.activeRowId.value && calc.activeRowShardsUsed.value > 0" class="calcSum__selectedVal">{{ t("calc.selectedUsage", { pct: calc.activeRowShardsUsagePct.value }) }}</span>
             </div>
             <div class="calcSum__k calcSum__k--right">
               {{ calc.shardsCap.value > 0 ? t("calc.cap", { cap: calc.fmtNum(calc.shardsCap.value) }) : t("calc.capUnset") }}
@@ -197,7 +203,11 @@
             "
           >
             <div class="calcBar__track">
-              <div class="calcBar__fill" :style="{ width: `${calc.shardsFillPctForBar.value}%` }"></div>
+              <!-- 選択中ポケモン分 -->
+              <div class="calcBar__fill calcBar__fill--active" :style="{ width: `${calc.activeRowShardsFillPct.value}%` }"></div>
+              <!-- 他ポケモン分 -->
+              <div class="calcBar__fill calcBar__fill--others" :style="{ width: `${calc.otherRowsShardsFillPct.value}%` }"></div>
+              <!-- 超過分 -->
               <div
                 v-if="calc.shardsOver.value > 0 && calc.shardsCap.value > 0"
                 class="calcBar__over"
@@ -583,7 +593,7 @@
                 type="button"
                 class="hintIcon"
                 @click.stop="showHint($event, calc.boostKind.value === 'none' ? t('calc.row.boostCandyCountNormalHint') : t('calc.row.boostCandyCountHint'))"
-              >ℹ️</button>
+              >?</button>
             </span>
             <input
               :value="r.ui.boostCandyInput"

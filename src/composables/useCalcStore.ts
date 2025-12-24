@@ -110,6 +110,16 @@ export type CalcStore = {
   boostCandyOverPctForBar: Readonly<Ref<number>>;
   showBoostCandyFire: Readonly<Ref<boolean>>;
 
+  // 選択中ポケモンの使用量（バー表示用）
+  activeRowShardsUsed: Readonly<Ref<number>>;
+  activeRowBoostCandyUsed: Readonly<Ref<number>>;
+  activeRowShardsFillPct: Readonly<Ref<number>>;
+  otherRowsShardsFillPct: Readonly<Ref<number>>;
+  activeRowBoostCandyFillPct: Readonly<Ref<number>>;
+  otherRowsBoostCandyFillPct: Readonly<Ref<number>>;
+  activeRowShardsUsagePct: Readonly<Ref<number>>;
+  activeRowBoostCandyUsagePct: Readonly<Ref<number>>;
+
   // candy allocation
   allocationResult: Readonly<Ref<AllocationSummary | null>>;
   universalCandyUsagePct: Readonly<Ref<number>>;
@@ -1035,6 +1045,78 @@ export function useCalcStore(opts: {
     return Math.min(100, Math.max(0, 100 - boostCandyFillPctForBar.value));
   });
 
+  // --- 選択中ポケモンの使用量（バー表示用） ---
+  const activeRowShardsUsed = computed(() => {
+    const row = rowsView.value.find(r => r.id === activeRowId.value);
+    return row?.result.shards ?? 0;
+  });
+  const activeRowBoostCandyUsed = computed(() => {
+    const row = rowsView.value.find(r => r.id === activeRowId.value);
+    return row?.result.boostCandy ?? 0;
+  });
+
+  // バー用: 選択中ポケモン分のかけら%（超過がない場合のみ正しく表示）
+  const activeRowShardsFillPct = computed(() => {
+    const cap = shardsCap.value;
+    if (cap <= 0) return 0;
+    const total = totalShardsUsed.value;
+    const active = activeRowShardsUsed.value;
+    // 超過がある場合はバー全体に対する比率を計算
+    if (total > cap) {
+      return (active / total) * (shardsFillPctForBar.value + shardsOverPctForBar.value);
+    }
+    return Math.min(100, (active / cap) * 100);
+  });
+
+  // バー用: 他ポケモン分のかけら%
+  const otherRowsShardsFillPct = computed(() => {
+    const cap = shardsCap.value;
+    if (cap <= 0) return 0;
+    const total = totalShardsUsed.value;
+    const other = total - activeRowShardsUsed.value;
+    // 超過がある場合はバー全体に対する比率を計算
+    if (total > cap) {
+      return (other / total) * (shardsFillPctForBar.value + shardsOverPctForBar.value);
+    }
+    return Math.min(100, (other / cap) * 100);
+  });
+
+  // バー用: 選択中ポケモン分のブーストアメ%
+  const activeRowBoostCandyFillPct = computed(() => {
+    const cap = boostCandyCap.value;
+    if (cap <= 0) return 0;
+    const total = totalBoostCandyUsed.value;
+    const active = activeRowBoostCandyUsed.value;
+    if (total > cap) {
+      return (active / total) * (boostCandyFillPctForBar.value + boostCandyOverPctForBar.value);
+    }
+    return Math.min(100, (active / cap) * 100);
+  });
+
+  // バー用: 他ポケモン分のブーストアメ%
+  const otherRowsBoostCandyFillPct = computed(() => {
+    const cap = boostCandyCap.value;
+    if (cap <= 0) return 0;
+    const total = totalBoostCandyUsed.value;
+    const other = total - activeRowBoostCandyUsed.value;
+    if (total > cap) {
+      return (other / total) * (boostCandyFillPctForBar.value + boostCandyOverPctForBar.value);
+    }
+    return Math.min(100, (other / cap) * 100);
+  });
+
+  // 選択中ポケモンの使用率（%表示用、超過時は100%を超える）
+  const activeRowShardsUsagePct = computed(() => {
+    const cap = shardsCap.value;
+    if (cap <= 0) return 0;
+    return Math.round((activeRowShardsUsed.value / cap) * 100);
+  });
+  const activeRowBoostCandyUsagePct = computed(() => {
+    const cap = boostCandyCap.value;
+    if (cap <= 0) return 0;
+    return Math.round((activeRowBoostCandyUsed.value / cap) * 100);
+  });
+
   // --- アメ配分計算 ---
   const candyStore = useCandyStore();
 
@@ -1276,6 +1358,15 @@ export function useCalcStore(opts: {
     boostCandyFillPctForBar,
     boostCandyOverPctForBar,
     showBoostCandyFire,
+
+    activeRowShardsUsed,
+    activeRowBoostCandyUsed,
+    activeRowShardsFillPct,
+    otherRowsShardsFillPct,
+    activeRowBoostCandyFillPct,
+    otherRowsBoostCandyFillPct,
+    activeRowShardsUsagePct,
+    activeRowBoostCandyUsagePct,
 
     allocationResult,
     universalCandyUsagePct,

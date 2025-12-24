@@ -45,6 +45,7 @@ export const ja = {
     shardsUsageDash: "かけら使用 -",
     boostCandyUsage: "アメブ使用 {pct}%",
     cap: "上限 {cap}",
+    selectedUsage: "(選択中のポケモン {pct}%)",
     capUnset: "上限 未設定",
     shardsUsageAria: "かけら使用 {pct}% / 上限 {cap}",
     shardsCapUnsetAria: "かけら上限 未設定",
