@@ -516,7 +516,30 @@ export function useCalcStore(opts: {
   }
   function onRowBoostCandy(id: string, v: string) {
     const n = Math.max(0, Math.floor(Number(v) || 0));
-    updateRow(id, { boostCandyInput: n, mode: "candy" });
+    const r = rows.value.find((x) => x.id === id);
+    if (!r) return;
+
+    // アメ数から到達レベルを計算して dstLevel も更新する
+    const toNext = Math.max(0, calcExp(r.srcLevel, r.srcLevel + 1, r.expType));
+    const expGot = r.expRemaining !== undefined ? Math.max(0, toNext - r.expRemaining) : 0;
+
+    // 仮の上限Lv65（設定上のMAX）まで計算
+    const sim = calcLevelByCandy({
+      srcLevel: r.srcLevel,
+      dstLevel: 65,
+      expType: r.expType,
+      nature: r.nature,
+      boost: boostKind.value,
+      candy: n,
+      expGot,
+    });
+
+    // アメブ個数を増やした結果、現在の目標Lvを超えるなら目標Lvを引き上げる
+    // 減らした場合は目標Lvを維持（通常アメで補填する形になる）
+    const reachableLevel = Math.max(r.srcLevel, sim.level);
+    const newDst = Math.max(r.dstLevel, reachableLevel);
+
+    updateRow(id, { boostCandyInput: n, mode: "candy", dstLevel: newDst });
   }
 
   function indexOfRow(id: string): number {
