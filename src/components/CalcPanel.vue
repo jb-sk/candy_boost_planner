@@ -577,7 +577,14 @@
             <span class="field__sub">{{ r.ui.boostRatioPct }}%</span>
           </label>
           <label class="field field--sm">
-            <span class="field__label">{{ calc.boostKind.value === 'none' ? t("calc.row.boostCandyCountNormal") : t("calc.row.boostCandyCount") }}</span>
+            <span class="field__label">
+              {{ calc.boostKind.value === 'none' ? t("calc.row.boostCandyCountNormal") : t("calc.row.boostCandyCount") }}
+              <button
+                type="button"
+                class="hintIcon"
+                @click.stop="showHint($event, calc.boostKind.value === 'none' ? t('calc.row.boostCandyCountNormalHint') : t('calc.row.boostCandyCountHint'))"
+              >ℹ️</button>
+            </span>
             <input
               :value="r.ui.boostCandyInput"
               type="number"
@@ -613,11 +620,21 @@
       </div>
     </div>
     <p class="boxEmpty" v-else>{{ t("calc.empty") }}</p>
+
+    <div v-if="hintState.visible" class="hintOverlay" @click.stop="closeHint"></div>
+    <div
+      v-if="hintState.visible"
+      class="hintPopover"
+      :style="{ left: hintState.left + 'px', top: hintState.top + 'px' }"
+      @click.stop
+    >
+      {{ hintState.message }}
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import type { CalcStore, CalcRowView } from "../composables/useCalcStore";
 import { useCandyStore } from "../composables/useCandyStore";
@@ -719,5 +736,40 @@ function isCandyShort(r: CalcRowView): boolean {
     alloc.typeMUsed > 0 ||
     alloc.remaining > 0
   );
+}
+
+// ヒントアイコン用
+// ヒントポップオーバーの状態
+const hintState = ref<{ visible: boolean; message: string; left: number; top: number }>({
+  visible: false,
+  message: "",
+  left: 0,
+  top: 0
+});
+
+function showHint(ev: MouseEvent, message: string) {
+  const target = ev.target as HTMLElement;
+  const rect = target.getBoundingClientRect();
+
+  // 画面端の考慮
+  const viewportWidth = window.innerWidth;
+  const popoverWidth = 220; // CSS max-width(200) + padding/border margin
+
+  let left = rect.left;
+  if (left + popoverWidth > viewportWidth) {
+    left = viewportWidth - popoverWidth - 8;
+  }
+  if (left < 8) left = 8;
+
+  hintState.value = {
+    visible: true,
+    message,
+    left: left,
+    top: rect.bottom + 4
+  };
+}
+
+function closeHint() {
+  hintState.value.visible = false;
 }
 </script>
