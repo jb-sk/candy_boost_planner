@@ -65,6 +65,7 @@ export const en = {
       srcLevel: "Current Lv",
       dstLevel: "Target Lv",
       expRemaining: "EXP to next Lv",
+      expLeftNext: "(Next: {exp})",
       expType: "EXP type",
       expTypeFixedHint: "EXP type is fixed by species and cannot be edited.",
       nature: "Nature (EXP gains)",

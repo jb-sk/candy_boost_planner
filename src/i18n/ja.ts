@@ -65,6 +65,7 @@ export const ja = {
       srcLevel: "現在Lv",
       dstLevel: "目標Lv",
       expRemaining: "あとEXP",
+      expLeftNext: "(あとEXP {exp})",
       expType: "EXPタイプ",
       expTypeFixedHint: "EXPタイプは種族固定のため編集できません。",
       nature: "EXP補正（性格）",

@@ -24,6 +24,7 @@ export type CalcRowView = CalcRow & {
     boostCandy: number;
     normalCandy: number;
     shards: number;
+    expLeftNext: number;
   };
   ui: {
     boostReachLevel: number;
@@ -678,6 +679,7 @@ export function useCalcStore(opts: {
       shardsNormal: normalSeg.shardsNormal,
       shardsBoost: boostSeg.shardsBoost,
       boostCandyLeft: 0,
+      expLeftNext: normalSeg.expLeftNext,
     };
   }
 

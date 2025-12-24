@@ -391,7 +391,12 @@
           </label>
 
           <label class="field field--sm">
-            <span class="field__label">{{ t("calc.row.dstLevel") }}</span>
+            <span class="field__label">
+              {{ t("calc.row.dstLevel") }}
+              <span v-if="r.result.expLeftNext > 0" style="font-weight:normal; margin-left:4px; opacity:0.8">
+                {{ t("calc.row.expLeftNext", { exp: calc.fmtNum(r.result.expLeftNext) }) }}
+              </span>
+            </span>
             <div class="levelPick">
               <button
                 type="button"
