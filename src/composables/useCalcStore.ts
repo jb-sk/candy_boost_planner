@@ -825,14 +825,33 @@ export function useCalcStore(opts: {
 
     let mixed = r.mode === "boostLevel" ? byBoostLevel : r.mode === "ratio" ? byRatio : byCandy;
 
-    // イベント時、ピーク時のあとEXPを維持（割合モードのみ。アメブ個数モードは上で処理済み）
-    if (r.mode === "ratio" && peakResult) {
-      mixed = { ...mixed, expLeftNext: peakResult.expLeftNext };
+    // イベント時、割合モードでピークがある場合、ピーク基準で計算
+    if (r.mode === "ratio" && peakResult && peak > 0) {
+      const ratio = clampInt(r.boostRatioPct, 0, 100, 100) / 100;
+      const expPerBoost = calcExpPerCandy(src, nat, boostKind.value as any);
+      const expPerNormal = calcExpPerCandy(src, nat, "none");
+
+      // ピーク時の総EXPを基準に、割合で配分
+      const peakTotalExp = peak * expPerBoost;
+      const boostExp = peakTotalExp * ratio;
+      const normalExp = peakTotalExp * (1 - ratio);
+
+      const boostCandyCount = Math.floor(boostExp / expPerBoost);
+      const normalCandyCount = Math.ceil(normalExp / expPerNormal);
+
+      mixed = {
+        ...mixed,
+        boostCandy: boostCandyCount,
+        normalCandy: normalCandyCount,
+        expBoostApplied: boostCandyCount * expPerBoost,
+        expNormalApplied: normalCandyCount * expPerNormal,
+        expLeftNext: peakResult.expLeftNext,
+      };
     }
 
     const uiCandy =
       r.mode === "ratio"
-        ? byRatio.boostCandy
+        ? (peakResult && peak > 0 ? mixed.boostCandy : byRatio.boostCandy)
         : r.mode === "boostLevel"
           ? byBoostLevel.boostCandy
           : Math.max(0, Math.floor(Number(r.boostCandyInput) || 0));
