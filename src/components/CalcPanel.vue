@@ -499,7 +499,7 @@
           </label>
 
           <label class="field field--sm">
-            <span class="field__label">{{ t("calc.row.boostReachLevel") }}</span>
+            <span class="field__label">{{ calc.boostKind.value === 'none' ? t("calc.row.boostReachLevelNormal") : t("calc.row.boostReachLevel") }}</span>
             <div class="levelPick">
               <button
                 type="button"
@@ -563,7 +563,7 @@
             </div>
           </label>
           <label class="field field--sm">
-            <span class="field__label">{{ t("calc.row.boostRatio") }}</span>
+            <span class="field__label">{{ calc.boostKind.value === 'none' ? t("calc.row.boostRatioNormal") : t("calc.row.boostRatio") }}</span>
             <input
               :value="r.ui.boostRatioPct"
               type="range"

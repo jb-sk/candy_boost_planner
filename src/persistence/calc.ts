@@ -22,6 +22,8 @@ export type CalcRowV1 = {
   boostReachLevel: number;
   boostRatioPct: number; // 0..100
   boostCandyInput: number; // 手入力用（mode=candyのとき有効）
+  /** アメブ個数の最大投入実績（減少時の補填計算用） */
+  boostCandyPeak?: number;
   mode: CalcMode;
 };
 
