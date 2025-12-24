@@ -10,7 +10,7 @@
       >
         <div class="exportHead">
           <div class="exportHead__top">
-            <div class="exportBrand">🍬 {{ t("calc.export.brand") }}</div>
+            <div class="exportBrand">🍬 {{ boostKind !== 'none' ? t("calc.export.brandBoost") : t("calc.export.brand") }}</div>
           </div>
 
           <div class="exportMeta">
@@ -49,8 +49,8 @@
 
         <div class="exportCalc">
           <div class="exportCalcTop">
-            <div class="exportStats" :class="{ 'exportStats--hasShortage': totals.shortage > 0 }">
-              <div class="statCard statCard--accent">
+            <div class="exportStats" :class="{ 'exportStats--hasShortage': totals.shortage > 0, 'exportStats--normal': boostKind === 'none' }">
+              <div v-if="boostKind !== 'none'" class="statCard statCard--accent">
                 <div class="statCard__icon">🍬</div>
                 <div class="statCard__content">
                   <div class="statCard__label">{{ t("calc.export.sumBoostTotal") }}</div>
@@ -66,7 +66,7 @@
                   <div class="statCard__value">{{ fmtNum(totals.normalCandy) }}</div>
                 </div>
               </div>
-              <div class="statCard" :class="{ 'statCard--danger': boostOver > 0 }">
+              <div v-if="boostKind !== 'none'" class="statCard" :class="{ 'statCard--danger': boostOver > 0 }">
                 <div class="statCard__icon">⚠️</div>
                 <div class="statCard__content">
                   <div class="statCard__label">{{ t("calc.export.sumBoostUnused") }}</div>
@@ -93,7 +93,7 @@
             </div>
 
             <div class="exportBars" :class="{ 'exportBars--muted': shardsCap <= 0, 'exportBars--danger': shardsOver > 0 || boostOver > 0 }">
-              <div class="exportBarBlock" :class="{ 'exportBarBlock--danger': boostOver > 0 }">
+              <div v-if="boostKind !== 'none'" class="exportBarBlock" :class="{ 'exportBarBlock--danger': boostOver > 0 }">
                 <div class="exportBarHead">
                   <div class="exportBarK">
                     {{ t("calc.boostCandyUsage", { pct: boostUsagePct }) }}
@@ -149,12 +149,12 @@
             </div>
           </div>
 
-          <div class="exportList">
+          <div class="exportList" :class="{ 'exportList--normal': boostKind === 'none' }">
             <div class="exportList__head">
               <div class="exportList__col">{{ t("calc.export.colPokemon") }}</div>
               <div class="exportList__col u-align-center">{{ t("calc.row.srcLevel") }} → {{ t("calc.row.dstLevel") }}</div>
-              <div class="exportList__col u-align-right">{{ t("calc.export.colBoost") }}</div>
-              <div class="exportList__col u-align-right">{{ t("calc.export.colNormal") }}</div>
+              <div v-if="boostKind !== 'none'" class="exportList__col u-align-right">{{ t("calc.export.colBoost") }}</div>
+              <div v-if="boostKind !== 'none'" class="exportList__col u-align-right">{{ t("calc.export.colNormal") }}</div>
               <div class="exportList__col u-align-right">{{ t("calc.export.colTotal") }}</div>
               <div class="exportList__col u-align-right">{{ t("calc.export.colShards") }}</div>
             </div>
@@ -171,11 +171,11 @@
                   <span class="exportList__lvVal">{{ row.dstLevel }}</span>
                 </div>
               </div>
-              <div class="exportList__col u-align-right exportList__numCol">
+              <div v-if="boostKind !== 'none'" class="exportList__col u-align-right exportList__numCol">
                 <span class="u-mobile-label">{{ t("calc.export.colBoost") }}</span>
                 <span class="calcRow__num">{{ fmtNum(row.boostCandy) }}</span>
               </div>
-              <div class="exportList__col u-align-right exportList__numCol">
+              <div v-if="boostKind !== 'none'" class="exportList__col u-align-right exportList__numCol">
                 <span class="u-mobile-label">{{ t("calc.export.colNormal") }}</span>
                 <span class="calcRow__num">{{ fmtNum(row.normalCandy) }}</span>
               </div>
@@ -194,11 +194,11 @@
                 <span class="exportList__name" aria-hidden="true"></span>
               </div>
               <div class="exportList__col u-align-center exportList__lvCol"></div>
-              <div class="exportList__col u-align-right exportList__numCol">
+              <div v-if="boostKind !== 'none'" class="exportList__col u-align-right exportList__numCol">
                 <span class="u-mobile-label">{{ t("calc.export.colBoost") }}</span>
                 <span class="calcRow__num" :class="{ 'calcRow__num--danger': boostOver > 0 }">{{ fmtNum(totals.boostCandy) }}</span>
               </div>
-              <div class="exportList__col u-align-right exportList__numCol">
+              <div v-if="boostKind !== 'none'" class="exportList__col u-align-right exportList__numCol">
                 <span class="u-mobile-label">{{ t("calc.export.colNormal") }}</span>
                 <span class="calcRow__num">{{ fmtNum(totals.normalCandy) }}</span>
               </div>
@@ -230,12 +230,6 @@
                   <div class="exportRanking__bar" :style="{ width: `${item.usagePct}%` }"></div>
                 </div>
                 <div class="exportRanking__items">
-                  <span v-if="item.typeSUsed > 0 || item.typeMUsed > 0" class="exportRanking__itemGroup">
-                    <span class="exportRanking__itemLabel">{{ t("calc.export.labelType") }}</span>
-                    <span v-if="item.typeSUsed > 0">S{{ item.typeSUsed }}</span>
-                    <span v-if="item.typeSUsed > 0 && item.typeMUsed > 0"> / </span>
-                    <span v-if="item.typeMUsed > 0">M{{ item.typeMUsed }}</span>
-                  </span>
                   <span v-if="item.uniSUsed > 0 || item.uniMUsed > 0 || item.uniLUsed > 0" class="exportRanking__itemGroup">
                     <span class="exportRanking__itemLabel">{{ t("calc.export.labelUni") }}</span>
                     <span v-if="item.uniSUsed > 0">S{{ item.uniSUsed }}</span>
@@ -243,6 +237,12 @@
                     <span v-if="item.uniMUsed > 0">M{{ item.uniMUsed }}</span>
                     <span v-if="item.uniMUsed > 0 && item.uniLUsed > 0"> / </span>
                     <span v-if="item.uniLUsed > 0">L{{ item.uniLUsed }}</span>
+                  </span>
+                  <span v-if="item.typeSUsed > 0 || item.typeMUsed > 0" class="exportRanking__itemGroup">
+                    <span class="exportRanking__itemLabel">{{ t("calc.export.labelType") }}</span>
+                    <span v-if="item.typeSUsed > 0">S{{ item.typeSUsed }}</span>
+                    <span v-if="item.typeSUsed > 0 && item.typeMUsed > 0"> / </span>
+                    <span v-if="item.typeMUsed > 0">M{{ item.typeMUsed }}</span>
                   </span>
                 </div>
               </div>
@@ -318,6 +318,7 @@ const props = defineProps<{
     typeMUsed: number;
   }>;
   universalCandyUsedTotal: { s: number; m: number; l: number };
+  boostKind: "full" | "mini" | "none";
 }>();
 
 const emit = defineEmits<{ close: [] }>();
@@ -347,28 +348,43 @@ function csvCell(v: unknown): string {
 }
 
 function buildCalcExportCsv(): string {
-  const head = [
+  const isNormal = props.boostKind === "none";
+
+  // 列順：Pokemon, EXP補正, 現在Lv, 目標Lv, (Boost, Normal), Total, Shards
+  const headCols = [
     t("calc.export.colPokemon"),
+    t("calc.export.colExpAdj"),
     t("calc.row.srcLevel"),
     t("calc.row.dstLevel"),
-    t("calc.export.colExpAdj"),
-    t("calc.export.colBoost"),
-    t("calc.export.colNormal"),
+    ...(isNormal ? [] : [t("calc.export.colBoost"), t("calc.export.colNormal")]),
     t("calc.export.colTotal"),
     t("calc.export.colShards"),
-  ]
-    .map(csvCell)
-    .join(",");
+  ];
+  const head = headCols.map(csvCell).join(",");
 
-  const body = props.rows.map((r) =>
-    [r.title, r.srcLevel, r.dstLevel, r.natureLabel || "", r.boostCandy, r.normalCandy, r.totalCandy, r.shards]
-      .map(csvCell)
-      .join(",")
-  );
+  const body = props.rows.map((r) => {
+    const cols = [
+      r.title,
+      r.natureLabel || "",
+      r.srcLevel,
+      r.dstLevel,
+      ...(isNormal ? [] : [r.boostCandy, r.normalCandy]),
+      r.totalCandy,
+      r.shards,
+    ];
+    return cols.map(csvCell).join(",");
+  });
 
-  const total = ["", "", "", "", props.totals.boostCandy, props.totals.normalCandy, props.totals.totalCandy, props.totals.shards]
-    .map(csvCell)
-    .join(",");
+  const totalCols = [
+    "",
+    "",
+    "",
+    "",
+    ...(isNormal ? [] : [props.totals.boostCandy, props.totals.normalCandy]),
+    props.totals.totalCandy,
+    props.totals.shards,
+  ];
+  const total = totalCols.map(csvCell).join(",");
 
   return [head, ...body, total].join("\r\n") + "\r\n";
 }
@@ -1077,6 +1093,33 @@ async function downloadCalcExportPng() {
 }
 
 /* When capturing PNG, never include action links in the exported image */
+/* --- Normal Mode Adjustments --- */
+.exportStats--normal {
+  display: flex !important;
+  gap: 12px;
+}
+.exportStats--normal > .statCard {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 通常モード（4列）: Pokemon, Lv, Total, Shards */
+.exportList--normal .exportList__head,
+.exportList--normal .exportList__row {
+  grid-template-columns: 2fr 1fr 1fr 1.5fr;
+  padding-left: 32px;
+  padding-right: 32px;
+}
+
+/* Mobile Normal Mode */
+@media (max-width: 560px) {
+  /* 通常モード（モバイル）: Lv, Total, Shards (Pokemonは1行目) */
+  .exportList--normal .exportList__row {
+    grid-template-columns: 1fr 1fr 1.5fr;
+    padding: 10px; /* モバイルのデフォルトに戻す */
+  }
+}
+
 .exportSheet--capture .exportActions {
   display: none !important;
 }

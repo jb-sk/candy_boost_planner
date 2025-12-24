@@ -10,6 +10,7 @@
           <select v-model="calc.boostKind.value" class="calcTop__input">
             <option value="full">{{ calc.fullLabel.value }}</option>
             <option value="mini">{{ calc.miniLabel.value }}</option>
+            <option value="none">{{ calc.noneLabel.value }}</option>
           </select>
         </div>
         <div class="calcTop__field">
@@ -23,6 +24,7 @@
             :placeholder="t('calc.boostRemainingPlaceholder', { cap: calc.fmtNum(calc.boostCandyDefaultCap.value) })"
             :title="t('calc.boostRemainingHelp')"
             @input="calc.onBoostCandyRemainingInput(($event.target as HTMLInputElement).value)"
+            :disabled="calc.boostKind.value === 'none'"
           />
         </div>
         <div class="calcTop__field">
@@ -104,7 +106,7 @@
 
     <div class="calcSticky">
       <div class="calcSticky__summary">
-        <div class="calcSum calcSum--hi" :class="{ 'calcSum--danger': calc.boostCandyOver.value > 0 }">
+        <div class="calcSum calcSum--hi" v-if="calc.boostKind.value !== 'none'" :class="{ 'calcSum--danger': calc.boostCandyOver.value > 0 }">
           <div class="calcSum__k">{{ t("calc.export.sumBoostTotal") }}</div>
           <div class="calcSum__v">{{ calc.fmtNum(calc.totalBoostCandyUsed.value) }}</div>
         </div>
@@ -133,7 +135,7 @@
           'calcSum--muted': calc.shardsCap.value <= 0,
         }"
       >
-        <div class="calcBarBlock calcBarBlock--candy" :class="{ 'calcBarBlock--danger': calc.boostCandyOver.value > 0 }">
+        <div class="calcBarBlock calcBarBlock--candy" v-if="calc.boostKind.value !== 'none'" :class="{ 'calcBarBlock--danger': calc.boostCandyOver.value > 0 }">
           <div class="calcSum__head">
             <div class="calcSum__k">
               <span class="calcSum__kText">
@@ -142,6 +144,7 @@
               </span>
               <span v-if="calc.boostCandyOver.value > 0" class="calcSum__overVal"> (+{{ calc.fmtNum(calc.boostCandyOver.value) }})</span>
             </div>
+            <span v-if="calc.activeRowId.value && calc.activeRowBoostCandyUsed.value > 0" class="calcSum__selectedVal">{{ t("calc.selectedUsage", { pct: calc.activeRowBoostCandyUsagePct.value }) }}</span>
             <div class="calcSum__k calcSum__k--right">
               {{ t("calc.cap", { cap: calc.fmtNum(calc.boostCandyCap.value) }) }}
             </div>
@@ -155,7 +158,11 @@
             :aria-label="t('calc.boostCandyUsageAria', { pct: calc.boostCandyUsagePctRounded.value, cap: calc.fmtNum(calc.boostCandyCap.value) })"
           >
             <div class="calcBar__track">
-              <div class="calcBar__fill calcBar__fill--candy" :style="{ width: `${calc.boostCandyFillPctForBar.value}%` }"></div>
+              <!-- 選択中ポケモン分 -->
+              <div class="calcBar__fill calcBar__fill--candy calcBar__fill--active" :style="{ width: `${calc.activeRowBoostCandyFillPct.value}%` }"></div>
+              <!-- 他ポケモン分 -->
+              <div class="calcBar__fill calcBar__fill--candy calcBar__fill--others" :style="{ width: `${calc.otherRowsBoostCandyFillPct.value}%` }"></div>
+              <!-- 超過分 -->
               <div
                 v-if="calc.boostCandyOver.value > 0 && calc.boostCandyCap.value > 0"
                 class="calcBar__over"
@@ -178,6 +185,7 @@
               </span>
               <span v-if="calc.shardsOver.value > 0" class="calcSum__overVal"> (+{{ calc.fmtNum(calc.shardsOver.value) }})</span>
             </div>
+            <span v-if="calc.activeRowId.value && calc.activeRowShardsUsed.value > 0" class="calcSum__selectedVal">{{ t("calc.selectedUsage", { pct: calc.activeRowShardsUsagePct.value }) }}</span>
             <div class="calcSum__k calcSum__k--right">
               {{ calc.shardsCap.value > 0 ? t("calc.cap", { cap: calc.fmtNum(calc.shardsCap.value) }) : t("calc.capUnset") }}
             </div>
@@ -195,7 +203,11 @@
             "
           >
             <div class="calcBar__track">
-              <div class="calcBar__fill" :style="{ width: `${calc.shardsFillPctForBar.value}%` }"></div>
+              <!-- 選択中ポケモン分 -->
+              <div class="calcBar__fill calcBar__fill--active" :style="{ width: `${calc.activeRowShardsFillPct.value}%` }"></div>
+              <!-- 他ポケモン分 -->
+              <div class="calcBar__fill calcBar__fill--others" :style="{ width: `${calc.otherRowsShardsFillPct.value}%` }"></div>
+              <!-- 超過分 -->
               <div
                 v-if="calc.shardsOver.value > 0 && calc.shardsCap.value > 0"
                 class="calcBar__over"
@@ -328,7 +340,7 @@
           </div>
         </div>
 
-        <div class="calcRow__grid">
+        <div class="calcRow__grid" :class="{ 'calcRow__grid--normal': calc.boostKind.value === 'none' }">
           <label class="field field--sm">
             <span class="field__label">{{ t("calc.row.srcLevel") }}</span>
             <div class="levelPick">
@@ -391,7 +403,12 @@
           </label>
 
           <label class="field field--sm">
-            <span class="field__label">{{ t("calc.row.dstLevel") }}</span>
+            <span class="field__label">
+              {{ t("calc.row.dstLevel") }}
+              <span v-if="r.result.expLeftNext > 0" style="font-weight:normal; margin-left:4px; opacity:0.8">
+                {{ t("calc.row.expLeftNext", { exp: calc.fmtNum(r.result.expLeftNext) }) }}
+              </span>
+            </span>
             <div class="levelPick">
               <button
                 type="button"
@@ -491,8 +508,8 @@
             />
           </label>
 
-          <label class="field field--sm">
-            <span class="field__label">{{ t("calc.row.boostReachLevel") }}</span>
+          <label class="field field--sm field--boost-control" :class="{ 'is-none': calc.boostKind.value === 'none' }">
+            <span class="field__label">{{ calc.boostKind.value === 'none' ? t("calc.row.boostReachLevelNormal") : t("calc.row.boostReachLevel") }}</span>
             <div class="levelPick">
               <button
                 type="button"
@@ -500,6 +517,7 @@
                 @click.stop="calc.openBoostLevelPick(r.id)"
                 aria-haspopup="dialog"
                 :aria-expanded="calc.openLevelPickRowId.value === r.id && calc.openLevelPickKind.value === 'boost'"
+                :disabled="calc.boostKind.value === 'none'"
               >
                 {{ r.ui.boostReachLevel }}
               </button>
@@ -554,8 +572,8 @@
               </div>
             </div>
           </label>
-          <label class="field field--sm">
-            <span class="field__label">{{ t("calc.row.boostRatio") }}</span>
+          <label class="field field--sm field--boost-control" :class="{ 'is-none': calc.boostKind.value === 'none' }">
+            <span class="field__label">{{ calc.boostKind.value === 'none' ? t("calc.row.boostRatioNormal") : t("calc.row.boostRatio") }}</span>
             <input
               :value="r.ui.boostRatioPct"
               type="range"
@@ -564,17 +582,26 @@
               step="1"
               class="field__range"
               @input="calc.onRowBoostRatio(r.id, ($event.target as HTMLInputElement).value)"
+              :disabled="calc.boostKind.value === 'none'"
             />
             <span class="field__sub">{{ r.ui.boostRatioPct }}%</span>
           </label>
           <label class="field field--sm">
-            <span class="field__label">{{ t("calc.row.boostCandyCount") }}</span>
+            <span class="field__label">
+              {{ calc.boostKind.value === 'none' ? t("calc.row.boostCandyCountNormal") : t("calc.row.boostCandyCount") }}
+              <button
+                type="button"
+                class="hintIcon"
+                @click.stop="showHint($event, calc.boostKind.value === 'none' ? t('calc.row.boostCandyCountNormalHint') : t('calc.row.boostCandyCountHint'))"
+              >?</button>
+            </span>
             <input
               :value="r.ui.boostCandyInput"
               type="number"
               min="0"
               class="field__input"
               @input="calc.onRowBoostCandy(r.id, ($event.target as HTMLInputElement).value)"
+              @blur="handleInputBlur"
             />
           </label>
         </div>
@@ -604,11 +631,21 @@
       </div>
     </div>
     <p class="boxEmpty" v-else>{{ t("calc.empty") }}</p>
+
+    <div v-if="hintState.visible" class="hintOverlay" @click.stop="closeHint"></div>
+    <div
+      v-if="hintState.visible"
+      class="hintPopover"
+      :style="{ left: hintState.left + 'px', top: hintState.top + 'px' }"
+      @click.stop
+    >
+      {{ hintState.message }}
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import type { CalcStore, CalcRowView } from "../composables/useCalcStore";
 import { useCandyStore } from "../composables/useCandyStore";
@@ -628,6 +665,23 @@ const props = defineProps<{
 const calc = props.calc;
 const { t, locale } = useI18n();
 const candyStore = useCandyStore();
+
+// モバイルでのキーボード閉じた後のスクロール位置修正
+function handleInputBlur(event: FocusEvent) {
+  // iOS Safari でキーボードを閉じた後にスクロール位置がずれる問題の対策
+  // 少し待ってからスクロール位置を調整
+  const target = event.target as HTMLElement;
+  if (target) {
+    setTimeout(() => {
+      // 入力欄がstickyヘッダーに隠れていたら戻す
+      const rect = target.getBoundingClientRect();
+      // 320px = sticky header height (approx)
+      if (rect.top < 320 || rect.bottom > window.innerHeight) {
+        target.scrollIntoView({ block: "start", behavior: "smooth" });
+      }
+    }, 100);
+  }
+}
 
 const levelPresets = [10, 25, 30, 40, 50, 55, 57, 60, 65] as const;
 
@@ -710,5 +764,40 @@ function isCandyShort(r: CalcRowView): boolean {
     alloc.typeMUsed > 0 ||
     alloc.remaining > 0
   );
+}
+
+// ヒントアイコン用
+// ヒントポップオーバーの状態
+const hintState = ref<{ visible: boolean; message: string; left: number; top: number }>({
+  visible: false,
+  message: "",
+  left: 0,
+  top: 0
+});
+
+function showHint(ev: MouseEvent, message: string) {
+  const target = ev.target as HTMLElement;
+  const rect = target.getBoundingClientRect();
+
+  // 画面端の考慮
+  const viewportWidth = window.innerWidth;
+  const popoverWidth = 220; // CSS max-width(200) + padding/border margin
+
+  let left = rect.left;
+  if (left + popoverWidth > viewportWidth) {
+    left = viewportWidth - popoverWidth - 8;
+  }
+  if (left < 8) left = 8;
+
+  hintState.value = {
+    visible: true,
+    message,
+    left: left,
+    top: rect.bottom + 4
+  };
+}
+
+function closeHint() {
+  hintState.value.visible = false;
 }
 </script>
