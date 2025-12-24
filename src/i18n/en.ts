@@ -154,8 +154,6 @@ export const en = {
       ingredientType: "Ingredients (type)",
       ingredientTypeNone: "Not selected",
       subSkills: "Sub Skills",
-      subSkillLvPh: "(optional)",
-      subSkillExample: "e.g. Berry Finding S",
 
       toCalc: "Add to Calculator (Apply)",
       toBox: "Add to Box",

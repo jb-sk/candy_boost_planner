@@ -156,8 +156,6 @@ export const ja = {
       ingredientType: "食材（タイプ）",
       ingredientTypeNone: "未選択",
       subSkills: "サブスキル",
-      subSkillLvPh: "（任意）",
-      subSkillExample: "例: きのみの数S",
 
       toCalc: "計算する（反映）",
       toBox: "ボックスに追加",

@@ -128,7 +128,6 @@
                     class="field__input"
                     :class="{ 'field__input--error': !!addSubErrors['10'] }"
                     list="subSkillOptions"
-                    :placeholder="t('box.add.subSkillExample')"
                     @blur="box.onSubBlur(10)"
                   />
                   <span v-if="addSubErrors['10']" class="field__error">{{ addSubErrors["10"] }}</span>
@@ -140,7 +139,6 @@
                     class="field__input"
                     :class="{ 'field__input--error': !!addSubErrors['25'] }"
                     list="subSkillOptions"
-                    :placeholder="t('box.add.subSkillLvPh')"
                     @blur="box.onSubBlur(25)"
                   />
                   <span v-if="addSubErrors['25']" class="field__error">{{ addSubErrors["25"] }}</span>
@@ -152,7 +150,6 @@
                     class="field__input"
                     :class="{ 'field__input--error': !!addSubErrors['50'] }"
                     list="subSkillOptions"
-                    :placeholder="t('box.add.subSkillLvPh')"
                     @blur="box.onSubBlur(50)"
                   />
                   <span v-if="addSubErrors['50']" class="field__error">{{ addSubErrors["50"] }}</span>
@@ -164,7 +161,6 @@
                     class="field__input"
                     :class="{ 'field__input--error': !!addSubErrors['75'] }"
                     list="subSkillOptions"
-                    :placeholder="t('box.add.subSkillLvPh')"
                     @blur="box.onSubBlur(75)"
                   />
                   <span v-if="addSubErrors['75']" class="field__error">{{ addSubErrors["75"] }}</span>
@@ -176,7 +172,6 @@
                     class="field__input"
                     :class="{ 'field__input--error': !!addSubErrors['100'] }"
                     list="subSkillOptions"
-                    :placeholder="t('box.add.subSkillLvPh')"
                     @blur="box.onSubBlur(100)"
                   />
                   <span v-if="addSubErrors['100']" class="field__error">{{ addSubErrors["100"] }}</span>
@@ -652,7 +647,6 @@
                             class="field__input"
                             :class="{ 'field__input--error': !!boxEditSubErrors[String(lv)] }"
                             list="subSkillOptions"
-                            :placeholder="t('box.add.subSkillLvPh')"
                             @input="box.onBoxEditSubInput(lv, ($event.target as HTMLInputElement).value)"
                             @blur="box.onBoxEditSubBlur(lv)"
                           />
