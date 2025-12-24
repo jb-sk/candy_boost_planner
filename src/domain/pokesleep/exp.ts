@@ -53,6 +53,8 @@ export type CalcExpAndCandyMixedResult = {
   shardsBoost: number;
   /** 入力したブーストアメの残り（余った場合） */
   boostCandyLeft: number;
+  /** 目標Lvに到達した時点での、次レベルまでの残りEXP（あとEXP） */
+  expLeftNext: number;
 };
 
 export function calcExp(level1: number, level2: number, expType: ExpType): number {
@@ -157,6 +159,7 @@ export function calcExpAndCandyMixed(params: {
       shardsNormal: 0,
       shardsBoost: 0,
       boostCandyLeft: boostCandyBudget,
+      expLeftNext: srcLevel < dstLevel ? 0 : Math.max(0, calcExp(srcLevel, srcLevel + 1, expType) - expGot),
     };
   }
 
@@ -212,6 +215,20 @@ export function calcExpAndCandyMixed(params: {
     }
   }
 
+  // ループ終了後、まだブーストアメ指定数が余っていれば、dstLevelにおいてさらに投入する（レベルは上げないがEXP・かけらは加算）
+  if (boostLeft > 0) {
+    const expPerBoost = calcExpPerCandy(dstLevel, nature, boost);
+    const useBoost = boostLeft;
+
+    carry += expPerBoost * useBoost;
+
+    const shardBase = dreamShardsPerCandy[dstLevel + 1] ?? 0;
+    shardsBoost += shardBase * useBoost * boostShardRate;
+
+    boostCandyUsed += useBoost;
+    boostLeft = 0;
+  }
+
   const shards = shardsNormal + shardsBoost;
   return {
     exp,
@@ -223,6 +240,7 @@ export function calcExpAndCandyMixed(params: {
     shardsNormal,
     shardsBoost,
     boostCandyLeft: boostLeft,
+    expLeftNext: Math.max(0, calcExp(dstLevel, dstLevel + 1, expType) - carry),
   };
 }
 
@@ -268,6 +286,7 @@ export function calcExpAndCandyByBoostExpRatio(params: {
       boostCandyLeft: 0,
       boostExpRatioTarget: ratio,
       boostExpRatioActual: 0,
+      expLeftNext: srcLevel < dstLevel ? 0 : Math.max(0, calcExp(srcLevel, srcLevel + 1, expType) - expGot),
     };
   }
 
@@ -335,6 +354,7 @@ export function calcExpAndCandyByBoostExpRatio(params: {
     boostCandyLeft: 0,
     boostExpRatioTarget: ratio,
     boostExpRatioActual,
+    expLeftNext: Math.max(0, calcExp(dstLevel, dstLevel + 1, expType) - carry),
   };
 }
 

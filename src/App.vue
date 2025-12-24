@@ -534,7 +534,7 @@ input.field__input--compact {
   top: 10px;
   z-index: 30;
   margin-top: 10px;
-  padding: 8px;
+  padding: 12px;
   border-radius: 16px;
   background: var(--paper);
   border: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
@@ -735,6 +735,28 @@ input.field__input--compact {
   flex: 0 0 auto;
   white-space: nowrap;
 }
+.calcSum__selectedVal {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  margin-left: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--accent) 80%, var(--ink) 20%);
+}
+/* モバイルで選択中ラベルを改行可能にする */
+@media (max-width: 560px) {
+  .calcSum__head {
+    flex-wrap: wrap; /* 上限などがはみ出す場合は折り返す */
+  }
+  .calcSum__k {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  .calcSum__selectedVal {
+    margin-left: 4px !important; /* 1行表示時にくっつきすぎないように少し空ける */
+    font-size: 11px !important; /* 少し小さくして改行されにくくする */
+  }
+}
 .calcBar {
   margin-top: 8px;
 }
@@ -765,25 +787,38 @@ input.field__input--compact {
   background: color-mix(in oklab, var(--ink) 9%, transparent);
   overflow: hidden;
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ink) 12%, transparent);
+  display: flex; /* flexbox で複数セグメントを並べる */
 }
 .calcBar__fill {
-  position: absolute;
-  inset: 0 auto 0 0;
+  position: relative;
   height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    color-mix(in oklab, var(--accent) 74%, var(--paper) 26%),
-    color-mix(in oklab, var(--accent-warm) 56%, var(--paper) 44%)
-  );
+  background: var(--accent); /* フォールバック */
   transition: width 240ms ease;
+}
+/* 選択中ポケモン（楽しそうなピンク） */
+.calcBar__fill--active {
+  background: hsl(330, 85%, 60%);
+  z-index: 2;
+  /* 境界線をつけて区切りを明確に */
+  box-shadow: 1px 0 0 0 var(--paper);
+}
+/* 他ポケモン（楽しそうな水色） */
+.calcBar__fill--others {
+  background: hsl(190, 80%, 65%);
+  z-index: 1;
+}
+/* アメブ用も共通の色にする（区別しない） */
+.calcBar__fill--candy.calcBar__fill--active {
+  background: hsl(330, 85%, 60%);
+}
+.calcBar__fill--candy.calcBar__fill--others {
+  background: hsl(190, 80%, 65%);
 }
 .calcSum--muted .calcBar__fill {
   opacity: 0.35;
 }
 .calcBar__over {
-  position: absolute;
-  inset: 0 0 0 auto;
+  position: relative;
   height: 100%;
   background: repeating-linear-gradient(
     135deg,
@@ -2278,5 +2313,50 @@ input.field__input, select.field__input {
   font-size: 12px;
   line-height: 1.6;
   color: color-mix(in oklab, var(--ink) 58%, transparent);
+}
+</style>
+
+<style>
+/* Layout Fixes */
+.calcTop__input--remaining {
+  width: 72px !important;
+}
+.calcTop__row {
+  column-gap: 16px !important;
+  flex-wrap: wrap !important; /* 幅が狭い時に折り返す */
+  row-gap: 8px !important;    /* 折り返し時の縦間隔 */
+}
+.calcTop__candyRow {
+  gap: 6px !important;
+}
+.calcTop__candyInput input {
+  width: 48px !important; /* 万能アメ数を少し狭く */
+  padding: 0 4px !important;
+}
+.calcTop__label {
+  font-size: 11px !important; /* ラベル文字サイズを少し小さくしてスペース確保 */
+}
+
+@media (max-width: 600px) {
+  /* モバイルでも非表示（これは下記のグローバルルールでカバーされるが、念のため残しても良い。今回はグローバルにするので削除してOKだが、安全に書く） */
+}
+
+/* 常に非表示にする（通常モード時） */
+.field--boost-control.is-none {
+  display: none !important;
+}
+
+/* 通常モード（項目6個）のときはPCで3列表示にする */
+@media (min-width: 601px) {
+  .calcRow__grid--normal {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+/* モバイル: スクロール時にstickyヘッダーの高さを考慮 */
+@media (max-width: 560px) {
+  html {
+    scroll-padding-top: 320px; /* calcStickyの高さ分 */
+  }
 }
 </style>

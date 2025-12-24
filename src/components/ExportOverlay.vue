@@ -230,12 +230,6 @@
                   <div class="exportRanking__bar" :style="{ width: `${item.usagePct}%` }"></div>
                 </div>
                 <div class="exportRanking__items">
-                  <span v-if="item.typeSUsed > 0 || item.typeMUsed > 0" class="exportRanking__itemGroup">
-                    <span class="exportRanking__itemLabel">{{ t("calc.export.labelType") }}</span>
-                    <span v-if="item.typeSUsed > 0">S{{ item.typeSUsed }}</span>
-                    <span v-if="item.typeSUsed > 0 && item.typeMUsed > 0"> / </span>
-                    <span v-if="item.typeMUsed > 0">M{{ item.typeMUsed }}</span>
-                  </span>
                   <span v-if="item.uniSUsed > 0 || item.uniMUsed > 0 || item.uniLUsed > 0" class="exportRanking__itemGroup">
                     <span class="exportRanking__itemLabel">{{ t("calc.export.labelUni") }}</span>
                     <span v-if="item.uniSUsed > 0">S{{ item.uniSUsed }}</span>
@@ -243,6 +237,12 @@
                     <span v-if="item.uniMUsed > 0">M{{ item.uniMUsed }}</span>
                     <span v-if="item.uniMUsed > 0 && item.uniLUsed > 0"> / </span>
                     <span v-if="item.uniLUsed > 0">L{{ item.uniLUsed }}</span>
+                  </span>
+                  <span v-if="item.typeSUsed > 0 || item.typeMUsed > 0" class="exportRanking__itemGroup">
+                    <span class="exportRanking__itemLabel">{{ t("calc.export.labelType") }}</span>
+                    <span v-if="item.typeSUsed > 0">S{{ item.typeSUsed }}</span>
+                    <span v-if="item.typeSUsed > 0 && item.typeMUsed > 0"> / </span>
+                    <span v-if="item.typeMUsed > 0">M{{ item.typeMUsed }}</span>
                   </span>
                 </div>
               </div>

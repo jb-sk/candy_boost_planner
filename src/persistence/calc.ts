@@ -22,13 +22,15 @@ export type CalcRowV1 = {
   boostReachLevel: number;
   boostRatioPct: number; // 0..100
   boostCandyInput: number; // 手入力用（mode=candyのとき有効）
+  /** アメブ個数の最大投入実績（減少時の補填計算用） */
+  boostCandyPeak?: number;
   mode: CalcMode;
 };
 
 export type CalcAutosaveV1 = {
   schemaVersion: 1;
   totalShards: number;
-  boostKind: Exclude<BoostEvent, "none">;
+  boostKind: BoostEvent;
   /** アメブ残数（未設定の場合はboostKindによる上限を使用） */
   boostCandyRemaining?: number;
   rows: CalcRowV1[];
