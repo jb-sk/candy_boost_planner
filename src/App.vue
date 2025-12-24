@@ -31,6 +31,7 @@
       :show-shards-fire="calc.showShardsFire.value"
       :universal-candy-ranking="calc.universalCandyRanking.value"
       :universal-candy-used-total="calc.universalCandyUsedTotal.value"
+      :boost-kind="calc.boostKind.value"
       @close="calc.closeExport()"
     />
   </main>
