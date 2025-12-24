@@ -110,26 +110,58 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
   }
 
   const allPokemonNameJa = Object.freeze(Object.keys(pokemonIdFormsByNameJa));
+
+  // 日本語名→英語名のマッピングを事前構築
+  const pokemonNameJaToEn = computed(() => {
+    const map: Record<string, string> = {};
+    for (const nameJa of allPokemonNameJa) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const idForms = (pokemonIdFormsByNameJa as any)[nameJa] as readonly number[] | undefined;
+      if (!idForms || idForms.length === 0) continue;
+      const idForm = idForms[0];
+      const dexNo = idForm & 0xfff;
+      const form = idForm >> 12;
+      const nameEn = getPokemonNameLocalized(dexNo, form, "en");
+      if (nameEn) map[nameJa] = nameEn;
+    }
+    return map;
+  });
+
   const addNameSuggestList = computed(() => {
     if (isComposing.value) return [];
-    const q = addName.value.trim();
+    const q = addName.value.trim().toLowerCase();
     if (q.length === 0) return [];
+
+    const isEn = locale.value === "en";
+    const out: { nameJa: string; display: string }[] = [];
+
     // 先頭一致を基本に、最大12件まで
-    const out: string[] = [];
-    for (const n of allPokemonNameJa) {
-      if (n.startsWith(q)) out.push(n);
+    for (const nameJa of allPokemonNameJa) {
+      const nameEn = pokemonNameJaToEn.value[nameJa] ?? nameJa;
+      const display = isEn ? nameEn : nameJa;
+      const searchTarget = display.toLowerCase();
+      if (searchTarget.startsWith(q)) {
+        out.push({ nameJa, display });
+      }
       if (out.length >= 12) break;
     }
+
     // 先頭一致が少なすぎるときは部分一致も少し補う（最大12件）
     if (out.length < 6 && q.length >= 2) {
-      for (const n of allPokemonNameJa) {
-        if (out.includes(n)) continue;
-        if (n.includes(q)) out.push(n);
+      for (const nameJa of allPokemonNameJa) {
+        if (out.some(x => x.nameJa === nameJa)) continue;
+        const nameEn = pokemonNameJaToEn.value[nameJa] ?? nameJa;
+        const display = isEn ? nameEn : nameJa;
+        const searchTarget = display.toLowerCase();
+        if (searchTarget.includes(q)) {
+          out.push({ nameJa, display });
+        }
         if (out.length >= 12) break;
       }
     }
     return out;
   });
+
 
   const showAddNameSuggest = computed(
     () => addNameHasFocus.value && addNameSuggestOpen.value && !isComposing.value && addNameSuggestList.value.length > 0
@@ -140,22 +172,36 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
   const relinkStatus = ref<string>("");
   const relinkFound = computed(() => findPokemonByNameJa(relinkName.value.trim()) ?? null);
   const relinkSuggestList = computed(() => {
-    const q = relinkName.value.trim();
+    const q = relinkName.value.trim().toLowerCase();
     if (q.length === 0) return [];
-    const out: string[] = [];
-    for (const n of allPokemonNameJa) {
-      if (n.startsWith(q)) out.push(n);
+
+    const isEn = locale.value === "en";
+    const out: { nameJa: string; display: string }[] = [];
+
+    for (const nameJa of allPokemonNameJa) {
+      const nameEn = pokemonNameJaToEn.value[nameJa] ?? nameJa;
+      const display = isEn ? nameEn : nameJa;
+      const searchTarget = display.toLowerCase();
+      if (searchTarget.startsWith(q)) {
+        out.push({ nameJa, display });
+      }
       if (out.length >= 10) break;
     }
     if (out.length < 5 && q.length >= 2) {
-      for (const n of allPokemonNameJa) {
-        if (out.includes(n)) continue;
-        if (n.includes(q)) out.push(n);
+      for (const nameJa of allPokemonNameJa) {
+        if (out.some(x => x.nameJa === nameJa)) continue;
+        const nameEn = pokemonNameJaToEn.value[nameJa] ?? nameJa;
+        const display = isEn ? nameEn : nameJa;
+        const searchTarget = display.toLowerCase();
+        if (searchTarget.includes(q)) {
+          out.push({ nameJa, display });
+        }
         if (out.length >= 10) break;
       }
     }
     return out;
   });
+
 
   function onRelinkInput() {
     relinkOpen.value = true;

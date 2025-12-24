@@ -24,13 +24,24 @@ const CACHE_PATH = path.join(ROOT, "_local", "yakkun_pokemon_en.htm");
 const OUT_PATH = path.join(ROOT, "src", "domain", "pokesleep", "_generated", "pokemon-name-en.ts");
 const MASTER_PATH = path.join(ROOT, "src", "domain", "pokesleep", "pokemon-master.ts");
 
+// --force オプションでキャッシュを強制クリア
+const forceRefresh = process.argv.includes("--force");
+
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
 }
 
 function downloadIfMissing() {
   ensureDir(path.dirname(CACHE_PATH));
+
+  // --force の場合はキャッシュを削除
+  if (forceRefresh && fs.existsSync(CACHE_PATH)) {
+    fs.unlinkSync(CACHE_PATH);
+    console.log("[generate-pokemon-en-names] キャッシュを削除しました");
+  }
+
   if (fs.existsSync(CACHE_PATH) && fs.statSync(CACHE_PATH).size > 1000) return;
+
 
   // Prefer curl.exe on Windows (PowerShell has curl alias).
   const curlCmd = process.platform === "win32" ? "curl.exe" : "curl";
@@ -53,7 +64,7 @@ function readTargetDexNosFromMaster() {
   const txt = fs.readFileSync(MASTER_PATH, "utf8");
   const re = /"pokedexId"\s*:\s*(\d+)/g;
   const set = new Set();
-  for (;;) {
+  for (; ;) {
     const m = re.exec(txt);
     if (!m) break;
     set.add(Number(m[1]));
@@ -77,7 +88,7 @@ function parseEnNamesFromHtmlBinary(html) {
   // <tr><td class="c1">001</td><td ...>JP</td><td>Bulbasaur</td></tr>
   const out = new Map(); // dexNo -> enName
   const re = /<tr>\s*<td class="c1">(\d+)<\/td>\s*<td[^>]*>[\s\S]*?<\/td>\s*<td>([\s\S]*?)<\/td>\s*<\/tr>/g;
-  for (;;) {
+  for (; ;) {
     const m = re.exec(html);
     if (!m) break;
     const dexNo = Number(m[1]);
@@ -112,9 +123,23 @@ function emitTs(mapping) {
   return lines.join("\n");
 }
 
+function readExistingDexNos() {
+  if (!fs.existsSync(OUT_PATH)) return new Set();
+  const txt = fs.readFileSync(OUT_PATH, "utf8");
+  const re = /^\s*(\d+):/gm;
+  const set = new Set();
+  for (; ;) {
+    const m = re.exec(txt);
+    if (!m) break;
+    set.add(Number(m[1]));
+  }
+  return set;
+}
+
 function main() {
   downloadIfMissing();
   const targetDexNos = readTargetDexNosFromMaster();
+  const existingDexNos = readExistingDexNos();
   const buf = fs.readFileSync(CACHE_PATH);
   const html = buf.toString("latin1"); // keep ASCII intact; ignore JP text
   const all = parseEnNamesFromHtmlBinary(html);
@@ -125,6 +150,15 @@ function main() {
     if (en) filtered.set(dexNo, en);
   }
 
+  // 新規追加されたエントリを検出
+  const newEntries = [];
+  for (const dexNo of filtered.keys()) {
+    if (!existingDexNos.has(dexNo)) {
+      newEntries.push({ dexNo, en: filtered.get(dexNo) });
+    }
+  }
+  newEntries.sort((a, b) => a.dexNo - b.dexNo);
+
   ensureDir(path.dirname(OUT_PATH));
   fs.writeFileSync(OUT_PATH, emitTs(filtered), "utf8");
 
@@ -133,6 +167,17 @@ function main() {
     // eslint-disable-next-line no-console
     console.warn(`[generate-pokemon-en-names] Missing ${missing.length} dexNos: ${missing.slice(0, 20).join(", ")}${missing.length > 20 ? "..." : ""}`);
   }
+
+  // 新規追加を表示
+  if (newEntries.length) {
+    // eslint-disable-next-line no-console
+    console.log(`\n[generate-pokemon-en-names] 新規追加: ${newEntries.length}件`);
+    for (const { dexNo, en } of newEntries) {
+      // eslint-disable-next-line no-console
+      console.log(`  #${dexNo} ${en}`);
+    }
+  }
+
   // eslint-disable-next-line no-console
   console.log(`[generate-pokemon-en-names] Wrote ${filtered.size} entries to ${path.relative(ROOT, OUT_PATH)}`);
 }

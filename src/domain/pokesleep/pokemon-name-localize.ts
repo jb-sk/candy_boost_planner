@@ -1,21 +1,8 @@
 import type { AppLocale } from "../../i18n";
 import { getPokemonNameEnByDexNo } from "./_generated/pokemon-name-en";
+import { formLabelJaToEn } from "./_generated/form-label-ja-to-en";
 import { getPokemonNameJa } from "./pokemon-names";
 
-const formLabelJaToEn: Record<string, string> = {
-  "ホリデー": "Holiday",
-  "ハロウィン": "Halloween",
-  "アローラ": "Alola",
-  "パルデア": "Paldea",
-  // Toxtricity forms (Sleep uses JP labels "ハイ/ロー")
-  "ハイ": "Amped",
-  "ロー": "Low Key",
-  // Pumpkaboo / Gourgeist sizes
-  "おおだま": "Large",
-  "ちゅうだま": "Average",
-  "こだま": "Small",
-  "ギガだま": "Super",
-};
 
 function extractFormLabelJa(fullJa: string): string | null {
   // e.g. ピカチュウ(ホリデー)

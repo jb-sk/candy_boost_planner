@@ -3250,6 +3250,28 @@
       "link": "https://wikiwiki.jp/poke_sleep/%E3%82%BF%E3%83%9E%E3%82%B6%E3%83%A9%E3%82%B7"
     },
     {
+      "dexNo": 363,
+      "nameJa": "タマザラシ(ホリデー)",
+      "specialtyJa": "スキル",
+      "sleepTypeJa": "ぐっすり",
+      "berryJa": [
+        "チーゴのみ"
+      ],
+      "ingAJa": [
+        "ピュアなオイル"
+      ],
+      "ingBJa": [
+        "マメミート"
+      ],
+      "ingCJa": [
+        "あったかジンジャー"
+      ],
+      "mainSkillJa": "料理チャンスS",
+      "fp": 5,
+      "helpSeconds": 3300,
+      "link": "https://wikiwiki.jp/poke_sleep/%E3%82%BF%E3%83%9E%E3%82%B6%E3%83%A9%E3%82%B7%28%E3%83%9B%E3%83%AA%E3%83%87%E3%83%BC%29"
+    },
+    {
       "dexNo": 364,
       "nameJa": "トドグラー",
       "specialtyJa": "きのみ",
@@ -4372,6 +4394,28 @@
       "link": "https://wikiwiki.jp/poke_sleep/%E3%82%AD%E3%83%A5%E3%83%AF%E3%83%AF%E3%83%BC"
     },
     {
+      "dexNo": 777,
+      "nameJa": "トゲデマル",
+      "specialtyJa": "スキル",
+      "sleepTypeJa": "ぐっすり",
+      "berryJa": [
+        "ベリブのみ"
+      ],
+      "ingAJa": [
+        "モーモーミルク"
+      ],
+      "ingBJa": [
+        "つやつやアボカド"
+      ],
+      "ingCJa": [
+        "リラックスカカオ"
+      ],
+      "mainSkillJa": "ほっぺすりすり(げんきエールS)",
+      "fp": 16,
+      "helpSeconds": 2700,
+      "link": "https://wikiwiki.jp/poke_sleep/%E3%83%88%E3%82%B2%E3%83%87%E3%83%9E%E3%83%AB"
+    },
+    {
       "dexNo": 778,
       "nameJa": "ミミッキュ",
       "specialtyJa": "スキル",
@@ -4744,6 +4788,50 @@
       "fp": 22,
       "helpSeconds": 2400,
       "link": "https://wikiwiki.jp/poke_sleep/%E3%83%91%E3%83%BC%E3%83%A2%E3%83%83%E3%83%88"
+    },
+    {
+      "dexNo": 974,
+      "nameJa": "アルクジラ",
+      "specialtyJa": "食材",
+      "sleepTypeJa": "ぐっすり",
+      "berryJa": [
+        "チーゴのみ"
+      ],
+      "ingAJa": [
+        "ほっこりポテト"
+      ],
+      "ingBJa": [
+        "マメミート"
+      ],
+      "ingCJa": [
+        "ずっしりカボチャ"
+      ],
+      "mainSkillJa": "げんきチャージS",
+      "fp": 5,
+      "helpSeconds": 5100,
+      "link": "https://wikiwiki.jp/poke_sleep/%E3%82%A2%E3%83%AB%E3%82%AF%E3%82%B8%E3%83%A9"
+    },
+    {
+      "dexNo": 975,
+      "nameJa": "ハルクジラ",
+      "specialtyJa": "食材",
+      "sleepTypeJa": "ぐっすり",
+      "berryJa": [
+        "チーゴのみ"
+      ],
+      "ingAJa": [
+        "ほっこりポテト"
+      ],
+      "ingBJa": [
+        "マメミート"
+      ],
+      "ingCJa": [
+        "ずっしりカボチャ"
+      ],
+      "mainSkillJa": "げんきチャージS",
+      "fp": 20,
+      "helpSeconds": 2800,
+      "link": "https://wikiwiki.jp/poke_sleep/%E3%83%8F%E3%83%AB%E3%82%AF%E3%82%B8%E3%83%A9"
     },
     {
       "dexNo": 980,

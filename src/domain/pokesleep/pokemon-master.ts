@@ -2687,6 +2687,24 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%82%BF%E3%83%9E%E3%82%B6%E3%83%A9%E3%82%B7"
   },
   {
+    "dexNo": 363,
+    "pokedexId": 363,
+    "form": 2,
+    "formLabelJa": "ホリデー",
+    "nameJa": "タマザラシ(ホリデー)",
+    "baseNameJa": "タマザラシ",
+    "specialty": "Skills",
+    "type": "Ice",
+    "typeJa": "こおり",
+    "expType": 600,
+    "ingredients": {
+      "a": "oil",
+      "b": "sausage",
+      "c": "ginger"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%BF%E3%83%9E%E3%82%B6%E3%83%A9%E3%82%B7%28%E3%83%9B%E3%83%AA%E3%83%87%E3%83%BC%29"
+  },
+  {
     "dexNo": 364,
     "pokedexId": 364,
     "form": 0,
@@ -3601,6 +3619,24 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%82%AD%E3%83%A5%E3%83%AF%E3%83%AF%E3%83%BC"
   },
   {
+    "dexNo": 777,
+    "pokedexId": 777,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "トゲデマル",
+    "baseNameJa": "トゲデマル",
+    "specialty": "Skills",
+    "type": "Steel",
+    "typeJa": "はがね",
+    "expType": 600,
+    "ingredients": {
+      "a": "milk",
+      "b": "avocado",
+      "c": "cacao"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%88%E3%82%B2%E3%83%87%E3%83%9E%E3%83%AB"
+  },
+  {
     "dexNo": 778,
     "pokedexId": 778,
     "form": 0,
@@ -3905,6 +3941,42 @@ export const pokemonMaster: PokemonMasterEntry[] = [
       "c": "egg"
     },
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%91%E3%83%BC%E3%83%A2%E3%83%83%E3%83%88"
+  },
+  {
+    "dexNo": 974,
+    "pokedexId": 974,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "アルクジラ",
+    "baseNameJa": "アルクジラ",
+    "specialty": "Ingredients",
+    "type": "Ice",
+    "typeJa": "こおり",
+    "expType": 600,
+    "ingredients": {
+      "a": "potato",
+      "b": "sausage",
+      "c": "pumpkin"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%A2%E3%83%AB%E3%82%AF%E3%82%B8%E3%83%A9"
+  },
+  {
+    "dexNo": 975,
+    "pokedexId": 975,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "ハルクジラ",
+    "baseNameJa": "ハルクジラ",
+    "specialty": "Ingredients",
+    "type": "Ice",
+    "typeJa": "こおり",
+    "expType": 600,
+    "ingredients": {
+      "a": "potato",
+      "b": "sausage",
+      "c": "pumpkin"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%8F%E3%83%AB%E3%82%AF%E3%82%B8%E3%83%A9"
   },
   {
     "dexNo": 980,

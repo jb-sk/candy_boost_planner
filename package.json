@@ -15,7 +15,8 @@
     "generate:pokemon-names": "npm run generate:master -- --non-interactive",
     "generate:pokemon-en-names": "node scripts/generate-pokemon-en-names.mjs",
     "generate:pokemon-all": "npm run generate:master",
-    "set:boost": "node scripts/set-boost-config.mjs"
+    "set:boost": "node scripts/set-boost-config.mjs",
+    "update:all": "npm run generate:master -- --interactive && npm run generate:pokemon-en-names && npm run build"
   },
   "dependencies": {
     "html-to-image": "^1.11.13",

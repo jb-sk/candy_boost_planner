@@ -208,6 +208,7 @@ export const pokemonNameJaByIdForm = {
   "759": "ヌイコグマ",
   "760": "キテルグマ",
   "764": "キュワワー",
+  "777": "トゲデマル",
   "778": "ミミッキュ",
   "845": "ウッウ",
   "848": "エレズン",
@@ -224,11 +225,14 @@ export const pokemonNameJaByIdForm = {
   "921": "パモ",
   "922": "パモット",
   "923": "パーモット",
+  "974": "アルクジラ",
+  "975": "ハルクジラ",
   "980": "ドオー",
   "4121": "ピカチュウ(ハロウィン)",
   "4229": "イーブイ(ハロウィン)",
   "8217": "ピカチュウ(ホリデー)",
   "8325": "イーブイ(ホリデー)",
+  "8555": "タマザラシ(ホリデー)",
   "12325": "ロコン(アローラ)",
   "12326": "キュウコン(アローラ)",
   "16578": "ウパー(パルデア)"
@@ -419,6 +423,7 @@ export const pokemonExpTypeByIdForm = {
   "759": 600,
   "760": 600,
   "764": 600,
+  "777": 600,
   "778": 600,
   "845": 600,
   "848": 600,
@@ -435,11 +440,14 @@ export const pokemonExpTypeByIdForm = {
   "921": 600,
   "922": 600,
   "923": 600,
+  "974": 600,
+  "975": 600,
   "980": 600,
   "4121": 600,
   "4229": 600,
   "8217": 600,
   "8325": 600,
+  "8555": 600,
   "12325": 600,
   "12326": 600,
   "16578": 600
@@ -630,6 +638,7 @@ export const pokemonSpecialtyByIdForm = {
   "759": "Ingredients",
   "760": "Ingredients",
   "764": "Ingredients",
+  "777": "Skills",
   "778": "Skills",
   "845": "Ingredients",
   "848": "Skills",
@@ -646,11 +655,14 @@ export const pokemonSpecialtyByIdForm = {
   "921": "Skills",
   "922": "Skills",
   "923": "Skills",
+  "974": "Ingredients",
+  "975": "Ingredients",
   "980": "Ingredients",
   "4121": "Berries",
   "4229": "Skills",
   "8217": "Skills",
   "8325": "Berries",
+  "8555": "Skills",
   "12325": "Berries",
   "12326": "Berries",
   "16578": "Ingredients"
@@ -841,6 +853,7 @@ export const pokemonTypeByIdForm = {
   "759": "Fighting",
   "760": "Fighting",
   "764": "Fairy",
+  "777": "Steel",
   "778": "Ghost",
   "845": "Flying",
   "848": "Poison",
@@ -857,11 +870,14 @@ export const pokemonTypeByIdForm = {
   "921": "Electric",
   "922": "Electric",
   "923": "Electric",
+  "974": "Ice",
+  "975": "Ice",
   "980": "Poison",
   "4121": "Electric",
   "4229": "Normal",
   "8217": "Electric",
   "8325": "Normal",
+  "8555": "Ice",
   "12325": "Ice",
   "12326": "Ice",
   "16578": "Poison"
@@ -1052,6 +1068,7 @@ export const pokemonTypeJaByIdForm = {
   "759": "かくとう",
   "760": "かくとう",
   "764": "フェアリー",
+  "777": "はがね",
   "778": "ゴースト",
   "845": "ひこう",
   "848": "どく",
@@ -1068,11 +1085,14 @@ export const pokemonTypeJaByIdForm = {
   "921": "でんき",
   "922": "でんき",
   "923": "でんき",
+  "974": "こおり",
+  "975": "こおり",
   "980": "どく",
   "4121": "でんき",
   "4229": "ノーマル",
   "8217": "でんき",
   "8325": "ノーマル",
+  "8555": "こおり",
   "12325": "こおり",
   "12326": "こおり",
   "16578": "どく"
@@ -1994,6 +2014,11 @@ export const pokemonIngredientsByIdForm = {
     "b": "ginger",
     "c": "cacao"
   },
+  "777": {
+    "a": "milk",
+    "b": "avocado",
+    "c": "cacao"
+  },
   "778": {
     "a": "apple",
     "b": "coffee",
@@ -2074,6 +2099,16 @@ export const pokemonIngredientsByIdForm = {
     "b": "milk",
     "c": "egg"
   },
+  "974": {
+    "a": "potato",
+    "b": "sausage",
+    "c": "pumpkin"
+  },
+  "975": {
+    "a": "potato",
+    "b": "sausage",
+    "c": "pumpkin"
+  },
   "980": {
     "a": "cacao",
     "b": "coffee",
@@ -2098,6 +2133,11 @@ export const pokemonIngredientsByIdForm = {
     "a": "milk",
     "b": "cacao",
     "c": "sausage"
+  },
+  "8555": {
+    "a": "oil",
+    "b": "sausage",
+    "c": "ginger"
   },
   "12325": {
     "a": "soy",
@@ -2555,6 +2595,9 @@ export const pokemonIdFormsByNameJa = {
   "タマザラシ": [
     363
   ],
+  "タマザラシ(ホリデー)": [
+    8555
+  ],
   "トドグラー": [
     364
   ],
@@ -2708,6 +2751,9 @@ export const pokemonIdFormsByNameJa = {
   "キュワワー": [
     764
   ],
+  "トゲデマル": [
+    777
+  ],
   "ミミッキュ": [
     778
   ],
@@ -2758,6 +2804,12 @@ export const pokemonIdFormsByNameJa = {
   ],
   "パーモット": [
     923
+  ],
+  "アルクジラ": [
+    974
+  ],
+  "ハルクジラ": [
+    975
   ],
   "ドオー": [
     980

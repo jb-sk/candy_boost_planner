@@ -36,13 +36,13 @@
                 <div v-if="showAddNameSuggest" class="suggest__panel" role="listbox">
                   <button
                     v-for="n in addNameSuggestList"
-                    :key="n"
+                    :key="n.nameJa"
                     type="button"
                     class="suggest__item"
                     role="option"
-                    @mousedown.prevent="box.pickAddName(n)"
+                    @mousedown.prevent="box.pickAddName(n.nameJa)"
                   >
-                    {{ n }}
+                    {{ n.display }}
                   </button>
                 </div>
               </div>
@@ -397,13 +397,13 @@
                         <div v-if="relinkOpen && relinkSuggestList.length" class="suggest__panel" role="listbox">
                           <button
                             v-for="n in relinkSuggestList"
-                            :key="n"
+                            :key="n.nameJa"
                             type="button"
                             class="suggest__item"
                             role="option"
-                            @mousedown.prevent="box.pickRelinkName(n)"
+                            @mousedown.prevent="box.pickRelinkName(n.nameJa)"
                           >
-                            {{ n }}
+                            {{ n.display }}
                           </button>
                         </div>
                       </div>
