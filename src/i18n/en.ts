@@ -109,7 +109,8 @@ export const en = {
     export: {
       open: "Share as One Image",
       saveImage: "Save Image",
-      brand: "Pokémon Sleep Candy Boost Plan",
+      brand: "Pokémon Sleep Training Plan",
+      brandBoost: "Pokémon Sleep Candy Boost Plan",
       csv: "CSV",
       csvDownload: "Download CSV",
       csvCopy: "Copy CSV",
