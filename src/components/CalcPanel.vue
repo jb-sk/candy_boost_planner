@@ -601,6 +601,7 @@
               min="0"
               class="field__input"
               @input="calc.onRowBoostCandy(r.id, ($event.target as HTMLInputElement).value)"
+              @blur="handleInputBlur"
             />
           </label>
         </div>
@@ -664,6 +665,23 @@ const props = defineProps<{
 const calc = props.calc;
 const { t, locale } = useI18n();
 const candyStore = useCandyStore();
+
+// モバイルでのキーボード閉じた後のスクロール位置修正
+function handleInputBlur(event: FocusEvent) {
+  // iOS Safari でキーボードを閉じた後にスクロール位置がずれる問題の対策
+  // 少し待ってからスクロール位置を調整
+  const target = event.target as HTMLElement;
+  if (target) {
+    setTimeout(() => {
+      // 入力欄がstickyヘッダーに隠れていたら戻す
+      const rect = target.getBoundingClientRect();
+      // 320px = sticky header height (approx)
+      if (rect.top < 320 || rect.bottom > window.innerHeight) {
+        target.scrollIntoView({ block: "start", behavior: "smooth" });
+      }
+    }, 100);
+  }
+}
 
 const levelPresets = [10, 25, 30, 40, 50, 55, 57, 60, 65] as const;
 

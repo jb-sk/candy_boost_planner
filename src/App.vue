@@ -2352,4 +2352,11 @@ input.field__input, select.field__input {
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   }
 }
+
+/* モバイル: スクロール時にstickyヘッダーの高さを考慮 */
+@media (max-width: 560px) {
+  html {
+    scroll-padding-top: 320px; /* calcStickyの高さ分 */
+  }
+}
 </style>
