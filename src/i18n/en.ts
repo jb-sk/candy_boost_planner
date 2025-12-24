@@ -35,7 +35,7 @@ export const en = {
     boostKindNone: "Normal (Shards ×{shards} / EXP ×{exp})",
     boostRemainingLabel: "Boost remaining",
     boostRemainingHelp: "If mid-event, enter remaining usable count. Leave blank to reset to max.",
-    boostRemainingPlaceholder: "Max {cap}",
+    boostRemainingPlaceholder: "{cap}",
     over: "Over",
     remaining: "Remaining",
     shardsTotal: "Shards total",

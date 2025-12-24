@@ -106,7 +106,7 @@
 
     <div class="calcSticky">
       <div class="calcSticky__summary">
-        <div class="calcSum calcSum--hi" :class="{ 'calcSum--danger': calc.boostCandyOver.value > 0 }">
+        <div class="calcSum calcSum--hi" v-if="calc.boostKind.value !== 'none'" :class="{ 'calcSum--danger': calc.boostCandyOver.value > 0 }">
           <div class="calcSum__k">{{ t("calc.export.sumBoostTotal") }}</div>
           <div class="calcSum__v">{{ calc.fmtNum(calc.totalBoostCandyUsed.value) }}</div>
         </div>
@@ -135,7 +135,7 @@
           'calcSum--muted': calc.shardsCap.value <= 0,
         }"
       >
-        <div class="calcBarBlock calcBarBlock--candy" :class="{ 'calcBarBlock--danger': calc.boostCandyOver.value > 0 }">
+        <div class="calcBarBlock calcBarBlock--candy" v-if="calc.boostKind.value !== 'none'" :class="{ 'calcBarBlock--danger': calc.boostCandyOver.value > 0 }">
           <div class="calcSum__head">
             <div class="calcSum__k">
               <span class="calcSum__kText">
@@ -330,7 +330,7 @@
           </div>
         </div>
 
-        <div class="calcRow__grid">
+        <div class="calcRow__grid" :class="{ 'calcRow__grid--normal': calc.boostKind.value === 'none' }">
           <label class="field field--sm">
             <span class="field__label">{{ t("calc.row.srcLevel") }}</span>
             <div class="levelPick">
@@ -498,7 +498,7 @@
             />
           </label>
 
-          <label class="field field--sm">
+          <label class="field field--sm field--boost-control" :class="{ 'is-none': calc.boostKind.value === 'none' }">
             <span class="field__label">{{ calc.boostKind.value === 'none' ? t("calc.row.boostReachLevelNormal") : t("calc.row.boostReachLevel") }}</span>
             <div class="levelPick">
               <button
@@ -562,7 +562,7 @@
               </div>
             </div>
           </label>
-          <label class="field field--sm">
+          <label class="field field--sm field--boost-control" :class="{ 'is-none': calc.boostKind.value === 'none' }">
             <span class="field__label">{{ calc.boostKind.value === 'none' ? t("calc.row.boostRatioNormal") : t("calc.row.boostRatio") }}</span>
             <input
               :value="r.ui.boostRatioPct"

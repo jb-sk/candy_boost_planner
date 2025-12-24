@@ -534,7 +534,7 @@ input.field__input--compact {
   top: 10px;
   z-index: 30;
   margin-top: 10px;
-  padding: 8px;
+  padding: 12px;
   border-radius: 16px;
   background: var(--paper);
   border: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
@@ -2278,5 +2278,43 @@ input.field__input, select.field__input {
   font-size: 12px;
   line-height: 1.6;
   color: color-mix(in oklab, var(--ink) 58%, transparent);
+}
+</style>
+
+<style>
+/* Layout Fixes */
+.calcTop__input--remaining {
+  width: 72px !important;
+}
+.calcTop__row {
+  column-gap: 16px !important;
+  flex-wrap: wrap !important; /* 幅が狭い時に折り返す */
+  row-gap: 8px !important;    /* 折り返し時の縦間隔 */
+}
+.calcTop__candyRow {
+  gap: 6px !important;
+}
+.calcTop__candyInput input {
+  width: 48px !important; /* 万能アメ数を少し狭く */
+  padding: 0 4px !important;
+}
+.calcTop__label {
+  font-size: 11px !important; /* ラベル文字サイズを少し小さくしてスペース確保 */
+}
+
+@media (max-width: 600px) {
+  /* モバイルでも非表示（これは下記のグローバルルールでカバーされるが、念のため残しても良い。今回はグローバルにするので削除してOKだが、安全に書く） */
+}
+
+/* 常に非表示にする（通常モード時） */
+.field--boost-control.is-none {
+  display: none !important;
+}
+
+/* 通常モード（項目6個）のときはPCで3列表示にする */
+@media (min-width: 601px) {
+  .calcRow__grid--normal {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
 }
 </style>

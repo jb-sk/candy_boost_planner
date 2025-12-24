@@ -35,7 +35,7 @@ export const ja = {
     boostKindNone: "通常（かけら×{shards} / EXP×{exp}）",
     boostRemainingLabel: "アメブ残数",
     boostRemainingHelp: "イベント途中の場合、使用可能な残り個数を入力。空欄で上限にリセット。",
-    boostRemainingPlaceholder: "上限 {cap}",
+    boostRemainingPlaceholder: "{cap}",
     over: "超過",
     remaining: "残り",
     shardsTotal: "かけら合計",
