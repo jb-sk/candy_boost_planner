@@ -64,7 +64,7 @@ type CalcUndoState = {
 
 export type CalcStore = {
   // core state
-  boostKind: Ref<Exclude<BoostEvent, "none">>;
+  boostKind: Ref<BoostEvent>;
   totalShards: Ref<number>;
   totalShardsText: Ref<string>;
   boostCandyRemaining: Ref<number | null>;
@@ -85,6 +85,7 @@ export type CalcStore = {
   // computed
   fullLabel: Readonly<Ref<string>>;
   miniLabel: Readonly<Ref<string>>;
+  noneLabel: Readonly<Ref<string>>;
   activeRow: Readonly<Ref<CalcRow | null>>;
   rowsView: Readonly<Ref<CalcRowView[]>>;
 
@@ -210,7 +211,7 @@ export function useCalcStore(opts: {
   const calcAutosave0 = loadCalcAutosave();
   const slots = ref<Array<CalcSaveSlotV1 | null>>(loadCalcSlots());
 
-  const boostKind = ref<Exclude<BoostEvent, "none">>(calcAutosave0?.boostKind ?? "full");
+  const boostKind = ref<BoostEvent>(calcAutosave0?.boostKind ?? "full");
   const totalShards = ref<number>(calcAutosave0?.totalShards ?? loadLegacyTotalShards());
   const totalShardsText = ref<string>("");
   // アメブ残数（nullの場合はboostKindによる上限を使用）
@@ -289,6 +290,12 @@ export function useCalcStore(opts: {
     t("calc.boostKindMini", {
       shards: boostRules.mini.shardMultiplier,
       exp: boostRules.mini.expMultiplier,
+    })
+  );
+  const noneLabel = computed(() =>
+    t("calc.boostKindNone", {
+      shards: boostRules.none.shardMultiplier,
+      exp: boostRules.none.expMultiplier,
     })
   );
 
@@ -461,7 +468,24 @@ export function useCalcStore(opts: {
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
     const dst = clampInt(v, r.srcLevel, 65, r.dstLevel);
-    updateRow(id, { dstLevel: dst });
+
+    const patch: Partial<CalcRow> = { dstLevel: dst };
+    if (boostKind.value === "none") {
+      const toNext = Math.max(0, calcExp(r.srcLevel, r.srcLevel + 1, r.expType));
+      const expGot = r.expRemaining !== undefined ? Math.max(0, toNext - r.expRemaining) : 0;
+      const res = calcExpAndCandyMixed({
+        srcLevel: r.srcLevel,
+        dstLevel: dst,
+        expType: r.expType,
+        nature: r.nature,
+        boost: "none",
+        boostCandy: 0,
+        expGot,
+      });
+      patch.boostCandyInput = res.normalCandy;
+      patch.mode = "candy";
+    }
+    updateRow(id, patch);
   }
   function nudgeDstLevel(id: string, delta: number) {
     const r = rows.value.find((x) => x.id === id);
@@ -538,7 +562,9 @@ export function useCalcStore(opts: {
     // アメブ個数を増やした結果、現在の目標Lvを超えるなら目標Lvを引き上げる
     // 減らした場合は目標Lvを維持（通常アメで補填する形になる）
     const reachableLevel = Math.max(r.srcLevel, sim.level);
-    const newDst = Math.max(r.dstLevel, reachableLevel);
+    // アメブ個数を増やした結果、現在の目標Lvを超えるなら目標Lvを引き上げる
+    // 通常モードの場合はアメ数に応じてLvを下げることも許可
+    const newDst = boostKind.value === "none" ? reachableLevel : Math.max(r.dstLevel, reachableLevel);
 
     updateRow(id, { boostCandyInput: n, mode: "candy", dstLevel: newDst });
   }
@@ -707,20 +733,43 @@ export function useCalcStore(opts: {
       dstLevel: dst,
       expType: expT,
       nature: nat,
-      boost: boostKind.value,
+      boost: boostKind.value as any /* cast to any to fix build error */,
       expGot,
-      boostExpRatio: clampInt(r.boostRatioPct, 0, 100, 100) / 100,
+      boostExpRatio: boostKind.value === "none" ? 0 : clampInt(r.boostRatioPct, 0, 100, 100) / 100,
     });
 
-    const byCandy = calcExpAndCandyMixed({
+
+
+    let byCandy = calcExpAndCandyMixed({
       srcLevel: src,
       dstLevel: dst,
       expType: expT,
       nature: nat,
-      boost: boostKind.value,
+      boost: boostKind.value as any,
       boostCandy: Math.max(0, Math.floor(Number(r.boostCandyInput) || 0)),
       expGot,
     });
+
+    if (r.mode === "candy" && boostKind.value === "none") {
+      const input = Math.max(0, Math.floor(Number(r.boostCandyInput) || 0));
+      const sim = calcLevelByCandy({
+        srcLevel: src,
+        dstLevel: 100,
+        expType: expT,
+        nature: nat,
+        boost: "none",
+        candy: input,
+        expGot,
+      });
+      const nextReq = calcExp(sim.level, sim.level + 1, expT);
+      const left = nextReq - sim.expGot;
+      byCandy = {
+        ...byCandy,
+        normalCandy: input,
+        boostCandy: 0,
+        expLeftNext: Math.max(0, left),
+      };
+    }
 
     const byBoostLevel = calcRowMixedByBoostLevel({ ...r, srcLevel: src, dstLevel: dst, expType: expT, nature: nat }, expGot);
 
@@ -736,7 +785,7 @@ export function useCalcStore(opts: {
     const base = requiredExp.exp;
     const uiRatioPct =
       r.mode === "ratio"
-        ? clampInt(r.boostRatioPct, 0, 100, 0)
+        ? boostKind.value === "none" ? 0 : clampInt(r.boostRatioPct, 0, 100, 0)
         : clampInt(base > 0 ? Math.round((mixed.expBoostApplied / base) * 100) : 0, 0, 100, 0);
 
     const boostOnly = calcLevelByCandy({
@@ -886,7 +935,11 @@ export function useCalcStore(opts: {
 
   const totalBoostCandyUsed = computed(() => rowsView.value.reduce((a, r) => a + (r.result.boostCandy || 0), 0));
   // アメブ種別による上限（デフォルト値）
-  const boostCandyDefaultCap = computed(() => (boostKind.value === "mini" ? 350 : 3500));
+  const boostCandyDefaultCap = computed(() => {
+    if (boostKind.value === "mini") return 350;
+    if (boostKind.value === "none") return 0;
+    return 3500;
+  });
   // 実際に使う上限（手入力の残数があればそれを使う）
   const boostCandyCap = computed(() => boostCandyRemaining.value ?? boostCandyDefaultCap.value);
   const boostCandyOver = computed(() => totalBoostCandyUsed.value - boostCandyCap.value);
@@ -1071,7 +1124,7 @@ export function useCalcStore(opts: {
         expType: p.expType,
         nature: p.nature,
         boostReachLevel: dstLevel,
-        boostRatioPct: 100,
+        boostRatioPct: boostKind.value === "none" ? 0 : 100,
         boostCandyInput: 0,
         mode: "ratio",
       };
@@ -1124,6 +1177,7 @@ export function useCalcStore(opts: {
 
     fullLabel,
     miniLabel,
+    noneLabel,
     activeRow,
     rowsView,
 

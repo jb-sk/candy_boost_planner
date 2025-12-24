@@ -28,7 +28,7 @@ export type CalcRowV1 = {
 export type CalcAutosaveV1 = {
   schemaVersion: 1;
   totalShards: number;
-  boostKind: Exclude<BoostEvent, "none">;
+  boostKind: BoostEvent;
   /** アメブ残数（未設定の場合はboostKindによる上限を使用） */
   boostCandyRemaining?: number;
   rows: CalcRowV1[];

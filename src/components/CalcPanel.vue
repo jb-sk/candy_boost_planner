@@ -10,6 +10,7 @@
           <select v-model="calc.boostKind.value" class="calcTop__input">
             <option value="full">{{ calc.fullLabel.value }}</option>
             <option value="mini">{{ calc.miniLabel.value }}</option>
+            <option value="none">{{ calc.noneLabel.value }}</option>
           </select>
         </div>
         <div class="calcTop__field">
@@ -23,6 +24,7 @@
             :placeholder="t('calc.boostRemainingPlaceholder', { cap: calc.fmtNum(calc.boostCandyDefaultCap.value) })"
             :title="t('calc.boostRemainingHelp')"
             @input="calc.onBoostCandyRemainingInput(($event.target as HTMLInputElement).value)"
+            :disabled="calc.boostKind.value === 'none'"
           />
         </div>
         <div class="calcTop__field">
@@ -505,6 +507,7 @@
                 @click.stop="calc.openBoostLevelPick(r.id)"
                 aria-haspopup="dialog"
                 :aria-expanded="calc.openLevelPickRowId.value === r.id && calc.openLevelPickKind.value === 'boost'"
+                :disabled="calc.boostKind.value === 'none'"
               >
                 {{ r.ui.boostReachLevel }}
               </button>
@@ -569,11 +572,12 @@
               step="1"
               class="field__range"
               @input="calc.onRowBoostRatio(r.id, ($event.target as HTMLInputElement).value)"
+              :disabled="calc.boostKind.value === 'none'"
             />
             <span class="field__sub">{{ r.ui.boostRatioPct }}%</span>
           </label>
           <label class="field field--sm">
-            <span class="field__label">{{ t("calc.row.boostCandyCount") }}</span>
+            <span class="field__label">{{ calc.boostKind.value === 'none' ? t("calc.row.boostCandyCountNormal") : t("calc.row.boostCandyCount") }}</span>
             <input
               :value="r.ui.boostCandyInput"
               type="number"
