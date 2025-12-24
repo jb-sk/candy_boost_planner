@@ -713,7 +713,7 @@ input.field__input--compact {
 .calcSum__head {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
+  /* justify-content: space-between; Removed to allow manual spacing with margins */
   gap: 10px;
 }
 .calcSum__head > .calcSum__k {
@@ -731,6 +731,7 @@ input.field__input--compact {
 .calcSum__k--right {
   white-space: nowrap;
   text-align: right;
+  margin-left: auto; /* Push to right */
 }
 .calcSum__overVal {
   flex: 0 0 auto;
@@ -745,17 +746,24 @@ input.field__input--compact {
   color: color-mix(in oklab, var(--accent) 80%, var(--ink) 20%);
 }
 /* モバイルで選択中ラベルを改行可能にする */
+/* モバイルレイアウト: 1行目: Main, 2行目: Selected + Cap */
 @media (max-width: 560px) {
   .calcSum__head {
-    flex-wrap: wrap; /* 上限などがはみ出す場合は折り返す */
-  }
-  .calcSum__k {
     flex-wrap: wrap;
-    row-gap: 2px;
+    row-gap: 2px; /* 縦方向の隙間 */
+  }
+  .calcSum__head > .calcSum__k:first-child {
+    flex: 1 1 100%; /* 1行目を占有 */
+    width: 100%;
   }
   .calcSum__selectedVal {
-    margin-left: 4px !important; /* 1行表示時にくっつきすぎないように少し空ける */
-    font-size: 11px !important; /* 少し小さくして改行されにくくする */
+    order: 2;
+    margin-left: 0 !important;
+    font-size: 11px !important;
+  }
+  .calcSum__k--right {
+    order: 3;
+    /* margin-left: auto is already set globally */
   }
 }
 .calcBar {
