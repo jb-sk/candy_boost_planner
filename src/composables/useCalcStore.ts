@@ -566,7 +566,7 @@ export function useCalcStore(opts: {
     updateRow(id, { boostRatioPct: pct, mode: "ratio" });
   }
   function onRowBoostCandy(id: string, v: string) {
-    const n = Math.max(0, Math.floor(Number(v) || 0));
+    let n = Math.max(0, Math.floor(Number(v) || 0));
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
 
@@ -584,6 +584,11 @@ export function useCalcStore(opts: {
       candy: n,
       expGot,
     });
+
+    // Lv65に到達していて余りがある場合、実際に使用した量にクランプ
+    if (sim.level >= 65 && sim.candyLeft > 0) {
+      n = sim.candyUsed;
+    }
 
     // アメブ個数を増やした結果、現在の目標Lvを超えるなら目標Lvを引き上げる
     // 減らした場合は目標Lvを維持（通常アメで補填する形になる）
