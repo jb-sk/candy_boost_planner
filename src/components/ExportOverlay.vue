@@ -10,7 +10,7 @@
       >
         <div class="exportHead">
           <div class="exportHead__top">
-            <div class="exportBrand">🍬 {{ boostKind !== 'none' ? t("calc.export.brandBoost") : t("calc.export.brand") }}</div>
+            <div class="exportBrand">🍬 {{ isBoostMode ? t("calc.export.brandBoost") : t("calc.export.brand") }}</div>
           </div>
 
           <div class="exportMeta">
@@ -49,51 +49,28 @@
 
         <div class="exportCalc">
           <div class="exportCalcTop">
-            <div class="exportStats" :class="{ 'exportStats--hasShortage': totals.shortage > 0, 'exportStats--normal': boostKind === 'none' }">
-              <div v-if="boostKind !== 'none'" class="statCard statCard--accent">
-                <div class="statCard__icon">🍬</div>
+            <div class="exportStats" :class="{ 'exportStats--hasShortage': totals.shortage > 0, 'exportStats--normal': !isBoostMode }">
+              <div
+                v-for="card in statCards"
+                :key="card.key"
+                class="statCard"
+                :class="{
+                  [`statCard--${card.variant}`]: card.variant,
+                  'statCard--danger': card.variant === 'danger',
+                }"
+              >
+                <div class="statCard__icon">{{ card.icon }}</div>
                 <div class="statCard__content">
-                  <div class="statCard__label">{{ t("calc.export.sumBoostTotal") }}</div>
-                  <div class="statCard__value" :class="{ 'statCard__value--danger': boostOver > 0 }">
-                    {{ fmtNum(boostUsed) }}
+                  <div class="statCard__label">{{ card.label }}</div>
+                  <div class="statCard__value" :class="{ 'statCard__value--danger': card.isDanger }">
+                    {{ fmtNum(card.value) }}
                   </div>
-                </div>
-              </div>
-              <div class="statCard">
-                <div class="statCard__icon">⚪</div>
-                <div class="statCard__content">
-                  <div class="statCard__label">{{ t("calc.export.sumNormalTotal") }}</div>
-                  <div class="statCard__value">{{ fmtNum(totals.normalCandy) }}</div>
-                </div>
-              </div>
-              <div v-if="boostKind !== 'none'" class="statCard" :class="{ 'statCard--danger': boostOver > 0 }">
-                <div class="statCard__icon">⚠️</div>
-                <div class="statCard__content">
-                  <div class="statCard__label">{{ t("calc.export.sumBoostUnused") }}</div>
-                  <div class="statCard__value">{{ fmtNum(boostUnused) }}</div>
-                </div>
-              </div>
-              <div class="statCard statCard--primary">
-                <div class="statCard__icon">💎</div>
-                <div class="statCard__content">
-                  <div class="statCard__label">{{ t("calc.export.sumShardsTotal") }}</div>
-                  <div class="statCard__value" :class="{ 'statCard__value--danger': shardsCap > 0 && shardsOver > 0 }">
-                    {{ fmtNum(shardsUsed) }}
-                  </div>
-                </div>
-              </div>
-
-              <div class="statCard statCard--danger" v-if="totals.shortage > 0">
-                <div class="statCard__icon">🔥</div>
-                <div class="statCard__content">
-                  <div class="statCard__label">{{ t("calc.export.sumShortage") }}</div>
-                  <div class="statCard__value statCard__value--danger">{{ fmtNum(totals.shortage) }}</div>
                 </div>
               </div>
             </div>
 
             <div class="exportBars" :class="{ 'exportBars--muted': shardsCap <= 0, 'exportBars--danger': shardsOver > 0 || boostOver > 0 }">
-              <div v-if="boostKind !== 'none'" class="exportBarBlock" :class="{ 'exportBarBlock--danger': boostOver > 0 }">
+              <div v-if="isBoostMode" class="exportBarBlock" :class="{ 'exportBarBlock--danger': boostOver > 0 }">
                 <div class="exportBarHead">
                   <div class="exportBarK">
                     {{ t("calc.boostCandyUsage", { pct: boostUsagePct }) }}
@@ -111,7 +88,7 @@
                   :aria-label="t('calc.boostCandyUsageAria', { pct: boostUsagePct, cap: fmtNum(boostCap) })"
                 >
                   <div class="exportBar__track">
-                    <div class="exportBar__fill exportBar__fill--candy" :style="{ width: `${boostFillPct}%` }"></div>
+                    <div class="exportBar__fill" :style="{ width: `${boostFillPct}%` }"></div>
                     <div v-if="boostOver > 0 && boostCap > 0" class="exportBar__over" :style="{ width: `${boostOverPct}%` }"></div>
                   </div>
                 </div>
@@ -149,14 +126,15 @@
             </div>
           </div>
 
-          <div class="exportList" :class="{ 'exportList--normal': boostKind === 'none' }">
+          <div class="exportList" :class="{ 'exportList--normal': !isBoostMode, 'exportList--hasShortage': totals.shortage > 0 }">
             <div class="exportList__head">
               <div class="exportList__col">{{ t("calc.export.colPokemon") }}</div>
               <div class="exportList__col u-align-center">{{ t("calc.row.srcLevel") }} → {{ t("calc.row.dstLevel") }}</div>
-              <div v-if="boostKind !== 'none'" class="exportList__col u-align-right">{{ t("calc.export.colBoost") }}</div>
-              <div v-if="boostKind !== 'none'" class="exportList__col u-align-right">{{ t("calc.export.colNormal") }}</div>
+              <div v-if="isBoostMode" class="exportList__col u-align-right">{{ t("calc.export.colBoost") }}</div>
+              <div v-if="isBoostMode" class="exportList__col u-align-right">{{ t("calc.export.colNormal") }}</div>
               <div class="exportList__col u-align-right">{{ t("calc.export.colTotal") }}</div>
               <div class="exportList__col u-align-right">{{ t("calc.export.colShards") }}</div>
+              <div v-if="totals.shortage > 0" class="exportList__col u-align-right">{{ t("calc.export.colShortage") }}</div>
             </div>
 
             <div v-for="row in rows" :key="row.id" class="exportList__row">
@@ -171,11 +149,11 @@
                   <span class="exportList__lvVal">{{ row.dstLevel }}</span>
                 </div>
               </div>
-              <div v-if="boostKind !== 'none'" class="exportList__col u-align-right exportList__numCol">
+              <div v-if="isBoostMode" class="exportList__col u-align-right exportList__numCol">
                 <span class="u-mobile-label">{{ t("calc.export.colBoost") }}</span>
                 <span class="calcRow__num">{{ fmtNum(row.boostCandy) }}</span>
               </div>
-              <div v-if="boostKind !== 'none'" class="exportList__col u-align-right exportList__numCol">
+              <div v-if="isBoostMode" class="exportList__col u-align-right exportList__numCol">
                 <span class="u-mobile-label">{{ t("calc.export.colNormal") }}</span>
                 <span class="calcRow__num">{{ fmtNum(row.normalCandy) }}</span>
               </div>
@@ -187,6 +165,10 @@
                 <span class="u-mobile-label">{{ t("calc.export.colShards") }}</span>
                 <span class="calcRow__num">{{ fmtNum(row.shards) }}</span>
               </div>
+              <div v-if="totals.shortage > 0" class="exportList__col u-align-right exportList__numCol">
+                <span class="u-mobile-label">{{ t("calc.export.colShortage") }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': (row.shortage ?? 0) > 0 }">{{ (row.shortage ?? 0) > 0 ? fmtNum(row.shortage ?? 0) : '-' }}</span>
+              </div>
             </div>
 
             <div class="exportList__row exportList__row--total" aria-label="total">
@@ -194,11 +176,11 @@
                 <span class="exportList__name" aria-hidden="true"></span>
               </div>
               <div class="exportList__col u-align-center exportList__lvCol"></div>
-              <div v-if="boostKind !== 'none'" class="exportList__col u-align-right exportList__numCol">
+              <div v-if="isBoostMode" class="exportList__col u-align-right exportList__numCol">
                 <span class="u-mobile-label">{{ t("calc.export.colBoost") }}</span>
-                <span class="calcRow__num" :class="{ 'calcRow__num--danger': boostOver > 0 }">{{ fmtNum(totals.boostCandy) }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': totals.boostCandy > boostCap }">{{ fmtNum(totals.boostCandy) }}</span>
               </div>
-              <div v-if="boostKind !== 'none'" class="exportList__col u-align-right exportList__numCol">
+              <div v-if="isBoostMode" class="exportList__col u-align-right exportList__numCol">
                 <span class="u-mobile-label">{{ t("calc.export.colNormal") }}</span>
                 <span class="calcRow__num">{{ fmtNum(totals.normalCandy) }}</span>
               </div>
@@ -209,6 +191,10 @@
               <div class="exportList__col u-align-right exportList__numCol">
                 <span class="u-mobile-label">{{ t("calc.export.colShards") }}</span>
                 <span class="calcRow__num" :class="{ 'calcRow__num--danger': shardsCap > 0 && shardsOver > 0 }">{{ fmtNum(totals.shards) }}</span>
+              </div>
+              <div v-if="totals.shortage > 0" class="exportList__col u-align-right exportList__numCol">
+                <span class="u-mobile-label">{{ t("calc.export.colShortage") }}</span>
+                <span class="calcRow__num calcRow__num--danger">{{ fmtNum(totals.shortage) }}</span>
               </div>
             </div>
           </div>
@@ -332,6 +318,78 @@ const exportCsvMenuOpen = ref(false);
 function fmtNum(n: number): string {
   return new Intl.NumberFormat(locale.value as any).format(n);
 }
+
+const isBoostMode = computed(() => props.boostKind !== "none");
+
+type StatCardDef = {
+  key: string;
+  icon: string;
+  label: string;
+  value: number;
+  variant?: "accent" | "primary" | "danger";
+  isDanger?: boolean;
+  show: boolean;
+};
+
+const statCards = computed<StatCardDef[]>(() => {
+  const cards: StatCardDef[] = [];
+
+  if (isBoostMode.value) {
+    cards.push({
+      key: "boost",
+      icon: "🍬",
+      label: t("calc.export.sumBoostTotal"),
+      value: props.totals.boostCandy,
+      variant: "accent",
+      // 個数指定を反映した合計がキャップを超えているか判定
+      isDanger: props.totals.boostCandy > props.boostCap,
+      show: true,
+    });
+  }
+
+  cards.push({
+    key: "normal",
+    icon: "⚪",
+    label: t("calc.export.sumNormalTotal"),
+    value: props.totals.normalCandy,
+    show: true,
+  });
+
+  if (isBoostMode.value) {
+    cards.push({
+      key: "unused",
+      icon: "⚠️",
+      label: t("calc.export.sumBoostUnused"),
+      value: props.boostUnused,
+      isDanger: props.boostOver > 0,
+      show: true,
+    });
+  }
+
+  cards.push({
+    key: "shards",
+    icon: "💎",
+    label: t("calc.export.sumShardsTotal"),
+    value: props.shardsUsed,
+    variant: "primary",
+    isDanger: props.shardsCap > 0 && props.shardsOver > 0,
+    show: true,
+  });
+
+  if (props.totals.shortage > 0) {
+    cards.push({
+      key: "shortage",
+      icon: "🔥",
+      label: t("calc.export.sumShortage"),
+      value: props.totals.shortage,
+      variant: "danger",
+      isDanger: true,
+      show: true,
+    });
+  }
+
+  return cards;
+});
 
 const exportMonthLabel = computed(() => {
   const d = new Date();
@@ -527,7 +585,6 @@ async function downloadCalcExportPng() {
   background: transparent;
   border: 0;
   box-shadow: none;
-  font-family: var(--font-body);
   font-size: 12px;
   text-decoration: underline dotted;
   cursor: pointer;
@@ -562,6 +619,8 @@ async function downloadCalcExportPng() {
   box-shadow: 0 4px 12px rgba(74, 66, 56, 0.1);
   padding: 16px 22px 16px;
   position: relative;
+  font-family: var(--font-body);
+  color: var(--ink);
 }
 .exportSheet--capture {
   border: 0;
@@ -644,7 +703,6 @@ async function downloadCalcExportPng() {
   width: 100%;
   text-align: left;
   cursor: pointer;
-  font-family: var(--font-body);
   font-size: 12px;
   padding: 9px 10px;
   border-radius: 12px;
@@ -655,7 +713,6 @@ async function downloadCalcExportPng() {
 .exportCsvMenu__item:hover { background: color-mix(in oklab, var(--accent) 10%, var(--paper)); }
 .exportStatus {
   margin: 0 0 10px;
-  font-family: var(--font-body);
   font-size: 12px;
   color: color-mix(in oklab, var(--ink) 62%, transparent);
 }
@@ -665,7 +722,8 @@ async function downloadCalcExportPng() {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
-  margin: 15px 10px 12px;
+  margin: 15px auto 12px;
+  max-width: 720px;
 }
 .exportStats--hasShortage {
   grid-template-columns: repeat(5, 1fr);
@@ -702,13 +760,12 @@ async function downloadCalcExportPng() {
   font-weight: 800;
   font-size: 30px;
   line-height: 1;
-  color: var(--ink);
 }
 .statCard__value--danger { color: var(--danger); }
 
 /* Capture mode: keep card shape (outline) but drop heavy shadows to avoid "dragged" artifacts */
 .exportSheet--capture .statCard {
-  box-shadow: none !important;
+  box-shadow: none;
   outline: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
   outline-offset: -1px;
 }
@@ -726,7 +783,7 @@ async function downloadCalcExportPng() {
 }
 .exportBars--muted { opacity: 0.85; }
 .exportBarHead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.exportBarK { font-family: var(--font-body); font-size: 12px; color: color-mix(in oklab, var(--ink) 68%, transparent); }
+.exportBarK { font-size: 12px; color: color-mix(in oklab, var(--ink) 68%, transparent); }
 .exportBarK--right { white-space: nowrap; text-align: right; }
 .exportBarOverVal { color: var(--danger); font-weight: 700; margin-left: 4px; }
 .exportBar {
@@ -743,13 +800,6 @@ async function downloadCalcExportPng() {
   position: absolute;
   inset: 0 auto 0 0;
   width: 0%;
-  background: linear-gradient(
-    90deg,
-    color-mix(in oklab, var(--accent) 74%, var(--paper) 26%),
-    color-mix(in oklab, var(--accent-warm) 56%, var(--paper) 44%)
-  );
-}
-.exportBar__fill--candy {
   background: linear-gradient(
     90deg,
     color-mix(in oklab, var(--accent) 74%, var(--paper) 26%),
@@ -778,14 +828,15 @@ async function downloadCalcExportPng() {
   border: 1px solid color-mix(in oklab, var(--ink) 6%, transparent);
   overflow: hidden;
   margin: 20px 10px 0;
+  font-size: 13px;
 }
 .exportList__head {
   display: grid;
   grid-template-columns: 2fr 0.9fr 0.7fr 0.7fr 0.7fr 1.5fr;
   gap: 8px;
   padding: 8px 16px;
-  background: #f7f7f7;
-  border-bottom: 2px solid #e5e7eb;
+  background: color-mix(in oklab, var(--ink) 3%, transparent);
+  border-bottom: 2px solid color-mix(in oklab, var(--ink) 10%, transparent);
   font-family: var(--font-heading);
   font-weight: 800;
   font-size: 11px;
@@ -798,12 +849,18 @@ async function downloadCalcExportPng() {
   gap: 8px;
   padding: 8px 16px;
   align-items: center;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
 }
 .exportList__row:last-child { border-bottom: 0; }
-.exportList__row:nth-child(even) { background: #fafafa; }
-.exportList__row--total { background: #f7f7f7; border-top: 2px solid #e5e7eb; }
-.exportList__col { min-width: 0; font-size: 13px; font-weight: 500; color: var(--ink); }
+.exportList__row:nth-child(even) { background: color-mix(in oklab, var(--ink) 2%, transparent); }
+.exportList__row--total { background: color-mix(in oklab, var(--ink) 3%, transparent); border-top: 2px solid color-mix(in oklab, var(--ink) 10%, transparent); }
+
+/* アメ不足列がある場合は7列 */
+.exportList--hasShortage .exportList__head,
+.exportList--hasShortage .exportList__row {
+  grid-template-columns: 2fr 0.9fr 0.7fr 0.7fr 0.7fr 1.2fr 0.7fr;
+}
+.exportList__col { min-width: 0; font-weight: 500; }
 .exportList__col.u-align-right { text-align: right; }
 .exportList__col.u-align-center { text-align: center; }
 .exportList__nameCol { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -813,7 +870,7 @@ async function downloadCalcExportPng() {
   font-weight: 800;
   padding: 2px 6px;
   border-radius: 4px;
-  background: #f0ebe5;
+  background: color-mix(in oklab, var(--ink) 6%, transparent);
   color: color-mix(in oklab, var(--ink) 65%, transparent);
   white-space: nowrap;
 }
@@ -824,13 +881,13 @@ async function downloadCalcExportPng() {
   gap: 6px;
   font-weight: 800;
   font-family: var(--font-heading);
-  background: #f5f2ef;
+  background: color-mix(in oklab, var(--ink) 4%, transparent);
   padding: 4px 8px;
   border-radius: 6px;
   min-width: 60px;
 }
 .exportList__arrow { color: color-mix(in oklab, var(--ink) 30%, transparent); font-size: 10px; }
-.exportList__numCol .calcRow__num { font-size: 16px; color: #333; }
+.exportList__numCol .calcRow__num { font-size: 16px; }
 .exportList__numCol .calcRow__num.calcRow__num--danger { color: var(--danger); }
 .u-mobile-label { display: none; }
 
@@ -898,7 +955,7 @@ async function downloadCalcExportPng() {
   .exportList__nameCol {
     grid-column: 1 / -1;
     margin-bottom: 4px;
-    border-bottom: 1px dashed #e5e7eb;
+    border-bottom: 1px dashed color-mix(in oklab, var(--ink) 10%, transparent);
     padding-bottom: 8px;
     width: 100%;
   }
@@ -914,18 +971,29 @@ async function downloadCalcExportPng() {
     white-space: nowrap;
   }
   .exportList__numCol .calcRow__num { font-size: 15px; }
+
+  /* Mobile Normal Mode */
+  .exportStats--normal {
+    gap: 4px; /* 隙間を詰める */
+  }
+  .exportStats--normal > .statCard {
+    padding: 8px 4px; /* パディングを詰める */
+  }
+  .exportStats--normal > .statCard:nth-child(2) {
+    flex: 1.3; /* かけら（中央）を少し広めに */
+  }
+  .exportStats--normal .statCard__value {
+    font-size: 24px; /* 数字サイズを少し下げる（デフォルト32px） */
+  }
+
+  /* 通常モード（モバイル）: Lv, Total, Shards (Pokemonは1行目) */
+  .exportList--normal .exportList__row {
+    grid-template-columns: 1fr 1fr 1.5fr;
+    padding: 10px; /* モバイルのデフォルトに戻す */
+  }
 }
 
 /* --- Export Ranking (Universal Candy Usage) --- */
-.exportRanking {
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-  border: 1px solid color-mix(in oklab, var(--ink) 6%, transparent);
-  overflow: hidden;
-  margin: 20px 10px 0;
-  padding: 16px 18px;
-}
 /* ランキングセクションをカードスタイルにする */
 .exportRanking {
   display: flex;
@@ -943,7 +1011,6 @@ async function downloadCalcExportPng() {
   font-family: var(--font-heading);
   font-weight: 800;
   font-size: 16px;
-  color: var(--ink);
   margin-bottom: 12px;
   display: flex;
   align-items: center;
@@ -960,7 +1027,6 @@ async function downloadCalcExportPng() {
 }
 .exportRanking__total {
   font-size: 13px;
-  color: var(--ink);
   background: color-mix(in oklab, var(--accent) 8%, transparent);
   margin-bottom: 16px;
   padding: 10px 14px;
@@ -995,7 +1061,6 @@ async function downloadCalcExportPng() {
   font-family: var(--font-heading);
   font-weight: 700;
   font-size: 14px;
-  color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1006,7 +1071,6 @@ async function downloadCalcExportPng() {
   font-family: var(--font-heading);
   font-weight: 700;
   font-size: 15px;
-  color: #222;
   text-align: right;
   grid-column: 2 / 3;
   grid-row: 1 / 2;
@@ -1047,7 +1111,7 @@ async function downloadCalcExportPng() {
   align-items: center;
   font-weight: 700;
   font-size: 14px;
-  color: #222;
+  color: var(--ink);
 }
 .exportRanking__itemLabel {
   display: inline-block;
@@ -1095,12 +1159,17 @@ async function downloadCalcExportPng() {
 /* When capturing PNG, never include action links in the exported image */
 /* --- Normal Mode Adjustments --- */
 .exportStats--normal {
-  display: flex !important;
+  display: flex;
   gap: 12px;
 }
 .exportStats--normal > .statCard {
   flex: 1;
   min-width: 0;
+  justify-content: center;
+  text-align: center;
+}
+.exportStats--normal .statCard__icon {
+  display: none;
 }
 
 /* 通常モード（4列）: Pokemon, Lv, Total, Shards */
@@ -1111,14 +1180,13 @@ async function downloadCalcExportPng() {
   padding-right: 32px;
 }
 
-/* Mobile Normal Mode */
-@media (max-width: 560px) {
-  /* 通常モード（モバイル）: Lv, Total, Shards (Pokemonは1行目) */
-  .exportList--normal .exportList__row {
-    grid-template-columns: 1fr 1fr 1.5fr;
-    padding: 10px; /* モバイルのデフォルトに戻す */
-  }
+/* 通常モード+アメ不足（5列）: Pokemon, Lv, Total, Shards, Shortage */
+.exportList--normal.exportList--hasShortage .exportList__head,
+.exportList--normal.exportList--hasShortage .exportList__row {
+  grid-template-columns: 2fr 1fr 1fr 1.2fr 0.8fr;
 }
+
+
 
 .exportSheet--capture .exportActions {
   display: none !important;

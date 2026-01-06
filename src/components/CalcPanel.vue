@@ -7,7 +7,7 @@
       <div class="calcTop__row">
         <div class="calcTop__field">
           <span class="calcTop__label">{{ t("calc.boostKindLabel") }}</span>
-          <select v-model="calc.boostKind.value" class="calcTop__input">
+          <select v-model="calc.boostKind.value" class="field__input field__input--compact" style="width: auto;">
             <option value="full">{{ calc.fullLabel.value }}</option>
             <option value="mini">{{ calc.miniLabel.value }}</option>
             <option value="none">{{ calc.noneLabel.value }}</option>
@@ -20,7 +20,7 @@
             type="text"
             inputmode="numeric"
             autocomplete="off"
-            class="calcTop__input calcTop__input--remaining"
+            class="field__input field__input--sm field__input--compact"
             :placeholder="t('calc.boostRemainingPlaceholder', { cap: calc.fmtNum(calc.boostCandyDefaultCap.value) })"
             :title="t('calc.boostRemainingHelp')"
             @input="calc.onBoostCandyRemainingInput(($event.target as HTMLInputElement).value)"
@@ -34,39 +34,39 @@
             type="text"
             inputmode="numeric"
             autocomplete="off"
-            class="calcTop__input calcTop__input--shards"
+            class="field__input field__input--sm field__input--compact"
             @input="calc.onTotalShardsInput(($event.target as HTMLInputElement).value)"
           />
         </div>
         <div class="calcTop__field calcTop__field--candy">
           <span class="calcTop__label">{{ t("calc.candy.universalLabel") }}</span>
-          <div class="calcTop__candyInputs">
-            <label class="calcTop__candyInput">
-              <span class="calcTop__candyLabel">{{ t("calc.candy.universalS") }}</span>
+          <div class="candyInputs">
+            <label class="candyInput candyInput--md">
+              <span class="candyInput__label">{{ t("calc.candy.universalS") }}</span>
               <input
                 type="number"
                 min="0"
-                class="calcTop__input calcTop__input--candy"
+                class="field__input field__input--xs field__input--compact"
                 :value="candyStore.universalCandy.value.s"
                 @input="candyStore.updateUniversalCandy({ s: parseInt(($event.target as HTMLInputElement).value) || 0 })"
               />
             </label>
-            <label class="calcTop__candyInput">
-              <span class="calcTop__candyLabel">{{ t("calc.candy.universalM") }}</span>
+            <label class="candyInput candyInput--md">
+              <span class="candyInput__label">{{ t("calc.candy.universalM") }}</span>
               <input
                 type="number"
                 min="0"
-                class="calcTop__input calcTop__input--candy"
+                class="field__input field__input--xs field__input--compact"
                 :value="candyStore.universalCandy.value.m"
                 @input="candyStore.updateUniversalCandy({ m: parseInt(($event.target as HTMLInputElement).value) || 0 })"
               />
             </label>
-            <label class="calcTop__candyInput">
-              <span class="calcTop__candyLabel">{{ t("calc.candy.universalL") }}</span>
+            <label class="candyInput candyInput--md">
+              <span class="candyInput__label">{{ t("calc.candy.universalL") }}</span>
               <input
                 type="number"
                 min="0"
-                class="calcTop__input calcTop__input--candy"
+                class="field__input field__input--xs field__input--compact"
                 :value="candyStore.universalCandy.value.l"
                 @input="candyStore.updateUniversalCandy({ l: parseInt(($event.target as HTMLInputElement).value) || 0 })"
               />
@@ -84,7 +84,7 @@
               <input
                 type="number"
                 min="0"
-                class="field__input field__input--xs"
+                class="field__input field__input--xs field__input--compact"
                 :value="candyStore.getTypeCandyFor(typeName).s"
                 @input="candyStore.updateTypeCandy(typeName, { s: parseInt(($event.target as HTMLInputElement).value) || 0 })"
               />
@@ -94,7 +94,7 @@
               <input
                 type="number"
                 min="0"
-                class="field__input field__input--xs"
+                class="field__input field__input--xs field__input--compact"
                 :value="candyStore.getTypeCandyFor(typeName).m"
                 @input="candyStore.updateTypeCandy(typeName, { m: parseInt(($event.target as HTMLInputElement).value) || 0 })"
               />
@@ -234,6 +234,9 @@
       </button>
     </div>
 
+
+
+
     <div class="calcSlots">
       <div class="slotTabs">
         <button
@@ -241,59 +244,16 @@
           :key="i"
           class="slotTab"
           :class="{ 'slotTab--active': calc.activeSlotTab.value === i - 1 }"
-          @click="calc.activeSlotTab.value = i - 1"
+          @click="calc.switchToSlot(i - 1)"
         >
           {{ t("calc.slot", { n: i }) }}
-          <span v-if="calc.slots.value[i - 1]" class="tab__count" title="保存済み">●</span>
-          <span v-else class="tab__count" title="空">-</span>
         </button>
-      </div>
-
-      <div class="slotContent" :class="{ 'calcSlot--empty': !calc.slots.value[calc.activeSlotTab.value] }">
-        <div class="calcSlot__actions">
-          <button
-            class="btn btn--ghost btn--xs calcSlot__btn"
-            type="button"
-            @click="calc.onSlotLoad(calc.activeSlotTab.value)"
-            :disabled="!calc.slots.value[calc.activeSlotTab.value]"
-          >
-            {{ t("common.load") }}
-          </button>
-          <button
-            class="btn btn--xs calcSlot__btn"
-            type="button"
-            @click="calc.onSlotSave(calc.activeSlotTab.value)"
-            :disabled="!calc.rowsView.value.length"
-          >
-            {{ t("common.save") }}
-          </button>
-          <button
-            class="btn btn--ghost btn--xs calcSlot__btn"
-            type="button"
-            @click="calc.onSlotDelete(calc.activeSlotTab.value)"
-            :disabled="!calc.slots.value[calc.activeSlotTab.value]"
-          >
-            {{ t("common.delete") }}
-          </button>
-        </div>
-        <div class="calcSlot__state">
-          {{
-            calc.slots.value[calc.activeSlotTab.value]
-              ? calc.formatSlotSavedAt(calc.slots.value[calc.activeSlotTab.value]?.savedAt)
-              : t("calc.slotEmpty")
-          }}
-        </div>
       </div>
     </div>
 
-    <p class="calcHint">{{ t("calc.addHint") }}</p>
-
-    <details class="calcAllocInfo">
-      <summary class="calcAllocInfo__title">{{ t("calc.candyAllocTitle") }}</summary>
-      <pre class="calcAllocInfo__desc">{{ t("calc.candyAllocDesc") }}</pre>
-    </details>
-
-    <div class="calcRows" v-if="calc.rowsView.value.length">
+    <!-- コンテンツエリアのラッパー -->
+    <div class="calcSlotContainer">
+      <div class="calcRows" v-if="calc.rowsView.value.length">
       <div
         v-for="r in calc.rowsView.value"
         :key="r.id"
@@ -322,6 +282,8 @@
             >
               ⋮⋮
             </button>
+            <span v-if="r.nature === 'up'" class="calcRow__natureIcon calcRow__natureIcon--up" title="EXP+20%">▲</span>
+            <span v-else-if="r.nature === 'down'" class="calcRow__natureIcon calcRow__natureIcon--down" title="EXP-20%">▼</span>
             <div class="calcRow__title">{{ r.title }}</div>
           </div>
           <div class="calcRow__headRight">
@@ -496,17 +458,6 @@
               @input="candyStore.updateSpeciesCandy(getRowPokedexId(r)!, parseInt(($event.target as HTMLInputElement).value) || 0)"
             />
           </label>
-          <label class="field field--sm">
-            <span class="field__label">{{ t("calc.row.nature") }}</span>
-            <NatureSelect
-              :model-value="r.nature"
-              @update:model-value="(val) => calc.onRowNature(r.id, val)"
-              :label="t('calc.row.nature')"
-              :label-normal="t('calc.row.natureNormal')"
-              :label-up="t('calc.row.natureUp')"
-              :label-down="t('calc.row.natureDown')"
-            />
-          </label>
 
           <label class="field field--sm field--boost-control" :class="{ 'is-none': calc.boostKind.value === 'none' }">
             <span class="field__label">{{ calc.boostKind.value === 'none' ? t("calc.row.boostReachLevelNormal") : t("calc.row.boostReachLevel") }}</span>
@@ -604,33 +555,183 @@
               @blur="handleInputBlur"
             />
           </label>
+          <div class="field field--sm">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0px; white-space: nowrap;">
+              <span class="field__label" style="margin-bottom: 0;">{{ t("calc.row.candyTarget") }}</span>
+              <label class="field-checkbox-mini" :class="{ 'is-disabled': r.candyTarget == null }" :title="t('calc.row.reverseCalcMode')">
+                <input
+                  type="checkbox"
+                  :checked="r.isReverseCalcMode"
+                  :disabled="r.candyTarget == null"
+                  @change="calc.onRowReverseCalcMode(r.id, ($event.target as HTMLInputElement).checked)"
+                />
+                <span style="font-weight: bold; font-size: 14px; line-height: 1;">{{ t("calc.row.reverseCalcModeShort") }}</span>
+              </label>
+            </div>
+            <input
+              type="number"
+              min="0"
+              class="field__input"
+              :value="r.candyTarget ?? ''"
+              :placeholder="t('calc.row.candyTargetNone')"
+              @input="onCandyTargetInput(r.id, ($event.target as HTMLInputElement).value)"
+            />
+          </div>
         </div>
 
-        <div class="calcRow__result calcRow__result--inline">
-          <span class="calcRow__res">
-            <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
-            <span class="calcRow__num">{{ calc.fmtNum(r.result.boostCandy) }}</span>
-          </span>
-          <span class="calcRow__res">
-            <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
-            <span class="calcRow__num">{{ calc.fmtNum(r.result.normalCandy) }}</span>
-          </span>
-          <span class="calcRow__res">
-            <span class="calcRow__k">{{ t("calc.row.candyTotal") }}</span>
-            <span class="calcRow__num">{{ calc.fmtNum(r.result.boostCandy + r.result.normalCandy) }}</span>
-          </span>
-          <span class="calcRow__res">
-            <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
-            <span class="calcRow__num">{{ calc.fmtNum(r.result.shards) }}</span>
-          </span>
-          <span class="calcRow__res">
-            <span class="calcRow__k">{{ t("calc.row.candySupply") }}</span>
-            <span class="calcRow__num calcRow__num--text">{{ getCandySupplyText(r) }}</span>
-          </span>
+
+        <!-- 必要/使用の折りたたみ表示 -->
+        <div class="calcRow__resultCollapse">
+          <!-- 必要行（クリックで展開） -->
+          <div
+            class="calcRow__resultRow calcRow__resultRow--required"
+            :class="{ 'is-expanded': isExpanded(r.id) }"
+            @click="toggleExpand(r.id)"
+          >
+            <span class="calcRow__expandIcon">{{ isExpanded(r.id) ? '▼' : '▶' }}</span>
+            <span class="calcRow__resultLabel">{{ t("calc.row.required") }}</span>
+            <span class="calcRow__resultItems">
+              <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
+                <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isBoostNotAllocated(r) }">{{ calc.fmtNum(r.result.boostCandy) }}</span>
+              </span>
+              <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
+                <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isNormalCandyShortageForTarget(r) }">{{ calc.fmtNum(r.result.normalCandy) }}</span>
+              </span>
+              <span class="calcRow__res">
+                <span class="calcRow__k">{{ t("calc.row.candyTotal") }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isTargetOverage(r) }">{{ calc.fmtNum(r.result.boostCandy + r.result.normalCandy) }}</span>
+              </span>
+              <span class="calcRow__res">
+                <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isShardsShortageForTarget(r) }">{{ calc.fmtNum(r.result.shards) }}</span>
+              </span>
+              <span class="calcRow__res" v-if="hasItemUsage(r)">
+                <span class="calcRow__k">{{ t("calc.row.itemRequired") }}</span>
+                <span class="calcRow__num calcRow__num--text">
+                  <template v-for="(item, idx) in getItemUsageItems(r)" :key="idx">
+                    <span :class="{ 'calcRow__num--danger': item.isDanger }">{{ item.label }} {{ item.value }}</span>
+                    <span v-if="idx < getItemUsageItems(r).length - 1">, </span>
+                  </template>
+                </span>
+              </span>
+            </span>
+          </div>
+
+
+          <!-- 個数指定行と到達可能行をグループ化して表示（隙間をなくすため） -->
+          <div style="display: flex; flex-direction: column; gap: 0;">
+            <!-- 個数指定行（個数指定ありかつ不足があり、在庫∞モードではない場合のみ表示） -->
+            <div
+              v-if="isExpanded(r.id) && hasLimit(r) && !r.isReverseCalcMode && getTheoreticalResources(r) && getRowAllocation(r.id)?.primaryShortageType !== null"
+              class="calcRow__resultRow calcRow__resultRow--used"
+              style="margin-bottom: 0; padding-bottom: 4px; border-bottom-left-radius: 0; border-bottom-right-radius: 0;"
+            >
+              <span class="calcRow__expandIcon" style="visibility: hidden"></span>
+              <span class="calcRow__resultLabel">{{ t("calc.row.candyTargetRow") }}</span>
+              <span class="calcRow__resultItems">
+                <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
+                  <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': getRowAllocation(r.id)!.boostShortage > 0 }">{{ calc.fmtNum(getTheoreticalResources(r)!.boostCandy) }}</span>
+                </span>
+                <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
+                  <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isNormalCandyShortageForLimit(r) }">{{ calc.fmtNum(getTheoreticalResources(r)!.normalCandy) }}</span>
+                </span>
+                <span class="calcRow__res">
+                  <span class="calcRow__k">{{ t("calc.row.candyTotal") }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': getRowAllocation(r.id)!.primaryShortageType === 'candy' }">{{ calc.fmtNum(getTheoreticalResources(r)!.candy) }}</span>
+                </span>
+                <span class="calcRow__res">
+                  <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': getRowAllocation(r.id)!.shardsShortage > 0 }">{{ calc.fmtNum(getTheoreticalResources(r)!.shards) }}</span>
+                </span>
+                <span class="calcRow__res" v-if="getLimitItemUsageItems(r).length > 0">
+                  <span
+                    class="calcRow__k calcRow__k--link"
+                    @click.stop="toggleLimitItems(r.id)"
+                    style="cursor: pointer; text-decoration: underline;"
+                  >{{ t("calc.row.itemRequired") }}</span>
+                </span>
+                <span class="calcRow__res" v-if="isLimitItemsExpanded(r.id) && getLimitItemUsageItems(r).length > 0">
+                  <span class="calcRow__num calcRow__num--text">
+                    <template v-for="(item, idx) in getLimitItemUsageItems(r)" :key="idx">
+                      <span :class="{ 'calcRow__num--danger': item.isDanger }">{{ item.label }} {{ item.value }}</span>
+                      <span v-if="idx < getLimitItemUsageItems(r).length - 1">, </span>
+                    </template>
+                  </span>
+                </span>
+              </span>
+            </div>
+
+
+            <!-- 使用行（展開時のみ表示） -->
+            <div
+              v-if="isExpanded(r.id) && getRowAllocation(r.id)"
+              class="calcRow__resultRow calcRow__resultRow--used"
+              :style="hasLimit(r) && getTheoreticalResources(r) && getTheoreticalShortageType(r) !== null ? 'margin-top: 0; padding-top: 4px; border-top-left-radius: 0; border-top-right-radius: 0;' : ''"
+            >
+              <span class="calcRow__expandIcon" style="visibility: hidden"></span>
+              <span class="calcRow__resultLabel">{{ t("calc.row.used") }}</span>
+              <span class="calcRow__resultItems">
+                <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
+                  <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': getRowAllocation(r.id)!.boostShortage > 0 }">{{ calc.fmtNum(getRowAllocation(r.id)!.boostCandyUsed) }}</span>
+                </span>
+                <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
+                  <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isNormalCandyShortageForReachable(r) }">{{ calc.fmtNum(getRowAllocation(r.id)!.normalCandyUsed) }}</span>
+                </span>
+                <span class="calcRow__res">
+                  <span class="calcRow__k">{{ t("calc.row.candyTotal") }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': getRowAllocation(r.id)!.primaryShortageType === 'candy' }">{{ calc.fmtNum(getRowAllocation(r.id)!.boostCandyUsed + getRowAllocation(r.id)!.normalCandyUsed) }}</span>
+                </span>
+                <span class="calcRow__res">
+                  <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': getRowAllocation(r.id)!.shardsShortage > 0 }">{{ calc.fmtNum(getRowAllocation(r.id)!.shardsUsed) }}</span>
+                </span>
+                <span class="calcRow__res" v-if="getResultItemUsageItems(r).length > 0">
+                  <span class="calcRow__k">{{ t("calc.row.itemUsage") }}</span>
+                  <span class="calcRow__num calcRow__num--text">
+                    <template v-for="(item, idx) in getResultItemUsageItems(r)" :key="idx">
+                      <span :class="{ 'calcRow__num--danger': item.isDanger }">{{ item.label }} {{ item.value }}</span>
+                      <span v-if="idx < getResultItemUsageItems(r).length - 1">, </span>
+                    </template>
+                  </span>
+                </span>
+                <!-- 主要な不足要因（到達Lvの前に表示） -->
+                <span class="calcRow__res" v-if="getRowAllocation(r.id)!.primaryShortageType === 'candy'">
+                  <span class="calcRow__k calcRow__k--danger">{{ t("calc.row.candyShortage") }}</span>
+                  <span class="calcRow__num calcRow__num--danger">{{ getRowAllocation(r.id)!.remaining }}</span>
+                </span>
+                <span class="calcRow__res" v-if="getRowAllocation(r.id)!.primaryShortageType === 'boost'">
+                  <span class="calcRow__k calcRow__k--danger">{{ t("calc.row.boostCandyShortage") }}</span>
+                  <span class="calcRow__num calcRow__num--danger">{{ getRowAllocation(r.id)!.boostShortage }}</span>
+                </span>
+                <span class="calcRow__res" v-if="getRowAllocation(r.id)!.primaryShortageType === 'shards'">
+                  <span class="calcRow__k calcRow__k--danger">{{ t("calc.row.shardsShortage") }}</span>
+                  <span class="calcRow__num calcRow__num--danger">{{ calc.fmtNum(getRowAllocation(r.id)!.shardsShortage) }}</span>
+                </span>
+                <span class="calcRow__res">
+                  <span class="calcRow__k calcRow__k--info">{{ t("calc.row.reachedLv") }}</span>
+                  <span class="calcRow__num calcRow__num--info">{{ getRowAllocation(r.id)!.reachedLevel }}</span>
+                  <span class="calcRow__k calcRow__k--info" v-if="getRowAllocation(r.id)!.reachedLevelExpLeft > 0" style="margin-left: 4px;">({{ t("calc.row.expRemaining") }}</span>
+                  <span class="calcRow__num calcRow__num--info" v-if="getRowAllocation(r.id)!.reachedLevelExpLeft > 0">{{ calc.fmtNum(getRowAllocation(r.id)!.reachedLevelExpLeft) }}</span><span class="calcRow__k calcRow__k--info" v-if="getRowAllocation(r.id)!.reachedLevelExpLeft > 0">)</span>
+                </span>
+                <span class="calcRow__res" v-if="getRowAllocation(r.id)!.remainingExp > 0">
+                  <span class="calcRow__k calcRow__k--info">{{ t("calc.row.remainingExp") }}</span>
+                  <span class="calcRow__num calcRow__num--info">{{ calc.fmtNum(getRowAllocation(r.id)!.remainingExp) }}</span>
+                </span>
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
     <p class="boxEmpty" v-else>{{ t("calc.empty") }}</p>
+    </div>
+
 
     <div v-if="hintState.visible" class="hintOverlay" @click.stop="closeHint"></div>
     <div
@@ -638,9 +739,8 @@
       class="hintPopover"
       :style="{ left: hintState.left + 'px', top: hintState.top + 'px' }"
       @click.stop
-    >
-      {{ hintState.message }}
-    </div>
+      v-html="hintState.message"
+    ></div>
   </section>
 </template>
 
@@ -665,6 +765,49 @@ const props = defineProps<{
 const calc = props.calc;
 const { t, locale } = useI18n();
 const candyStore = useCandyStore();
+
+// 折りたたみ状態を管理（rowId => expanded）
+const expandedRows = ref<Set<string>>(new Set());
+
+function toggleExpand(rowId: string) {
+  if (expandedRows.value.has(rowId)) {
+    expandedRows.value.delete(rowId);
+  } else {
+    expandedRows.value.add(rowId);
+  }
+  // 強制的に再レンダリング
+  expandedRows.value = new Set(expandedRows.value);
+}
+
+function isExpanded(rowId: string): boolean {
+  return expandedRows.value.has(rowId);
+}
+
+// 個数指定行の「必要アイテム」展開状態
+const expandedLimitItems = ref<Set<string>>(new Set());
+
+function toggleLimitItems(rowId: string) {
+  if (expandedLimitItems.value.has(rowId)) {
+    expandedLimitItems.value.delete(rowId);
+  } else {
+    expandedLimitItems.value.add(rowId);
+  }
+  expandedLimitItems.value = new Set(expandedLimitItems.value);
+}
+
+function isLimitItemsExpanded(rowId: string): boolean {
+  return expandedLimitItems.value.has(rowId);
+}
+
+// アメ使用制限入力時のラッパー（値が設定されたら折りたたみを開く）
+function onCandyTargetInput(rowId: string, value: string) {
+  calc.onRowCandyTarget(rowId, value);
+  // 値が設定されたら自動的に到達可能行を開く
+  if (value.trim() !== "") {
+    expandedRows.value.add(rowId);
+    expandedRows.value = new Set(expandedRows.value);
+  }
+}
 
 // モバイルでのキーボード閉じた後のスクロール位置修正
 function handleInputBlur(event: FocusEvent) {
@@ -709,47 +852,240 @@ function getRowAllocation(rowId: string): PokemonAllocation | null {
   return calc.allocationResult.value.pokemons.find(p => p.id === rowId) ?? null;
 }
 
-// アメ補填の表示テキストを生成
-function getCandySupplyText(r: CalcRowView): string {
-  const alloc = getRowAllocation(r.id);
+// 「目標まで」行用の配分結果を取得（使用制限なし）
+function getTargetAllocation(rowId: string): PokemonAllocation | null {
+  return calc.targetAllocationMap.value[rowId] ?? null;
+}
+
+// アイテム使用テキストを生成（目標まで行用：使用制限なしで計算）
+function getItemUsageText(r: CalcRowView): string {
+  const alloc = getTargetAllocation(r.id);
   if (!alloc) return "-";
 
   const parts: string[] = [];
-
-  // 種族アメは在庫使用なので補填に含めない
+  const typeName = getTypeName(alloc.type, locale.value);
+  const uniLabel = t("calc.export.labelUni");
 
   // タイプアメ
-  if (alloc.typeSUsed > 0) {
-    const typeName = getTypeName(alloc.type, locale.value);
-    parts.push(`${typeName}S ${alloc.typeSUsed}`);
-  }
-  if (alloc.typeMUsed > 0) {
-    const typeName = getTypeName(alloc.type, locale.value);
-    parts.push(`${typeName}M ${alloc.typeMUsed}`);
-  }
+  if (alloc.typeSUsed > 0) parts.push(`${typeName}S ${alloc.typeSUsed}`);
+  if (alloc.typeMUsed > 0) parts.push(`${typeName}M ${alloc.typeMUsed}`);
 
   // 万能アメ
-  if (alloc.uniSUsed > 0) {
-    parts.push(`${t("calc.candy.universalLabel")} S ${alloc.uniSUsed}`);
-  }
-  if (alloc.uniMUsed > 0) {
-    parts.push(`${t("calc.candy.universalLabel")} M ${alloc.uniMUsed}`);
-  }
-  if (alloc.uniLUsed > 0) {
-    parts.push(`${t("calc.candy.universalLabel")} L ${alloc.uniLUsed}`);
-  }
+  if (alloc.uniSUsed > 0) parts.push(`${uniLabel}S ${alloc.uniSUsed}`);
+  if (alloc.uniMUsed > 0) parts.push(`${uniLabel}M ${alloc.uniMUsed}`);
+  if (alloc.uniLUsed > 0) parts.push(`${uniLabel}L ${alloc.uniLUsed}`);
 
-  // 不足
-  if (alloc.remaining > 0) {
-    parts.push(`${t("calc.candy.shortage")} ${alloc.remaining}`);
-  }
-
-  // 余り（surplus > 0 の場合のみ表示）
-  if (alloc.surplus > 0) {
-    parts.push(`${t("calc.candy.surplus")} ${alloc.surplus}`);
+  // 余りがあれば表示（タイプアメまたは万能アメを使用した場合のみ）
+  // アメ在庫（種族アメ）のみで足りた場合は余りを表示しない
+  const usedTypeOrUniCandy = alloc.typeSUsed > 0 || alloc.typeMUsed > 0 ||
+    alloc.uniSUsed > 0 || alloc.uniMUsed > 0 || alloc.uniLUsed > 0;
+  if (alloc.surplus > 0 && usedTypeOrUniCandy) {
+    parts.push(`${t("calc.candy.surplus")}${alloc.surplus}`);
   }
 
   return parts.length > 0 ? parts.join(", ") : "-";
+}
+
+// アイテム使用リストを生成（目標まで行用：補填判定付き）
+type ItemUsageItem = { label: string; value: number; isDanger: boolean };
+function getItemUsageItems(r: CalcRowView): ItemUsageItem[] {
+  const alloc = getTargetAllocation(r.id);
+  if (!alloc) return [];
+
+  const items: ItemUsageItem[] = [];
+  const typeName = getTypeName(alloc.type, locale.value);
+  const uniLabel = t("calc.export.labelUni");
+
+  // 万能アメ在庫（初期在庫）
+  const uniStock = candyStore.universalCandy.value;
+  // 実際の配分量（到達可能行）
+  const actualAlloc = getRowAllocation(r.id);
+
+  // 配分後の万能S残り（上位ポケモンが個数指定で返却した分を反映）
+  const allocResult = calc.allocationResult.value;
+  const uniSRemaining = allocResult?.universalRemaining?.s ?? uniStock.s;
+
+  // 個数指定があるかどうか（個数指定がある場合は在庫不足のみ赤字にする）
+  const hasLimitValue = r.candyTarget != null && r.candyTarget >= 0;
+
+  // 赤字判定: アロケータの判定を使用
+  // - originalRemaining > 0: 補填が必要 → 赤字
+  // - primaryShortageType !== null かつ candy 不足: 赤字
+  // - 個数指定ありで不足なし: 黒字
+  const needsSupplementation = (alloc.originalRemaining ?? 0) > 0;
+  const isUniSSupplemented = needsSupplementation && !hasLimitValue;
+
+  // タイプアメ（赤字なし）
+  if (alloc.typeSUsed > 0) {
+    items.push({ label: `${typeName}S`, value: alloc.typeSUsed, isDanger: false });
+  }
+  if (alloc.typeMUsed > 0) {
+    items.push({ label: `${typeName}M`, value: alloc.typeMUsed, isDanger: false });
+  }
+
+  // 万能アメ（Sのみ赤字判定あり）
+  if (alloc.uniSUsed > 0) {
+    items.push({ label: `${uniLabel}S`, value: alloc.uniSUsed, isDanger: isUniSSupplemented });
+  }
+  if (alloc.uniMUsed > 0) {
+    items.push({ label: `${uniLabel}M`, value: alloc.uniMUsed, isDanger: false });
+  }
+  if (alloc.uniLUsed > 0) {
+    items.push({ label: `${uniLabel}L`, value: alloc.uniLUsed, isDanger: false });
+  }
+
+  // 余り
+  const usedTypeOrUniCandy = alloc.typeSUsed > 0 || alloc.typeMUsed > 0 ||
+    alloc.uniSUsed > 0 || alloc.uniMUsed > 0 || alloc.uniLUsed > 0;
+  if (alloc.surplus > 0 && usedTypeOrUniCandy) {
+    items.push({ label: t("calc.candy.surplus"), value: alloc.surplus, isDanger: false });
+  }
+
+  return items;
+}
+
+// 個数指定行用のアイテム使用リスト（candyTargetベース、補填前の値を使用）
+function getLimitItemUsageItems(r: CalcRowView): ItemUsageItem[] {
+  if (!hasLimit(r)) return [];
+
+  // targetAllocationMapから補填前の値を取得
+  const alloc = getTargetAllocation(r.id);
+  if (!alloc) return [];
+
+  const items: ItemUsageItem[] = [];
+  const typeName = getTypeName(alloc.type, locale.value);
+  const uniLabel = t("calc.export.labelUni");
+
+  // 在庫を取得（不足判定用）
+  const uniStock = candyStore.universalCandy.value;
+  const typeStock = candyStore.getTypeCandyFor(alloc.type);
+
+  // タイプアメ（補填前の値を使用）
+  const typeSUsed = alloc.limitTypeSUsed ?? alloc.typeSUsed;
+  const typeMUsed = alloc.limitTypeMUsed ?? alloc.typeMUsed;
+  if (typeSUsed > 0) {
+    const isShort = typeSUsed > typeStock.s;
+    items.push({ label: `${typeName}S`, value: typeSUsed, isDanger: isShort });
+  }
+  if (typeMUsed > 0) {
+    const isShort = typeMUsed > typeStock.m;
+    items.push({ label: `${typeName}M`, value: typeMUsed, isDanger: isShort });
+  }
+
+  // 万能アメ（補填前の値を使用）
+  const uniSUsed = alloc.limitUniSUsed ?? alloc.uniSUsed;
+  const uniMUsed = alloc.limitUniMUsed ?? alloc.uniMUsed;
+  const uniLUsed = alloc.limitUniLUsed ?? alloc.uniLUsed;
+  if (uniSUsed > 0) {
+    const isShort = uniSUsed > uniStock.s;
+    items.push({ label: `${uniLabel}S`, value: uniSUsed, isDanger: isShort });
+  }
+  if (uniMUsed > 0) {
+    const isShort = uniMUsed > uniStock.m;
+    items.push({ label: `${uniLabel}M`, value: uniMUsed, isDanger: isShort });
+  }
+  if (uniLUsed > 0) {
+    const isShort = uniLUsed > uniStock.l;
+    items.push({ label: `${uniLabel}L`, value: uniLUsed, isDanger: isShort });
+  }
+
+  // 余り（補填前の値を使用）
+  const surplus = alloc.limitSurplus ?? alloc.surplus;
+  if (surplus > 0) {
+    items.push({ label: t("calc.candy.surplus"), value: surplus, isDanger: false });
+  }
+
+  return items;
+}
+
+// 個数指定行用のアイテムはgetLimitItemUsageItemsを使用
+// (candyTargetベースで計算、グローバル制限なし)
+
+function getResultItemUsageText(r: CalcRowView): string {
+  const items = getResultItemUsageItems(r);
+  if (items.length === 0) return "-";
+  return items.map(item => `${item.label} ${item.value}`).join(", ");
+}
+
+// 結果行用のアイテム使用リスト（赤字判定付き）
+function getResultItemUsageItems(r: CalcRowView): ItemUsageItem[] {
+  const alloc = getRowAllocation(r.id);
+  if (!alloc) return [];
+
+  const items: ItemUsageItem[] = [];
+  const typeName = getTypeName(alloc.type, locale.value);
+  const uniLabel = t("calc.export.labelUni");
+
+  // 在庫無限モードかどうか
+  const isUnlimitedMode = r.isReverseCalcMode === true;
+
+  // 万能アメ在庫
+  const uniStock = candyStore.universalCandy.value;
+
+  // 個数指定があるか
+  const hasLimitValue = r.candyTarget != null && r.candyTarget >= 0;
+
+  // 補填判定: アロケータの判定を使用
+  // - primaryShortageType === null かつ remaining === 0 なら不足なし → 黒字
+  // - それ以外で配分時点の万能S残数を超えている場合は補填 → 赤字
+  const availableUniS = alloc.availableUniSAtAllocation ?? candyStore.universalCandy.value.s;
+  let isUniSSupplemented = alloc.uniSUsed > availableUniS;
+
+  // 不足がない場合は赤字にしない（個数指定の有無に関わらず）
+  if (alloc.primaryShortageType === null && alloc.remaining === 0) {
+    isUniSSupplemented = false;
+  }
+
+  // タイプアメ（赤字なし）
+  if (alloc.typeSUsed > 0) {
+    items.push({ label: `${typeName}S`, value: alloc.typeSUsed, isDanger: false });
+  }
+  if (alloc.typeMUsed > 0) {
+    items.push({ label: `${typeName}M`, value: alloc.typeMUsed, isDanger: false });
+  }
+
+  // 万能アメ（Sのみ赤字判定あり）
+  if (alloc.uniSUsed > 0) {
+    items.push({ label: `${uniLabel}S`, value: alloc.uniSUsed, isDanger: isUniSSupplemented });
+  }
+  if (alloc.uniMUsed > 0) {
+    items.push({ label: `${uniLabel}M`, value: alloc.uniMUsed, isDanger: false });
+  }
+  if (alloc.uniLUsed > 0) {
+    items.push({ label: `${uniLabel}L`, value: alloc.uniLUsed, isDanger: false });
+  }
+
+  // 余り
+  const usedTypeOrUniCandy = alloc.typeSUsed > 0 || alloc.typeMUsed > 0 ||
+    alloc.uniSUsed > 0 || alloc.uniMUsed > 0 || alloc.uniLUsed > 0;
+  if (alloc.surplus > 0 && usedTypeOrUniCandy) {
+    items.push({ label: t("calc.candy.surplus"), value: alloc.surplus, isDanger: false });
+  }
+
+  return items;
+}
+
+// アメ不足テキストを生成
+function getCandyShortageText(r: CalcRowView): string {
+  const alloc = getRowAllocation(r.id);
+  if (!alloc || alloc.remaining <= 0) return "";
+
+  const expPart = alloc.remainingExp > 0 ? ` (EXP ${calc.fmtNum(alloc.remainingExp)})` : "";
+  return `${alloc.remaining}${expPart}`;
+}
+
+// アイテム使用があるか判定（目標まで行用 = targetAllocation）
+// 種族アメのみで足りた場合はfalse、タイプアメまたは万能アメを使用した場合のみtrue
+function hasItemUsage(r: CalcRowView): boolean {
+  const alloc = getTargetAllocation(r.id);
+  if (!alloc) return false;
+  return (
+    alloc.uniSUsed > 0 ||
+    alloc.uniMUsed > 0 ||
+    alloc.uniLUsed > 0 ||
+    alloc.typeSUsed > 0 ||
+    alloc.typeMUsed > 0
+  );
 }
 
 // アイテム（万能アメ・タイプアメ）使用またはアメ不足があるか判定
@@ -764,6 +1100,284 @@ function isCandyShort(r: CalcRowView): boolean {
     alloc.typeMUsed > 0 ||
     alloc.remaining > 0
   );
+}
+
+// 「目標まで」行でアメ合計が不足かどうか判定
+// 個数指定がある場合はprimaryShortageTypeを使用、ない場合はoriginalRemainingを使用
+function isTargetOverage(r: CalcRowView): boolean {
+  const targetAlloc = getTargetAllocation(r.id);
+  if (!targetAlloc) return false;
+
+  // 個数指定がある場合はprimaryShortageTypeを使用
+  const hasLimitValue = r.candyTarget != null && r.candyTarget >= 0;
+  if (hasLimitValue) {
+    const alloc = getRowAllocation(r.id);
+    return alloc?.primaryShortageType === "candy";
+  }
+
+  // 個数指定なし: 補填前のoriginalRemaining > 0 ならアメ在庫不足
+  return (targetAlloc.originalRemaining ?? 0) > 0;
+}
+
+// 「目標まで」行でアメブが上限を超過しているか判定
+function isBoostOverage(r: CalcRowView): boolean {
+  // アメブ上限（グローバル）を超えているか
+  return calc.boostCandyOver.value > 0;
+}
+
+// 「目標まで」行でアメブが不足かどうか判定
+// アロケータのboostShortageを直接使用
+function isBoostNotAllocated(r: CalcRowView): boolean {
+  const targetAlloc = getTargetAllocation(r.id);
+  if (!targetAlloc) return false;
+
+  // アロケータで計算されたboostShortage > 0 ならアメブ不足
+  return targetAlloc.boostShortage > 0;
+}
+
+// 「到達可能」行でアメブがグローバル上限により制限されているか判定
+function isReachableBoostLimited(r: CalcRowView): boolean {
+  // アメブ上限を超えていない場合は黒字
+  if (calc.boostCandyOver.value <= 0) {
+    return false;
+  }
+
+  // アメブ上限を超えている場合、このポケモンのアメブが目標より少ないかチェック
+  const actualAlloc = getRowAllocation(r.id);
+  if (!actualAlloc) return false;
+
+  // 目標のアメブが、実際のアメブより多い = アメブ上限超過により制限された
+  return r.result.boostCandy > actualAlloc.boostCandyUsed;
+}
+
+// 「目標まで」行でかけらが不足しているか判定
+// アロケータのshardsShortageを直接使用
+function isShardsShortageForTarget(r: CalcRowView): boolean {
+  const targetAlloc = getTargetAllocation(r.id);
+  if (!targetAlloc) return false;
+
+  // アロケータで計算されたshardsShortage > 0 ならかけら不足
+  return targetAlloc.shardsShortage > 0;
+}
+
+// 「目標まで」行で通常アメが不足しているか判定
+// アメ不足がprimaryShortageTypeの場合のみ赤字
+function isNormalCandyShortageForTarget(r: CalcRowView): boolean {
+  // アメブ混合でない場合は赤字にしない
+  if (calc.boostKind.value === "none") return false;
+
+  // 通常アメが0の場合は赤字にしない
+  if (r.result.normalCandy <= 0) return false;
+
+  // 個数指定がある場合はprimaryShortageTypeを使用
+  const hasLimitValue = r.candyTarget != null && r.candyTarget >= 0;
+  if (hasLimitValue) {
+    const alloc = getRowAllocation(r.id);
+    return alloc?.primaryShortageType === "candy";
+  }
+
+  // 個数指定なし: originalRemainingを使用
+  const targetAlloc = getTargetAllocation(r.id);
+  if (!targetAlloc) return false;
+  return (targetAlloc.originalRemaining ?? 0) > 0;
+}
+
+// 「個数指定」行で通常アメが不足しているか判定
+// primaryShortageType === 'candy' の場合のみ赤字
+function isNormalCandyShortageForLimit(r: CalcRowView): boolean {
+  // アメブ混合でない場合は赤字にしない
+  if (calc.boostKind.value === "none") return false;
+
+  const alloc = getRowAllocation(r.id);
+  if (!alloc) return false;
+
+  const theoreticalRes = getTheoreticalResources(r);
+  if (!theoreticalRes) return false;
+
+  // 通常アメが0の場合は赤字にしない
+  if (theoreticalRes.normalCandy <= 0) return false;
+
+  // アメ不足が主要因の場合のみ赤字
+  return alloc.primaryShortageType === "candy";
+}
+
+// 「到達可能」行で通常アメが不足しているか判定
+// primaryShortageType === 'candy' の場合のみ赤字
+function isNormalCandyShortageForReachable(r: CalcRowView): boolean {
+  // アメブ混合でない場合は赤字にしない
+  if (calc.boostKind.value === "none") return false;
+
+  const alloc = getRowAllocation(r.id);
+  if (!alloc) return false;
+
+  // 通常アメが0の場合は赤字にしない
+  if (alloc.normalCandyUsed <= 0) return false;
+
+  // アメ不足が主要因の場合のみ赤字
+  return alloc.primaryShortageType === "candy";
+}
+
+// 個数指定があるかどうか判定
+function hasLimit(r: CalcRowView): boolean {
+  return r.candyTarget != null && r.candyTarget >= 0;
+}
+
+// 「到達可能」行でアメ不足があるか判定
+function hasShortage(r: CalcRowView): boolean {
+  const alloc = getRowAllocation(r.id);
+  if (!alloc) return false;
+  return alloc.remaining > 0;
+}
+
+// 「到達可能」行で残EXPがあるか判定
+function hasRemainingExp(r: CalcRowView): boolean {
+  const alloc = getRowAllocation(r.id);
+  if (!alloc) return false;
+  return alloc.remainingExp > 0;
+}
+
+// 個数指定がある場合の理論値ベースのリソースを取得
+interface TheoreticalResources {
+  candy: number;
+  boostCandy: number;
+  normalCandy: number;
+  shards: number;
+}
+function getTheoreticalResources(r: CalcRowView): TheoreticalResources | null {
+  if (!hasLimit(r)) return null;
+
+  // targetAllocationMapから理論値を取得
+  const alloc = getTargetAllocation(r.id);
+  if (!alloc) return null;
+
+  const limit = r.candyTarget!;
+  const boostCandy = alloc.limitBoostCandyUsed ?? alloc.boostCandyUsed ?? 0;
+  const normalCandy = (alloc.limitTotalUsed ?? limit) - boostCandy;
+  const shards = alloc.limitShardsUsed ?? alloc.shardsUsed ?? 0;
+
+  return {
+    candy: alloc.limitTotalUsed ?? limit,
+    boostCandy,
+    normalCandy,
+    shards,
+  };
+}
+
+// 個数指定がある場合、理論値ベースで最初に不足したリソース種類を判定
+// 順序: アメブ → アメ → かけら
+type ShortageType = "boost" | "candy" | "shards" | null;
+function getTheoreticalShortageType(r: CalcRowView): ShortageType {
+  if (!hasLimit(r)) return null;
+
+  const alloc = getRowAllocation(r.id);
+  if (!alloc) return null;
+
+  // アロケータが計算したprimaryShortageTypeを直接使用
+  return alloc.primaryShortageType;
+}
+
+// 「到達可能」行のアメ不足を計算
+// アロケータが計算したremainingを使用
+function getCandyShortage(r: CalcRowView): number {
+  const alloc = getRowAllocation(r.id);
+  if (!alloc) return 0;
+
+  if (hasLimit(r)) {
+    // 個数指定あり: primaryShortageTypeがcandyの場合のみ不足を表示
+    if (alloc.primaryShortageType !== "candy") {
+      return 0;
+    }
+  }
+
+  return alloc.remaining;
+}
+
+// 「到達可能」行でアメブ不足があるか判定（個数指定がある場合のみ）
+function hasBoostShortage(r: CalcRowView): boolean {
+  if (hasLimit(r)) {
+    return getTheoreticalShortageType(r) === "boost";
+  }
+  return false;
+}
+
+// アメブ不足量を取得
+function getBoostShortage(r: CalcRowView): number {
+  if (!hasLimit(r)) return 0;
+  if (getTheoreticalShortageType(r) !== "boost") return 0;
+
+  // allocatorが計算したboostShortageを使用
+  const alloc = getRowAllocation(r.id);
+  if (!alloc) return 0;
+
+  return alloc.boostShortage;
+}
+
+// targetAllocationのoriginalRemainingで判定（かけら制限なしでのアメ不足）
+// かけら不足のみ（アメは足りている）場合は表示しない
+// また、実際の配分結果でremaining=0なら（万能アメ等で補填されて足りた場合）表示しない
+function hasCandyShortage(r: CalcRowView): boolean {
+  // 個数指定がある場合は、getCandyShortageで判定
+  if (hasLimit(r)) {
+    return getCandyShortage(r) > 0;
+  }
+
+  // 実際の配分結果を確認（万能アメ等の補填後）
+  const actualAlloc = getRowAllocation(r.id);
+  if (actualAlloc && actualAlloc.remaining <= 0) {
+    // 実際の配分でアメ不足がない場合は表示しない
+    return false;
+  }
+
+  // targetAllocation（かけら制限なし）のoriginalRemainingで判定
+  const targetAlloc = getTargetAllocation(r.id);
+  if (!targetAlloc) return false;
+
+  // 100%アメブ設定の場合、アメ在庫が足りているかを直接計算
+  const is100PercentBoost = targetAlloc.boostCandyLimit === targetAlloc.candyNeed;
+  if (is100PercentBoost) {
+    // アメ在庫が足りているかを直接計算
+    const speciesStock = candyStore.getSpeciesCandyFor(targetAlloc.pokedexId);
+    const typeStock = candyStore.getTypeCandyFor(targetAlloc.type);
+    const typeValue = typeStock.s * 4 + typeStock.m * 25;
+    const uniStock = candyStore.universalCandy.value;
+    const allocResult = calc.allocationResult.value;
+    const uniSRemaining = allocResult?.universalRemaining?.s ?? uniStock.s;
+    const uniValue = uniSRemaining * 3 + uniStock.m * 20 + uniStock.l * 100;
+
+    const totalCandyValue = speciesStock + typeValue + uniValue;
+    if (totalCandyValue >= targetAlloc.candyNeed) {
+      // アメ在庫は足りている、グローバルアメブ不足のみ
+      // 「アメ不足」は表示しない（「アメブ不足」として表示される）
+      return false;
+    }
+  }
+
+  // originalRemaining > 0 ならアメ在庫不足
+  // originalRemaining === 0 ならかけら不足のみなので「アメ不足」は表示しない
+  return (targetAlloc.originalRemaining ?? 0) > 0;
+}
+
+// 「到達可能」行でかけら不足があるか判定
+// 個数指定がある場合は、理論値ベースで最初の制限要因がかけらかどうか判定
+function hasShardsShortage(r: CalcRowView): boolean {
+  const alloc = getRowAllocation(r.id);
+  if (!alloc) return false;
+
+  // 個数指定がある場合、理論値ベースで判定
+  if (hasLimit(r)) {
+    return getTheoreticalShortageType(r) === "shards";
+  }
+
+  // 通常の判定
+  return alloc.shardsShortage > 0;
+}
+
+// かけら不足量を取得
+// アロケータが計算したshardsShortageを使用
+function getShardsShortage(r: CalcRowView): number {
+  const alloc = getRowAllocation(r.id);
+  if (!alloc) return 0;
+  return alloc.shardsShortage;
 }
 
 // ヒントアイコン用
@@ -801,3 +1415,948 @@ function closeHint() {
   hintState.value.visible = false;
 }
 </script>
+
+<style scoped>
+/* --- Calculator (multi) --- */
+.calcTop {
+  margin-top: 12px;
+}
+.calcTop__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 16px;
+  column-gap: 16px;
+  row-gap: 8px;
+}
+
+.calcTop__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.calcTop__label {
+  font-size: 11px;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--ink) 60%, transparent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.calcTop__field--candy {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.candyInputs {
+  display: flex;
+  gap: 6px;
+}
+.candyInput--md .candyInput__label {
+  font-size: 13px;
+  color: color-mix(in oklab, var(--ink) 70%, transparent);
+}
+
+
+
+
+.panel--calc {
+  container-type: inline-size;
+}
+
+.calcTop__typeCandy {
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--ink) 4%, transparent);
+}
+.calcTop__typeCandyToggle {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: color-mix(in oklab, var(--ink) 70%, transparent);
+}
+.calcTop__typeCandyToggle:hover {
+  color: var(--ink);
+}
+.calcTop__typeCandyGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 6px 16px;
+  margin-top: 10px;
+}
+.typeRow {
+  display: grid;
+  grid-template-columns: 55px 1fr 1fr;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+.typeRow__name {
+  font-size: 12px;
+  font-weight: 500;
+  color: color-mix(in oklab, var(--ink) 80%, transparent);
+}
+.candyInput {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.candyInput__label {
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 14px;
+}
+.candyInput--sm .candyInput__label {
+  font-size: 11px;
+}
+
+.field--boost-control.is-none {
+  display: none;
+}
+
+
+.calcSticky {
+  position: sticky;
+  top: 10px;
+  z-index: 30;
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  background: var(--paper);
+  border: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
+  box-shadow: 0 14px 36px color-mix(in oklab, var(--ink) 12%, transparent);
+}
+.calcSticky__summary {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.calcSticky__summary .calcSum {
+  flex: 1 1 auto;
+  min-width: 100px;
+}
+.calcSum__v {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 18px;
+  margin-top: 2px;
+  color: var(--ink);
+}
+.calcSum--hi .calcSum__v {
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  color: var(--ink);
+  font-size: 1.4rem;
+}
+@container (max-width: 560px) {
+  .calcSum--hi .calcSum__v {
+    font-size: 1.1rem;
+  }
+}
+.calcSum--candy {
+  flex: 2 1 auto;
+  min-width: 180px;
+}
+.calcSum__v--over {
+  color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 10%);
+}
+.calcSum__candyDetails {
+  font-size: 14px;
+  font-weight: 600;
+  margin-left: 8px;
+  color: var(--ink);
+}
+@container (max-width: 560px) {
+  .calcSum__candyDetails {
+    /* 改行しない */
+    margin-left: 6px;
+    font-size: 13px;
+  }
+}
+.calcSum--danger .calcSum__v {
+  color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 10%);
+}
+.calcSum__overVal {
+  color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 10%);
+  font-weight: 700;
+  margin-left: 4px;
+}
+.calcSum--bar {
+  flex: 2; /* バーは少し広めに */
+  min-width: 220px;
+}
+.calcSticky__candy {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed color-mix(in oklab, var(--ink) 14%, transparent);
+  font-size: 13px;
+  color: color-mix(in oklab, var(--ink) 70%, transparent);
+}
+.calcSticky__candyRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.calcSticky__candyLabel {
+  font-weight: 600;
+}
+.calcSticky__candyPct {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--ink);
+}
+.calcSticky__candyPct--over {
+  color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 10%);
+}
+.calcSticky__candyDetails {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+.calcSticky__candyItem {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Mobile: keep "Shards" and "Remaining" compact and side-by-side */
+@container (max-width: 560px) {
+  .calcSticky {
+    top: 42px;
+    padding: 8px;
+    border-radius: 12px;
+  }
+  .calcSticky__summary {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .calcSticky__summary .calcSum--candy {
+    grid-column: 1 / -1;
+  }
+
+
+
+  /* Mobile: shrink header texts (calc title / editing / pokemon name / apply button) */
+  .panel__title {
+    font-size: 22px;
+    line-height: 1.12;
+    margin-bottom: 8px;
+  }
+  .panel__head {
+    gap: 10px;
+  }
+  .panel__side {
+    gap: 8px;
+  }
+  .chip {
+    padding: 5px 8px;
+    gap: 6px;
+  }
+  .chip__k {
+    font-size: 11px;
+  }
+  .chip__v {
+    font-size: 12px;
+  }
+  .panel__side > .btn {
+    font-size: 12px;
+    padding: 8px 10px;
+    white-space: nowrap;
+  }
+  .calcRow__title {
+    font-size: 15px;
+    max-width: calc(100vw - 280px); /* More restrictive for English UI buttons */
+  }
+  .calcRow__headRight {
+    gap: 4px; /* Tighter spacing on mobile */
+  }
+  .calcRow__headRight .linkBtn {
+    font-size: 12px;
+    padding: 2px 4px;
+  }
+  .calcRow {
+    overflow: hidden; /* Prevent horizontal overflow */
+    max-width: 100%;
+  }
+  .calcRow__head {
+    max-width: 100%;
+    overflow: hidden;
+  }
+  button.calcRow__dragHandle {
+    padding: 4px 2px;
+    font-size: 13px;
+  }
+
+  /* Mobile: keep shards + candy(total) side-by-side under inputs (moved near base rules for correct cascade) */
+}
+
+
+.calcSum__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 10px;
+}
+.calcSum__head > .calcSum__k {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  white-space: nowrap; /* prevent wrap -> stable height on mobile */
+}
+.calcSum__kText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.calcSum__k--right {
+  white-space: nowrap;
+  text-align: right;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.calcSum__overVal {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.calcSum__selectedVal {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  margin-left: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--accent) 80%, var(--ink) 20%);
+}
+/* モバイルレイアウト: 1行目: Main, 2行目: Selected + Cap */
+@container (max-width: 560px) {
+  .calcSum__head {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    row-gap: 2px;
+  }
+  .calcSum__head > .calcSum__k:first-child {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+  .calcSum__head .calcSum__selectedVal {
+    order: 2;
+    margin-left: 0;
+    font-size: 11px;
+  }
+  .calcSum__k--right {
+    order: 3;
+    margin-left: auto;
+  }
+}
+.calcBar {
+  margin-top: 8px;
+}
+/* Default behavior for stacked bars */
+.calcBarBlock + .calcBarBlock {
+  margin-top: 12px;
+}
+/* When bars are inside .calcSum--bar (e.g. usage bars), remove separation border fully */
+.calcSum--bar .calcBarBlock + .calcBarBlock {
+  border-top: 0;
+  padding-top: 0;
+  margin-top: 12px;
+}
+.calcBarBlock--candy .calcBar {
+  margin-top: 6px;
+}
+.calcBar__fill--candy {
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--accent-cool) 58%, var(--paper) 42%),
+    color-mix(in oklab, var(--accent) 64%, var(--paper) 36%)
+  );
+}
+.calcBar__track {
+  position: relative;
+  height: 10px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--ink) 9%, transparent);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ink) 12%, transparent);
+  display: flex; /* flexbox で複数セグメントを並べる */
+}
+.calcBar__fill {
+  position: relative;
+  height: 100%;
+  background: var(--accent); /* フォールバック */
+  transition: width 240ms ease;
+}
+/* 選択中ポケモン（楽しそうなピンク） */
+.calcBar__fill--active {
+  background: hsl(330, 85%, 60%);
+  z-index: 2;
+  /* 境界線をつけて区切りを明確に */
+  box-shadow: 1px 0 0 0 var(--paper);
+}
+/* 他ポケモン（楽しそうな水色） */
+.calcBar__fill--others {
+  background: hsl(190, 80%, 65%);
+  z-index: 1;
+}
+/* アメブ用も共通の色にする（区別しない） */
+.calcBar__fill--candy.calcBar__fill--active {
+  background: hsl(330, 85%, 60%);
+}
+.calcBar__fill--candy.calcBar__fill--others {
+  background: hsl(190, 80%, 65%);
+}
+.calcSum--muted .calcBar__fill {
+  opacity: 0.35;
+}
+.calcBar__over {
+  position: relative;
+  height: 100%;
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklab, hsl(6 78% 52%) 78%, var(--paper) 22%) 0 6px,
+    color-mix(in oklab, hsl(6 78% 52%) 62%, var(--paper) 38%) 6px 12px
+  );
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, hsl(6 78% 52%) 55%, transparent);
+  transition: width 240ms ease;
+}
+
+.calcActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.calcSlots {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-top: 10px;
+  margin-bottom: 6px;
+}
+.calcSlot {
+  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
+  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+.calcSlot--empty {
+  background: color-mix(in oklab, var(--paper) 96%, var(--ink) 4%);
+  border-style: dashed;
+}
+/* Removed old exportCard styles */
+.calcRows {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+.calcRow {
+  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
+  background: color-mix(in oklab, var(--paper) 97%, var(--ink) 3%);
+  border-radius: 16px;
+  padding: 6px;
+}
+.calcRow--active {
+  border-color: color-mix(in oklab, var(--accent-warm) 34%, var(--ink) 10%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--accent-warm) 12%, var(--paper) 88%),
+    color-mix(in oklab, var(--paper) 94%, var(--ink) 6%)
+  );
+  box-shadow:
+    0 0 0 4px color-mix(in oklab, var(--accent-warm) 12%, transparent),
+    0 18px 40px color-mix(in oklab, var(--ink) 10%, transparent);
+}
+.calcRow--dragOver {
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--ink) 10%);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 14%, transparent);
+}
+.calcRow--dragging {
+  opacity: 0.65;
+}
+.calcRow__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.calcRow__headLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto; /* allow title to shrink within the row */
+  min-width: 0;
+}
+.calcRow__headRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: auto; /* 右寄せ */
+}
+.calcRow__dragHandle {
+  cursor: grab;
+  user-select: none;
+  line-height: 1;
+  letter-spacing: -2px;
+  min-width: 0;
+}
+button.calcRow__dragHandle {
+  padding: 6px 6px; /* Override .btn padding with higher specificity */
+}
+.calcRow__dragHandle:active {
+  cursor: grabbing;
+}
+/* .calcRow__subHead removed */
+.calcRow__title {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  flex: 1 1 auto;
+  min-width: 0; /* critical: allow shrinking even for long unbroken EN nicknames */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.calcRow__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 5px !important; /* 行間を少し狭める */
+  margin-top: 1px;
+  align-items: start; /* 要素が縦に引き伸ばされるのを防ぐ */
+}
+/* ラベルと入力欄の間隔を少し開ける */
+.field--sm {
+  gap: 2px !important;
+}
+.calcRow__grid > * {
+  min-width: 0;
+}
+@media (min-width: 560px) {
+  .calcRow__grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  /* 通常モード（アメブ種別=none）時は2行3列 */
+  .calcRow__grid--normal {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.calcRow__result {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)); /* 4列で一覧性向上 */
+  gap: 4px 12px; /* コンパクトに */
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px dashed color-mix(in oklab, var(--ink) 14%, transparent);
+}
+.calcRow__result--inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+.calcRow__result--inline .calcRow__res {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.calcRow__result--inline .calcRow__k {
+  font-size: 12px;
+}
+.calcRow__result--inline .calcRow__num {
+  font-size: 15px;
+  font-weight: 700;
+}
+/* モバイルでは2列×2行に */
+@media (max-width: 640px) {
+  .calcRow__result:not(.calcRow__result--inline) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 16px;
+  }
+  /* Mobile EN: large numbers like "2,180,569" can force flex items to exceed width.
+     Allow wrapping/break opportunities so the layout doesn't widen and clip the right side. */
+  .shell[data-locale="en"] .calcRow__result .calcRow__v {
+    min-width: 0;
+  }
+  .shell[data-locale="en"] .calcRow__result .calcRow__num {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
+.calcRow__res {
+  display: flex;
+  justify-content: space-between; /* ラベル左、数字右 */
+  align-items: baseline;
+  min-width: 0;
+}
+.calcRow__k {
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: color-mix(in oklab, var(--ink) 60%, transparent);
+}
+.calcRow__v {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.calcRow__result .calcRow__v {
+  font-size: 16px;
+}
+.calcRow__num {
+  font-weight: 700;
+  font-size: 19px; /* 数字を大きく統一 */
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  color: var(--ink);
+}
+.calcRow__num--text {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.calcRow__num--danger {
+  color: color-mix(in oklab, hsl(6 78% 52%) 85%, var(--ink) 15%);
+}
+.calcRow__k--danger {
+  color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 25%);
+}
+.calcRow__num--info {
+  color: hsl(210 100% 35%);
+}
+.calcRow__k--info {
+  color: hsl(210 100% 35%);
+}
+
+/* 必要/使用の折りたたみ表示 */
+.calcRow__resultCollapse {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.calcRow__resultRow {
+  display: flex;
+  align-items: baseline; /* ラベルと内容のベースラインを揃える */
+  gap: 6px;
+  padding: 8px 4px 8px 8px; /* 左余白を少し戻す */
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.calcRow__resultRow--required {
+  background: #e3f2fd;
+}
+.calcRow__resultRow--required:hover {
+  background: #dbeafe; /* 少し濃い水色 */
+}
+.calcRow__resultRow--required.is-expanded {
+  background: #dbeafe;
+}
+.calcRow__resultRow--used {
+  background: #e0f7fa; /* Cyan 50: 青緑寄り */
+  cursor: default;
+  margin-left: 0;
+}
+.calcRow__expandIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: #ffffff;
+  box-shadow: 0 1px 2px color-mix(in oklab, var(--ink) 10%, transparent);
+  color: var(--ink);
+  flex-shrink: 0;
+  margin-right: 6px;
+  padding-top: 1px;
+}
+.calcRow__resultLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: color-mix(in oklab, var(--ink) 90%, transparent);
+  min-width: 36px;
+  flex-shrink: 0;
+}
+
+/* --- Improved Result Layout --- */
+
+.calcRow__resultItems {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 16px; /* 余白で区切る */
+  flex: 1;
+  min-width: 0;
+}
+
+/* 各項目の区切り線削除 */
+.calcRow__resultRow .calcRow__res {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.calcRow__resultItems .calcRow__res:not(:last-child) {
+  padding-right: 0;
+  border-right: none;
+}
+.calcRow__resultItems .calcRow__res + .calcRow__res {
+  padding-left: 0;
+}
+
+/* フォント調整 */
+.calcRow__resultItems .calcRow__k {
+  font-size: 10px;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--ink) 60%, transparent); /* 少し落ち着かせる */
+  margin-right: 2px;
+}
+.calcRow__resultItems .calcRow__num {
+  font-size: 14px;
+}
+
+/* 使用アイテムの強調削除（シンプル化） */
+.calcRow__resultItems .calcRow__res:has(.calcRow__num--text) {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  border: none;
+  margin-left: 0;
+  max-width: 100%;
+}
+.calcRow__num--text {
+  font-size: 11px;
+  font-weight: 600; /* 太字で区別 */
+  color: var(--ink);
+
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.4;
+}
+/* シンプルデザインのため、特別な隣接セレクタは不要 */
+.calcRow__resultItems .calcRow__res:has(.calcRow__num--text) + .calcRow__res {
+  padding-left: 0;
+}
+
+/* 万能アメ配分説明 */
+.calcAllocInfo {
+  margin: 12px 0;
+  padding: 8px 12px;
+  background: color-mix(in oklab, var(--ink) 5%, transparent);
+  border-radius: 8px;
+  font-size: 12px;
+  color: color-mix(in oklab, var(--ink) 70%, transparent);
+}
+.calcAllocInfo__title {
+  cursor: pointer;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--ink) 80%, transparent);
+}
+
+.field-checkbox-mini {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--ink);
+}
+.field-checkbox-mini.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.field-checkbox-mini input {
+  margin: 0;
+  accent-color: var(--candy-type-normal);
+}
+/* Mobile Nav exists up to 1023px, so sticky header needs offset */
+@media (max-width: 1023px) {
+  .calcSticky {
+    top: 42px;
+  }
+}
+
+/* Nature indicator icons */
+.calcRow__natureIcon {
+  font-size: 12px;
+  margin-right: 4px;
+  font-weight: 700;
+}
+.calcRow__natureIcon--up {
+  color: hsl(140, 60%, 45%);
+}
+.calcRow__natureIcon--down {
+  color: hsl(350, 60%, 50%);
+}
+
+/* Mobile: 省スペース・インラインフロー（優先度確保のため最後に記述） */
+@media (max-width: 560px) {
+  .calcRow__resultRow {
+    display: block;
+    line-height: 1.5;
+    padding: 6px 4px;
+  }
+  .calcRow__resultItems {
+    display: inline;
+    margin: 0;
+  }
+  /* 各項目（アメ、かけら等）もインライン化 */
+  .calcRow__resultItems .calcRow__res {
+    display: inline;
+    margin-right: 6px;
+    white-space: normal; /* nowrapだと英語などで突き抜けるためnormalに戻す */
+  }
+  /* 最後の項目の後ろはマージンなし */
+  .calcRow__resultItems .calcRow__res:last-child {
+    margin-right: 0;
+  }
+
+  .calcRow__resultItems .calcRow__res .calcRow__k {
+    margin-right: 2px;
+    font-size: 11px; /* 10px -> 11px */
+  }
+  .calcRow__resultItems .calcRow__res .calcRow__num {
+    font-size: 15px; /* 13px -> 15px */
+  }
+
+  /* 必要アイテムなどの長いテキストは折り返し許可 */
+  .calcRow__resultItems .calcRow__res:has(.calcRow__num--text) {
+    white-space: normal;
+  }
+
+  .calcRow__expandIcon {
+    display: inline-flex;
+    vertical-align: middle;
+    margin-right: 4px;
+    transform: translateY(-1px);
+  }
+  .calcRow__resultLabel {
+    display: inline;
+    margin-right: 4px;
+  }
+
+  .calcRow__resultRow--used {
+    margin-left: 0;
+  }
+
+  /* --- 縦圧縮 (Compact vertical layout) --- */
+  .calcRow {
+    padding: 4px 6px;
+  }
+  .calcRow__grid {
+    gap: 6px 5px !important;
+    margin-top: 0;
+  }
+  .field--sm {
+    gap: 2px !important;
+  }
+
+  /* グローバルな .field--sm を上書き (App.vue由来) */
+  .field--sm .field__label {
+    margin-top: 1px;
+    height: 13px;
+    font-size: 9px;
+    line-height: 13px;
+  }
+  .field--sm .field__input,
+  .field--sm .field__input--button {
+    height: 28px;
+    font-size: 13px;
+    border-radius: 8px;
+  }
+  .field--sm .field__range {
+    transform: translateY(2px);
+    margin-bottom: -4px;
+  }
+
+  .calcSlots {
+    margin-top: 8px;
+  }
+}
+
+/* --- タブと計算機の一体化スタイル --- */
+.calcSlots {
+  margin-top: 4px;
+  padding: 0; /* 左右の余白を削除 */
+  margin-bottom: 0;
+  display: flex;
+}
+
+.slotTabs {
+  display: flex;
+  gap: 4px; /* タブ間の隙間 */
+  width: 100%;
+}
+
+.slotTab {
+  flex: 1;
+  padding: 8px 0;
+  text-align: center;
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 14px; /* 自己主張 */
+  color: color-mix(in oklab, var(--ink) 50%, transparent);
+  background: #e4e6eb; /* 濃いめのグレー */
+  border: 1px solid #c0c2c6;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  transition: all 0.1s;
+  position: relative;
+  top: 1px; /* 下のボーダーに重ねる */
+}
+
+.slotTab:hover {
+  background: #d8dadf;
+}
+
+.slotTab--active {
+  background: #ffffff;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-bottom: 1px solid #ffffff;
+  padding-top: 8px;
+  z-index: 3;
+}
+
+/* 計算機リスト全体を囲むコンテナ装飾 */
+
+
+
+.calcSlotContainer {
+  background: #ffffff;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  /* タブの形状に合わせて左上右上は丸めない方が自然かもしれないが、
+     タブが全幅でない場合は丸めた方がいい。今回は全幅だが隙間4pxあるので丸めてもOK */
+
+  position: relative;
+  z-index: 1;
+  padding: 8px 0; /* 左右の余白を削除 */
+  min-height: 120px; /* 空の時の高さ確保 */
+}
+.calcActions {
+  display: flex;
+  align-items: center; /* 追加 */
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px; /* 24px -> 12px */
+  margin-bottom: 12px; /* 4px -> 12px */
+}
+.boxEmpty {
+  text-align: center;
+  padding: 60px 20px;
+  font-size: 15px;
+  font-weight: 700;
+  color: color-mix(in oklab, var(--ink) 60%, transparent);
+}
+</style>

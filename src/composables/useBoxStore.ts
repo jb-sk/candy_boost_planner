@@ -37,8 +37,41 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
   const importText = ref("");
   const importStatus = ref("");
   const boxFilter = ref("");
-  const boxSortKey = ref<"labelFav" | "levelFav" | "label" | "level">("labelFav");
-  const boxSortDir = ref<"asc" | "desc">("asc");
+
+  // ソート設定の読み込み・保存
+  const SORT_STORAGE_KEY = "candy-boost-planner:box-sort";
+  type BoxSortKey = "labelFav" | "levelFav" | "label" | "level" | "dex" | "dexFav";
+  type BoxSortDir = "asc" | "desc";
+
+  function loadSortSettings(): { key: BoxSortKey; dir: BoxSortDir } {
+    try {
+      const raw = localStorage.getItem(SORT_STORAGE_KEY);
+      if (!raw) return { key: "labelFav", dir: "asc" };
+      const json = JSON.parse(raw);
+      const key = ["labelFav", "levelFav", "label", "level", "dex", "dexFav"].includes(json.key) ? json.key : "labelFav";
+      const dir = json.dir === "desc" ? "desc" : "asc";
+      return { key, dir };
+    } catch {
+      return { key: "labelFav", dir: "asc" };
+    }
+  }
+
+  function saveSortSettings(key: BoxSortKey, dir: BoxSortDir) {
+    try {
+      localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify({ key, dir }));
+    } catch {
+      // localStorage can throw
+    }
+  }
+
+  const savedSort = loadSortSettings();
+  const boxSortKey = ref<BoxSortKey>(savedSort.key);
+  const boxSortDir = ref<BoxSortDir>(savedSort.dir);
+
+  // ソート設定が変わったら保存
+  watch([boxSortKey, boxSortDir], ([key, dir]) => {
+    saveSortSettings(key, dir);
+  });
 
   const filterJoinMode = ref<FilterJoinMode>("and"); // とくい/サブスキル の結合
   const subSkillJoinMode = ref<FilterJoinMode>("or"); // 複数サブスキル の結合
@@ -529,14 +562,27 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     const list = [...filteredBoxEntries.value];
     const dir = boxSortDir.value === "asc" ? 1 : -1;
     const key = boxSortKey.value;
-    const favPriority = key === "labelFav" || key === "levelFav";
+    const favPriority = key === "labelFav" || key === "levelFav" || key === "dexFav";
     const sortByLevel = key === "level" || key === "levelFav";
+    const sortByDex = key === "dex" || key === "dexFav";
     list.sort((a, b) => {
       // お気に入り優先の場合、まずfavoriteで分ける
       if (favPriority) {
         const favA = a.favorite ? 1 : 0;
         const favB = b.favorite ? 1 : 0;
         if (favA !== favB) return (favB - favA); // favoriteは常に上（dirに関係なく）
+      }
+      // 図鑑番号順
+      if (sortByDex) {
+        const dexA = a.derived?.pokedexId ?? 9999;
+        const dexB = b.derived?.pokedexId ?? 9999;
+        if (dexA !== dexB) return (dexA - dexB) * dir;
+        // フォーム順
+        const formA = a.derived?.form ?? 0;
+        const formB = b.derived?.form ?? 0;
+        if (formA !== formB) return (formA - formB) * dir;
+        // 同じ図鑑番号・フォームなら表記名順
+        return displayBoxTitle(a).localeCompare(displayBoxTitle(b), locale.value === "en" ? "en" : "ja") * dir;
       }
       if (sortByLevel) {
         const la = a.planner?.level ?? a.derived?.level ?? 0;
@@ -581,9 +627,17 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     boxFilter.value = "";
   }
 
-  // Undo / persistence
-  const boxUndoAction = ref<BoxUndoAction | null>(null);
-  const canUndo = computed(() => !!boxUndoAction.value);
+  // Undo / Redo / persistence
+  const UNDO_LIMIT = 3;
+  const boxUndoStack = ref<BoxUndoAction[]>([]);
+  const boxRedoStack = ref<BoxUndoAction[]>([]);
+  const canUndo = computed(() => boxUndoStack.value.length > 0);
+  const canRedo = computed(() => boxRedoStack.value.length > 0);
+
+  function pushUndoAction(action: BoxUndoAction) {
+    boxUndoStack.value = [...boxUndoStack.value, action].slice(-UNDO_LIMIT);
+    boxRedoStack.value = [];  // 新しい操作があるとredoスタックをクリア
+  }
 
   function cloneBoxEntry(e: PokemonBoxEntryV1): PokemonBoxEntryV1 {
     const raw = JSON.parse(JSON.stringify(e));
@@ -593,9 +647,34 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     return es.map(cloneBoxEntry);
   }
 
+  // 現在の状態からundoアクションの逆操作を作成
+  function createReverseAction(a: BoxUndoAction): BoxUndoAction {
+    if (a.kind === "delete") {
+      // delete をundoすると add になる
+      return { kind: "add", addedIds: [a.entry.id], selectedId: selectedBoxId.value };
+    } else if (a.kind === "add" || a.kind === "import") {
+      // add/import をundoすると delete（複数削除）になる
+      // 簡易的にclearで代用（正確ではないが機能的には問題ない）
+      const entriesToRestore = boxEntries.value.filter(x => a.addedIds.includes(x.id));
+      if (entriesToRestore.length === 1) {
+        const entry = entriesToRestore[0];
+        const idx = boxEntries.value.findIndex(x => x.id === entry.id);
+        return { kind: "delete", entry: cloneBoxEntry(entry), index: idx, selectedId: selectedBoxId.value };
+      }
+      return { kind: "import", addedIds: a.addedIds, selectedId: selectedBoxId.value };
+    } else if (a.kind === "clear") {
+      // clear をundoすると... 空に戻す
+      return { kind: "clear", entries: [], selectedId: selectedBoxId.value };
+    }
+    return a;
+  }
+
   function onUndo() {
-    const a = boxUndoAction.value;
+    const a = boxUndoStack.value.pop();
     if (!a) return;
+    // 逆操作をredoスタックにプッシュ
+    boxRedoStack.value = [...boxRedoStack.value, createReverseAction(a)].slice(-UNDO_LIMIT);
+
     if (a.kind === "delete") {
       const next = [...boxEntries.value];
       const idx = Math.max(0, Math.min(next.length, a.index));
@@ -610,8 +689,33 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
       boxEntries.value = a.entries;
       selectedBoxId.value = a.selectedId;
     }
-    boxUndoAction.value = null;
     importStatus.value = t("status.undo");
+    nextTick(() => {
+      syncBoxEditSubInputsFromSelected();
+    });
+  }
+
+  function onRedo() {
+    const a = boxRedoStack.value.pop();
+    if (!a) return;
+    // 逆操作をundoスタックにプッシュ（redoStackはクリアしない）
+    boxUndoStack.value = [...boxUndoStack.value, createReverseAction(a)].slice(-UNDO_LIMIT);
+
+    if (a.kind === "delete") {
+      const next = [...boxEntries.value];
+      const idx = Math.max(0, Math.min(next.length, a.index));
+      next.splice(idx, 0, a.entry);
+      boxEntries.value = next.slice(0, 300);
+      selectedBoxId.value = a.selectedId;
+    } else if (a.kind === "add" || a.kind === "import") {
+      const set = new Set(a.addedIds);
+      boxEntries.value = boxEntries.value.filter((x) => !set.has(x.id));
+      selectedBoxId.value = a.selectedId;
+    } else if (a.kind === "clear") {
+      boxEntries.value = a.entries;
+      selectedBoxId.value = a.selectedId;
+    }
+    importStatus.value = t("status.redo");
     nextTick(() => {
       syncBoxEditSubInputsFromSelected();
     });
@@ -961,7 +1065,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
       updatedAt: now,
     };
     boxEntries.value = [entry, ...boxEntries.value].slice(0, 300);
-    boxUndoAction.value = { kind: "add", addedIds: [entry.id], selectedId: undoSelectedId };
+    pushUndoAction({ kind: "add", addedIds: [entry.id], selectedId: undoSelectedId });
     selectedBoxId.value = entry.id;
 
     // opts0.mode は呼び出し側が処理（計算機反映など）
@@ -1043,7 +1147,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     }
 
     boxEntries.value = next;
-    boxUndoAction.value = addedIds.length ? { kind: "import", addedIds, selectedId: undoSelectedId } : null;
+    if (addedIds.length) pushUndoAction({ kind: "import", addedIds, selectedId: undoSelectedId });
     importStatus.value = t("status.importResult", { added, skipped });
   }
 
@@ -1051,7 +1155,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     const e = selectedBox.value;
     if (!e) return;
     const idx = boxEntries.value.findIndex((x) => x.id === e.id);
-    boxUndoAction.value = { kind: "delete", entry: cloneBoxEntry(e), index: Math.max(0, idx), selectedId: selectedBoxId.value };
+    pushUndoAction({ kind: "delete", entry: cloneBoxEntry(e), index: Math.max(0, idx), selectedId: selectedBoxId.value });
     boxEntries.value = boxEntries.value.filter((x) => x.id !== e.id);
     selectedBoxId.value = null;
     importStatus.value = t("status.deleted");
@@ -1061,7 +1165,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     if (!boxEntries.value.length) return;
     const ok = confirm(t("confirm.clearBox", { n: boxEntries.value.length }));
     if (!ok) return;
-    boxUndoAction.value = { kind: "clear", entries: cloneBoxEntries(boxEntries.value), selectedId: selectedBoxId.value };
+    pushUndoAction({ kind: "clear", entries: cloneBoxEntries(boxEntries.value), selectedId: selectedBoxId.value });
     boxEntries.value = [];
     selectedBoxId.value = null;
     boxFilter.value = "";
@@ -1206,8 +1310,10 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     onDeleteSelected,
     onClearBox,
     onUndo,
+    onRedo,
     canUndo,
-    boxUndoAction,
+    canRedo,
+
 
     // handlers / helpers
     pickAddName,

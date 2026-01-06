@@ -123,73 +123,76 @@
               <div class="subGrid">
                 <label class="subField">
                   <span class="subField__k">Lv10</span>
-                  <input
+                  <select
                     v-model="addSubLv10"
                     class="field__input"
                     :class="{ 'field__input--error': !!addSubErrors['10'] }"
-                    list="subSkillOptions"
-                    @blur="box.onSubBlur(10)"
-                  />
+                  >
+                    <option value=""></option>
+                    <option v-for="label in subSkillOptionLabels" :key="label" :value="label">{{ label }}</option>
+                  </select>
                   <span v-if="addSubErrors['10']" class="field__error">{{ addSubErrors["10"] }}</span>
                 </label>
                 <label class="subField">
                   <span class="subField__k">Lv25</span>
-                  <input
+                  <select
                     v-model="addSubLv25"
                     class="field__input"
                     :class="{ 'field__input--error': !!addSubErrors['25'] }"
-                    list="subSkillOptions"
-                    @blur="box.onSubBlur(25)"
-                  />
+                  >
+                    <option value=""></option>
+                    <option v-for="label in subSkillOptionLabels" :key="label" :value="label">{{ label }}</option>
+                  </select>
                   <span v-if="addSubErrors['25']" class="field__error">{{ addSubErrors["25"] }}</span>
                 </label>
                 <label class="subField">
                   <span class="subField__k">Lv50</span>
-                  <input
+                  <select
                     v-model="addSubLv50"
                     class="field__input"
                     :class="{ 'field__input--error': !!addSubErrors['50'] }"
-                    list="subSkillOptions"
-                    @blur="box.onSubBlur(50)"
-                  />
+                  >
+                    <option value=""></option>
+                    <option v-for="label in subSkillOptionLabels" :key="label" :value="label">{{ label }}</option>
+                  </select>
                   <span v-if="addSubErrors['50']" class="field__error">{{ addSubErrors["50"] }}</span>
                 </label>
                 <label class="subField">
                   <span class="subField__k">Lv75</span>
-                  <input
+                  <select
                     v-model="addSubLv75"
                     class="field__input"
                     :class="{ 'field__input--error': !!addSubErrors['75'] }"
-                    list="subSkillOptions"
-                    @blur="box.onSubBlur(75)"
-                  />
+                  >
+                    <option value=""></option>
+                    <option v-for="label in subSkillOptionLabels" :key="label" :value="label">{{ label }}</option>
+                  </select>
                   <span v-if="addSubErrors['75']" class="field__error">{{ addSubErrors["75"] }}</span>
                 </label>
                 <label class="subField">
                   <span class="subField__k">Lv100</span>
-                  <input
+                  <select
                     v-model="addSubLv100"
                     class="field__input"
                     :class="{ 'field__input--error': !!addSubErrors['100'] }"
-                    list="subSkillOptions"
-                    @blur="box.onSubBlur(100)"
-                  />
+                  >
+                    <option value=""></option>
+                    <option v-for="label in subSkillOptionLabels" :key="label" :value="label">{{ label }}</option>
+                  </select>
                   <span v-if="addSubErrors['100']" class="field__error">{{ addSubErrors["100"] }}</span>
                 </label>
               </div>
-              <datalist id="subSkillOptions">
-                <option v-for="label in subSkillOptionLabels" :key="label" :value="label" />
-              </datalist>
             </label>
             <label class="boxAddFav">
               <input type="checkbox" v-model="box.addFavorite.value" />
               {{ t("box.add.addFavorite") }}
             </label>
             <div class="boxAddActions">
-              <button class="btn btn--primary" type="button" @click="onCreateToCalc($event)">
-                {{ t("box.add.toCalc") }}
-              </button>
-              <button class="btn" type="button" @click="box.onCreateManual({ mode: 'toBox' })">
+              <label class="boxAddCalcCheck">
+                <input type="checkbox" v-model="addToCalcChecked" />
+                {{ t("box.add.addToCalc") }}
+              </label>
+              <button class="btn btn--primary" type="button" @click="onCreateToBox($event)">
                 {{ t("box.add.toBox") }}
               </button>
             </div>
@@ -312,13 +315,18 @@
             <button class="btn btn--ghost" type="button" @click="box.onUndo" :disabled="!canUndo" :title="t('box.list.undoTitle')">
               {{ t("common.undo") }}
             </button>
+            <button class="btn btn--ghost" type="button" @click="box.onRedo" :disabled="!canRedo">
+              {{ t("common.redo") }}
+            </button>
           </div>
           <div class="boxSort">
             <select v-model="boxSortKey" class="field__input boxSort__select" :aria-label="t('box.list.sortKeyAria')">
               <option value="labelFav">{{ t("box.list.sortLabelFav") }}</option>
               <option value="levelFav">{{ t("box.list.sortLevelFav") }}</option>
+              <option value="dexFav">{{ t("box.list.sortDexFav") }}</option>
               <option value="label">{{ t("box.list.sortLabel") }}</option>
               <option value="level">{{ t("box.list.sortLevel") }}</option>
+              <option value="dex">{{ t("box.list.sortDex") }}</option>
             </select>
             <button class="btn btn--ghost" type="button" @click="boxSortDir = boxSortDir === 'asc' ? 'desc' : 'asc'">
               {{ boxSortDir === "asc" ? t("box.list.sortAsc") : t("box.list.sortDesc") }}
@@ -642,14 +650,15 @@
                       <div class="boxDetail__subEdit">
                         <div v-for="lv in [10, 25, 50, 75, 100]" :key="lv" class="subField">
                           <span class="subField__k">Lv{{ lv }}</span>
-                          <input
+                          <select
                             :value="boxEditSubInputs[String(lv)] ?? ''"
                             class="field__input"
                             :class="{ 'field__input--error': !!boxEditSubErrors[String(lv)] }"
-                            list="subSkillOptions"
-                            @input="box.onBoxEditSubInput(lv, ($event.target as HTMLInputElement).value)"
-                            @blur="box.onBoxEditSubBlur(lv)"
-                          />
+                            @change="box.onBoxEditSubInput(lv, ($event.target as HTMLSelectElement).value)"
+                          >
+                            <option value=""></option>
+                            <option v-for="label in subSkillOptionLabels" :key="label" :value="label">{{ label }}</option>
+                          </select>
                           <span v-if="boxEditSubErrors[String(lv)]" class="field__error">{{ boxEditSubErrors[String(lv)] }}</span>
                         </div>
                       </div>
@@ -718,6 +727,7 @@ const availableSubSkills = box.availableSubSkills;
 const boxSortDir = box.boxSortDir;
 const selectedSpecialties = box.selectedSpecialties;
 const canUndo = box.canUndo;
+const canRedo = box.canRedo;
 const relinkFound = box.relinkFound;
 const relinkSuggestList = box.relinkSuggestList;
 const relinkStatus = box.relinkStatus;
@@ -749,8 +759,17 @@ const relinkName = box.relinkName;
 const relinkOpen = box.relinkOpen;
 const selectedNature = box.selectedNature;
 
-function onCreateToCalc(ev: MouseEvent) {
-  box.onCreateManual({ mode: "toCalc" });
-  emit("apply-to-calc", ev);
+import { ref } from "vue";
+const addToCalcChecked = ref(true);
+
+function onCreateToBox(ev: MouseEvent) {
+  if (addToCalcChecked.value) {
+    // ボックスに追加して計算機にも反映
+    box.onCreateManual({ mode: "toCalc" });
+    emit("apply-to-calc", ev);
+  } else {
+    // ボックスにのみ追加
+    box.onCreateManual({ mode: "toBox" });
+  }
 }
 </script>
