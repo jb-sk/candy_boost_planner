@@ -1,14 +1,12 @@
 import type { BoostEvent, ExpGainNature, ExpType } from "../types";
 import { boostRules } from "./boost-config";
-import { dreamShardsPerCandy, totalExpToTheLevel } from "./tables";
+import { dreamShardsPerCandy, totalExpToTheLevel, totalExpToTheLevel900, totalExpToTheLevel1080, totalExpToTheLevel1320 } from "./tables";
 
 /**
  * nitoyon/pokesleep-tool の Exp.ts を参照し、Planner用に依存を外して純関数化したもの。
- * （Kerusu-1984版より新しい仕様を採用：ExpType 1320対応、Candy EXPがレベル帯で変化）
  *
  * 参照（謝辞）:
  * - https://github.com/nitoyon/pokesleep-tool
- * - https://github.com/Kerusu-1984/pokemon-sleep-calc-required-candy
  */
 
 const expTypeRate: Record<ExpType, number> = {
@@ -58,14 +56,23 @@ export type CalcExpAndCandyMixedResult = {
 };
 
 export function calcExp(level1: number, level2: number, expType: ExpType): number {
-  const ratio = expTypeRate[expType];
   if (level1 < 0 || level2 < 0) return 0;
   if (level1 >= totalExpToTheLevel.length) return 0;
   if (level2 >= totalExpToTheLevel.length) return 0;
-  return (
-    Math.round(totalExpToTheLevel[level2] * ratio) -
-    Math.round(totalExpToTheLevel[level1] * ratio)
-  );
+
+  // ExpType 900, 1080, 1320は専用テーブルを使用（Lv50以降で丸め誤差があるため）
+  if (expType === 900) {
+    return totalExpToTheLevel900[level2] - totalExpToTheLevel900[level1];
+  }
+  if (expType === 1080) {
+    return totalExpToTheLevel1080[level2] - totalExpToTheLevel1080[level1];
+  }
+  if (expType === 1320) {
+    return totalExpToTheLevel1320[level2] - totalExpToTheLevel1320[level1];
+  }
+
+  // ExpType 600は基準テーブルをそのまま使用
+  return totalExpToTheLevel[level2] - totalExpToTheLevel[level1];
 }
 
 export function calcExpPerCandy(level: number, nature: ExpGainNature, boost: BoostEvent): number {
@@ -82,6 +89,69 @@ export function calcExpPerCandy(level: number, nature: ExpGainNature, boost: Boo
 
 function shardRateForBoost(boost: BoostEvent): number {
   return boostRules[boost].shardMultiplier;
+}
+
+/**
+ * 目標Lv到達後に残りアメを使用して、レベル内のEXP（expInLevel）とかけらを計算する
+ *
+ * @param level 現在の到達Lv
+ * @param dstLevel 目標Lv
+ * @param nature EXP性格補正
+ * @param boost ブーストタイプ
+ * @param candyLeft 残りアメ数
+ * @param currentExpInLevel 現在のexpInLevel
+ * @param currentShards 現在のかけら
+ * @param shardsLimit かけら上限（undefined なら無制限）
+ * @returns 更新された expInLevel, shards, 使用したアメ数
+ */
+function calcExpInLevel(params: {
+  level: number;
+  dstLevel: number;
+  nature: ExpGainNature;
+  boost: BoostEvent;
+  candyLeft: number;
+  currentExpInLevel: number;
+  currentShards: number;
+  shardsLimit?: number;
+}): {
+  expInLevel: number;
+  shards: number;
+  candyUsed: number;
+} {
+  const { level, dstLevel, nature, boost, candyLeft, currentExpInLevel, currentShards, shardsLimit } = params;
+
+  // 目標Lv未達または余剰アメなし
+  if (level < dstLevel || candyLeft <= 0) {
+    return { expInLevel: currentExpInLevel, shards: currentShards, candyUsed: 0 };
+  }
+
+  const expPerCandy = calcExpPerCandy(dstLevel, nature, boost);
+  const shardBase = dreamShardsPerCandy[dstLevel + 1] ?? 0;
+  const shardRate = shardRateForBoost(boost);
+  const shardsPerCandy = shardBase * shardRate;
+
+  // かけら上限がある場合
+  if (shardsLimit !== undefined && shardsPerCandy > 0) {
+    const shardsAvailable = Math.max(0, shardsLimit - currentShards);
+    const candyWithinLimit = Math.floor(shardsAvailable / shardsPerCandy);
+    const actualCandyUsed = Math.min(candyWithinLimit, candyLeft);
+
+    if (actualCandyUsed > 0) {
+      return {
+        expInLevel: currentExpInLevel + expPerCandy * actualCandyUsed,
+        shards: currentShards + shardsPerCandy * actualCandyUsed,
+        candyUsed: actualCandyUsed,
+      };
+    }
+    return { expInLevel: currentExpInLevel, shards: currentShards, candyUsed: 0 };
+  }
+
+  // かけら無制限
+  return {
+    expInLevel: currentExpInLevel + expPerCandy * candyLeft,
+    shards: currentShards + shardsPerCandy * candyLeft,
+    candyUsed: candyLeft,
+  };
 }
 
 /**
@@ -402,6 +472,201 @@ export function calcLevelByCandy(params: {
     carry = expPerCandy * candyToUse - requiredExp;
   }
 
+  // 目標Lv到達後、余ったアメがあればdstLevelで使用してかけらを追加
+  // （calcExpAndCandyMixedと同じ動作にする）
+  const surplusResult = calcExpInLevel({
+    level,
+    dstLevel,
+    nature,
+    boost,
+    candyLeft,
+    currentExpInLevel: carry,
+    currentShards: shards,
+    shardsLimit: undefined,  // かけら無制限
+  });
+  shards = surplusResult.shards;
+  carry = surplusResult.expInLevel;
+
+  const candyUsed = Math.max(0, Math.floor(params.candy)) - (level >= dstLevel ? 0 : candyLeft);
+  return { exp, expLeft, level, expGot: carry, shards, candyUsed, candyLeft: level >= dstLevel ? 0 : candyLeft };
+}
+
+/**
+ * 手持ちアメ数とかけら上限の両方を考慮してどこまで上げられるか
+ * アメが足りてもかけらが足りなければ、かけら上限で到達Lvが制限される
+ * @param shardsLimit 使用可能なかけら上限（これを超えるとストップ）
+ */
+export function calcLevelByCandyAndShards(params: {
+  srcLevel: number;
+  dstLevel: number;
+  expType: ExpType;
+  nature: ExpGainNature;
+  boost: BoostEvent;
+  candy: number;
+  shardsLimit: number;
+  expGot?: number;
+}): CalcLevelByCandyResult {
+  const { srcLevel, dstLevel, expType, nature, boost, shardsLimit } = params;
+  const expGot = params.expGot ?? 0;
+
+  const exp = calcExp(srcLevel, dstLevel, expType) - expGot;
+  let expLeft = exp;
+
+  const shardRate = shardRateForBoost(boost);
+  let shards = 0;
+  let carry = expGot;
+  let candyLeft = Math.max(0, Math.floor(params.candy));
+  let level = srcLevel;
+
+  for (level = srcLevel; level < dstLevel; level++) {
+    const requiredExp = calcExp(level, level + 1, expType) - carry;
+    const expPerCandy = calcExpPerCandy(level, nature, boost);
+    const requiredCandy = Math.ceil(requiredExp / expPerCandy);
+
+    const candyToUse = Math.min(requiredCandy, candyLeft);
+    const shardsPerCandy = (dreamShardsPerCandy[level + 1] ?? 0) * shardRate;
+    const shardsForThisLevel = shardsPerCandy * candyToUse;
+
+    // かけら上限チェック
+    if (shards + shardsForThisLevel > shardsLimit) {
+      // このレベルに全部投入すると上限を超える → 上限内で使えるアメを計算
+      const shardsAvailable = shardsLimit - shards;
+
+      if (shardsPerCandy > 0 && shardsAvailable > 0) {
+        // 上限内で使えるアメ数を計算
+        const candyWithinLimit = Math.floor(shardsAvailable / shardsPerCandy);
+        const actualCandyUsed = Math.min(candyWithinLimit, candyToUse);
+
+        if (actualCandyUsed > 0) {
+          const actualShards = shardsPerCandy * actualCandyUsed;
+          shards += actualShards;
+          candyLeft -= actualCandyUsed;
+          expLeft -= expPerCandy * actualCandyUsed;
+          carry += expPerCandy * actualCandyUsed;
+        }
+      }
+      break;  // これ以上はかけら不足
+    }
+
+    shards += shardsForThisLevel;
+    candyLeft -= candyToUse;
+    expLeft -= expPerCandy * candyToUse;
+
+    if (candyToUse < requiredCandy) {
+      // アメ不足で途中終了
+      carry += expPerCandy * candyToUse;
+      break;
+    }
+
+    carry = expPerCandy * candyToUse - requiredExp;
+  }
+
+  // 目標Lv到達後、余ったアメがあればdstLevelで使用してかけらを追加
+  // （calcLevelByCandyと同じ動作にする）
+  const surplusResult = calcExpInLevel({
+    level,
+    dstLevel,
+    nature,
+    boost,
+    candyLeft,
+    currentExpInLevel: carry,
+    currentShards: shards,
+    shardsLimit,  // かけら制限あり
+  });
+  shards = surplusResult.shards;
+  carry = surplusResult.expInLevel;
+  candyLeft -= surplusResult.candyUsed;
+
   const candyUsed = Math.max(0, Math.floor(params.candy)) - candyLeft;
   return { exp, expLeft, level, expGot: carry, shards, candyUsed, candyLeft };
+}
+
+/**
+ * Phase 5用: Lvまでのアメとかけらを計算（アメブ割合を考慮、余りアメは使わない）
+ * calcExpAndCandyMixedと似ているが、「余ったアメをdstLevelで使用」しない
+ *
+ * @param boostCandyLimit アメブの上限（この範囲内で使用）
+ * @returns Lvアップに必要なアメとかけらのみ
+ */
+export function calcCandyAndShardsForLevelMixed(params: {
+  srcLevel: number;
+  dstLevel: number;
+  expType: ExpType;
+  nature: ExpGainNature;
+  boost: BoostEvent;
+  boostCandyLimit: number;
+  expGot?: number;
+}): {
+  shards: number;
+  boostCandy: number;
+  normalCandy: number;
+  expGot: number;
+} {
+  const { srcLevel, dstLevel, expType, nature, boost } = params;
+  const expGot = params.expGot ?? 0;
+  const boostCandyBudget = Math.max(0, Math.floor(params.boostCandyLimit));
+
+  if (srcLevel < 0 || dstLevel < 0 || srcLevel >= dstLevel) {
+    return {
+      shards: 0,
+      boostCandy: 0,
+      normalCandy: 0,
+      expGot,
+    };
+  }
+
+  let shardsNormal = 0;
+  let shardsBoost = 0;
+  let normalCandy = 0;
+  let boostCandyUsed = 0;
+
+  let carry = expGot;
+  let boostLeft = boost === "none" ? 0 : boostCandyBudget;
+  const boostShardRate = shardRateForBoost(boost);
+
+  for (let level = srcLevel; level < dstLevel; level++) {
+    let requiredExp = calcExp(level, level + 1, expType) - carry;
+    if (requiredExp <= 0) {
+      carry = -requiredExp;
+      continue;
+    }
+
+    const expPerNormal = calcExpPerCandy(level, nature, "none");
+    const expPerBoost = calcExpPerCandy(level, nature, boost);
+
+    let useBoost = 0;
+    if (boostLeft > 0) {
+      useBoost = Math.min(boostLeft, Math.ceil(requiredExp / expPerBoost));
+    }
+
+    requiredExp -= expPerBoost * useBoost;
+
+    let useNormal = 0;
+    if (requiredExp <= 0) {
+      carry = -requiredExp;
+    } else {
+      useNormal = Math.ceil(requiredExp / expPerNormal);
+      carry = expPerNormal * useNormal - requiredExp;
+    }
+
+    const shardBase = dreamShardsPerCandy[level + 1] ?? 0;
+    if (useNormal > 0) {
+      shardsNormal += shardBase * useNormal;
+      normalCandy += useNormal;
+    }
+    if (useBoost > 0) {
+      shardsBoost += shardBase * useBoost * boostShardRate;
+      boostCandyUsed += useBoost;
+      boostLeft -= useBoost;
+    }
+  }
+
+  // 余ったアメは使わない（calcExpAndCandyMixedとの違い）
+
+  return {
+    shards: shardsNormal + shardsBoost,
+    boostCandy: boostCandyUsed,
+    normalCandy,
+    expGot: carry,
+  };
 }

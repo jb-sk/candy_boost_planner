@@ -24,6 +24,10 @@ export type CalcRowV1 = {
   boostCandyInput: number; // 手入力用（mode=candyのとき有効）
   /** アメブ個数の最大投入実績（減少時の補填計算用） */
   boostCandyPeak?: number;
+  /** アメ個数指定（未設定=無制限、1以上=目標個数） */
+  candyTarget?: number;
+  /** 逆算モード: 在庫を無視してアメ使用制限から直接計算 */
+  isReverseCalcMode?: boolean;
   mode: CalcMode;
 };
 
@@ -115,6 +119,39 @@ export function loadLegacyTotalShards(): number {
   }
 }
 
+export function saveTotalShards(v: number): void {
+  try {
+    localStorage.setItem(LEGACY_TOTAL_SHARDS_KEY, String(Math.max(0, Math.floor(v))));
+  } catch {
+    // localStorage can throw (quota exceeded / blocked). Persistence must not break UI.
+  }
+}
+
+const BOOST_CANDY_REMAINING_KEY = "candy-boost-planner:calc:boostCandyRemaining";
+
+export function loadBoostCandyRemaining(): number | null {
+  try {
+    const raw = localStorage.getItem(BOOST_CANDY_REMAINING_KEY);
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveBoostCandyRemaining(v: number | null): void {
+  try {
+    if (v == null) {
+      localStorage.removeItem(BOOST_CANDY_REMAINING_KEY);
+    } else {
+      localStorage.setItem(BOOST_CANDY_REMAINING_KEY, String(Math.max(0, Math.floor(v))));
+    }
+  } catch {
+    // localStorage can throw (quota exceeded / blocked). Persistence must not break UI.
+  }
+}
+
 function normalizeAutosave(x: any): CalcAutosaveV1 {
   const totalShards = toInt(x.totalShards, 0);
   const boostKind: Exclude<BoostEvent, "none"> = x.boostKind === "mini" ? "mini" : "full";
@@ -159,6 +196,10 @@ function toRows(v: unknown): CalcRowV1[] {
     const dstLevelText = typeof o.dstLevelText === "string" ? o.dstLevelText : undefined;
     const pokedexId = typeof o.pokedexId === "number" && o.pokedexId > 0 ? o.pokedexId : undefined;
     const pokemonType = typeof o.pokemonType === "string" && o.pokemonType.trim() ? o.pokemonType : undefined;
+    const boostCandyPeak = typeof o.boostCandyPeak === "number" ? Math.max(0, Math.floor(o.boostCandyPeak)) : undefined;
+    // candyTarget: undefined = 無制限、1以上 = 目標個数
+    const candyTarget = typeof o.candyTarget === "number" && o.candyTarget >= 0 ? Math.floor(o.candyTarget) : undefined;
+    const isReverseCalcMode = o.isReverseCalcMode === true ? true : undefined;
     out.push({
       id,
       boxId,
@@ -174,6 +215,9 @@ function toRows(v: unknown): CalcRowV1[] {
       boostReachLevel,
       boostRatioPct,
       boostCandyInput,
+      boostCandyPeak,
+      candyTarget,
+      isReverseCalcMode,
       mode,
     });
   }
