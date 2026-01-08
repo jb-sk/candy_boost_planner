@@ -50,8 +50,7 @@ import {
 // 定数
 // ============================================================
 
-/** レベル上限 */
-const MAX_LEVEL = 65;
+import { maxLevel as MAX_LEVEL } from '../../pokesleep/tables';
 
 // ============================================================
 // 型定義
@@ -63,6 +62,7 @@ const MAX_LEVEL = 65;
 type ConstraintInput = {
   srcLevel: number;
   dstLevel: number;
+  dstExpInLevel: number;
   expType: ExpType;
   nature: ExpGainNature;
   expGot: number;
@@ -194,6 +194,7 @@ export function applyPhase1Allocate(
     const constraintInput: ConstraintInput = {
       srcLevel: pokemon.srcLevel,
       dstLevel: pokemon.dstLevel,
+      dstExpInLevel: pokemon.dstExpInLevel ?? 0,
       expType: pokemon.expType,
       nature: pokemon.nature,
       expGot: pokemon.expGot,
@@ -209,7 +210,7 @@ export function applyPhase1Allocate(
     // ─────────────────────────────────────────
     // ⑤ 不足確定
     // ─────────────────────────────────────────
-    const shortage = buildShortageInfo(diagnosisResult);
+    const shortage = buildShortageInfo(diagnosisResult, targetForConstraint);
 
     // 独立した不足フラグを計算
     const byInv = toReachableInfo(diagnosisResult.byInventory);
@@ -359,12 +360,14 @@ function calcTargetRowInfo(
   const targetTotal = targetBoost + targetNormal;
 
   // Lv+EXP を計算（アメブ → 通常アメの順）
-  const limitLevel = Math.min(pokemon.dstLevel + 1, MAX_LEVEL);
+  // dstExpInLevel を上限として使用
+  const dstExpInLevel = pokemon.dstExpInLevel ?? 0;
 
   const boostResult = (targetBoost > 0 && boostKind !== 'none')
     ? calcLevelByCandy({
       srcLevel: pokemon.srcLevel,
-      dstLevel: limitLevel,
+      dstLevel: pokemon.dstLevel,
+      dstExpInLevel,
       expType: pokemon.expType,
       nature: pokemon.nature,
       boost: boostKind,
@@ -376,7 +379,8 @@ function calcTargetRowInfo(
   const normalResult = (targetNormal > 0)
     ? calcLevelByCandy({
       srcLevel: boostResult.level,
-      dstLevel: limitLevel,
+      dstLevel: pokemon.dstLevel,
+      dstExpInLevel,
       expType: pokemon.expType,
       nature: pokemon.nature,
       boost: 'none',
@@ -392,6 +396,7 @@ function calcTargetRowInfo(
   const mixedResult = calcExpAndCandyMixed({
     srcLevel: pokemon.srcLevel,
     dstLevel: pokemon.dstLevel,
+    dstExpInLevel,
     expType: pokemon.expType,
     nature: pokemon.nature,
     boost: boostKind,
@@ -451,12 +456,14 @@ function calcCandyTargetRowInfo(
   }
 
   // Lv+EXP を計算（アメブ → 通常アメの順）
-  const limitLevel = Math.min(pokemon.dstLevel + 1, MAX_LEVEL);
+  // dstExpInLevel を上限として使用
+  const dstExpInLevel = pokemon.dstExpInLevel ?? 0;
 
   const boostResult = (candyTargetBoost > 0 && boostKind !== 'none')
     ? calcLevelByCandy({
       srcLevel: pokemon.srcLevel,
-      dstLevel: limitLevel,
+      dstLevel: pokemon.dstLevel,
+      dstExpInLevel,
       expType: pokemon.expType,
       nature: pokemon.nature,
       boost: boostKind,
@@ -468,7 +475,8 @@ function calcCandyTargetRowInfo(
   const normalResult = (candyTargetNormal > 0)
     ? calcLevelByCandy({
       srcLevel: boostResult.level,
-      dstLevel: limitLevel,
+      dstLevel: pokemon.dstLevel,
+      dstExpInLevel,
       expType: pokemon.expType,
       nature: pokemon.nature,
       boost: 'none',
@@ -484,6 +492,7 @@ function calcCandyTargetRowInfo(
   const mixedResult = calcExpAndCandyMixed({
     srcLevel: pokemon.srcLevel,
     dstLevel: pokemon.dstLevel,
+    dstExpInLevel,
     expType: pokemon.expType,
     nature: pokemon.nature,
     boost: boostKind,
@@ -704,17 +713,14 @@ function calcReachableWithShardsOnly(
   shardsLimit: number,
   boostKind: BoostKind
 ): IndependentConstraintResult {
-  const { srcLevel, dstLevel, expType, nature, expGot } = input;
-
-  if (srcLevel >= dstLevel) {
-    return { level: srcLevel, expInLevel: expGot, shortage: 0, candyUsed: 0, shardsUsed: 0, boostCandyUsed: 0, normalCandyUsed: 0 };
-  }
+  const { srcLevel, dstLevel, dstExpInLevel, expType, nature, expGot } = input;
 
   // アメブ部分
   const boostResult = boostValue > 0 && boostKind !== 'none'
     ? calcLevelByCandyAndShards({
       srcLevel,
       dstLevel,
+      dstExpInLevel,
       expType,
       nature,
       boost: boostKind,
@@ -730,6 +736,7 @@ function calcReachableWithShardsOnly(
     ? calcLevelByCandyAndShards({
       srcLevel: boostResult.level,
       dstLevel,
+      dstExpInLevel,
       expType,
       nature,
       boost: 'none',
@@ -760,17 +767,14 @@ function calcReachableWithBoostOnly(
   _shardsForLevel: number,
   boostKind: BoostKind
 ): IndependentConstraintResult {
-  const { srcLevel, dstLevel, expType, nature, expGot } = input;
-
-  if (srcLevel >= dstLevel) {
-    return { level: srcLevel, expInLevel: expGot, shortage: 0, candyUsed: 0, shardsUsed: 0, boostCandyUsed: 0, normalCandyUsed: 0 };
-  }
+  const { srcLevel, dstLevel, dstExpInLevel, expType, nature, expGot } = input;
 
   // アメブ部分（かけら無制限）
   const boostResult = effectiveBoost > 0 && boostKind !== 'none'
     ? calcLevelByCandy({
       srcLevel,
       dstLevel,
+      dstExpInLevel,
       expType,
       nature,
       boost: boostKind,
@@ -784,6 +788,7 @@ function calcReachableWithBoostOnly(
     ? calcLevelByCandy({
       srcLevel: boostResult.level,
       dstLevel,
+      dstExpInLevel,
       expType,
       nature,
       boost: 'none',
@@ -813,17 +818,14 @@ function calcReachableWithInventoryOnly(
   _shardsForLevel: number,
   boostKind: BoostKind
 ): IndependentConstraintResult {
-  const { srcLevel, dstLevel, expType, nature, expGot } = input;
-
-  if (srcLevel >= dstLevel) {
-    return { level: srcLevel, expInLevel: expGot, shortage: 0, candyUsed: 0, shardsUsed: 0, boostCandyUsed: 0, normalCandyUsed: 0 };
-  }
+  const { srcLevel, dstLevel, dstExpInLevel, expType, nature, expGot } = input;
 
   // アメブ部分（かけら無制限）
   const boostResult = effectiveBoost > 0 && boostKind !== 'none'
     ? calcLevelByCandy({
       srcLevel,
       dstLevel,
+      dstExpInLevel,
       expType,
       nature,
       boost: boostKind,
@@ -837,6 +839,7 @@ function calcReachableWithInventoryOnly(
     ? calcLevelByCandy({
       srcLevel: boostResult.level,
       dstLevel,
+      dstExpInLevel,
       expType,
       nature,
       boost: 'none',
@@ -905,14 +908,31 @@ function selectFinalLevelAndExp(
 // ============================================================
 
 /**
- * ShortageInfo を構築
+ * ShortageInfo を構築（各項目の独立した不足量）
  */
-function buildShortageInfo(diagnosis: ConstraintDiagnosisResult): ShortageInfo {
-  // 主要な制限要因の不足量を使用
+function buildShortageInfo(
+  diagnosis: ConstraintDiagnosisResult,
+  target: TargetRowInfo
+): ShortageInfo {
+  // 各項目の独立した不足量を設定（isXxxShortage フラグに基づく）
+  const boostShortage = diagnosis.isBoostShortage
+    ? diagnosis.byBoostLimit.shortage : 0;
+
+  // 通常アメ不足量: 目標 - 在庫制限時の使用量
+  const normalShortage = diagnosis.isInventoryShortage
+    ? Math.max(0, target.normalValue - diagnosis.byInventory.normalCandyUsed) : 0;
+
+  const candyShortage = diagnosis.isInventoryShortage
+    ? diagnosis.byInventory.shortage : 0;
+
+  const shardsShortage = diagnosis.isShardsShortage
+    ? diagnosis.byShardsLimit.shortage : 0;
+
   return {
-    candy: diagnosis.limitingFactor === 'candy' ? diagnosis.byInventory.shortage : 0,
-    boost: diagnosis.limitingFactor === 'boost' ? diagnosis.byBoostLimit.shortage : 0,
-    shards: diagnosis.limitingFactor === 'shards' ? diagnosis.byShardsLimit.shortage : 0,
+    boost: boostShortage,
+    normal: normalShortage,
+    candy: candyShortage,
+    shards: shardsShortage,
   };
 }
 

@@ -1,4 +1,5 @@
 import type { BoostEvent, ExpGainNature, ExpType } from "../domain/types";
+import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 
 export type CalcMode = "boostLevel" | "ratio" | "candy";
 
@@ -20,14 +21,13 @@ export type CalcRowV1 = {
   expType: ExpType;
   nature: ExpGainNature;
   boostReachLevel: number;
-  boostRatioPct: number; // 0..100
-  boostCandyInput: number; // 手入力用（mode=candyのとき有効）
-  /** アメブ個数の最大投入実績（減少時の補填計算用） */
-  boostCandyPeak?: number;
+  boostRatioPct: number; // 0..100（派生値、表示用）
+  /** 入力されたアメブ個数（またはEXP調整値）- 真実のソース */
+  boostOrExpAdjustment?: number;
+  /** ピーク値（100%時のアメブ個数）- 入力がピークを超えたら更新 */
+  candyPeak?: number;
   /** アメ個数指定（未設定=無制限、1以上=目標個数） */
   candyTarget?: number;
-  /** 逆算モード: 在庫を無視してアメ使用制限から直接計算 */
-  isReverseCalcMode?: boolean;
   mode: CalcMode;
 };
 
@@ -45,7 +45,10 @@ export type CalcSaveSlotV1 = {
   savedAt: string;
   rows: CalcRowV1[];
   activeRowId: string | null;
+  /** スロット保存時の boostKind（スロット切り替え時に再計算が必要かどうか判定用） */
+  boostKind?: BoostEvent;
 };
+
 
 type CalcSlotsStoreV1 = {
   schemaVersion: 1;
@@ -169,9 +172,14 @@ function normalizeSlot(x: any): CalcSaveSlotV1 | null {
   const savedAt = typeof x.savedAt === "string" ? x.savedAt : new Date().toISOString();
   const rows = toRows(x.rows);
   const activeRowId = typeof x.activeRowId === "string" ? x.activeRowId : null;
+  // boostKind: スロット保存時の値（undefined = 旧データで未保存）
+  const boostKind = x.boostKind === "full" || x.boostKind === "mini" || x.boostKind === "none"
+    ? x.boostKind as BoostEvent
+    : undefined;
   if (!rows.length) return null;
-  return { savedAt, rows, activeRowId };
+  return { savedAt, rows, activeRowId, boostKind };
 }
+
 
 function toRows(v: unknown): CalcRowV1[] {
   if (!Array.isArray(v)) return [];
@@ -183,23 +191,24 @@ function toRows(v: unknown): CalcRowV1[] {
     if (!id) continue;
     const title = typeof o.title === "string" ? o.title : "";
     const expType = toExpType(o.expType, 600);
-    const srcLevel = clampInt(o.srcLevel, 1, 65, 1);
-    const dstLevel = clampInt(o.dstLevel, srcLevel, 65, srcLevel);
+    const srcLevel = clampInt(o.srcLevel, 1, MAX_LEVEL, 1);
+    const dstLevel = clampInt(o.dstLevel, srcLevel, MAX_LEVEL, srcLevel);
     const toNextFallback = 0; // App側で補正する
     const expRemaining = clampInt(o.expRemaining, 0, 999999, toNextFallback);
     const nature = toNature(o.nature, "normal");
     const boostReachLevel = clampInt(o.boostReachLevel, srcLevel, dstLevel, dstLevel);
     const boostRatioPct = clampInt(o.boostRatioPct, 0, 100, 100);
-    const boostCandyInput = Math.max(0, Math.floor(Number(o.boostCandyInput) || 0));
     const mode: CalcMode = o.mode === "boostLevel" || o.mode === "candy" || o.mode === "ratio" ? o.mode : "ratio";
     const boxId = typeof o.boxId === "string" && o.boxId.trim() ? o.boxId : undefined;
     const dstLevelText = typeof o.dstLevelText === "string" ? o.dstLevelText : undefined;
     const pokedexId = typeof o.pokedexId === "number" && o.pokedexId > 0 ? o.pokedexId : undefined;
     const pokemonType = typeof o.pokemonType === "string" && o.pokemonType.trim() ? o.pokemonType : undefined;
-    const boostCandyPeak = typeof o.boostCandyPeak === "number" ? Math.max(0, Math.floor(o.boostCandyPeak)) : undefined;
+    // boostOrExpAdjustment: 入力されたアメブ個数（真実のソース）
+    const boostOrExpAdjustment = typeof o.boostOrExpAdjustment === "number" ? Math.max(0, Math.floor(o.boostOrExpAdjustment)) : undefined;
+    // candyPeak: ピーク値
+    const candyPeak = typeof o.candyPeak === "number" ? Math.max(0, Math.floor(o.candyPeak)) : undefined;
     // candyTarget: undefined = 無制限、1以上 = 目標個数
     const candyTarget = typeof o.candyTarget === "number" && o.candyTarget >= 0 ? Math.floor(o.candyTarget) : undefined;
-    const isReverseCalcMode = o.isReverseCalcMode === true ? true : undefined;
     out.push({
       id,
       boxId,
@@ -214,10 +223,9 @@ function toRows(v: unknown): CalcRowV1[] {
       nature,
       boostReachLevel,
       boostRatioPct,
-      boostCandyInput,
-      boostCandyPeak,
+      boostOrExpAdjustment,
+      candyPeak,
       candyTarget,
-      isReverseCalcMode,
       mode,
     });
   }

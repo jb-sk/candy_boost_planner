@@ -47,6 +47,7 @@ export type PokemonInputSimple = {
   type?: string;
   srcLevel: number;
   dstLevel: number;
+  dstExpInLevel?: number;
   expType?: ExpType;
   nature?: ExpGainNature;
   expGot?: number;
@@ -66,6 +67,7 @@ export function pokemon(input: PokemonInputSimple): PokemonLevelUpRequest {
     type: input.type ?? DEFAULT_POKEMON.type,
     srcLevel: input.srcLevel,
     dstLevel: input.dstLevel,
+    dstExpInLevel: input.dstExpInLevel,
     expType: input.expType ?? DEFAULT_POKEMON.expType,
     nature: input.nature ?? DEFAULT_POKEMON.nature,
     expGot: input.expGot ?? DEFAULT_POKEMON.expGot,
@@ -258,8 +260,9 @@ export function validatePokemonInvariants(
   const prefix = `[${label}]`;
 
   // === 非負数チェック ===
-  expect(p.shortage.candy).toBeGreaterThanOrEqual(0);
   expect(p.shortage.boost).toBeGreaterThanOrEqual(0);
+  expect(p.shortage.normal).toBeGreaterThanOrEqual(0);
+  expect(p.shortage.candy).toBeGreaterThanOrEqual(0);
   expect(p.shortage.shards).toBeGreaterThanOrEqual(0);
   expect(p.reachableItems.shardsCount).toBeGreaterThanOrEqual(0);
   expect(p.reachableItems.boostCount).toBeGreaterThanOrEqual(0);
@@ -297,19 +300,20 @@ export function validatePokemonInvariants(
     expect(p.diagnosis.limitingFactor).toBeNull();
   }
 
+  // === limitingFactor 整合性 ===
+  // limitingFactor が示す項目の shortage > 0 のみ検証
+  // 他の shortage が 0 かどうかは状況依存（複数リソースの不足がありえる）
+
   if (p.diagnosis.limitingFactor === 'shards') {
     expect(p.shortage.shards).toBeGreaterThan(0);
   }
 
   if (p.diagnosis.limitingFactor === 'boost') {
     expect(p.shortage.boost).toBeGreaterThan(0);
-    expect(p.shortage.shards).toBe(0);
   }
 
   if (p.diagnosis.limitingFactor === 'candy') {
     expect(p.shortage.candy).toBeGreaterThan(0);
-    expect(p.shortage.shards).toBe(0);
-    expect(p.shortage.boost).toBe(0);
   }
 
   // === アイテム価値整合性 ===

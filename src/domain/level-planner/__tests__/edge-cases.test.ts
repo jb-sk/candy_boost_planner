@@ -10,6 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import { planLevelUp } from '../core';
 import { pokemon, inventory, config, getPokemon } from './helpers';
+import { calcExpPerCandy } from '../../pokesleep/exp';
 
 describe('エッジケーステスト', () => {
   // ========================================
@@ -431,6 +432,107 @@ describe('エッジケーステスト', () => {
       const p = getPokemon(result, 'suicune');
       expect(p.reachedLevel).toBe(50);
       expect(p.diagnosis.limitingFactor).toBe('boost');
+    });
+  });
+  // ========================================
+  // テスト54: 同Lv内でのEXP獲得（srcLevel === dstLevel）
+  // ========================================
+  // シナリオ（スクリーンショットより）:
+  // - 75スイクン: Lv50 → Lv50（同一レベル）
+  // - あとEXP: 2,451
+  // - アメ在庫: 100
+  // - アメブ個数: 50（アメの個数指定）
+  //
+  // 問題:
+  // - srcLevel === dstLevel の場合、アメブ0, 通常アメ0, 合計0になる
+  // - 目標Lvに到達済みでも、アメを使えばEXPは増えるはず
+  //
+  // 期待:
+  // - アメブ: 50（個数指定通り）
+  // - EXPが計算される（0ではない）
+  describe('Test54: 同Lv内でのEXP獲得', () => {
+    it('srcLevel === dstLevel でもアメブとEXPが計算される', () => {
+      // アメブ50個分のEXPを計算
+      const boostCandyCount = 50;
+      const expPerCandy = calcExpPerCandy(50, 'normal', 'full');
+      const dstExpInLevel = boostCandyCount * expPerCandy;
+
+      const result = planLevelUp(
+        [pokemon({
+          id: 'suicune',
+          pokedexId: 245,
+          pokemonName: 'スイクン',
+          type: 'water',
+          srcLevel: 50,
+          dstLevel: 50,  // 同一レベル
+          dstExpInLevel,  // 目標EXP
+          expType: 1080,
+          nature: 'normal',
+          expGot: 0,
+          candyNeed: 50,  // 50アメ投入予定
+          boostOrExpAdjustment: 50,
+          candyTarget: 50,
+        })],
+        inventory({
+          species: { '245': 100 },
+          typeCandy: { water: { s: 0, m: 0 } },
+          universal: { s: 0, m: 0, l: 0 },
+        }),
+        config({ boostKind: 'full', globalBoostLimit: 3500, globalShardsLimit: 4000000 })
+      );
+
+      const p = getPokemon(result, 'suicune');
+      // アメブ50が配分されるべき
+      expect(p.reachableItems.boostCount).toBe(50);
+      expect(p.reachableItems.totalCandyCount).toBe(50);
+      // EXPが計算されるべき（0ではない）
+      expect(p.reachableItems.shardsCount).toBeGreaterThan(0);
+    });
+  });
+
+  // ========================================
+  // テスト55: タツベイ EXPタイプ900 実機検証
+  // ========================================
+  // シナリオ（実際のゲームで確認）:
+  // - タツベイ: Lv16 → Lv46
+  // - EXPタイプ: 900（600族）
+  // - 性格補正: なし（normal）
+  // - あとEXP: 681（= Lv16→17の全EXP、expGot = 0）
+  // - boost: none（通常アメのみ使用）
+  //
+  // 実機確認結果:
+  // - 通常アメ: 1,198
+  // - かけら: 180,728
+  describe('Test55: タツベイ EXPタイプ900 実機検証', () => {
+    it('通常アメ=1198、かけら=180728（実機確認値）', () => {
+      const result = planLevelUp(
+        [pokemon({
+          id: 'bagon',
+          pokedexId: 371,
+          pokemonName: 'タツベイ',
+          type: 'dragon',
+          srcLevel: 16,
+          dstLevel: 46,
+          expType: 900,
+          nature: 'normal',
+          expGot: 0,
+          candyNeed: 1198,
+          boostOrExpAdjustment: 1198,
+        })],
+        inventory({
+          species: { '371': 2000 },  // 十分な在庫
+          typeCandy: { dragon: { s: 0, m: 0 } },
+          universal: { s: 0, m: 0, l: 0 },
+        }),
+        config({ boostKind: 'none', globalBoostLimit: 0, globalShardsLimit: 10000000 })
+      );
+
+      const p = getPokemon(result, 'bagon');
+
+      // 実機確認値と一致
+      expect(p.targetNormal).toBe(1198);
+      expect(p.targetShards).toBe(180728);
+      expect(p.reachedLevel).toBe(46);
     });
   });
 });

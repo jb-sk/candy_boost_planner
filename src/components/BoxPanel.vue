@@ -63,7 +63,7 @@
             </label>
             <label class="field">
               <span class="field__label">{{ t("box.add.level") }}</span>
-              <input v-model.number="addLevel" type="number" min="1" max="65" class="field__input" />
+              <input v-model.number="addLevel" type="number" min="1" :max="MAX_LEVEL" class="field__input" />
             </label>
             <label class="field field--sm">
               <span class="field__label">{{ t("box.add.nature") }}</span>
@@ -495,7 +495,7 @@
                               class="levelPick__range"
                               type="range"
                               min="1"
-                              max="65"
+                              :max="MAX_LEVEL"
                               step="1"
                               :value="selectedDetail?.level ?? 1"
                               @input="box.setBoxLevel(($event.target as HTMLInputElement).value)"
@@ -504,7 +504,7 @@
                               class="btn btn--ghost btn--xs"
                               type="button"
                               @click="box.nudgeBoxLevel(1)"
-                              :disabled="(selectedDetail?.level ?? 1) >= 65"
+                              :disabled="(selectedDetail?.level ?? 1) >= MAX_LEVEL"
                             >
                               ▶
                             </button>
@@ -518,7 +518,7 @@
                               class="levelChip"
                               :class="{ 'levelChip--on': lv === (selectedDetail?.level ?? 1) }"
                               @click="box.setBoxLevel(lv)"
-                              :disabled="lv < 1 || lv > 65"
+                              :disabled="lv < 1 || lv > MAX_LEVEL"
                             >
                               {{ lv }}
                             </button>
@@ -687,6 +687,7 @@ import { useCandyStore } from "../composables/useCandyStore";
 import NatureSelect from "./NatureSelect.vue";
 import BoxImportDisclosure from "./BoxImportDisclosure.vue";
 import type { BoxStore } from "../composables/useBoxStore";
+import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 
 import iconBerrySvg from "../assets/icons/berry.svg?raw";
 import iconIngredientsSvg from "../assets/icons/ingredients.svg?raw";

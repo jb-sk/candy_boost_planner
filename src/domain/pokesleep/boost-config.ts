@@ -25,4 +25,4 @@ export const boostRules = {
  * - "mini": ミニブ
  * - "full": アメブ
  */
-export const defaultBoostKind: BoostEvent = "full";
+export const defaultBoostKind: BoostEvent = "mini";

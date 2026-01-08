@@ -21,6 +21,42 @@ export type PokemonType = string;
 export type ShortageType = 'candy' | 'boost' | 'shards';
 
 // ============================================================
+// Lv+EXP 型（目標・到達点の表現）
+// ============================================================
+
+/**
+ * Lv+EXP のペア
+ * 目標や到達点の正確な表現に使用
+ */
+export type LevelExp = {
+  level: number;
+  expInLevel: number;
+};
+
+/**
+ * Lv+EXP を比較
+ * @returns 負: a < b, 0: a == b, 正: a > b
+ */
+export function compareLevelExp(a: LevelExp, b: LevelExp): number {
+  if (a.level !== b.level) return a.level - b.level;
+  return a.expInLevel - b.expInLevel;
+}
+
+/**
+ * aがb以上か（目標達成判定用）
+ */
+export function isLevelExpReached(current: LevelExp, target: LevelExp): boolean {
+  return compareLevelExp(current, target) >= 0;
+}
+
+/**
+ * 2つの LevelExp のうち小さい方を返す
+ */
+export function minLevelExp(a: LevelExp, b: LevelExp): LevelExp {
+  return compareLevelExp(a, b) <= 0 ? a : b;
+}
+
+// ============================================================
 // 入力型
 // ============================================================
 
@@ -52,6 +88,9 @@ export type PokemonLevelUpRequest = {
 
   /** 目標Lv */
   dstLevel: number;
+
+  /** 目標Lv内のEXP（省略時=0: ちょうどdstLevelに到達） */
+  dstExpInLevel?: number;
 
   /** EXPタイプ（600, 900, 1080, 1320） */
   expType: ExpType;
@@ -184,16 +223,19 @@ export type ItemUsage = {
 };
 
 /**
- * 不足情報（各リソースの不足量のみ。主要な制限要因は diagnosis.limitingFactor を参照）
+ * 不足情報（各リソースの独立した不足量。diagnosis.isXxxShortage に基づいて設定）
  */
 export type ShortageInfo = {
-  /** アメ不足量 */
-  candy: number;
-
-  /** アメブ不足量 */
+  /** アメブ不足量（isBoostShortage 時のみ > 0） */
   boost: number;
 
-  /** かけら不足量 */
+  /** 通常アメ不足量（isInventoryShortage 時のみ > 0） */
+  normal: number;
+
+  /** アメ合計不足量（isInventoryShortage 時のみ > 0） */
+  candy: number;
+
+  /** かけら不足量（isShardsShortage 時のみ > 0） */
   shards: number;
 };
 

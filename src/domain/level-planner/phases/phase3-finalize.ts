@@ -329,6 +329,7 @@ function createEmptyShortage(): ShortageInfo {
   return {
     candy: 0,
     boost: 0,
+    normal: 0,
     shards: 0,
   };
 }

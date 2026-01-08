@@ -66,10 +66,6 @@ export { planLevelUp } from './core';
 export {
   findBestItemAllocation,
   findBestUniversalAllocation,
-  calcReachableByCandy,
-  calcReachableByBoostLimit,
-  calcReachableByShardsLimit,
-  determineLimitingFactor,
 } from './helpers';
 
 // ────────────────────────────────────────

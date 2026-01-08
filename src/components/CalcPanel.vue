@@ -114,7 +114,7 @@
           <div class="calcSum__k">{{ t("calc.shardsTotal") }}</div>
           <div class="calcSum__v">{{ calc.fmtNum(calc.totalShardsUsed.value) }}</div>
         </div>
-        <div class="calcSum calcSum--candy" v-if="calc.allocationResult.value">
+        <div class="calcSum calcSum--candy" v-if="calc.planResult.value">
           <div class="calcSum__k">{{ t("calc.candy.usageLabel") }}</div>
           <div class="calcSum__v">
             <span :class="{ 'calcSum__v--over': calc.universalCandyUsagePct.value > 100 }">
@@ -367,8 +367,8 @@
           <label class="field field--sm">
             <span class="field__label">
               {{ t("calc.row.dstLevel") }}
-              <span v-if="r.result.expLeftNext > 0" style="font-weight:normal; margin-left:4px; opacity:0.8">
-                {{ t("calc.row.expLeftNext", { exp: calc.fmtNum(r.result.expLeftNext) }) }}
+              <span v-if="r.expLeftNext > 0" style="font-weight:normal; margin-left:4px; opacity:0.8">
+                {{ t("calc.row.expLeftNext", { exp: calc.fmtNum(r.expLeftNext) }) }}
               </span>
             </span>
             <div class="levelPick">
@@ -411,12 +411,12 @@
                     class="levelPick__range"
                     type="range"
                     :min="r.srcLevel"
-                    max="65"
+                    :max="MAX_LEVEL"
                     step="1"
                     :value="r.dstLevel"
                     @input="calc.setDstLevel(r.id, ($event.target as HTMLInputElement).value)"
                   />
-                  <button class="btn btn--ghost btn--xs" type="button" @click="calc.nudgeDstLevel(r.id, 1)" :disabled="r.dstLevel >= 65">
+                  <button class="btn btn--ghost btn--xs" type="button" @click="calc.nudgeDstLevel(r.id, 1)" :disabled="r.dstLevel >= MAX_LEVEL">
                     ▶
                   </button>
                 </div>
@@ -556,18 +556,7 @@
             />
           </label>
           <div class="field field--sm">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0px; white-space: nowrap;">
-              <span class="field__label" style="margin-bottom: 0;">{{ t("calc.row.candyTarget") }}</span>
-              <label class="field-checkbox-mini" :class="{ 'is-disabled': r.candyTarget == null }" :title="t('calc.row.reverseCalcMode')">
-                <input
-                  type="checkbox"
-                  :checked="r.isReverseCalcMode"
-                  :disabled="r.candyTarget == null"
-                  @change="calc.onRowReverseCalcMode(r.id, ($event.target as HTMLInputElement).checked)"
-                />
-                <span style="font-weight: bold; font-size: 14px; line-height: 1;">{{ t("calc.row.reverseCalcModeShort") }}</span>
-              </label>
-            </div>
+            <span class="field__label">{{ t("calc.row.candyTarget") }}</span>
             <input
               type="number"
               min="0"
@@ -593,19 +582,19 @@
             <span class="calcRow__resultItems">
               <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                 <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
-                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isBoostNotAllocated(r) }">{{ calc.fmtNum(r.result.boostCandy) }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'boost') }">{{ calc.fmtNum(getResult(r.id)?.targetBoost ?? 0) }}</span>
               </span>
               <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                 <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
-                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isNormalCandyShortageForTarget(r) }">{{ calc.fmtNum(r.result.normalCandy) }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'normal') }">{{ calc.fmtNum(getResult(r.id)?.targetNormal ?? 0) }}</span>
               </span>
               <span class="calcRow__res">
-                <span class="calcRow__k">{{ t("calc.row.candyTotal") }}</span>
-                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isTargetOverage(r) }">{{ calc.fmtNum(r.result.boostCandy + r.result.normalCandy) }}</span>
+                <span class="calcRow__k">{{ t(calc.boostKind.value === 'none' ? "calc.row.candy" : "calc.row.candyTotal") }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'candy') }">{{ calc.fmtNum((getResult(r.id)?.targetBoost ?? 0) + (getResult(r.id)?.targetNormal ?? 0)) }}</span>
               </span>
               <span class="calcRow__res">
                 <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
-                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isShardsShortageForTarget(r) }">{{ calc.fmtNum(r.result.shards) }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'shards') }">{{ calc.fmtNum(getResult(r.id)?.targetShards ?? 0) }}</span>
               </span>
               <span class="calcRow__res" v-if="hasItemUsage(r)">
                 <span class="calcRow__k">{{ t("calc.row.itemRequired") }}</span>
@@ -622,9 +611,9 @@
 
           <!-- 個数指定行と到達可能行をグループ化して表示（隙間をなくすため） -->
           <div style="display: flex; flex-direction: column; gap: 0;">
-            <!-- 個数指定行（個数指定ありかつ不足があり、在庫∞モードではない場合のみ表示） -->
+            <!-- 個数指定行（個数指定ありかつ不足がある場合のみ表示） -->
             <div
-              v-if="isExpanded(r.id) && hasLimit(r) && !r.isReverseCalcMode && getTheoreticalResources(r) && getRowAllocation(r.id)?.primaryShortageType !== null"
+              v-if="isExpanded(r.id) && hasLimit(r) && getTheoreticalResources(r) && getResult(r.id)?.diagnosis.limitingFactor !== null"
               class="calcRow__resultRow calcRow__resultRow--used"
               style="margin-bottom: 0; padding-bottom: 4px; border-bottom-left-radius: 0; border-bottom-right-radius: 0;"
             >
@@ -633,19 +622,19 @@
               <span class="calcRow__resultItems">
                 <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                   <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': getRowAllocation(r.id)!.boostShortage > 0 }">{{ calc.fmtNum(getTheoreticalResources(r)!.boostCandy) }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'limit', 'boost') }">{{ calc.fmtNum(getTheoreticalResources(r)!.boostCandy) }}</span>
                 </span>
                 <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                   <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isNormalCandyShortageForLimit(r) }">{{ calc.fmtNum(getTheoreticalResources(r)!.normalCandy) }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'limit', 'normal') }">{{ calc.fmtNum(getTheoreticalResources(r)!.normalCandy) }}</span>
                 </span>
                 <span class="calcRow__res">
-                  <span class="calcRow__k">{{ t("calc.row.candyTotal") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': getRowAllocation(r.id)!.primaryShortageType === 'candy' }">{{ calc.fmtNum(getTheoreticalResources(r)!.candy) }}</span>
+                  <span class="calcRow__k">{{ t(calc.boostKind.value === 'none' ? "calc.row.candy" : "calc.row.candyTotal") }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'limit', 'candy') }">{{ calc.fmtNum(getTheoreticalResources(r)!.candy) }}</span>
                 </span>
                 <span class="calcRow__res">
                   <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': getRowAllocation(r.id)!.shardsShortage > 0 }">{{ calc.fmtNum(getTheoreticalResources(r)!.shards) }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'limit', 'shards') }">{{ calc.fmtNum(getTheoreticalResources(r)!.shards) }}</span>
                 </span>
                 <span class="calcRow__res" v-if="getLimitItemUsageItems(r).length > 0">
                   <span
@@ -668,7 +657,7 @@
 
             <!-- 使用行（展開時のみ表示） -->
             <div
-              v-if="isExpanded(r.id) && getRowAllocation(r.id)"
+              v-if="isExpanded(r.id) && getResult(r.id)"
               class="calcRow__resultRow calcRow__resultRow--used"
               :style="hasLimit(r) && getTheoreticalResources(r) && getTheoreticalShortageType(r) !== null ? 'margin-top: 0; padding-top: 4px; border-top-left-radius: 0; border-top-right-radius: 0;' : ''"
             >
@@ -677,19 +666,19 @@
               <span class="calcRow__resultItems">
                 <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                   <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': getRowAllocation(r.id)!.boostShortage > 0 }">{{ calc.fmtNum(getRowAllocation(r.id)!.boostCandyUsed) }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'boost') }">{{ calc.fmtNum(getResult(r.id)!.reachableItems.boostCount) }}</span>
                 </span>
                 <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                   <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isNormalCandyShortageForReachable(r) }">{{ calc.fmtNum(getRowAllocation(r.id)!.normalCandyUsed) }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'normal') }">{{ calc.fmtNum(getResult(r.id)!.reachableItems.normalCount) }}</span>
                 </span>
                 <span class="calcRow__res">
-                  <span class="calcRow__k">{{ t("calc.row.candyTotal") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': getRowAllocation(r.id)!.primaryShortageType === 'candy' }">{{ calc.fmtNum(getRowAllocation(r.id)!.boostCandyUsed + getRowAllocation(r.id)!.normalCandyUsed) }}</span>
+                  <span class="calcRow__k">{{ t(calc.boostKind.value === 'none' ? "calc.row.candy" : "calc.row.candyTotal") }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'candy') }">{{ calc.fmtNum(getResult(r.id)!.reachableItems.boostCount + getResult(r.id)!.reachableItems.normalCount) }}</span>
                 </span>
                 <span class="calcRow__res">
                   <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': getRowAllocation(r.id)!.shardsShortage > 0 }">{{ calc.fmtNum(getRowAllocation(r.id)!.shardsUsed) }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'shards') }">{{ calc.fmtNum(getResult(r.id)!.reachableItems.shardsCount) }}</span>
                 </span>
                 <span class="calcRow__res" v-if="getResultItemUsageItems(r).length > 0">
                   <span class="calcRow__k">{{ t("calc.row.itemUsage") }}</span>
@@ -701,27 +690,27 @@
                   </span>
                 </span>
                 <!-- 主要な不足要因（到達Lvの前に表示） -->
-                <span class="calcRow__res" v-if="getRowAllocation(r.id)!.primaryShortageType === 'candy'">
+                <span class="calcRow__res" v-if="getResult(r.id)!.diagnosis.limitingFactor === 'candy'">
                   <span class="calcRow__k calcRow__k--danger">{{ t("calc.row.candyShortage") }}</span>
-                  <span class="calcRow__num calcRow__num--danger">{{ getRowAllocation(r.id)!.remaining }}</span>
+                  <span class="calcRow__num calcRow__num--danger">{{ getResult(r.id)!.shortage.candy }}</span>
                 </span>
-                <span class="calcRow__res" v-if="getRowAllocation(r.id)!.primaryShortageType === 'boost'">
+                <span class="calcRow__res" v-if="getResult(r.id)!.diagnosis.limitingFactor === 'boost'">
                   <span class="calcRow__k calcRow__k--danger">{{ t("calc.row.boostCandyShortage") }}</span>
-                  <span class="calcRow__num calcRow__num--danger">{{ getRowAllocation(r.id)!.boostShortage }}</span>
+                  <span class="calcRow__num calcRow__num--danger">{{ getResult(r.id)!.shortage.boost }}</span>
                 </span>
-                <span class="calcRow__res" v-if="getRowAllocation(r.id)!.primaryShortageType === 'shards'">
+                <span class="calcRow__res" v-if="getResult(r.id)!.diagnosis.limitingFactor === 'shards'">
                   <span class="calcRow__k calcRow__k--danger">{{ t("calc.row.shardsShortage") }}</span>
-                  <span class="calcRow__num calcRow__num--danger">{{ calc.fmtNum(getRowAllocation(r.id)!.shardsShortage) }}</span>
+                  <span class="calcRow__num calcRow__num--danger">{{ calc.fmtNum(getResult(r.id)!.shortage.shards) }}</span>
                 </span>
                 <span class="calcRow__res">
                   <span class="calcRow__k calcRow__k--info">{{ t("calc.row.reachedLv") }}</span>
-                  <span class="calcRow__num calcRow__num--info">{{ getRowAllocation(r.id)!.reachedLevel }}</span>
-                  <span class="calcRow__k calcRow__k--info" v-if="getRowAllocation(r.id)!.reachedLevelExpLeft > 0" style="margin-left: 4px;">({{ t("calc.row.expRemaining") }}</span>
-                  <span class="calcRow__num calcRow__num--info" v-if="getRowAllocation(r.id)!.reachedLevelExpLeft > 0">{{ calc.fmtNum(getRowAllocation(r.id)!.reachedLevelExpLeft) }}</span><span class="calcRow__k calcRow__k--info" v-if="getRowAllocation(r.id)!.reachedLevelExpLeft > 0">)</span>
+                  <span class="calcRow__num calcRow__num--info">{{ getResult(r.id)!.reachedLevel }}</span>
+                  <span class="calcRow__k calcRow__k--info" v-if="getResult(r.id)!.expToNextLevel > 0" style="margin-left: 4px;">({{ t("calc.row.expRemaining") }}</span>
+                  <span class="calcRow__num calcRow__num--info" v-if="getResult(r.id)!.expToNextLevel > 0">{{ calc.fmtNum(getResult(r.id)!.expToNextLevel) }}</span><span class="calcRow__k calcRow__k--info" v-if="getResult(r.id)!.expToNextLevel > 0">)</span>
                 </span>
-                <span class="calcRow__res" v-if="getRowAllocation(r.id)!.remainingExp > 0">
+                <span class="calcRow__res" v-if="getResult(r.id)!.expToTarget > 0">
                   <span class="calcRow__k calcRow__k--info">{{ t("calc.row.remainingExp") }}</span>
-                  <span class="calcRow__num calcRow__num--info">{{ calc.fmtNum(getRowAllocation(r.id)!.remainingExp) }}</span>
+                  <span class="calcRow__num calcRow__num--info">{{ calc.fmtNum(getResult(r.id)!.expToTarget) }}</span>
                 </span>
               </span>
             </div>
@@ -749,9 +738,8 @@ import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import type { CalcStore, CalcRowView } from "../composables/useCalcStore";
 import { useCandyStore } from "../composables/useCandyStore";
-import NatureSelect from "./NatureSelect.vue";
-import { PokemonTypes, getTypeNameJa, getTypeName } from "../domain/pokesleep/pokemon-types";
-import type { PokemonAllocation } from "../domain/candy-allocator";
+import { PokemonTypes, getTypeName } from "../domain/pokesleep/pokemon-types";
+import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 
 defineEmits<{
   (e: "apply-to-box", rowId: string): void;
@@ -826,16 +814,10 @@ function handleInputBlur(event: FocusEvent) {
   }
 }
 
-const levelPresets = [10, 25, 30, 40, 50, 55, 57, 60, 65] as const;
+const levelPresets = [10, 25, 30, 40, 50, 55, 57, 60, MAX_LEVEL] as const;
 
 // ポケモンタイプ一覧（英語名）
 const pokemonTypes = PokemonTypes;
-
-// 万能アメ合計
-const universalCandyTotal = computed(() => {
-  const u = candyStore.universalCandy.value;
-  return u.s + u.m + u.l;
-});
 
 // 行から pokedexId を取得（保存済み or boxId から解決）
 function getRowPokedexId(r: { pokedexId?: number; boxId?: string }): number | undefined {
@@ -846,395 +828,174 @@ function getRowPokedexId(r: { pokedexId?: number; boxId?: string }): number | un
   return undefined;
 }
 
-// 特定の行のアメ配分結果を取得（calc.allocationResult から）
-function getRowAllocation(rowId: string): PokemonAllocation | null {
-  if (!calc.allocationResult.value) return null;
-  return calc.allocationResult.value.pokemons.find(p => p.id === rowId) ?? null;
+// PokemonLevelUpResult への直接アクセス
+function getResult(rowId: string) {
+  return calc.getPokemonResult(rowId);
 }
 
-// 「目標まで」行用の配分結果を取得（使用制限なし）
-function getTargetAllocation(rowId: string): PokemonAllocation | null {
-  return calc.targetAllocationMap.value[rowId] ?? null;
-}
 
-// アイテム使用テキストを生成（目標まで行用：使用制限なしで計算）
-function getItemUsageText(r: CalcRowView): string {
-  const alloc = getTargetAllocation(r.id);
-  if (!alloc) return "-";
+// アイテム使用リストの項目型
+type ItemUsageItem = { label: string; value: number; isDanger: boolean };
 
-  const parts: string[] = [];
-  const typeName = getTypeName(alloc.type, locale.value);
+// アイテム使用リストの赤字判定モード
+type ItemDangerMode = 'target' | 'limit' | 'reachable';
+
+// 共通ヘルパー: アイテム使用リストを生成
+function buildItemUsageList(
+  r: CalcRowView,
+  mode: ItemDangerMode
+): ItemUsageItem[] {
+  const p = getResult(r.id);
+  if (!p) return [];
+
+  // モードに応じてアイテムソースを決定
+  let sourceItems: typeof p.targetItems;
+  switch (mode) {
+    case 'target':
+      sourceItems = p.targetItems;
+      break;
+    case 'limit':
+      if (!hasLimit(r)) return [];
+      sourceItems = p.candyTargetItems ?? p.targetItems;
+      break;
+    case 'reachable':
+      sourceItems = p.reachableItems;
+      break;
+  }
+
+  const items: ItemUsageItem[] = [];
+  const typeName = getTypeName(p.type, locale.value);
   const uniLabel = t("calc.export.labelUni");
+
+  // 在庫を取得（limit モード用）
+  const uniStock = candyStore.universalCandy.value;
+  const typeStock = candyStore.getTypeCandyFor(p.type);
+
+  // 赤字判定関数
+  const getDanger = (itemType: 'typeS' | 'typeM' | 'uniS' | 'uniM' | 'uniL', value: number): boolean => {
+    if (mode === 'limit') {
+      // 個数指定行: 各在庫超過時に赤字
+      switch (itemType) {
+        case 'typeS': return value > typeStock.s;
+        case 'typeM': return value > typeStock.m;
+        case 'uniS': return value > uniStock.s;
+        case 'uniM': return value > uniStock.m;
+        case 'uniL': return value > uniStock.l;
+      }
+    } else if (mode === 'target') {
+      // 目標まで行: 万能Sのみ、不足時かつ個数指定なしで赤字
+      if (itemType === 'uniS') {
+        const hasLimitValue = r.candyTarget != null && r.candyTarget >= 0;
+        return p.shortage.candy > 0 && !hasLimitValue;
+      }
+      return false;
+    } else {
+      // 到達可能行: 万能Sのみ、不足時に赤字
+      if (itemType === 'uniS') {
+        return p.shortage.candy > 0;
+      }
+      return false;
+    }
+  };
 
   // タイプアメ
-  if (alloc.typeSUsed > 0) parts.push(`${typeName}S ${alloc.typeSUsed}`);
-  if (alloc.typeMUsed > 0) parts.push(`${typeName}M ${alloc.typeMUsed}`);
+  if (sourceItems.typeS > 0) {
+    items.push({ label: `${typeName}S`, value: sourceItems.typeS, isDanger: getDanger('typeS', sourceItems.typeS) });
+  }
+  if (sourceItems.typeM > 0) {
+    items.push({ label: `${typeName}M`, value: sourceItems.typeM, isDanger: getDanger('typeM', sourceItems.typeM) });
+  }
 
   // 万能アメ
-  if (alloc.uniSUsed > 0) parts.push(`${uniLabel}S ${alloc.uniSUsed}`);
-  if (alloc.uniMUsed > 0) parts.push(`${uniLabel}M ${alloc.uniMUsed}`);
-  if (alloc.uniLUsed > 0) parts.push(`${uniLabel}L ${alloc.uniLUsed}`);
-
-  // 余りがあれば表示（タイプアメまたは万能アメを使用した場合のみ）
-  // アメ在庫（種族アメ）のみで足りた場合は余りを表示しない
-  const usedTypeOrUniCandy = alloc.typeSUsed > 0 || alloc.typeMUsed > 0 ||
-    alloc.uniSUsed > 0 || alloc.uniMUsed > 0 || alloc.uniLUsed > 0;
-  if (alloc.surplus > 0 && usedTypeOrUniCandy) {
-    parts.push(`${t("calc.candy.surplus")}${alloc.surplus}`);
+  if (sourceItems.universalS > 0) {
+    items.push({ label: `${uniLabel}S`, value: sourceItems.universalS, isDanger: getDanger('uniS', sourceItems.universalS) });
+  }
+  if (sourceItems.universalM > 0) {
+    items.push({ label: `${uniLabel}M`, value: sourceItems.universalM, isDanger: getDanger('uniM', sourceItems.universalM) });
+  }
+  if (sourceItems.universalL > 0) {
+    items.push({ label: `${uniLabel}L`, value: sourceItems.universalL, isDanger: getDanger('uniL', sourceItems.universalL) });
   }
 
-  return parts.length > 0 ? parts.join(", ") : "-";
+  // 余り
+  const usedTypeOrUniCandy = sourceItems.typeS > 0 || sourceItems.typeM > 0 ||
+    sourceItems.universalS > 0 || sourceItems.universalM > 0 || sourceItems.universalL > 0;
+  if (sourceItems.surplus > 0 && usedTypeOrUniCandy) {
+    items.push({ label: t("calc.candy.surplus"), value: sourceItems.surplus, isDanger: false });
+  }
+
+  return items;
 }
 
-// アイテム使用リストを生成（目標まで行用：補填判定付き）
-type ItemUsageItem = { label: string; value: number; isDanger: boolean };
+// 目標まで行用（後方互換ラッパー）
 function getItemUsageItems(r: CalcRowView): ItemUsageItem[] {
-  const alloc = getTargetAllocation(r.id);
-  if (!alloc) return [];
-
-  const items: ItemUsageItem[] = [];
-  const typeName = getTypeName(alloc.type, locale.value);
-  const uniLabel = t("calc.export.labelUni");
-
-  // 万能アメ在庫（初期在庫）
-  const uniStock = candyStore.universalCandy.value;
-  // 実際の配分量（到達可能行）
-  const actualAlloc = getRowAllocation(r.id);
-
-  // 配分後の万能S残り（上位ポケモンが個数指定で返却した分を反映）
-  const allocResult = calc.allocationResult.value;
-  const uniSRemaining = allocResult?.universalRemaining?.s ?? uniStock.s;
-
-  // 個数指定があるかどうか（個数指定がある場合は在庫不足のみ赤字にする）
-  const hasLimitValue = r.candyTarget != null && r.candyTarget >= 0;
-
-  // 赤字判定: アロケータの判定を使用
-  // - originalRemaining > 0: 補填が必要 → 赤字
-  // - primaryShortageType !== null かつ candy 不足: 赤字
-  // - 個数指定ありで不足なし: 黒字
-  const needsSupplementation = (alloc.originalRemaining ?? 0) > 0;
-  const isUniSSupplemented = needsSupplementation && !hasLimitValue;
-
-  // タイプアメ（赤字なし）
-  if (alloc.typeSUsed > 0) {
-    items.push({ label: `${typeName}S`, value: alloc.typeSUsed, isDanger: false });
-  }
-  if (alloc.typeMUsed > 0) {
-    items.push({ label: `${typeName}M`, value: alloc.typeMUsed, isDanger: false });
-  }
-
-  // 万能アメ（Sのみ赤字判定あり）
-  if (alloc.uniSUsed > 0) {
-    items.push({ label: `${uniLabel}S`, value: alloc.uniSUsed, isDanger: isUniSSupplemented });
-  }
-  if (alloc.uniMUsed > 0) {
-    items.push({ label: `${uniLabel}M`, value: alloc.uniMUsed, isDanger: false });
-  }
-  if (alloc.uniLUsed > 0) {
-    items.push({ label: `${uniLabel}L`, value: alloc.uniLUsed, isDanger: false });
-  }
-
-  // 余り
-  const usedTypeOrUniCandy = alloc.typeSUsed > 0 || alloc.typeMUsed > 0 ||
-    alloc.uniSUsed > 0 || alloc.uniMUsed > 0 || alloc.uniLUsed > 0;
-  if (alloc.surplus > 0 && usedTypeOrUniCandy) {
-    items.push({ label: t("calc.candy.surplus"), value: alloc.surplus, isDanger: false });
-  }
-
-  return items;
+  return buildItemUsageList(r, 'target');
 }
 
-// 個数指定行用のアイテム使用リスト（candyTargetベース、補填前の値を使用）
+// 個数指定行用（後方互換ラッパー）
 function getLimitItemUsageItems(r: CalcRowView): ItemUsageItem[] {
-  if (!hasLimit(r)) return [];
-
-  // targetAllocationMapから補填前の値を取得
-  const alloc = getTargetAllocation(r.id);
-  if (!alloc) return [];
-
-  const items: ItemUsageItem[] = [];
-  const typeName = getTypeName(alloc.type, locale.value);
-  const uniLabel = t("calc.export.labelUni");
-
-  // 在庫を取得（不足判定用）
-  const uniStock = candyStore.universalCandy.value;
-  const typeStock = candyStore.getTypeCandyFor(alloc.type);
-
-  // タイプアメ（補填前の値を使用）
-  const typeSUsed = alloc.limitTypeSUsed ?? alloc.typeSUsed;
-  const typeMUsed = alloc.limitTypeMUsed ?? alloc.typeMUsed;
-  if (typeSUsed > 0) {
-    const isShort = typeSUsed > typeStock.s;
-    items.push({ label: `${typeName}S`, value: typeSUsed, isDanger: isShort });
-  }
-  if (typeMUsed > 0) {
-    const isShort = typeMUsed > typeStock.m;
-    items.push({ label: `${typeName}M`, value: typeMUsed, isDanger: isShort });
-  }
-
-  // 万能アメ（補填前の値を使用）
-  const uniSUsed = alloc.limitUniSUsed ?? alloc.uniSUsed;
-  const uniMUsed = alloc.limitUniMUsed ?? alloc.uniMUsed;
-  const uniLUsed = alloc.limitUniLUsed ?? alloc.uniLUsed;
-  if (uniSUsed > 0) {
-    const isShort = uniSUsed > uniStock.s;
-    items.push({ label: `${uniLabel}S`, value: uniSUsed, isDanger: isShort });
-  }
-  if (uniMUsed > 0) {
-    const isShort = uniMUsed > uniStock.m;
-    items.push({ label: `${uniLabel}M`, value: uniMUsed, isDanger: isShort });
-  }
-  if (uniLUsed > 0) {
-    const isShort = uniLUsed > uniStock.l;
-    items.push({ label: `${uniLabel}L`, value: uniLUsed, isDanger: isShort });
-  }
-
-  // 余り（補填前の値を使用）
-  const surplus = alloc.limitSurplus ?? alloc.surplus;
-  if (surplus > 0) {
-    items.push({ label: t("calc.candy.surplus"), value: surplus, isDanger: false });
-  }
-
-  return items;
+  return buildItemUsageList(r, 'limit');
 }
 
-// 個数指定行用のアイテムはgetLimitItemUsageItemsを使用
-// (candyTargetベースで計算、グローバル制限なし)
-
-function getResultItemUsageText(r: CalcRowView): string {
-  const items = getResultItemUsageItems(r);
-  if (items.length === 0) return "-";
-  return items.map(item => `${item.label} ${item.value}`).join(", ");
-}
-
-// 結果行用のアイテム使用リスト（赤字判定付き）
+// 到達可能行用（後方互換ラッパー）
 function getResultItemUsageItems(r: CalcRowView): ItemUsageItem[] {
-  const alloc = getRowAllocation(r.id);
-  if (!alloc) return [];
-
-  const items: ItemUsageItem[] = [];
-  const typeName = getTypeName(alloc.type, locale.value);
-  const uniLabel = t("calc.export.labelUni");
-
-  // 在庫無限モードかどうか
-  const isUnlimitedMode = r.isReverseCalcMode === true;
-
-  // 万能アメ在庫
-  const uniStock = candyStore.universalCandy.value;
-
-  // 個数指定があるか
-  const hasLimitValue = r.candyTarget != null && r.candyTarget >= 0;
-
-  // 補填判定: アロケータの判定を使用
-  // - primaryShortageType === null かつ remaining === 0 なら不足なし → 黒字
-  // - それ以外で配分時点の万能S残数を超えている場合は補填 → 赤字
-  const availableUniS = alloc.availableUniSAtAllocation ?? candyStore.universalCandy.value.s;
-  let isUniSSupplemented = alloc.uniSUsed > availableUniS;
-
-  // 不足がない場合は赤字にしない（個数指定の有無に関わらず）
-  if (alloc.primaryShortageType === null && alloc.remaining === 0) {
-    isUniSSupplemented = false;
-  }
-
-  // タイプアメ（赤字なし）
-  if (alloc.typeSUsed > 0) {
-    items.push({ label: `${typeName}S`, value: alloc.typeSUsed, isDanger: false });
-  }
-  if (alloc.typeMUsed > 0) {
-    items.push({ label: `${typeName}M`, value: alloc.typeMUsed, isDanger: false });
-  }
-
-  // 万能アメ（Sのみ赤字判定あり）
-  if (alloc.uniSUsed > 0) {
-    items.push({ label: `${uniLabel}S`, value: alloc.uniSUsed, isDanger: isUniSSupplemented });
-  }
-  if (alloc.uniMUsed > 0) {
-    items.push({ label: `${uniLabel}M`, value: alloc.uniMUsed, isDanger: false });
-  }
-  if (alloc.uniLUsed > 0) {
-    items.push({ label: `${uniLabel}L`, value: alloc.uniLUsed, isDanger: false });
-  }
-
-  // 余り
-  const usedTypeOrUniCandy = alloc.typeSUsed > 0 || alloc.typeMUsed > 0 ||
-    alloc.uniSUsed > 0 || alloc.uniMUsed > 0 || alloc.uniLUsed > 0;
-  if (alloc.surplus > 0 && usedTypeOrUniCandy) {
-    items.push({ label: t("calc.candy.surplus"), value: alloc.surplus, isDanger: false });
-  }
-
-  return items;
+  return buildItemUsageList(r, 'reachable');
 }
 
-// アメ不足テキストを生成
-function getCandyShortageText(r: CalcRowView): string {
-  const alloc = getRowAllocation(r.id);
-  if (!alloc || alloc.remaining <= 0) return "";
-
-  const expPart = alloc.remainingExp > 0 ? ` (EXP ${calc.fmtNum(alloc.remainingExp)})` : "";
-  return `${alloc.remaining}${expPart}`;
-}
-
-// アイテム使用があるか判定（目標まで行用 = targetAllocation）
+// アイテム使用があるか判定（目標まで行用 = targetItems）
 // 種族アメのみで足りた場合はfalse、タイプアメまたは万能アメを使用した場合のみtrue
 function hasItemUsage(r: CalcRowView): boolean {
-  const alloc = getTargetAllocation(r.id);
-  if (!alloc) return false;
+  const p = getResult(r.id);
+  if (!p) return false;
+  const items = p.targetItems;
   return (
-    alloc.uniSUsed > 0 ||
-    alloc.uniMUsed > 0 ||
-    alloc.uniLUsed > 0 ||
-    alloc.typeSUsed > 0 ||
-    alloc.typeMUsed > 0
+    items.universalS > 0 ||
+    items.universalM > 0 ||
+    items.universalL > 0 ||
+    items.typeS > 0 ||
+    items.typeM > 0
   );
 }
 
-// アイテム（万能アメ・タイプアメ）使用またはアメ不足があるか判定
+// ============================================================
+// 不足判定ヘルパー
+// ============================================================
+
+// 赤字判定
+function isDanger(
+  r: CalcRowView,
+  row: 'target' | 'limit' | 'reachable',
+  field: 'boost' | 'normal' | 'candy' | 'shards'
+): boolean {
+  const p = getResult(r.id);
+  if (!p) return false;
+
+  if (field === 'normal' && calc.boostKind.value === 'none') return false;
+
+  const hasLimitValue = r.candyTarget != null && r.candyTarget >= 0;
+  if (row === 'target' && hasLimitValue) return false;
+
+  switch (field) {
+    case 'boost': return p.shortage.boost > 0;
+    case 'normal': return p.shortage.normal > 0;
+    case 'candy': return p.shortage.candy > 0;
+    case 'shards': return p.shortage.shards > 0;
+  }
+}
+
+// アメ不足判定（🍬アイコン用）
 function isCandyShort(r: CalcRowView): boolean {
-  const alloc = getRowAllocation(r.id);
-  if (!alloc) return false;
-  return (
-    alloc.uniSUsed > 0 ||
-    alloc.uniMUsed > 0 ||
-    alloc.uniLUsed > 0 ||
-    alloc.typeSUsed > 0 ||
-    alloc.typeMUsed > 0 ||
-    alloc.remaining > 0
-  );
+  const p = getResult(r.id);
+  if (!p) return false;
+  return p.shortage.candy > 0;
 }
 
-// 「目標まで」行でアメ合計が不足かどうか判定
-// 個数指定がある場合はprimaryShortageTypeを使用、ない場合はoriginalRemainingを使用
-function isTargetOverage(r: CalcRowView): boolean {
-  const targetAlloc = getTargetAllocation(r.id);
-  if (!targetAlloc) return false;
-
-  // 個数指定がある場合はprimaryShortageTypeを使用
-  const hasLimitValue = r.candyTarget != null && r.candyTarget >= 0;
-  if (hasLimitValue) {
-    const alloc = getRowAllocation(r.id);
-    return alloc?.primaryShortageType === "candy";
-  }
-
-  // 個数指定なし: 補填前のoriginalRemaining > 0 ならアメ在庫不足
-  return (targetAlloc.originalRemaining ?? 0) > 0;
-}
-
-// 「目標まで」行でアメブが上限を超過しているか判定
-function isBoostOverage(r: CalcRowView): boolean {
-  // アメブ上限（グローバル）を超えているか
-  return calc.boostCandyOver.value > 0;
-}
-
-// 「目標まで」行でアメブが不足かどうか判定
-// アロケータのboostShortageを直接使用
-function isBoostNotAllocated(r: CalcRowView): boolean {
-  const targetAlloc = getTargetAllocation(r.id);
-  if (!targetAlloc) return false;
-
-  // アロケータで計算されたboostShortage > 0 ならアメブ不足
-  return targetAlloc.boostShortage > 0;
-}
-
-// 「到達可能」行でアメブがグローバル上限により制限されているか判定
-function isReachableBoostLimited(r: CalcRowView): boolean {
-  // アメブ上限を超えていない場合は黒字
-  if (calc.boostCandyOver.value <= 0) {
-    return false;
-  }
-
-  // アメブ上限を超えている場合、このポケモンのアメブが目標より少ないかチェック
-  const actualAlloc = getRowAllocation(r.id);
-  if (!actualAlloc) return false;
-
-  // 目標のアメブが、実際のアメブより多い = アメブ上限超過により制限された
-  return r.result.boostCandy > actualAlloc.boostCandyUsed;
-}
-
-// 「目標まで」行でかけらが不足しているか判定
-// アロケータのshardsShortageを直接使用
-function isShardsShortageForTarget(r: CalcRowView): boolean {
-  const targetAlloc = getTargetAllocation(r.id);
-  if (!targetAlloc) return false;
-
-  // アロケータで計算されたshardsShortage > 0 ならかけら不足
-  return targetAlloc.shardsShortage > 0;
-}
-
-// 「目標まで」行で通常アメが不足しているか判定
-// アメ不足がprimaryShortageTypeの場合のみ赤字
-function isNormalCandyShortageForTarget(r: CalcRowView): boolean {
-  // アメブ混合でない場合は赤字にしない
-  if (calc.boostKind.value === "none") return false;
-
-  // 通常アメが0の場合は赤字にしない
-  if (r.result.normalCandy <= 0) return false;
-
-  // 個数指定がある場合はprimaryShortageTypeを使用
-  const hasLimitValue = r.candyTarget != null && r.candyTarget >= 0;
-  if (hasLimitValue) {
-    const alloc = getRowAllocation(r.id);
-    return alloc?.primaryShortageType === "candy";
-  }
-
-  // 個数指定なし: originalRemainingを使用
-  const targetAlloc = getTargetAllocation(r.id);
-  if (!targetAlloc) return false;
-  return (targetAlloc.originalRemaining ?? 0) > 0;
-}
-
-// 「個数指定」行で通常アメが不足しているか判定
-// primaryShortageType === 'candy' の場合のみ赤字
-function isNormalCandyShortageForLimit(r: CalcRowView): boolean {
-  // アメブ混合でない場合は赤字にしない
-  if (calc.boostKind.value === "none") return false;
-
-  const alloc = getRowAllocation(r.id);
-  if (!alloc) return false;
-
-  const theoreticalRes = getTheoreticalResources(r);
-  if (!theoreticalRes) return false;
-
-  // 通常アメが0の場合は赤字にしない
-  if (theoreticalRes.normalCandy <= 0) return false;
-
-  // アメ不足が主要因の場合のみ赤字
-  return alloc.primaryShortageType === "candy";
-}
-
-// 「到達可能」行で通常アメが不足しているか判定
-// primaryShortageType === 'candy' の場合のみ赤字
-function isNormalCandyShortageForReachable(r: CalcRowView): boolean {
-  // アメブ混合でない場合は赤字にしない
-  if (calc.boostKind.value === "none") return false;
-
-  const alloc = getRowAllocation(r.id);
-  if (!alloc) return false;
-
-  // 通常アメが0の場合は赤字にしない
-  if (alloc.normalCandyUsed <= 0) return false;
-
-  // アメ不足が主要因の場合のみ赤字
-  return alloc.primaryShortageType === "candy";
-}
-
-// 個数指定があるかどうか判定
+// 個数指定があるか
 function hasLimit(r: CalcRowView): boolean {
   return r.candyTarget != null && r.candyTarget >= 0;
 }
 
-// 「到達可能」行でアメ不足があるか判定
-function hasShortage(r: CalcRowView): boolean {
-  const alloc = getRowAllocation(r.id);
-  if (!alloc) return false;
-  return alloc.remaining > 0;
-}
 
-// 「到達可能」行で残EXPがあるか判定
-function hasRemainingExp(r: CalcRowView): boolean {
-  const alloc = getRowAllocation(r.id);
-  if (!alloc) return false;
-  return alloc.remainingExp > 0;
-}
 
 // 個数指定がある場合の理論値ベースのリソースを取得
 interface TheoreticalResources {
@@ -1246,17 +1007,15 @@ interface TheoreticalResources {
 function getTheoreticalResources(r: CalcRowView): TheoreticalResources | null {
   if (!hasLimit(r)) return null;
 
-  // targetAllocationMapから理論値を取得
-  const alloc = getTargetAllocation(r.id);
-  if (!alloc) return null;
+  const p = getResult(r.id);
+  if (!p) return null;
 
-  const limit = r.candyTarget!;
-  const boostCandy = alloc.limitBoostCandyUsed ?? alloc.boostCandyUsed ?? 0;
-  const normalCandy = (alloc.limitTotalUsed ?? limit) - boostCandy;
-  const shards = alloc.limitShardsUsed ?? alloc.shardsUsed ?? 0;
+  const boostCandy = p.candyTargetBoost ?? p.targetBoost;
+  const normalCandy = p.candyTargetNormal ?? p.targetNormal;
+  const shards = p.candyTargetShards ?? p.targetShards;
 
   return {
-    candy: alloc.limitTotalUsed ?? limit,
+    candy: boostCandy + normalCandy,
     boostCandy,
     normalCandy,
     shards,
@@ -1269,116 +1028,14 @@ type ShortageType = "boost" | "candy" | "shards" | null;
 function getTheoreticalShortageType(r: CalcRowView): ShortageType {
   if (!hasLimit(r)) return null;
 
-  const alloc = getRowAllocation(r.id);
-  if (!alloc) return null;
+  const p = getResult(r.id);
+  if (!p) return null;
 
-  // アロケータが計算したprimaryShortageTypeを直接使用
-  return alloc.primaryShortageType;
+  // diagnosis.limitingFactor を直接使用
+  return p.diagnosis.limitingFactor;
 }
 
-// 「到達可能」行のアメ不足を計算
-// アロケータが計算したremainingを使用
-function getCandyShortage(r: CalcRowView): number {
-  const alloc = getRowAllocation(r.id);
-  if (!alloc) return 0;
 
-  if (hasLimit(r)) {
-    // 個数指定あり: primaryShortageTypeがcandyの場合のみ不足を表示
-    if (alloc.primaryShortageType !== "candy") {
-      return 0;
-    }
-  }
-
-  return alloc.remaining;
-}
-
-// 「到達可能」行でアメブ不足があるか判定（個数指定がある場合のみ）
-function hasBoostShortage(r: CalcRowView): boolean {
-  if (hasLimit(r)) {
-    return getTheoreticalShortageType(r) === "boost";
-  }
-  return false;
-}
-
-// アメブ不足量を取得
-function getBoostShortage(r: CalcRowView): number {
-  if (!hasLimit(r)) return 0;
-  if (getTheoreticalShortageType(r) !== "boost") return 0;
-
-  // allocatorが計算したboostShortageを使用
-  const alloc = getRowAllocation(r.id);
-  if (!alloc) return 0;
-
-  return alloc.boostShortage;
-}
-
-// targetAllocationのoriginalRemainingで判定（かけら制限なしでのアメ不足）
-// かけら不足のみ（アメは足りている）場合は表示しない
-// また、実際の配分結果でremaining=0なら（万能アメ等で補填されて足りた場合）表示しない
-function hasCandyShortage(r: CalcRowView): boolean {
-  // 個数指定がある場合は、getCandyShortageで判定
-  if (hasLimit(r)) {
-    return getCandyShortage(r) > 0;
-  }
-
-  // 実際の配分結果を確認（万能アメ等の補填後）
-  const actualAlloc = getRowAllocation(r.id);
-  if (actualAlloc && actualAlloc.remaining <= 0) {
-    // 実際の配分でアメ不足がない場合は表示しない
-    return false;
-  }
-
-  // targetAllocation（かけら制限なし）のoriginalRemainingで判定
-  const targetAlloc = getTargetAllocation(r.id);
-  if (!targetAlloc) return false;
-
-  // 100%アメブ設定の場合、アメ在庫が足りているかを直接計算
-  const is100PercentBoost = targetAlloc.boostCandyLimit === targetAlloc.candyNeed;
-  if (is100PercentBoost) {
-    // アメ在庫が足りているかを直接計算
-    const speciesStock = candyStore.getSpeciesCandyFor(targetAlloc.pokedexId);
-    const typeStock = candyStore.getTypeCandyFor(targetAlloc.type);
-    const typeValue = typeStock.s * 4 + typeStock.m * 25;
-    const uniStock = candyStore.universalCandy.value;
-    const allocResult = calc.allocationResult.value;
-    const uniSRemaining = allocResult?.universalRemaining?.s ?? uniStock.s;
-    const uniValue = uniSRemaining * 3 + uniStock.m * 20 + uniStock.l * 100;
-
-    const totalCandyValue = speciesStock + typeValue + uniValue;
-    if (totalCandyValue >= targetAlloc.candyNeed) {
-      // アメ在庫は足りている、グローバルアメブ不足のみ
-      // 「アメ不足」は表示しない（「アメブ不足」として表示される）
-      return false;
-    }
-  }
-
-  // originalRemaining > 0 ならアメ在庫不足
-  // originalRemaining === 0 ならかけら不足のみなので「アメ不足」は表示しない
-  return (targetAlloc.originalRemaining ?? 0) > 0;
-}
-
-// 「到達可能」行でかけら不足があるか判定
-// 個数指定がある場合は、理論値ベースで最初の制限要因がかけらかどうか判定
-function hasShardsShortage(r: CalcRowView): boolean {
-  const alloc = getRowAllocation(r.id);
-  if (!alloc) return false;
-
-  // 個数指定がある場合、理論値ベースで判定
-  if (hasLimit(r)) {
-    return getTheoreticalShortageType(r) === "shards";
-  }
-
-  // 通常の判定
-  return alloc.shardsShortage > 0;
-}
-
-// かけら不足量を取得
-// アロケータが計算したshardsShortageを使用
-function getShardsShortage(r: CalcRowView): number {
-  const alloc = getRowAllocation(r.id);
-  if (!alloc) return 0;
-  return alloc.shardsShortage;
-}
 
 // ヒントアイコン用
 // ヒントポップオーバーの状態
@@ -1732,24 +1389,108 @@ function closeHint() {
   color: color-mix(in oklab, var(--accent) 80%, var(--ink) 20%);
 }
 /* モバイルレイアウト: 1行目: Main, 2行目: Selected + Cap */
-@container (max-width: 560px) {
+@container (max-width: 480px) {
+  /* サマリー位置調整 */
+  .calcSticky {
+    margin-top: 10px;
+    margin-bottom: 12px;
+  }
+
+  /* サマリーヘッダーの圧縮 */
   .calcSum__head {
+    flex-wrap: nowrap; /* 折り返さない */
+    white-space: nowrap;
+    overflow: hidden;
+    gap: 6px;
+  }
+
+  /* 合計値エリアを横並びにする */
+  .calcSticky__summary {
+    display: flex;
     flex-wrap: wrap;
-    justify-content: flex-start;
-    row-gap: 2px;
+    gap: 4px;
   }
-  .calcSum__head > .calcSum__k:first-child {
+
+  /* 合計ボックス（アメブ合計・かけら合計） */
+  .calcSum--hi {
+    flex: 1 1 45%;
+    padding: 2px 10px 6px 10px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px;
+    min-width: 0;
+  }
+  .calcSum--hi .calcSum__k {
+    font-size: 11px;
+    margin-bottom: 0;
+  }
+  .calcSum--hi .calcSum__v {
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  /* 万能アメ欄 */
+  .calcSum--candy {
     flex: 1 1 100%;
-    width: 100%;
+    padding: 3px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
   }
-  .calcSum__head .calcSum__selectedVal {
-    order: 2;
-    margin-left: 0;
+  .calcSum--candy .calcSum__k {
+    font-size: 11px;
+    margin-bottom: 0;
+  }
+  .calcSum--candy .calcSum__v {
+    font-size: 15.5px;
+    font-weight: 800;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  /* 内訳（S: x M: y...）を大きく見やすく */
+  .calcSum__candyDetails {
+    font-size: 13px;
+    opacity: 1;
+    color: color-mix(in oklab, var(--ink) 80%, transparent);
+  }
+
+  /* バーエリアの圧縮 */
+  .calcSum--bar {
+    padding: 6px 10px;
+    margin-top: 4px;
+    gap: 4px;
+    display: flex;
+    flex-direction: column;
+  }
+  .calcBarBlock + .calcBarBlock {
+    margin-top: 4px; /* 間隔を詰める */
+  }
+
+  /* バーのヘッダー */
+   .calcSum--bar .calcSum__head {
+    margin-bottom: 2px;
+    justify-content: space-between;
+  }
+  .calcSum--bar .calcSum__k {
     font-size: 11px;
   }
-  .calcSum__k--right {
-    order: 3;
-    margin-left: auto;
+  /* 「選択中のポケモン XX%」を非表示にしてスッキリさせる */
+  .calcSum--bar .calcSum__selectedVal {
+    display: none;
+  }
+  /* バー自体を細く */
+  .calcBar {
+    margin-top: 2px;
+    height: 6px;
+    border-radius: 3px;
+  }
+  .calcBar__track {
+    height: 6px;
+    border-radius: 3px;
   }
 }
 .calcBar {

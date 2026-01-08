@@ -1,4 +1,4 @@
-# CandyBoost Planner
+﻿# CandyBoost Planner
 
 [日本語版 README](README.ja.md)
 
@@ -61,9 +61,10 @@ These are injected at build time (Vite env vars). For GitHub Pages, set them as 
 
 ## Data sources / attribution
 
-- Pokémon list & some terms: WikiWiki (`wikiwiki.jp/poke_sleep`)
-- English Pokémon names: yakkun (`yakkun.com/sv/pokemon_en.htm`)
-- Nitoyon export format: compatible with Nitoyon’s tool (MIT, unofficial integration)
+- Pokémon list & some terms: [WikiWiki](https://wikiwiki.jp/poke_sleep/)
+- EXP tables: [RaenonX](https://pks.raenonx.cc/)
+- English Pokémon names: [yakkun](https://yakkun.com/sv/pokemon_en.htm)
+- Nitoyon export format: compatible with [Nitoyon's tool](https://nitoyon.github.io/pokesleep-tool/iv/) (MIT, unofficial integration)
 
 ## Disclaimer
 

@@ -364,14 +364,7 @@ a:hover {
   /* Corporate print-like style */
 }
 
-/* Enforce 4:3 for the export container if captured */
-.exportCalc {
-  aspect-ratio: 4/3;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
+
 
 .hintIcon {
   display: inline-flex;

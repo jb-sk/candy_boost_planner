@@ -16,6 +16,7 @@ import {
 import type { ExpGainNature, ExpType } from "../domain";
 import type { BoxSubSkillSlotV1, IngredientType, PokemonBoxEntryV1, PokemonSpecialty } from "../domain/types";
 import { cryptoRandomId, loadBox, saveBox } from "../persistence/box";
+import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 
 type FilterJoinMode = "and" | "or";
 
@@ -815,7 +816,8 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
   }
 
   // Box level presets (shared with calc UI – kept here for BoxPanel)
-  const levelPresets = [10, 25, 30, 40, 50, 55, 57, 60, 65] as const;
+  // 動的に生成し、末尾に現在の上限を含める
+  const levelPresets = [10, 25, 30, 40, 50, 55, 57, 60, MAX_LEVEL] as const;
 
   function writeSelectedLevel(lvl: number) {
     const e = selectedBox.value;
@@ -841,7 +843,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
   function setBoxLevel(v: unknown) {
     const e = selectedBox.value;
     if (!e) return;
-    const lvl = clampInt(v, 1, 65, e.planner?.level ?? e.derived?.level ?? 1);
+    const lvl = clampInt(v, 1, MAX_LEVEL, e.planner?.level ?? e.derived?.level ?? 1);
     writeSelectedLevel(lvl);
   }
   function nudgeBoxLevel(delta: number) {
@@ -868,7 +870,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
   function onEditSelectedLevel(v: string) {
     const e = selectedBox.value;
     if (!e) return;
-    const lvl = clampInt(v, 1, 65, e.planner?.level ?? e.derived?.level ?? 1);
+    const lvl = clampInt(v, 1, MAX_LEVEL, e.planner?.level ?? e.derived?.level ?? 1);
     writeSelectedLevel(lvl);
   }
 
@@ -1021,7 +1023,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
   function onCreateManual(opts0: { mode: "toCalc" | "toBox" }) {
     const found = addLookup.value;
     const now = new Date().toISOString();
-    const lvl = Math.max(1, Math.min(65, Math.floor(Number(addLevel.value))));
+    const lvl = Math.max(1, Math.min(MAX_LEVEL, Math.floor(Number(addLevel.value))));
     const nickname = String(addLabel.value || "").trim();
     // nickname が空でも、名前一致（図鑑リンク）できていればOK（表示名は locale で生成する）
     if (!nickname && !found) {

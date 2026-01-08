@@ -10,7 +10,7 @@
       >
         <div class="exportHead">
           <div class="exportHead__top">
-            <div class="exportBrand">🍬 {{ isBoostMode ? t("calc.export.brandBoost") : t("calc.export.brand") }}</div>
+            <div class="exportBrand">🍬 {{ boostKind === 'full' ? t("calc.export.brandBoost") : boostKind === 'mini' ? t("calc.export.brandMini") : t("calc.export.brand") }}</div>
           </div>
 
           <div class="exportMeta">
@@ -614,10 +614,19 @@ async function downloadCalcExportPng() {
 .exportSheet {
   transform-origin: top center;
   width: 100%;
-  border-radius: 12px;
-  background: #f7f7f7;
-  box-shadow: 0 4px 12px rgba(74, 66, 56, 0.1);
-  padding: 16px 22px 16px;
+  border-radius: 4px; /* シャープに */
+  background: #ffffff;
+  /* Calc Panel Theme Match */
+  --ink: #44403c;
+  --muted: #a8a29e;
+  --accent: #0ea5e9;   /* Sky 500: テキスト・ヘッダー用 */
+  --bar-fill: #ec4899;  /* Pink 500: 使用量（ピンク） */
+  --bar-track: #bae6fd; /* Sky 200: バー背景（水色） */
+  --danger: #ef4444;    /* Red 500 */
+
+  /* 深みのあるドロップシャドウでプロ感を出す */
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  padding: 40px; /* 余白を贅沢に */
   position: relative;
   font-family: var(--font-body);
   color: var(--ink);
@@ -628,60 +637,54 @@ async function downloadCalcExportPng() {
   box-shadow: none;
   background: #ffffff;
 }
+
+/* Header: Report Style */
 .exportHead {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 12px;
-  padding: 0 2px 6px;
-  background: transparent;
+  justify-content: space-between;
+  align-items: flex-end;
+  border-bottom: 2px solid var(--ink); /* 強い区切り線 */
+  padding-bottom: 16px;
+  margin-bottom: 32px;
 }
 
 .exportHead__top {
   display: flex;
-  justify-content: center;
-  text-align: center;
+  text-align: left;
 }
 .exportMeta {
   position: relative;
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
+  align-items: baseline; /* ベースラインで揃える */
+  gap: 16px;
   min-width: 0;
 }
+/* 年月表示: 右上に配置し、落ち着いた色味に */
 .exportMonth {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  text-align: center;
+  position: static;
+  transform: none;
   font-family: var(--font-heading);
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  font-size: 17px; /* タイトルに寄せる */
-  color: color-mix(in oklab, var(--ink) 88%, transparent);
-  line-height: 1.15;
-  white-space: nowrap;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.5;
+  /* margin-bottom 削除 */
 }
 .exportBrand {
   font-family: var(--font-heading);
   font-weight: 800;
   letter-spacing: -0.01em;
-  font-size: 17px;
-  color: color-mix(in oklab, var(--ink) 88%, transparent);
-  line-height: 1.15;
-  margin-top: -2px;
+  font-size: 22px; /* タイトルを大きく */
+  color: var(--ink);
+  line-height: 1.1;
 }
 .exportActions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  align-items: center;
-  justify-content: flex-end;
-  position: relative;
-  justify-self: end;
+  gap: 12px;
+  align-items: baseline;
 }
-.exportActions .linkBtn { white-space: nowrap; }
+
 .exportCsvMenuTrigger { position: relative; display: flex; align-items: center; }
 .exportCsvMenu {
   position: absolute;
@@ -690,12 +693,12 @@ async function downloadCalcExportPng() {
   z-index: 5;
   min-width: 180px;
   display: grid;
-  gap: 6px;
-  padding: 10px;
-  border-radius: 14px;
-  border: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
-  background: color-mix(in oklab, var(--paper) 92%, white);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+  gap: 4px;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
 }
 .exportCsvMenu__item {
   appearance: none;
@@ -703,303 +706,225 @@ async function downloadCalcExportPng() {
   width: 100%;
   text-align: left;
   cursor: pointer;
-  font-size: 12px;
-  padding: 9px 10px;
-  border-radius: 12px;
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 4px;
   color: var(--ink);
-  background: color-mix(in oklab, var(--paper) 92%, white);
-  border: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
+  background: transparent;
 }
-.exportCsvMenu__item:hover { background: color-mix(in oklab, var(--accent) 10%, var(--paper)); }
+.exportCsvMenu__item:hover { background: #f1f5f9; color: var(--accent); }
 .exportStatus {
-  margin: 0 0 10px;
+  margin: 0 0 16px;
   font-size: 12px;
-  color: color-mix(in oklab, var(--ink) 62%, transparent);
+  color: var(--muted);
+  text-align: right;
 }
 .exportCalc { display: flex; flex-direction: column; }
 
+/* Stats Area: Dashboard Style */
 .exportStats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  margin: 15px auto 12px;
-  max-width: 720px;
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 0 0 32px;
+  gap: 24px;
+  margin: 0 0 32px;
+  padding: 20px 24px;
+  background: #f8fafc; /* 薄いグレー背景 */
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
 }
 .exportStats--hasShortage {
-  grid-template-columns: repeat(5, 1fr);
+  /* Shortageがあるときもflexで並べる */
 }
 .statCard {
+  flex: 0 0 auto;
   display: flex;
-  align-items: center;
-  gap: 10px;
-  background: white;
-  border-radius: 12px;
-  padding: 10px 14px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04), 0 0 0 1px color-mix(in oklab, var(--ink) 6%, transparent);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  border: none;
+  border-radius: 0;
 }
-.statCard--accent {
-  background: linear-gradient(135deg, #fff5f7 0%, #fff0f0 100%);
-  box-shadow: 0 2px 6px rgba(255, 100, 100, 0.1), 0 0 0 1px rgba(255, 100, 100, 0.15);
-}
-.statCard--primary {
-  background: linear-gradient(135deg, #f0f7ff 0%, #e6f2ff 100%);
-  box-shadow: 0 2px 6px rgba(50, 100, 255, 0.1), 0 0 0 1px rgba(50, 100, 255, 0.15);
-}
-.statCard--danger { background: #fff5f5; color: #d32f2f; }
-.statCard__icon { font-size: 20px; line-height: 1; }
+/* アイコンは控えめに、あるいは削除してもいいが残す */
+.statCard__icon { font-size: 16px; opacity: 0.8; }
 .statCard__content { min-width: 0; }
 .statCard__label {
-  font-size: 10px;
-  color: color-mix(in oklab, var(--ink) 50%, transparent);
-  line-height: 1;
-  margin-bottom: 4px;
-  white-space: nowrap;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  font-weight: 600;
+  margin-bottom: 2px;
 }
 .statCard__value {
   font-family: var(--font-heading);
   font-weight: 800;
-  font-size: 30px;
+  font-size: 28px;
   line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums; /* 数字の幅を揃える */
 }
 .statCard__value--danger { color: var(--danger); }
+.statCard--danger .statCard__value { color: var(--danger); }
 
-/* Capture mode: keep card shape (outline) but drop heavy shadows to avoid "dragged" artifacts */
-.exportSheet--capture .statCard {
-  box-shadow: none;
-  outline: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
-  outline-offset: -1px;
-}
-
-/* Bars (export-local) */
+/* Bars: Clean & Minimal */
 .exportBars {
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-  border: 1px solid color-mix(in oklab, var(--ink) 6%, transparent);
-  margin: 10px 10px 0;
-  padding: 12px 14px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  margin: 0 0 40px;
   display: grid;
-  gap: 12px;
+  gap: 20px;
 }
-.exportBars--muted { opacity: 0.85; }
-.exportBarHead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.exportBarK { font-size: 12px; color: color-mix(in oklab, var(--ink) 68%, transparent); }
-.exportBarK--right { white-space: nowrap; text-align: right; }
+.exportBars--muted { opacity: 0.8; }
+.exportBarHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.exportBarK {
+  font-size: 14px;
+  color: var(--ink);
+  font-weight: 700;
+}
+.exportBarK--right {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
 .exportBarOverVal { color: var(--danger); font-weight: 700; margin-left: 4px; }
-.exportBar {
-  margin-top: 8px;
-}
+.exportBar { margin-top: 0; }
 .exportBar__track {
   position: relative;
-  height: 10px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--ink) 8%, transparent);
+  height: 8px; /* 少し細く */
+  border-radius: 4px;
+  background: var(--bar-track); /* 水色背景 */
   overflow: hidden;
 }
 .exportBar__fill {
   position: absolute;
   inset: 0 auto 0 0;
   width: 0%;
-  background: linear-gradient(
-    90deg,
-    color-mix(in oklab, var(--accent) 74%, var(--paper) 26%),
-    color-mix(in oklab, var(--accent-warm) 56%, var(--paper) 44%)
-  );
+  border-radius: 4px;
+  background: var(--bar-fill); /* ピンク */
 }
+.exportBars--danger .exportBar__fill {
+   /* Shortage時は少し色を変える？今はそのままでOK */
+}
+.exportBarBlock--danger .exportBar__fill {
+  background: linear-gradient(90deg, var(--danger) 0%, rgb(255, 100, 100) 100%);
+}
+/* Shards bar color: 同色（ピンク）にするため個別設定を削除 */
 .exportBar__over {
   position: absolute;
   inset: 0 0 0 auto;
   width: 0%;
   background: repeating-linear-gradient(
-    135deg,
-    color-mix(in oklab, hsl(6 78% 52%) 78%, var(--paper) 22%) 0 6px,
-    color-mix(in oklab, hsl(6 78% 52%) 62%, var(--paper) 38%) 6px 12px
+    -45deg,
+    rgba(239, 68, 68, 0.15) 0,
+    rgba(239, 68, 68, 0.15) 6px,
+    rgba(255,255,255,0.5) 6px,
+    rgba(255,255,255,0.5) 12px
   );
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, hsl(6 78% 52%) 55%, transparent);
 }
 
-/* --- Export List --- */
+/* List: Table Style (High Contrast) */
 .exportList {
   display: flex;
   flex-direction: column;
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-  border: 1px solid color-mix(in oklab, var(--ink) 6%, transparent);
-  overflow: hidden;
-  margin: 20px 10px 0;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  border: none;
+  margin: 0;
   font-size: 13px;
 }
 .exportList__head {
   display: grid;
   grid-template-columns: 2fr 0.9fr 0.7fr 0.7fr 0.7fr 1.5fr;
-  gap: 8px;
-  padding: 8px 16px;
-  background: color-mix(in oklab, var(--ink) 3%, transparent);
-  border-bottom: 2px solid color-mix(in oklab, var(--ink) 10%, transparent);
+  gap: 12px;
+  padding: 12px 16px;
+  background: color-mix(in oklab, var(--accent) 8%, white); /* 計算機と同じ水色背景 */
+  color: var(--ink); /* 文字は黒ではっきり */
+  border-bottom: 2px solid var(--accent); /* 青いライン */
+  border-radius: 6px;
   font-family: var(--font-heading);
-  font-weight: 800;
-  font-size: 11px;
-  color: color-mix(in oklab, var(--ink) 60%, transparent);
-  align-items: center;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  align-items: center; /* ヘッダーは中央揃えで見やすく */
 }
 .exportList__row {
   display: grid;
   grid-template-columns: 2fr 0.9fr 0.7fr 0.7fr 0.7fr 1.5fr;
-  gap: 8px;
-  padding: 8px 16px;
-  align-items: center;
-  border-bottom: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
+  gap: 12px;
+  padding: 12px 16px;
+  align-items: center; /* 行内は中央揃えに戻す（罫線スタイルならずれてもOKだが、揃ってる方がプロっぽい） */
+  border-bottom: 1px solid #e2e8f0;
 }
-.exportList__row:last-child { border-bottom: 0; }
-.exportList__row:nth-child(even) { background: color-mix(in oklab, var(--ink) 2%, transparent); }
-.exportList__row--total { background: color-mix(in oklab, var(--ink) 3%, transparent); border-top: 2px solid color-mix(in oklab, var(--ink) 10%, transparent); }
+.exportList__row:last-child { border-bottom: 2px solid var(--ink); } /* 最後の行（合計前）を区切る */
 
-/* アメ不足列がある場合は7列 */
 .exportList--hasShortage .exportList__head,
 .exportList--hasShortage .exportList__row {
   grid-template-columns: 2fr 0.9fr 0.7fr 0.7fr 0.7fr 1.2fr 0.7fr;
 }
+
 .exportList__col { min-width: 0; font-weight: 500; }
 .exportList__col.u-align-right { text-align: right; }
 .exportList__col.u-align-center { text-align: center; }
+
 .exportList__nameCol { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.exportList__name { font-family: var(--font-heading); font-weight: 800; font-size: 15px; line-height: 1.2; }
+.exportList__name { font-weight: 700; font-size: 14px; color: var(--ink); }
 .exportList__badge {
-  font-size: 9.5px;
-  font-weight: 800;
+  font-size: 10px;
+  font-weight: 700;
   padding: 2px 6px;
   border-radius: 4px;
-  background: color-mix(in oklab, var(--ink) 6%, transparent);
-  color: color-mix(in oklab, var(--ink) 65%, transparent);
-  white-space: nowrap;
+  background: #f1f5f9;
+  color: var(--muted);
+  border: 1px solid #e2e8f0;
 }
 .exportList__lvWrap {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: 6px;
-  font-weight: 800;
-  font-family: var(--font-heading);
-  background: color-mix(in oklab, var(--ink) 4%, transparent);
-  padding: 4px 8px;
-  border-radius: 6px;
-  min-width: 60px;
+  font-weight: 700;
+  background: transparent;
+  padding: 0;
+  color: var(--ink);
 }
-.exportList__arrow { color: color-mix(in oklab, var(--ink) 30%, transparent); font-size: 10px; }
-.exportList__numCol .calcRow__num { font-size: 16px; }
-.exportList__numCol .calcRow__num.calcRow__num--danger { color: var(--danger); }
+.exportList__arrow { color: var(--muted); font-size: 10px; }
+.exportList__numCol .calcRow__num {
+  font-size: 14px;
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.exportList__numCol .calcRow__num--danger { color: var(--danger); font-weight: 700; }
+
+/* モバイルラベルはデスクトップでは非表示 */
 .u-mobile-label { display: none; }
 
-@media (max-width: 860px) {
-  .exportStats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    margin: 12px 0 10px;
-    gap: 10px;
-  }
-  .statCard__label { white-space: normal; line-height: 1.15; }
-  .statCard__value { font-size: clamp(20px, 5vw, 28px); white-space: normal; overflow-wrap: anywhere; }
+.exportList__row--total {
+  background: #f8fafc;
+  border-bottom: none;
+  font-weight: 700;
+  border-radius: 0 0 6px 6px;
+  margin-top: 4px;
 }
 
-@media (max-width: 560px) {
-  .exportOverlay { padding: 0; place-items: stretch; }
-  .exportSheetWrap {
-    width: 100vw;
-    height: 100vh;
-    max-height: 100vh;
-    overflow-y: auto;
-    overflow-x: hidden;
-    -webkit-overflow-scrolling: touch;
-  }
-  /* Mobile: remove the outer frame (the inner blocks already have their own borders) */
-  .exportSheet { border-radius: 0; padding: 0; border: 0; box-shadow: none; background: transparent; }
-  .exportHead {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    background: rgba(255, 255, 255, 0.96);
-    backdrop-filter: blur(8px);
-    padding: 10px 14px 8px;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
-  }
-  .exportHead__top { justify-content: flex-start; text-align: left; }
-  .exportMeta {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-  }
-  .exportMonth {
-    position: static;
-    left: auto;
-    transform: none;
-    text-align: left;
-    font-size: 16px; /* モバイルはタイトルと同程度に */
-  }
-  .exportActions { gap: 12px; }
-  .linkBtn { line-height: 1.2; padding: 2px 0; }
-  .exportBrand { font-size: 16px; margin-top: 0; }
-  /* Remove the subtle gap under the sticky header */
-  .exportStats { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0 14px 10px; gap: 10px; }
-  .statCard { min-width: 0; padding: 9px 10px; gap: 8px; }
-  .statCard__icon { display: none; }
-  .statCard__value { font-size: clamp(18px, 6.2vw, 24px); letter-spacing: -0.02em; }
-  .exportBars { margin: 6px 14px 0; padding: 12px 12px; }
-  .exportList { margin: 16px 0 0; }
-  .exportList__head { display: none; }
-  .exportList__row { grid-template-columns: 0.9fr 1fr 0.8fr 1.2fr 1.8fr; gap: 8px 4px; padding: 10px; }
-  .exportList__nameCol {
-    grid-column: 1 / -1;
-    margin-bottom: 4px;
-    border-bottom: 1px dashed color-mix(in oklab, var(--ink) 10%, transparent);
-    padding-bottom: 8px;
-    width: 100%;
-  }
-  .exportList__lvWrap { background: transparent; padding: 0; gap: 4px; font-size: 12px; justify-content: flex-start; }
-  .exportList__lvCol { display: flex; align-items: center; justify-content: flex-start; text-align: left; margin-top: auto; }
-  .exportList__col.u-align-center { text-align: left; }
-  .exportList__numCol { display: flex; flex-direction: column; align-items: flex-end; }
-  .u-mobile-label {
-    display: block;
-    font-size: 9px;
-    color: color-mix(in oklab, var(--ink) 45%, transparent);
-    margin-bottom: 0px;
-    white-space: nowrap;
-  }
-  .exportList__numCol .calcRow__num { font-size: 15px; }
-
-  /* Mobile Normal Mode */
-  .exportStats--normal {
-    gap: 4px; /* 隙間を詰める */
-  }
-  .exportStats--normal > .statCard {
-    padding: 8px 4px; /* パディングを詰める */
-  }
-  .exportStats--normal > .statCard:nth-child(2) {
-    flex: 1.3; /* かけら（中央）を少し広めに */
-  }
-  .exportStats--normal .statCard__value {
-    font-size: 24px; /* 数字サイズを少し下げる（デフォルト32px） */
-  }
-
-  /* 通常モード（モバイル）: Lv, Total, Shards (Pokemonは1行目) */
-  .exportList--normal .exportList__row {
-    grid-template-columns: 1fr 1fr 1.5fr;
-    padding: 10px; /* モバイルのデフォルトに戻す */
-  }
-}
-
-/* --- Export Ranking (Universal Candy Usage) --- */
-/* ランキングセクションをカードスタイルにする */
+/* Ranking */
 .exportRanking {
   display: flex;
   flex-direction: column;
   background: white;
-  border-radius: 16px;
+  border-radius: 6px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
   border: 1px solid color-mix(in oklab, var(--ink) 6%, transparent);
   overflow: hidden;
@@ -1122,6 +1047,155 @@ async function downloadCalcExportPng() {
   padding: 1px 6px;
   border-radius: 4px;
   line-height: 1.4;
+}
+
+/* Mobile Responsive */
+@media (max-width: 680px) {
+  /* Full Screen Overlay */
+  .exportOverlay {
+    padding: 0;
+    display: block; /* grid center 解除 */
+    overflow: hidden; /* Wrapでスクロールさせる */
+  }
+  .exportSheetWrap {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    border-radius: 0;
+  }
+  .exportSheet {
+    width: 100%;
+    min-height: 100%;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 20px 16px;
+  }
+
+  .exportHead {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  /* ブランド名は大きく */
+  .exportBrand { font-size: 20px; }
+
+  .exportMeta {
+    width: 100%;
+    justify-content: space-between;
+    margin-top: 4px;
+  }
+
+  /* Stats: 2カラム折り返し */
+  .exportStats, .exportStats--normal {
+    flex-wrap: wrap;
+    gap: 16px;
+    justify-content: flex-start;
+  }
+  .statCard, .exportStats--normal > .statCard {
+    flex: 0 0 calc(50% - 9px); /* 2列 */
+    min-width: 0;
+    align-items: flex-start;
+    text-align: left;
+  }
+  .statCard__value { font-size: 22px; }
+
+  /* List: Compact List View (No Tiles) */
+  .exportList__head { display: none; }
+
+  .exportList__row,
+  .exportList--normal .exportList__row,
+  .exportList--hasShortage .exportList__row,
+  .exportList--normal.exportList--hasShortage .exportList__row {
+    display: grid;
+    /* 4カラム均等割で縦のラインを揃える */
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px 8px;
+    padding: 10px 4px;
+    border: none;
+    border-bottom: 1px solid #e2e8f0;
+    border-radius: 0;
+    margin-bottom: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .exportList__nameCol {
+    grid-column: 1 / 4;
+    border-bottom: none;
+    padding-bottom: 0;
+    margin-bottom: 0;
+  }
+  .exportList__name { font-size: 14px; }
+  .exportList__badge { scale: 0.9; transform-origin: left center; }
+
+  .exportList__lvCol {
+    grid-column: 4 / -1;
+    justify-content: flex-end;
+    font-size: 12px;
+  }
+
+  /* 数値カラム: 2行目以降に自動配置 (span 1) */
+  .exportList__col.u-align-right,
+  .exportList__col.u-align-center {
+    text-align: left;
+    display: flex;
+    flex-direction: column; /* 値とラベルを縦積み、あるいは横並び？横並びにして省スペース化 */
+    align-items: flex-start;
+    grid-column: span 1; /* 1行に4つ並ぶ */
+  }
+
+  /* ラベルと値をコンパクトに */
+  .u-mobile-label {
+    display: block;
+    font-size: 9px;
+    margin-bottom: 0px;
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: var(--muted);
+  }
+
+  .calcRow__num { font-size: 13px; }
+
+  /* Total Row: Grid Layout (Match Data Row) */
+  .exportList__row--total {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr); /* データ行と一致させる */
+    gap: 4px 8px;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    /* データ行と同じpaddingにする */
+    padding: 10px 4px;
+    margin-bottom: 0;
+    border-radius: 0;
+  }
+
+  /* Total行の空カラム（名前・Lv）は非表示 */
+  .exportList__row--total .exportList__nameCol,
+  .exportList__row--total .exportList__lvCol {
+    display: none;
+  }
+
+  /* 数値カラムのスタイル調整: コントラスト強化 */
+  .exportList__row--total .exportList__numCol {
+    width: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    grid-column: span 1;
+  }
+  .exportList__row--total .calcRow__num {
+    /* 太字にはしない */
+    color: #0f172a; /* Slate 900 */
+  }
+  .exportList__row--total .u-mobile-label {
+    text-align: left;
+    color: var(--ink); /* MutedではなくInk */
+    /* 太字にはしない */
+    opacity: 0.9; /* 視認性確保のため不透明度のみ上げる */
+  }
 }
 
 @media (max-width: 530px) {
