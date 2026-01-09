@@ -61,9 +61,10 @@ Viteの環境変数（ビルド時に埋め込み）です。GitHub Pagesの場�
 
 ## 参照元 / クレジット
 
-- ポケモン一覧・一部用語: WikiWiki（`wikiwiki.jp/poke_sleep`）
-- 英名: yakkun（`yakkun.com/sv/pokemon_en.htm`）
-- にとよん形式: にとよんさんのツール互換（MIT / 非公式連携）
+- ポケモン一覧・一部用語: [WikiWiki](https://wikiwiki.jp/poke_sleep/)
+- 英名: [PokeAPI](https://pokeapi.co/)
+- 経験値テーブル: [RaenonX](https://pks.raenonx.cc/)
+- にとよん形式: [にとよんさんのツール](https://nitoyon.github.io/pokesleep-tool/iv/)互換（MIT / 非公式連携）
 
 ## 免責
 

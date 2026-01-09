@@ -1,65 +1,95 @@
-// Generates English Pokémon name map for this app from yakkun.com (SV English name list).
+// Generates English Pokémon name map for this app from PokeAPI.
 //
 // Why:
 // - We want JP/EN toggle without calling external APIs at runtime.
-// - yakkun is simple and sufficient as a source, but direct Node fetch may be blocked.
-//   On Windows, `curl.exe` currently succeeds, so we use it to download raw HTML.
+// - PokeAPI is a free, stable REST API that doesn't require JavaScript execution.
 //
 // Output:
 // - src/domain/pokesleep/_generated/pokemon-name-en.ts
 //
 // Usage:
-// - node scripts/generate-pokemon-en-names.mjs
+// - node scripts/generate-pokemon-en-names.mjs              (use cache, fetch new only)
+// - node scripts/generate-pokemon-en-names.mjs --refresh    (ignore cache, re-fetch all, write only if changed)
+// - node scripts/generate-pokemon-en-names.mjs --force      (clear cache + re-fetch all + always write)
 //
 // Notes:
-// - The source page is EUC-JP. We only need ASCII parts (dex no / English names),
-//   so we parse the HTML as a binary/latin1 string and ignore Japanese text.
+// - Uses PokeAPI /pokemon-species/{id} endpoint to get English names.
+// - Caches results in _local/pokeapi-cache.json to avoid repeated API calls.
+// - Rate limit: 100ms delay between requests.
+// - Safety: Aborts if 5+ requests fail.
+
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
 
 const ROOT = process.cwd();
-const SOURCE_URL = "https://yakkun.com/sv/pokemon_en.htm";
-const CACHE_PATH = path.join(ROOT, "_local", "yakkun_pokemon_en.htm");
+const CACHE_PATH = path.join(ROOT, "_local", "pokeapi-cache.json");
 const OUT_PATH = path.join(ROOT, "src", "domain", "pokesleep", "_generated", "pokemon-name-en.ts");
 const MASTER_PATH = path.join(ROOT, "src", "domain", "pokesleep", "pokemon-master.ts");
 
-// --force オプションでキャッシュを強制クリア
-const forceRefresh = process.argv.includes("--force");
+const POKEAPI_BASE = "https://pokeapi.co/api/v2/pokemon-species";
+const RATE_LIMIT_MS = 100;
+const MAX_FAILURES = 5;
+
+// Options
+const forceWrite = process.argv.includes("--force");       // Clear cache + always write
+const refreshAll = process.argv.includes("--refresh") || forceWrite;  // Re-fetch all (ignore cache)
 
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
 }
 
-function downloadIfMissing() {
-  ensureDir(path.dirname(CACHE_PATH));
-
-  // --force の場合はキャッシュを削除
-  if (forceRefresh && fs.existsSync(CACHE_PATH)) {
-    fs.unlinkSync(CACHE_PATH);
-    console.log("[generate-pokemon-en-names] キャッシュを削除しました");
-  }
-
-  if (fs.existsSync(CACHE_PATH) && fs.statSync(CACHE_PATH).size > 1000) return;
-
-
-  // Prefer curl.exe on Windows (PowerShell has curl alias).
-  const curlCmd = process.platform === "win32" ? "curl.exe" : "curl";
-  const args = [
-    "-L",
-    "-A",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "-H",
-    "Accept-Language: ja,en;q=0.9",
-    "-H",
-    "Accept: text/html,application/xhtml+xml",
-    "-o",
-    CACHE_PATH,
-    SOURCE_URL,
-  ];
-  execFileSync(curlCmd, args, { stdio: "inherit" });
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Load cache from disk.
+ * @returns {Map<number, string>} dexNo -> enName
+ */
+function loadCache() {
+  if (forceWrite) {
+    console.log("[generate-pokemon-en-names] --force: キャッシュをクリアします");
+    return new Map();
+  }
+  if (refreshAll) {
+    console.log("[generate-pokemon-en-names] --refresh: キャッシュを無視して全件再取得します");
+    // Return empty map to force re-fetch, but don't delete cache file
+    // (cache will be updated with fresh values after fetch)
+    return new Map();
+  }
+  if (!fs.existsSync(CACHE_PATH)) {
+    return new Map();
+  }
+  try {
+    const json = JSON.parse(fs.readFileSync(CACHE_PATH, "utf8"));
+    const map = new Map();
+    for (const [k, v] of Object.entries(json)) {
+      map.set(Number(k), v);
+    }
+    console.log(`[generate-pokemon-en-names] キャッシュ読み込み: ${map.size}件`);
+    return map;
+  } catch {
+    return new Map();
+  }
+}
+
+/**
+ * Save cache to disk.
+ * @param {Map<number, string>} map
+ */
+function saveCache(map) {
+  ensureDir(path.dirname(CACHE_PATH));
+  const obj = {};
+  for (const [k, v] of [...map.entries()].sort((a, b) => a[0] - b[0])) {
+    obj[k] = v;
+  }
+  fs.writeFileSync(CACHE_PATH, JSON.stringify(obj, null, 2), "utf8");
+}
+
+/**
+ * Read target dexNos from pokemon-master.ts.
+ * @returns {Set<number>}
+ */
 function readTargetDexNosFromMaster() {
   const txt = fs.readFileSync(MASTER_PATH, "utf8");
   const re = /"pokedexId"\s*:\s*(\d+)/g;
@@ -72,39 +102,58 @@ function readTargetDexNosFromMaster() {
   return set;
 }
 
-function decodeHtmlEntities(s) {
-  return String(s)
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)));
-}
-
-function parseEnNamesFromHtmlBinary(html) {
-  // Example row:
-  // <tr><td class="c1">001</td><td ...>JP</td><td>Bulbasaur</td></tr>
-  const out = new Map(); // dexNo -> enName
-  const re = /<tr>\s*<td class="c1">(\d+)<\/td>\s*<td[^>]*>[\s\S]*?<\/td>\s*<td>([\s\S]*?)<\/td>\s*<\/tr>/g;
+/**
+ * Read existing dexNos from output file.
+ * @returns {Map<number, string>} dexNo -> enName
+ */
+function readExistingEnNames() {
+  if (!fs.existsSync(OUT_PATH)) return new Map();
+  const txt = fs.readFileSync(OUT_PATH, "utf8");
+  const re = /^\s*(\d+):\s*"([^"]+)"/gm;
+  const map = new Map();
   for (; ;) {
-    const m = re.exec(html);
+    const m = re.exec(txt);
     if (!m) break;
-    const dexNo = Number(m[1]);
-    const enRaw = decodeHtmlEntities(m[2]).trim();
-    const en = enRaw.replace(/\s+/g, " ");
-    if (!dexNo || !en) continue;
-    out.set(dexNo, en);
+    map.set(Number(m[1]), m[2]);
   }
-  return out;
+  return map;
 }
 
+/**
+ * Fetch English name from PokeAPI.
+ * @param {number} dexNo
+ * @returns {Promise<string | null>}
+ */
+async function fetchEnNameFromPokeAPI(dexNo) {
+  const url = `${POKEAPI_BASE}/${dexNo}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn(`  ⚠️ #${dexNo}: HTTP ${res.status}`);
+      return null;
+    }
+    const data = await res.json();
+    const enEntry = data.names?.find((n) => n.language?.name === "en");
+    if (!enEntry) {
+      console.warn(`  ⚠️ #${dexNo}: 英語名が見つかりません`);
+      return null;
+    }
+    return enEntry.name;
+  } catch (err) {
+    console.warn(`  ⚠️ #${dexNo}: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * Emit TypeScript file.
+ * @param {Map<number, string>} mapping
+ */
 function emitTs(mapping) {
   const keys = [...mapping.keys()].sort((a, b) => a - b);
   const lines = [];
   lines.push(`// This file is auto-generated by scripts/generate-pokemon-en-names.mjs`);
-  lines.push(`// Source: ${SOURCE_URL}`);
+  lines.push(`// Source: PokeAPI (https://pokeapi.co/)`);
   lines.push(`// Generated at: ${new Date().toISOString()}`);
   lines.push("");
   lines.push(`export const pokemonNameEnByDexNo: Record<number, string> = {`);
@@ -123,63 +172,130 @@ function emitTs(mapping) {
   return lines.join("\n");
 }
 
-function readExistingDexNos() {
-  if (!fs.existsSync(OUT_PATH)) return new Set();
-  const txt = fs.readFileSync(OUT_PATH, "utf8");
-  const re = /^\s*(\d+):/gm;
-  const set = new Set();
-  for (; ;) {
-    const m = re.exec(txt);
-    if (!m) break;
-    set.add(Number(m[1]));
-  }
-  return set;
-}
+async function main() {
+  console.log("[generate-pokemon-en-names] PokeAPI から英語名を取得します\n");
 
-function main() {
-  downloadIfMissing();
   const targetDexNos = readTargetDexNosFromMaster();
-  const existingDexNos = readExistingDexNos();
-  const buf = fs.readFileSync(CACHE_PATH);
-  const html = buf.toString("latin1"); // keep ASCII intact; ignore JP text
-  const all = parseEnNamesFromHtmlBinary(html);
+  console.log(`対象ポケモン: ${targetDexNos.size}件\n`);
 
-  const filtered = new Map();
-  for (const dexNo of targetDexNos) {
-    const en = all.get(dexNo);
-    if (en) filtered.set(dexNo, en);
+  const existingNames = readExistingEnNames();
+  const cache = loadCache();
+
+  const result = new Map();
+  let failCount = 0;
+  let fetchCount = 0;
+
+  const sortedDexNos = [...targetDexNos].sort((a, b) => a - b);
+
+  for (const dexNo of sortedDexNos) {
+    // Check cache first
+    if (cache.has(dexNo)) {
+      result.set(dexNo, cache.get(dexNo));
+      continue;
+    }
+
+    // Fetch from PokeAPI
+    console.log(`  Fetching #${dexNo}...`);
+    const enName = await fetchEnNameFromPokeAPI(dexNo);
+
+    if (enName) {
+      result.set(dexNo, enName);
+      cache.set(dexNo, enName);
+      fetchCount++;
+    } else {
+      failCount++;
+      console.warn(`  ❌ #${dexNo} 取得失敗 (${failCount}/${MAX_FAILURES})`);
+
+      if (failCount >= MAX_FAILURES) {
+        console.error(`\n❌ ${MAX_FAILURES}件以上失敗しました。更新を中断します。`);
+        process.exit(1);
+      }
+    }
+
+    await delay(RATE_LIMIT_MS);
   }
 
-  // 新規追加されたエントリを検出
-  const newEntries = [];
-  for (const dexNo of filtered.keys()) {
-    if (!existingDexNos.has(dexNo)) {
-      newEntries.push({ dexNo, en: filtered.get(dexNo) });
+  // Save cache
+  saveCache(cache);
+
+  // Detect added/removed/changed
+  const added = [];
+  const removed = [];
+  const changed = [];
+
+  for (const [dexNo, enName] of result) {
+    if (!existingNames.has(dexNo)) {
+      added.push({ dexNo, enName });
+    } else if (existingNames.get(dexNo) !== enName) {
+      changed.push({ dexNo, oldName: existingNames.get(dexNo), newName: enName });
     }
   }
-  newEntries.sort((a, b) => a.dexNo - b.dexNo);
 
+  for (const [dexNo, enName] of existingNames) {
+    if (!result.has(dexNo)) {
+      removed.push({ dexNo, enName });
+    }
+  }
+
+  const hasChanges = added.length > 0 || removed.length > 0 || changed.length > 0;
+
+  // Log changes
+  console.log("");
+  if (added.length > 0) {
+    console.log(`✅ 追加: ${added.length}件`);
+    for (const { dexNo, enName } of added.sort((a, b) => a.dexNo - b.dexNo)) {
+      console.log(`   #${dexNo} ${enName}`);
+    }
+  }
+
+  if (changed.length > 0) {
+    console.log(`📝 変更: ${changed.length}件`);
+    for (const { dexNo, oldName, newName } of changed.sort((a, b) => a.dexNo - b.dexNo)) {
+      console.log(`   #${dexNo} ${oldName} → ${newName}`);
+    }
+  }
+
+  if (removed.length > 0) {
+    console.log(`🗑️ 削除: ${removed.length}件`);
+    for (const { dexNo, enName } of removed.sort((a, b) => a.dexNo - b.dexNo)) {
+      console.log(`   #${dexNo} ${enName}`);
+    }
+  }
+
+  if (!hasChanges) {
+    console.log(`変更なし`);
+  }
+
+  // Write output (only if content changed, unless --force)
   ensureDir(path.dirname(OUT_PATH));
-  fs.writeFileSync(OUT_PATH, emitTs(filtered), "utf8");
+  const newContent = emitTs(result);
+  const oldContent = fs.existsSync(OUT_PATH) ? fs.readFileSync(OUT_PATH, "utf8") : "";
 
-  const missing = [...targetDexNos].filter((n) => !filtered.has(n)).sort((a, b) => a - b);
-  if (missing.length) {
-    // eslint-disable-next-line no-console
-    console.warn(`[generate-pokemon-en-names] Missing ${missing.length} dexNos: ${missing.slice(0, 20).join(", ")}${missing.length > 20 ? "..." : ""}`);
-  }
+  // Compare without timestamp line
+  const stripTimestamp = (s) => s.replace(/^\/\/ Generated at:.*$/m, "");
+  const contentChanged = stripTimestamp(newContent) !== stripTimestamp(oldContent);
 
-  // 新規追加を表示
-  if (newEntries.length) {
-    // eslint-disable-next-line no-console
-    console.log(`\n[generate-pokemon-en-names] 新規追加: ${newEntries.length}件`);
-    for (const { dexNo, en } of newEntries) {
-      // eslint-disable-next-line no-console
-      console.log(`  #${dexNo} ${en}`);
+  if (forceWrite || contentChanged) {
+    fs.writeFileSync(OUT_PATH, newContent, "utf8");
+    if (!contentChanged) {
+      console.log("[generate-pokemon-en-names] --force: 変更なしですがファイルを更新しました");
     }
+  } else {
+    console.log("[generate-pokemon-en-names] ファイル内容に変更なし（書き込みスキップ）");
   }
 
-  // eslint-disable-next-line no-console
-  console.log(`[generate-pokemon-en-names] Wrote ${filtered.size} entries to ${path.relative(ROOT, OUT_PATH)}`);
+  const missing = [...targetDexNos].filter((n) => !result.has(n)).sort((a, b) => a - b);
+  if (missing.length > 0) {
+    console.warn(`\n⚠️ 取得できなかった: ${missing.length}件: ${missing.slice(0, 20).join(", ")}${missing.length > 20 ? "..." : ""}`);
+  }
+
+  console.log(`\n[generate-pokemon-en-names] 完了: ${result.size}件 → ${path.relative(ROOT, OUT_PATH)}`);
+  if (fetchCount > 0) {
+    console.log(`  (新規取得: ${fetchCount}件, キャッシュ利用: ${result.size - fetchCount}件)`);
+  }
+
+  // Output summary line for CI parsing
+  console.log(`\n[SUMMARY] has_changes=${hasChanges} added=${added.length} changed=${changed.length} removed=${removed.length}`);
 }
 
 main();
