@@ -24,16 +24,6 @@ export type {
   ConstraintDiagnosis,
   ReachableInfo,
   ResourceSnapshot,
-
-  // 表示用型（UI向け）
-  DisplayValue,
-  DisplayItemUsage,
-  RowResult,
-  ReachableRowResult,
-  PokemonDisplayResult,
-  DisplayConfig,
-  DisplayPlanResult,
-  DisplaySummary,
   ItemUsageRankingEntry,
 
   // 定数型

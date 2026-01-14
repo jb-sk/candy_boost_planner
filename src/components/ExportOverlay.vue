@@ -361,7 +361,7 @@ const statCards = computed<StatCardDef[]>(() => {
       icon: "⚠️",
       label: t("calc.export.sumBoostUnused"),
       value: props.boostUnused,
-      isDanger: props.boostOver > 0,
+      isDanger: props.boostUnused >= 1,
       show: true,
     });
   }

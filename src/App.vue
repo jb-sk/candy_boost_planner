@@ -4,7 +4,7 @@
     <MobileNav :scroll-to-panel="scrollToPanel" v-show="!calc.exportOpen.value" />
 
     <div class="dashboard">
-      <CalcPanel :calc="calc" :resolve-pokedex-id-by-box-id="resolvePokedexIdByBoxId" @apply-to-box="applyCalculatorToBox($event)" />
+      <CalcPanel :calc="calc" :resolve-pokedex-id-by-box-id="resolvePokedexIdByBoxId" @apply-to-box="applyCalculatorToBox($event)" @open-help="showHelp = true" />
 
     <BoxPanel :box="box" :gt="gt" @apply-to-calc="applyBoxToCalculator($event)" />
     </div>

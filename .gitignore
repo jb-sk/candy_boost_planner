@@ -63,3 +63,4 @@ test-results.json
 test-output.json
 test-failures.txt
 test-list.txt
+*debug*

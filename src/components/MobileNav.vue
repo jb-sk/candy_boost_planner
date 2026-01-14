@@ -38,7 +38,7 @@ const { t } = useI18n();
   .mobileNav__item {
     flex: 1;
     text-align: center;
-    padding: 10px 0;
+    padding: 6px 0;
     font-weight: 700;
     font-size: 14px;
     color: color-mix(in oklab, var(--ink) 50%, transparent);

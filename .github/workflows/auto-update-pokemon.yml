@@ -6,8 +6,14 @@ on:
   schedule:
     # 毎日 UTC 00:00 (JST 09:00) に実行
     - cron: '0 0 * * *'
+    # 毎月1日 UTC 01:00 (JST 10:00) に全件チェック
+    - cron: '0 1 1 * *'
   workflow_dispatch:
-    # 手動実行も可能
+    inputs:
+      refresh_en_names:
+        description: 'Re-fetch all English names from PokeAPI'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -32,38 +38,98 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run dry-run to check for changes
-        id: dryrun
+      - name: Check for master data changes
+        id: master_check
         run: |
-          echo "=== ドライラン実行 ==="
-          # ドライランで差分を確認
+          echo "=== マスターデータ差分確認 ==="
           OUTPUT=$(npm run generate:master -- --non-interactive --dry-run 2>&1 || true)
           echo "$OUTPUT"
 
           # 追加があるかチェック
           if echo "$OUTPUT" | grep -q "追加: 0"; then
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "変更なし"
+            echo "has_master_changes=false" >> $GITHUB_OUTPUT
+            echo "マスターデータ変更なし"
           else
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-            echo "変更あり"
+            echo "has_master_changes=true" >> $GITHUB_OUTPUT
+            echo "マスターデータ変更あり"
           fi
 
           # サマリーを保存
-          echo 'summary<<EOF' >> $GITHUB_OUTPUT
+          echo 'master_summary<<EOF' >> $GITHUB_OUTPUT
           echo "$OUTPUT" | grep -A 100 "entries:" | head -50 >> $GITHUB_OUTPUT
           echo 'EOF' >> $GITHUB_OUTPUT
 
-      - name: Run update if changes detected
-        if: steps.dryrun.outputs.has_changes == 'true'
+      - name: Update master data
+        if: steps.master_check.outputs.has_master_changes == 'true'
         run: |
-          echo "=== 更新実行 ==="
+          echo "=== マスターデータ更新 ==="
           npm run generate:master -- --non-interactive
-          npm run generate:pokemon-en-names -- --force
-          npm run build
+
+      - name: Update English names and check changes
+        id: en_names
+        run: |
+          echo "=== 英語名取得（PokeAPI）==="
+
+          # 月1日のスケジュール or 手動で --refresh 指定時は全件再取得
+          DAY_OF_MONTH=$(date -u +%d)
+          REFRESH_REQUESTED="${{ github.event.inputs.refresh_en_names }}"
+
+          if [ "$DAY_OF_MONTH" = "01" ] || [ "$REFRESH_REQUESTED" = "true" ]; then
+            echo "全件再取得モード（--refresh）"
+            EN_OUTPUT=$(npm run generate:pokemon-en-names -- --refresh 2>&1)
+          else
+            echo "通常モード（キャッシュ利用）"
+            EN_OUTPUT=$(npm run generate:pokemon-en-names 2>&1)
+          fi
+          EN_EXIT_CODE=$?
+          echo "$EN_OUTPUT"
+
+          # 英語名取得が失敗した場合は中断
+          if [ $EN_EXIT_CODE -ne 0 ]; then
+            echo "❌ 英語名取得に失敗しました"
+            echo "en_success=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+          echo "en_success=true" >> $GITHUB_OUTPUT
+
+          # 変更があるかチェック（[SUMMARY]行をパース）
+          if echo "$EN_OUTPUT" | grep -q "\[SUMMARY\] has_changes=true"; then
+            echo "has_en_changes=true" >> $GITHUB_OUTPUT
+            echo "英語名変更あり"
+          else
+            echo "has_en_changes=false" >> $GITHUB_OUTPUT
+            echo "英語名変更なし"
+          fi
+
+          # サマリーを保存（追加/変更/削除の行）
+          echo 'en_summary<<EOF' >> $GITHUB_OUTPUT
+          echo "$EN_OUTPUT" | grep -E "^(✅|📝|🗑️|変更なし)" | head -30 >> $GITHUB_OUTPUT
+          echo 'EOF' >> $GITHUB_OUTPUT
+
+      - name: Check if any changes exist
+        id: final_check
+        run: |
+          MASTER_CHANGES="${{ steps.master_check.outputs.has_master_changes }}"
+          EN_CHANGES="${{ steps.en_names.outputs.has_en_changes }}"
+
+          echo "Master changes: $MASTER_CHANGES"
+          echo "EN names changes: $EN_CHANGES"
+
+          if [ "$MASTER_CHANGES" = "true" ] || [ "$EN_CHANGES" = "true" ]; then
+            echo "has_any_changes=true" >> $GITHUB_OUTPUT
+            echo "変更あり → PR作成"
+          else
+            echo "has_any_changes=false" >> $GITHUB_OUTPUT
+            echo "変更なし → PR作成スキップ"
+          fi
+
+      - name: Build
+        if: steps.final_check.outputs.has_any_changes == 'true'
+        run: npm run build
 
       - name: Create Pull Request
-        if: steps.dryrun.outputs.has_changes == 'true'
+        if: steps.final_check.outputs.has_any_changes == 'true'
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -74,9 +140,14 @@ jobs:
 
             このPRはGitHub Actionsにより自動生成されました。
 
-            ### 変更内容
+            ### 変更内容（マスターデータ）
             ```
-            ${{ steps.dryrun.outputs.summary }}
+            ${{ steps.master_check.outputs.master_summary }}
+            ```
+
+            ### 変更内容（英語名）
+            ```
+            ${{ steps.en_names.outputs.en_summary }}
             ```
 
             ### ⚠️ 確認事項

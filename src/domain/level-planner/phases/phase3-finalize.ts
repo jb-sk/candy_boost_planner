@@ -89,6 +89,7 @@ export function applyPhase3Finalize(
       type: pokemon.type,
       srcLevel: pokemon.srcLevel,
       dstLevel: pokemon.dstLevel,
+      dstExpInLevel: pokemon.dstExpInLevel,
       expType: pokemon.expType,
       nature: pokemon.nature,
       expGot: pokemon.expGot,

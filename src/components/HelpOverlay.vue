@@ -15,12 +15,16 @@
               {{ t("help.basic.addDesc") }}
             </li>
             <li>
-              <strong>{{ t("help.basic.boostKindTitle") }}</strong>:
-              {{ t("help.basic.boostKindDesc") }}
-            </li>
-            <li>
               <strong>{{ t("help.basic.stockTitle") }}</strong>:
               {{ t("help.basic.stockDesc") }}
+            </li>
+            <li>
+              <strong>{{ t("help.basic.sleepTitle") }}</strong>:
+              {{ t("help.basic.sleepDesc") }}
+            </li>
+            <li>
+              <strong>{{ t("help.basic.tabSettingsTitle") }}</strong>:
+              {{ t("help.basic.tabSettingsDesc") }}
             </li>
             <li>
               <strong>{{ t("help.basic.orderTitle") }}</strong>:
@@ -64,6 +68,10 @@
               <strong>{{ t("help.purpose.simulateTitle") }}</strong>:
               {{ t("help.purpose.simulateDesc") }}
             </li>
+            <li>
+              <strong>{{ t("help.purpose.sleepTitle") }}</strong>:
+              {{ t("help.purpose.sleepDesc") }}
+            </li>
           </ul>
         </section>
 
@@ -75,6 +83,30 @@
             <li>{{ t("help.candy.item3") }}</li>
             <li class="candy__note">{{ t("help.candy.note1") }}</li>
             <li class="candy__note">{{ t("help.candy.note2") }}</li>
+          </ul>
+        </section>
+
+        <section class="section">
+          <h3>{{ t("help.sleepFormula.title") }}</h3>
+          <p>{{ t("help.sleepFormula.desc") }}</p>
+          <ul class="formula__list">
+            <li>
+              <strong>{{ t("help.sleepFormula.scoreTitle") }}</strong>
+              <code>{{ t("help.sleepFormula.scoreFormula") }}</code>
+              <span class="formula__note">{{ t("help.sleepFormula.scoreNote") }}</span>
+            </li>
+            <li>
+              <strong>{{ t("help.sleepFormula.expTitle") }}</strong>
+              <code>{{ t("help.sleepFormula.expFormula") }}</code>
+              <span class="formula__note">{{ t("help.sleepFormula.bonusNote") }}</span>
+              <span class="formula__note">{{ t("help.sleepFormula.natureNote") }}</span>
+            </li>
+            <li>
+              <strong>{{ t("help.sleepFormula.gsdTitle") }}</strong>
+              <code>{{ t("help.sleepFormula.gsdFormula") }}</code>
+              <span class="formula__note">{{ t("help.sleepFormula.gsdNote") }}</span>
+              <span class="formula__note">{{ t("help.sleepFormula.gsdNote2") }}</span>
+            </li>
           </ul>
         </section>
 
@@ -219,6 +251,37 @@ strong {
   color: var(--muted);
 }
 
+.formula__list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+}
+.formula__list li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  background: color-mix(in oklab, var(--ink) 4%, transparent);
+  border-radius: 8px;
+}
+.formula__list strong {
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+.formula__list code {
+  font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 14px;
+  background: color-mix(in oklab, var(--ink) 8%, transparent);
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: var(--ink);
+}
+.formula__note {
+  font-size: 13px;
+  color: var(--muted);
+}
+
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -229,6 +292,14 @@ strong {
 }
 
 @media (max-width: 560px) {
+  .overlay {
+    padding: 0;
+  }
+  .modal {
+    width: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+  }
   .modal__body {
     padding: 16px 20px;
   }

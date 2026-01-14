@@ -470,7 +470,7 @@ function calcCandyTargetRowInfo(
       candy: candyTargetBoost,
       expGot: pokemon.expGot,
     })
-    : { level: pokemon.srcLevel, expGot: pokemon.expGot };
+    : { level: pokemon.srcLevel, expGot: pokemon.expGot, shards: 0 };
 
   const normalResult = (candyTargetNormal > 0)
     ? calcLevelByCandy({
@@ -483,34 +483,13 @@ function calcCandyTargetRowInfo(
       candy: candyTargetNormal,
       expGot: boostResult.expGot,
     })
-    : boostResult;
+    : { level: boostResult.level, expGot: boostResult.expGot, shards: 0 };
 
   const expectedLevel = normalResult.level;
   const expectedExpInLevel = normalResult.expGot;
 
-  // かけらを計算
-  const mixedResult = calcExpAndCandyMixed({
-    srcLevel: pokemon.srcLevel,
-    dstLevel: pokemon.dstLevel,
-    dstExpInLevel,
-    expType: pokemon.expType,
-    nature: pokemon.nature,
-    boost: boostKind,
-    boostCandy: candyTargetBoost,
-    expGot: pokemon.expGot,
-  });
-
-  // 通常アメが目標より少ない場合、かけらも比例して減る
-  let candyTargetShards: number;
-  if (candyTargetNormal < mixedResult.normalCandy) {
-    const normalShardsPerCandy = mixedResult.normalCandy > 0
-      ? mixedResult.shardsNormal / mixedResult.normalCandy
-      : 0;
-    const reducedNormalShards = normalShardsPerCandy * candyTargetNormal;
-    candyTargetShards = Math.round(mixedResult.shardsBoost + reducedNormalShards);
-  } else {
-    candyTargetShards = mixedResult.shards;
-  }
+  // かけらを計算（boostResult + normalResult から直接取得、近似計算は行わない）
+  const candyTargetShards = (boostResult.shards ?? 0) + (normalResult.shards ?? 0);
 
   // アイテム配分を計算（実在庫から、補填前）
   const candyTargetTotal = candyTargetBoost + candyTargetNormal;

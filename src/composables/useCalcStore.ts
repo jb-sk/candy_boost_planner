@@ -1,10 +1,10 @@
 import { computed, nextTick, ref, toRaw, watch, type Ref } from "vue";
 import type { Composer } from "vue-i18n";
-import type { BoostEvent, ExpGainNature, ExpType } from "../domain/types";
+import type { BoostEvent, ExpGainNature, ExpType, SleepSettings } from "../domain/types";
 import { calcExp, calcExpAndCandy, calcExpAndCandyMixed, calcLevelByCandy } from "../domain/pokesleep";
 import { boostRules, defaultBoostKind } from "../domain/pokesleep/boost-config";
 import type { CalcRowV1, CalcSaveSlotV1 } from "../persistence/calc";
-import { loadCalcSlots, loadLegacyTotalShards, saveCalcSlots, saveTotalShards, loadBoostCandyRemaining, saveBoostCandyRemaining } from "../persistence/calc";
+import { loadCalcSlots, loadLegacyTotalShards, saveCalcSlots, saveTotalShards, loadBoostCandyRemaining, saveBoostCandyRemaining, loadSleepSettings, saveSleepSettings } from "../persistence/calc";
 import { cryptoRandomId } from "../persistence/box";
 import { useCandyStore } from "./useCandyStore";
 import { getPokemonType } from "../domain/pokesleep/pokemon-names";
@@ -59,7 +59,8 @@ type CalcUndoState = {
 
 export type CalcStore = {
   // core state
-  boostKind: Ref<BoostEvent>;
+  boostKind: Readonly<Ref<BoostEvent>>;
+  setSlotBoostKind: (kind: BoostEvent) => void;
   totalShards: Ref<number>;
   totalShardsText: Ref<string>;
   boostCandyRemaining: Ref<number | null>;
@@ -69,6 +70,10 @@ export type CalcStore = {
   rows: Ref<CalcRow[]>;
   activeRowId: Ref<string | null>;
   activeSlotTab: Ref<number>;
+
+  // 睡眠育成設定
+  sleepSettings: Ref<SleepSettings>;
+  updateSleepSettings: (patch: Partial<SleepSettings>) => void;
 
   // UI state
   exportOpen: Ref<boolean>;
@@ -253,12 +258,28 @@ export function useCalcStore(opts: {
   const initialData = getSlotData(activeSlotTab.value);
   // ただし、まだcloneCalcRowsが定義されていないのでlegacyの方法で
   const slot0 = slots.value[activeSlotTab.value];
-  const boostKind = ref<BoostEvent>(defaultBoostKind);
+
+  // boostKind: スロットから取得（読み取り専用computed）
+  const boostKind = computed<BoostEvent>(() => {
+    const slot = slots.value[activeSlotTab.value];
+    return slot?.boostKind ?? defaultBoostKind;
+  });
+
   const totalShards = ref<number>(loadLegacyTotalShards());
   const totalShardsText = ref<string>("");
   // アメブ残数（nullの場合はboostKindによる上限を使用）
   const boostCandyRemaining = ref<number | null>(loadBoostCandyRemaining());
   const boostCandyRemainingText = ref<string>("");
+
+  // 睡眠育成設定
+  const sleepSettings = ref<SleepSettings>(loadSleepSettings());
+
+  function updateSleepSettings(patch: Partial<SleepSettings>) {
+    sleepSettings.value = { ...sleepSettings.value, ...patch };
+  }
+
+  // sleepSettings の自動保存
+  watch(sleepSettings, (v) => saveSleepSettings(v), { deep: true });
 
   const rows = ref<CalcRow[]>(slot0?.rows ? JSON.parse(JSON.stringify(slot0.rows)) : []);
   const activeRowId = ref<string | null>(slot0?.activeRowId ?? rows.value[0]?.id ?? null);
@@ -315,15 +336,41 @@ export function useCalcStore(opts: {
     { immediate: true }
   );
 
-  // boostKindが変わったらboostCandyRemainingをリセットし、全行の目標Lvを再設定
-  watch(boostKind, () => {
+  // setSlotBoostKind: 現在のスロットのアメブ種別を変更
+  // watch(boostKind) の代わりに明示的に呼び出す
+  function setSlotBoostKind(newKind: BoostEvent) {
+    const i = activeSlotTab.value;
+    const currentSlot = slots.value[i];
+    if (!currentSlot) {
+      // 空のスロットの場合は新規作成
+      const newSlot: CalcSaveSlotV1 = {
+        savedAt: new Date().toISOString(),
+        rows: [],
+        activeRowId: null,
+        boostKind: newKind,
+      };
+      slots.value = slots.value.map((x, idx) => (idx === i ? newSlot : x));
+      return;
+    }
+
+    if (currentSlot.boostKind === newKind) return;
+
+    // boostKind を変更
+    const updatedSlot = { ...currentSlot, boostKind: newKind };
+    slots.value = slots.value.map((x, idx) => (idx === i ? updatedSlot : x));
+
+    // boostCandyRemaining をリセット
     boostCandyRemaining.value = null;
     boostCandyRemainingText.value = "";
-    // 全行の目標Lvを再設定（100%でリセット）
+
+    // 全行の boostOrExpAdjustment を0にリセット後、目標Lvを再設定
+    for (const r of rows.value) {
+      r.boostOrExpAdjustment = 0;
+    }
     for (const r of rows.value) {
       setDstLevel(r.id, r.dstLevel);
     }
-  });
+  }
 
   const fullLabel = computed(() =>
     t("calc.boostKindFull", {
@@ -367,6 +414,7 @@ export function useCalcStore(opts: {
   }
 
   // スロット切り替え時の処理（データを切り替え）
+  // 各スロットは独自の boostKind を持つため、再計算は不要
   function switchToSlot(newSlotIndex: number) {
     if (newSlotIndex === activeSlotTab.value) return;
 
@@ -380,37 +428,17 @@ export function useCalcStore(opts: {
     // 新しいスロットからデータを読み込み
     const slot = slots.value[newSlotIndex];
     if (slot) {
-      const loadedRows: CalcRow[] = JSON.parse(JSON.stringify(slot.rows));
-
-      // 保存時の boostKind と現在の boostKind が異なる場合は再計算
-      const slotBoostKind = slot.boostKind;
-      const needsRecalc = slotBoostKind !== undefined && slotBoostKind !== boostKind.value;
-
-      if (needsRecalc) {
-        // 全行の candyPeak / boostOrExpAdjustment を現在の boostKind で再計算
-        for (const row of loadedRows) {
-          const patch = calcCandyPatch({
-            srcLevel: row.srcLevel,
-            dstLevel: row.dstLevel,
-            expType: row.expType,
-            nature: row.nature,
-            expRemaining: row.expRemaining,
-          });
-          row.candyPeak = patch.candyPeak;
-          row.boostOrExpAdjustment = patch.boostOrExpAdjustment;
-          row.boostRatioPct = patch.boostRatioPct;
-          row.boostReachLevel = patch.boostReachLevel;
-          row.mode = patch.mode;
-        }
-      }
-
-      rows.value = loadedRows;
+      rows.value = JSON.parse(JSON.stringify(slot.rows));
       activeRowId.value = slot.activeRowId ?? rows.value[0]?.id ?? null;
     } else {
       rows.value = [];
       activeRowId.value = null;
     }
     openLevelPickRowId.value = null;
+
+    // boostCandyRemaining をリセット（スロットごとに異なる boostKind を持つため）
+    boostCandyRemaining.value = null;
+    boostCandyRemainingText.value = "";
 
     // undo/redoスタックをクリア
     undoStack.value = [];
@@ -550,6 +578,7 @@ export function useCalcStore(opts: {
    *
    * expRemaining: 現在レベルの「あとEXP」。これを元に expGot を内部計算。
    *               未指定の場合は expGot = 0 として計算（= あとEXP が次Lvの全EXP）
+   * excludeRowId: グローバル残数計算時に除外する行ID（自分自身を除外するため）
    */
   function calcCandyPatch(params: {
     srcLevel: number;
@@ -557,8 +586,9 @@ export function useCalcStore(opts: {
     expType: ExpType;
     nature: ExpGainNature;
     expRemaining?: number;
+    excludeRowId?: string;
   }): Pick<CalcRow, 'boostOrExpAdjustment' | 'candyPeak' | 'boostRatioPct' | 'boostReachLevel' | 'mode'> {
-    const { srcLevel, dstLevel, expType, nature, expRemaining } = params;
+    const { srcLevel, dstLevel, expType, nature, expRemaining, excludeRowId } = params;
 
     if (srcLevel === dstLevel) {
       return { boostOrExpAdjustment: 0, candyPeak: 0, boostRatioPct: 100, boostReachLevel: dstLevel, mode: "candy" };
@@ -573,7 +603,29 @@ export function useCalcStore(opts: {
       ? calcExpAndCandyMixed({ srcLevel, dstLevel, expType, nature, boost: "none", boostCandy: 0, expGot }).normalCandy
       : calcExpAndCandy({ srcLevel, dstLevel, expType, nature, boost: boostKind.value, expGot }).candy;
 
-    return { boostOrExpAdjustment: candy, candyPeak: candy, boostRatioPct: 100, boostReachLevel: dstLevel, mode: "candy" };
+    // 通常モードの場合はグローバル上限なし
+    if (boostKind.value === "none") {
+      return { boostOrExpAdjustment: candy, candyPeak: candy, boostRatioPct: 100, boostReachLevel: dstLevel, mode: "candy" };
+    }
+
+    // アメブ/ミニブ: グローバル上限を考慮してリセット値を決定
+    const globalCap = boostKind.value === "mini" ? 350 : 3500;
+
+    // 他の行で使用中のアメブ合計を計算（excludeRowId を除外）
+    const otherRowsBoostTotal = rows.value
+      .filter((r) => r.id !== excludeRowId)
+      .reduce((sum, r) => sum + (r.boostOrExpAdjustment ?? 0), 0);
+
+    // グローバル残数
+    const globalRemaining = Math.max(0, globalCap - otherRowsBoostTotal);
+
+    // リセット値 = min(必要数, グローバル残数)
+    const resetValue = Math.min(candy, globalRemaining);
+
+    // 割合を計算
+    const ratio = candy > 0 ? Math.round((resetValue / candy) * 100) : 100;
+
+    return { boostOrExpAdjustment: resetValue, candyPeak: candy, boostRatioPct: ratio, boostReachLevel: dstLevel, mode: "candy" };
   }
 
 
@@ -581,7 +633,7 @@ export function useCalcStore(opts: {
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
     const dst = clampInt(v, r.srcLevel, MAX_LEVEL, r.dstLevel);
-    updateRow(id, { dstLevel: dst, ...calcCandyPatch({ srcLevel: r.srcLevel, dstLevel: dst, expType: r.expType, nature: r.nature, expRemaining: r.expRemaining }) });
+    updateRow(id, { dstLevel: dst, ...calcCandyPatch({ srcLevel: r.srcLevel, dstLevel: dst, expType: r.expType, nature: r.nature, expRemaining: r.expRemaining, excludeRowId: id }) });
   }
   function nudgeDstLevel(id: string, delta: number) {
     const r = rows.value.find((x) => x.id === id);
@@ -594,7 +646,7 @@ export function useCalcStore(opts: {
     const src = clampInt(v, 1, r.dstLevel, r.srcLevel);
     const dst = r.dstLevel < src ? src : r.dstLevel;
     const toNext = Math.max(0, calcExp(src, src + 1, r.expType));
-    updateRow(id, { srcLevel: src, dstLevel: dst, expRemaining: toNext, ...calcCandyPatch({ srcLevel: src, dstLevel: dst, expType: r.expType, nature: r.nature }) });
+    updateRow(id, { srcLevel: src, dstLevel: dst, expRemaining: toNext, ...calcCandyPatch({ srcLevel: src, dstLevel: dst, expType: r.expType, nature: r.nature, excludeRowId: id }) });
   }
   function nudgeSrcLevel(id: string, delta: number) {
     const r = rows.value.find((x) => x.id === id);
@@ -607,11 +659,11 @@ export function useCalcStore(opts: {
     const mid = clampInt(v, r.srcLevel, r.dstLevel, r.srcLevel);
 
     // mid までのアメブ個数（srcLevel → boostReachLevel）
-    const boostPart = calcCandyPatch({ srcLevel: r.srcLevel, dstLevel: mid, expType: r.expType, nature: r.nature, expRemaining: r.expRemaining });
+    const boostPart = calcCandyPatch({ srcLevel: r.srcLevel, dstLevel: mid, expType: r.expType, nature: r.nature, expRemaining: r.expRemaining, excludeRowId: id });
     const boostCandy = boostPart.boostOrExpAdjustment ?? 0;
 
     // 100%時の総アメ数（srcLevel → dstLevel）
-    const fullPart = calcCandyPatch({ srcLevel: r.srcLevel, dstLevel: r.dstLevel, expType: r.expType, nature: r.nature, expRemaining: r.expRemaining });
+    const fullPart = calcCandyPatch({ srcLevel: r.srcLevel, dstLevel: r.dstLevel, expType: r.expType, nature: r.nature, expRemaining: r.expRemaining, excludeRowId: id });
     const fullCandy = fullPart.boostOrExpAdjustment ?? 0;
 
     // 割合を計算
@@ -644,6 +696,7 @@ export function useCalcStore(opts: {
       expType: r.expType,
       nature: r.nature,
       expRemaining: rem,
+      excludeRowId: id,
     });
 
     updateRow(id, { expRemaining: rem, ...candyPatch });
@@ -723,7 +776,7 @@ export function useCalcStore(opts: {
    * 入力がピーク超え → ピーク更新、割合100%
    * 入力がピーク以下 → ピーク維持、割合更新
    *
-   * ※ Lv65到達に必要なアメ数を上限としてクランプ
+   * ※ MAX_LEVEL到達に必要なアメ数を上限としてクランプ
    */
   function onRowBoostCandy(id: string, v: string) {
     const r = rows.value.find((x) => x.id === id);
@@ -732,10 +785,10 @@ export function useCalcStore(opts: {
     const toNext = Math.max(0, calcExp(r.srcLevel, r.srcLevel + 1, r.expType));
     const expGot = r.expRemaining !== undefined ? Math.max(0, toNext - r.expRemaining) : 0;
 
-    // Lv65到達に必要なアメ数を計算（クランプ用上限）
-    let maxCandyForLv65: number;
+    // MAX_LEVEL到達に必要なアメ数を計算（クランプ用上限）
+    let maxCandyForMaxLevel: number;
     if (r.srcLevel >= MAX_LEVEL) {
-      maxCandyForLv65 = 0;
+      maxCandyForMaxLevel = 0;
     } else if (boostKind.value === "none") {
       const res = calcExpAndCandyMixed({
         srcLevel: r.srcLevel,
@@ -746,7 +799,7 @@ export function useCalcStore(opts: {
         boostCandy: 0,
         expGot,
       });
-      maxCandyForLv65 = res.normalCandy;
+      maxCandyForMaxLevel = res.normalCandy;
     } else {
       const res = calcExpAndCandy({
         srcLevel: r.srcLevel,
@@ -756,12 +809,12 @@ export function useCalcStore(opts: {
         boost: boostKind.value,
         expGot,
       });
-      maxCandyForLv65 = res.candy;
+      maxCandyForMaxLevel = res.candy;
     }
 
-    // 入力値をクランプ（0 ≤ n ≤ maxCandyForLv65）
+    // 入力値をクランプ（0 ≤ n ≤ maxCandyForMaxLevel）
     const rawN = Math.max(0, Math.floor(Number(v) || 0));
-    const n = Math.min(rawN, maxCandyForLv65);
+    const n = Math.min(rawN, maxCandyForMaxLevel);
 
     // computedPeak を計算（現在の目標到達に必要なアメ数）
     let computedPeak: number;
@@ -1040,7 +1093,7 @@ export function useCalcStore(opts: {
     }
     const simResult = calcLevelByCandy({
       srcLevel: src,
-      dstLevel: 100, // 最大レベルまでシミュレート
+      dstLevel: MAX_LEVEL, // システム上限まで
       expType: expT,
       nature: nat,
       boost: boostKind.value,
@@ -1321,11 +1374,26 @@ export function useCalcStore(opts: {
 
       let candyNeed: number;
       let boostOrExpAdjustment: number;
+      let dynamicDstLevel: number;
+      let dynamicDstExpInLevel: number;
 
       if (boostKind.value === "none") {
         // 通常モード: ピークと入力が連動、アメブがないので入力値がそのまま必要アメ数
         candyNeed = r.ui.boostCandyInput;
         boostOrExpAdjustment = r.ui.boostCandyInput;
+
+        // ピークで到達可能なLv+expGotを計算
+        const peakResult = calcLevelByCandy({
+          srcLevel: r.srcLevel,
+          dstLevel: MAX_LEVEL, // システム上限まで
+          expType: r.expType,
+          nature: r.nature,
+          boost: boostKind.value,
+          candy: peak,
+          expGot,
+        });
+        dynamicDstLevel = peakResult.level;
+        dynamicDstExpInLevel = peakResult.expGot;
       } else if (r.mode === "boostLevel") {
         // アメブ目標Lvモード: boostReachLevelまでアメブ、残りは通常アメ
         // calcExpAndCandyMixedでboostCandyを使った場合のnormalCandyを計算
@@ -1341,6 +1409,10 @@ export function useCalcStore(opts: {
         });
         candyNeed = boostCandy + mixedResult.normalCandy;
         boostOrExpAdjustment = boostCandy;
+
+        // boostLevelモードでは目標Lvはユーザー設定のまま
+        dynamicDstLevel = r.dstLevel;
+        dynamicDstExpInLevel = 0;
       } else {
         // 割合/個数モード（ピーク維持）: ピークで到達可能なLv+expGotを維持しながら端数も正確に計算
         //
@@ -1352,7 +1424,7 @@ export function useCalcStore(opts: {
         // ピークで到達可能なLv+expGotを計算
         const peakResult = calcLevelByCandy({
           srcLevel: r.srcLevel,
-          dstLevel: 100, // 最大まで
+          dstLevel: MAX_LEVEL, // システム上限まで
           expType: r.expType,
           nature: r.nature,
           boost: boostKind.value,
@@ -1373,12 +1445,15 @@ export function useCalcStore(opts: {
         });
         candyNeed = boostCandy + mixedResult.normalCandy;
         boostOrExpAdjustment = boostCandy;
+        dynamicDstLevel = peakResult.level;
+        dynamicDstExpInLevel = peakResult.expGot;
       }
 
-      // 必要EXPは目標レベルまでの純粋なEXP（UI表示用）
+      // 必要EXPは動的な目標レベルまでのEXP
       const calcResult = calcExpAndCandy({
         srcLevel: r.srcLevel,
-        dstLevel: r.dstLevel,
+        dstLevel: dynamicDstLevel,
+        dstExpInLevel: dynamicDstExpInLevel,
         expType: r.expType,
         nature: r.nature,
         boost: boostKind.value,
@@ -1393,8 +1468,8 @@ export function useCalcStore(opts: {
         pokemonName: r.title,
         type: pokemonType,
         srcLevel: r.srcLevel,
-        dstLevel: r.dstLevel,
-        dstExpInLevel: 0,  // planLevelUp で計算される
+        dstLevel: dynamicDstLevel,
+        dstExpInLevel: dynamicDstExpInLevel,
         expType: r.expType,
         nature: r.nature,
         expGot,
@@ -1534,14 +1609,15 @@ export function useCalcStore(opts: {
       p.expRemaining !== undefined && Number.isFinite(p.expRemaining) ? clampInt(p.expRemaining, 0, toNext, toNext) : toNext;
 
     // 共通ヘルパーでアメ計算パッチを生成（expRemaining を渡して内部で expGot を計算）
-    const candyPatchResult = calcCandyPatch({ srcLevel, dstLevel, expType: p.expType, nature: p.nature, expRemaining: remaining });
+    // 既存行がある場合は excludeRowId で自分を除外、新規行の場合は除外不要（まだ rows に存在しない）
+    const existing = rows.value.find((x) => x.boxId === p.boxId) ?? null;
+    const candyPatchResult = calcCandyPatch({ srcLevel, dstLevel, expType: p.expType, nature: p.nature, expRemaining: remaining, excludeRowId: existing?.id });
 
     const title =
       String(p.title ?? "").trim() ||
       (resolveTitleByBoxId ? resolveTitleByBoxId(p.boxId) ?? "" : "") ||
       "(no name)";
 
-    const existing = rows.value.find((x) => x.boxId === p.boxId) ?? null;
 
     if (existing) {
       updateRow(existing.id, {
@@ -1556,7 +1632,7 @@ export function useCalcStore(opts: {
         srcLevel, dstLevel, expRemaining: remaining, expType: p.expType, nature: p.nature,
         ...candyPatchResult,
       };
-      rows.value = [row, ...rows.value];
+      rows.value = [...rows.value, row];
       activeRowId.value = row.id;
     }
 
@@ -1587,6 +1663,7 @@ export function useCalcStore(opts: {
 
   return {
     boostKind,
+    setSlotBoostKind,
     totalShards,
     totalShardsText,
     boostCandyRemaining,
@@ -1596,6 +1673,9 @@ export function useCalcStore(opts: {
     rows,
     activeRowId,
     activeSlotTab,
+
+    sleepSettings,
+    updateSleepSettings,
 
     exportOpen,
     openLevelPickRowId,
