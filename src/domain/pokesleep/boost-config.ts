@@ -18,3 +18,11 @@ export const boostRules = {
   mini: { expMultiplier: 2, shardMultiplier: 4 },
   full: { expMultiplier: 2, shardMultiplier: 5 },
 } as const satisfies Record<BoostEvent, BoostRule>;
+
+/**
+ * デフォルトのアメブ種別（新規ユーザーの初期値）
+ * - "none": 通常（イベント外）
+ * - "mini": ミニブ
+ * - "full": アメブ
+ */
+export const defaultBoostKind: BoostEvent = "mini";

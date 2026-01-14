@@ -4,6 +4,8 @@ export type AppDataV1 = {
   pokemons: PokemonPlanV1[];
   /** 手持ちの総ゆめのかけら（上限チェック用） */
   totalShards: number;
+  /** 睡眠育成設定（アプリ全体で共通） */
+  sleepSettings?: SleepSettings;
 };
 
 export type BoxEntrySource = "nitoyon" | "manual";
@@ -81,4 +83,16 @@ export type PokemonPlanV1 = {
   boost: BoostEvent;
   /** 現在レベル内で既に得ている経験値（任意、未入力なら0） */
   expGot?: number;
+};
+
+/**
+ * 睡眠育成設定（アプリ全体で共通）
+ */
+export type SleepSettings = {
+  /** 1日の睡眠時間（時間単位、デフォルト: 8.5） */
+  dailySleepHours: number;
+  /** 睡眠EXPボーナス持ちポケモン数（0-5） */
+  sleepExpBonusCount: number;
+  /** GSD考慮（デフォルト: true） */
+  includeGSD: boolean;
 };

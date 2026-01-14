@@ -1,15 +1,17 @@
 import { computed, nextTick, ref, toRaw, watch, type Ref } from "vue";
 import type { Composer } from "vue-i18n";
-import type { BoostEvent, ExpGainNature, ExpType } from "../domain/types";
-import { calcExp, calcExpAndCandy, calcExpAndCandyByBoostExpRatio, calcExpAndCandyMixed, calcExpPerCandy, calcLevelByCandy } from "../domain/pokesleep";
-import { boostRules } from "../domain/pokesleep/boost-config";
+import type { BoostEvent, ExpGainNature, ExpType, SleepSettings } from "../domain/types";
+import { calcExp, calcExpAndCandy, calcExpAndCandyMixed, calcLevelByCandy } from "../domain/pokesleep";
+import { boostRules, defaultBoostKind } from "../domain/pokesleep/boost-config";
 import type { CalcRowV1, CalcSaveSlotV1 } from "../persistence/calc";
-import { loadCalcAutosave, loadCalcSlots, loadLegacyTotalShards, saveCalcAutosave, saveCalcSlots } from "../persistence/calc";
+import { loadCalcSlots, loadLegacyTotalShards, saveCalcSlots, saveTotalShards, loadBoostCandyRemaining, saveBoostCandyRemaining, loadSleepSettings, saveSleepSettings } from "../persistence/calc";
 import { cryptoRandomId } from "../persistence/box";
 import { useCandyStore } from "./useCandyStore";
-import { allocateCandy, type AllocationSummary, type PokemonCandyNeed } from "../domain/candy-allocator";
 import { getPokemonType } from "../domain/pokesleep/pokemon-names";
 import { CANDY_VALUES } from "../persistence/candy";
+import { planLevelUp } from "../domain/level-planner/core/plan";
+import type { LevelUpPlanResult, PokemonLevelUpResult, ItemUsage } from "../domain/level-planner/types";
+import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 
 export type CalcRow = CalcRowV1;
 
@@ -18,14 +20,7 @@ export type CalcRowView = CalcRow & {
   srcLevel: number;
   dstLevel: number;
   expRemaining: number;
-  result: {
-    exp: number;
-    expBoostApplied: number;
-    boostCandy: number;
-    normalCandy: number;
-    shards: number;
-    expLeftNext: number;
-  };
+  expLeftNext: number;
   ui: {
     boostReachLevel: number;
     boostRatioPct: number;
@@ -64,7 +59,8 @@ type CalcUndoState = {
 
 export type CalcStore = {
   // core state
-  boostKind: Ref<BoostEvent>;
+  boostKind: Readonly<Ref<BoostEvent>>;
+  setSlotBoostKind: (kind: BoostEvent) => void;
   totalShards: Ref<number>;
   totalShardsText: Ref<string>;
   boostCandyRemaining: Ref<number | null>;
@@ -74,6 +70,10 @@ export type CalcStore = {
   rows: Ref<CalcRow[]>;
   activeRowId: Ref<string | null>;
   activeSlotTab: Ref<number>;
+
+  // 睡眠育成設定
+  sleepSettings: Ref<SleepSettings>;
+  updateSleepSettings: (patch: Partial<SleepSettings>) => void;
 
   // UI state
   exportOpen: Ref<boolean>;
@@ -120,8 +120,10 @@ export type CalcStore = {
   activeRowShardsUsagePct: Readonly<Ref<number>>;
   activeRowBoostCandyUsagePct: Readonly<Ref<number>>;
 
-  // candy allocation
-  allocationResult: Readonly<Ref<AllocationSummary | null>>;
+  // candy allocation (new phase-based)
+  planResult: Readonly<Ref<LevelUpPlanResult | null>>;
+  getPokemonResult: (id: string) => PokemonLevelUpResult | null;
+  getTheoreticalRow: (p: PokemonLevelUpResult) => ItemUsage;
   universalCandyUsagePct: Readonly<Ref<number>>;
   universalCandyNeeded: Readonly<Ref<{ s: number; m: number; l: number; total: number }>>;
   universalCandyRanking: Readonly<Ref<Array<{
@@ -158,9 +160,7 @@ export type CalcStore = {
   clear: () => void;
   removeRowById: (id: string) => void;
 
-  onSlotSave: (slotIndex: number) => void;
-  onSlotLoad: (slotIndex: number) => void;
-  onSlotDelete: (slotIndex: number) => void;
+  switchToSlot: (slotIndex: number) => void;
 
   // row UI: level picker / drag reorder
   openDstLevelPick: (id: string) => void;
@@ -176,6 +176,7 @@ export type CalcStore = {
 
   onRowExpRemaining: (id: string, v: string) => void;
   onRowNature: (id: string, v: string) => void;
+  onRowCandyTarget: (id: string, v: string) => void;
   onRowBoostLevel: (id: string, v: string) => void;
   onRowBoostRatio: (id: string, v: string) => void;
   onRowBoostCandy: (id: string, v: string) => void;
@@ -218,19 +219,70 @@ export function useCalcStore(opts: {
     return new Intl.NumberFormat(locale.value as any).format(n);
   }
 
-  const calcAutosave0 = loadCalcAutosave();
+
   const slots = ref<Array<CalcSaveSlotV1 | null>>(loadCalcSlots());
 
-  const boostKind = ref<BoostEvent>(calcAutosave0?.boostKind ?? "full");
-  const totalShards = ref<number>(calcAutosave0?.totalShards ?? loadLegacyTotalShards());
+  // アクティブスロットをLocalStorageから読み込み
+  const SLOT_TAB_KEY = "candy-boost-planner:calc:activeSlot";
+  function loadActiveSlot(): number {
+    try {
+      const raw = localStorage.getItem(SLOT_TAB_KEY);
+      if (!raw) return 0;
+      const n = Number(raw);
+      if (n === 0 || n === 1 || n === 2) return n;
+      return 0;
+    } catch { return 0; }
+  }
+  function saveActiveSlot(n: number) {
+    try {
+      localStorage.setItem(SLOT_TAB_KEY, String(n));
+    } catch { /* ignore */ }
+  }
+
+  const activeSlotTab = ref(loadActiveSlot());
+
+  // 現在のスロットからデータを読み込み
+  function getSlotData(slotIndex: number) {
+    const slot = slots.value[slotIndex];
+    if (slot) {
+      return {
+        rows: cloneCalcRows(slot.rows),
+        activeRowId: slot.activeRowId ?? slot.rows[0]?.id ?? null,
+      };
+    }
+    // 空のスロットは空の状態で開始
+    return { rows: [], activeRowId: null };
+  }
+
+  // 初期データは現在のスロットから
+  const initialData = getSlotData(activeSlotTab.value);
+  // ただし、まだcloneCalcRowsが定義されていないのでlegacyの方法で
+  const slot0 = slots.value[activeSlotTab.value];
+
+  // boostKind: スロットから取得（読み取り専用computed）
+  const boostKind = computed<BoostEvent>(() => {
+    const slot = slots.value[activeSlotTab.value];
+    return slot?.boostKind ?? defaultBoostKind;
+  });
+
+  const totalShards = ref<number>(loadLegacyTotalShards());
   const totalShardsText = ref<string>("");
   // アメブ残数（nullの場合はboostKindによる上限を使用）
-  const boostCandyRemaining = ref<number | null>(calcAutosave0?.boostCandyRemaining ?? null);
+  const boostCandyRemaining = ref<number | null>(loadBoostCandyRemaining());
   const boostCandyRemainingText = ref<string>("");
 
-  const rows = ref<CalcRow[]>(calcAutosave0?.rows ?? []);
-  const activeRowId = ref<string | null>(calcAutosave0?.activeRowId ?? rows.value[0]?.id ?? null);
-  const activeSlotTab = ref(0);
+  // 睡眠育成設定
+  const sleepSettings = ref<SleepSettings>(loadSleepSettings());
+
+  function updateSleepSettings(patch: Partial<SleepSettings>) {
+    sleepSettings.value = { ...sleepSettings.value, ...patch };
+  }
+
+  // sleepSettings の自動保存
+  watch(sleepSettings, (v) => saveSleepSettings(v), { deep: true });
+
+  const rows = ref<CalcRow[]>(slot0?.rows ? JSON.parse(JSON.stringify(slot0.rows)) : []);
+  const activeRowId = ref<string | null>(slot0?.activeRowId ?? rows.value[0]?.id ?? null);
 
   function clampNonNegInt(n: unknown): number {
     return Math.max(0, Math.floor(Number(n) || 0));
@@ -284,11 +336,41 @@ export function useCalcStore(opts: {
     { immediate: true }
   );
 
-  // boostKindが変わったらboostCandyRemainingをリセット
-  watch(boostKind, () => {
+  // setSlotBoostKind: 現在のスロットのアメブ種別を変更
+  // watch(boostKind) の代わりに明示的に呼び出す
+  function setSlotBoostKind(newKind: BoostEvent) {
+    const i = activeSlotTab.value;
+    const currentSlot = slots.value[i];
+    if (!currentSlot) {
+      // 空のスロットの場合は新規作成
+      const newSlot: CalcSaveSlotV1 = {
+        savedAt: new Date().toISOString(),
+        rows: [],
+        activeRowId: null,
+        boostKind: newKind,
+      };
+      slots.value = slots.value.map((x, idx) => (idx === i ? newSlot : x));
+      return;
+    }
+
+    if (currentSlot.boostKind === newKind) return;
+
+    // boostKind を変更
+    const updatedSlot = { ...currentSlot, boostKind: newKind };
+    slots.value = slots.value.map((x, idx) => (idx === i ? updatedSlot : x));
+
+    // boostCandyRemaining をリセット
     boostCandyRemaining.value = null;
     boostCandyRemainingText.value = "";
-  });
+
+    // 全行の boostOrExpAdjustment を0にリセット後、目標Lvを再設定
+    for (const r of rows.value) {
+      r.boostOrExpAdjustment = 0;
+    }
+    for (const r of rows.value) {
+      setDstLevel(r.id, r.dstLevel);
+    }
+  }
 
   const fullLabel = computed(() =>
     t("calc.boostKindFull", {
@@ -318,19 +400,58 @@ export function useCalcStore(opts: {
     return JSON.parse(JSON.stringify(raw));
   }
 
-  function saveCalcAutosaveNow() {
-    saveCalcAutosave({
-      schemaVersion: 1,
-      totalShards: clampNonNegInt(totalShards.value),
-      boostKind: boostKind.value,
-      boostCandyRemaining: boostCandyRemaining.value ?? undefined,
+  // 現在のスロットにデータを保存
+  function saveToCurrentSlot() {
+    const i = activeSlotTab.value;
+    const now = new Date().toISOString();
+    const slot: CalcSaveSlotV1 = {
+      savedAt: now,
       rows: cloneCalcRows(rows.value),
       activeRowId: activeRowId.value,
-    });
+      boostKind: boostKind.value,  // 保存時の boostKind を記録
+    };
+    slots.value = slots.value.map((x, idx) => (idx === i ? slot : x));
   }
 
-  watch([rows, activeRowId, boostKind, totalShards, boostCandyRemaining], () => saveCalcAutosaveNow(), { deep: true });
+  // スロット切り替え時の処理（データを切り替え）
+  // 各スロットは独自の boostKind を持つため、再計算は不要
+  function switchToSlot(newSlotIndex: number) {
+    if (newSlotIndex === activeSlotTab.value) return;
+
+    // 現在のスロットに保存
+    saveToCurrentSlot();
+
+    // 新しいスロットに切り替え
+    activeSlotTab.value = newSlotIndex;
+    saveActiveSlot(newSlotIndex);
+
+    // 新しいスロットからデータを読み込み
+    const slot = slots.value[newSlotIndex];
+    if (slot) {
+      rows.value = JSON.parse(JSON.stringify(slot.rows));
+      activeRowId.value = slot.activeRowId ?? rows.value[0]?.id ?? null;
+    } else {
+      rows.value = [];
+      activeRowId.value = null;
+    }
+    openLevelPickRowId.value = null;
+
+    // boostCandyRemaining をリセット（スロットごとに異なる boostKind を持つため）
+    boostCandyRemaining.value = null;
+    boostCandyRemainingText.value = "";
+
+    // undo/redoスタックをクリア
+    undoStack.value = [];
+    redoStack.value = [];
+  }
+
+
+  // データ変更時に現在のスロットに自動保存
+  watch([rows, activeRowId], () => saveToCurrentSlot(), { deep: true });
   watch(slots, (v) => saveCalcSlots(v), { deep: true });
+  // 設定値の自動保存
+  watch(totalShards, (v) => saveTotalShards(v));
+  watch(boostCandyRemaining, (v) => saveBoostCandyRemaining(v));
 
   watch(
     rows,
@@ -349,10 +470,11 @@ export function useCalcStore(opts: {
 
   const activeRow = computed(() => rows.value.find((x) => x.id === activeRowId.value) ?? null);
 
-  const undoState = ref<CalcUndoState | null>(null);
-  const redoState = ref<CalcUndoState | null>(null);
-  const canUndo = computed(() => !!undoState.value);
-  const canRedo = computed(() => !!redoState.value);
+  const UNDO_LIMIT = 3;
+  const undoStack = ref<CalcUndoState[]>([]);
+  const redoStack = ref<CalcUndoState[]>([]);
+  const canUndo = computed(() => undoStack.value.length > 0);
+  const canRedo = computed(() => redoStack.value.length > 0);
 
   function snapshotUndoState(): CalcUndoState {
     return {
@@ -370,22 +492,20 @@ export function useCalcStore(opts: {
   }
 
   function beginUndo() {
-    undoState.value = snapshotUndoState();
-    redoState.value = null;
+    undoStack.value = [...undoStack.value, snapshotUndoState()].slice(-UNDO_LIMIT);
+    redoStack.value = [];
   }
   function undo() {
-    const s = undoState.value;
+    const s = undoStack.value.pop();
     if (!s) return;
-    redoState.value = snapshotUndoState();
+    redoStack.value = [...redoStack.value, snapshotUndoState()].slice(-UNDO_LIMIT);
     restoreUndoState(s);
-    undoState.value = null;
   }
   function redo() {
-    const s = redoState.value;
+    const s = redoStack.value.pop();
     if (!s) return;
-    undoState.value = snapshotUndoState();
+    undoStack.value = [...undoStack.value, snapshotUndoState()].slice(-UNDO_LIMIT);
     restoreUndoState(s);
-    redoState.value = null;
   }
 
   function clear() {
@@ -405,29 +525,7 @@ export function useCalcStore(opts: {
     openLevelPickRowId.value = null;
   }
 
-  function onSlotSave(slotIndex: number) {
-    if (!rows.value.length) return;
-    const i = Math.max(0, Math.min(2, Math.floor(Number(slotIndex) || 0)));
-    beginUndo();
-    const now = new Date().toISOString();
-    const slot: CalcSaveSlotV1 = { savedAt: now, rows: cloneCalcRows(rows.value), activeRowId: activeRowId.value };
-    slots.value = slots.value.map((x, idx) => (idx === i ? slot : x));
-  }
-  function onSlotLoad(slotIndex: number) {
-    const i = Math.max(0, Math.min(2, Math.floor(Number(slotIndex) || 0)));
-    const slot = slots.value[i];
-    if (!slot) return;
-    beginUndo();
-    rows.value = cloneCalcRows(slot.rows);
-    activeRowId.value = slot.activeRowId ?? rows.value[0]?.id ?? null;
-    openLevelPickRowId.value = null;
-  }
-  function onSlotDelete(slotIndex: number) {
-    const i = Math.max(0, Math.min(2, Math.floor(Number(slotIndex) || 0)));
-    if (!slots.value[i]) return;
-    beginUndo();
-    slots.value = slots.value.map((x, idx) => (idx === i ? null : x));
-  }
+
 
   function formatSlotSavedAt(iso: string | undefined | null): string {
     const s = String(iso ?? "").trim();
@@ -474,42 +572,68 @@ export function useCalcStore(opts: {
     rows.value = rows.value.map((x) => (x.id === id ? { ...x, ...patch } : x));
   }
 
+  /**
+   * レベル範囲に基づいてアメ計算パッチを生成するヘルパー関数
+   * setDstLevel, setSrcLevel, setBoostLevel, upsertFromBox で共通使用
+   *
+   * expRemaining: 現在レベルの「あとEXP」。これを元に expGot を内部計算。
+   *               未指定の場合は expGot = 0 として計算（= あとEXP が次Lvの全EXP）
+   * excludeRowId: グローバル残数計算時に除外する行ID（自分自身を除外するため）
+   */
+  function calcCandyPatch(params: {
+    srcLevel: number;
+    dstLevel: number;
+    expType: ExpType;
+    nature: ExpGainNature;
+    expRemaining?: number;
+    excludeRowId?: string;
+  }): Pick<CalcRow, 'boostOrExpAdjustment' | 'candyPeak' | 'boostRatioPct' | 'boostReachLevel' | 'mode'> {
+    const { srcLevel, dstLevel, expType, nature, expRemaining, excludeRowId } = params;
+
+    if (srcLevel === dstLevel) {
+      return { boostOrExpAdjustment: 0, candyPeak: 0, boostRatioPct: 100, boostReachLevel: dstLevel, mode: "candy" };
+    }
+
+    // expRemaining から expGot を計算
+    // expRemaining が未指定（undefined）の場合は expGot = 0（あとEXP = 次Lvの全EXP として計算）
+    const toNextLevel = calcExp(srcLevel, srcLevel + 1, expType);
+    const expGot = expRemaining !== undefined ? Math.max(0, toNextLevel - expRemaining) : 0;
+
+    const candy = boostKind.value === "none"
+      ? calcExpAndCandyMixed({ srcLevel, dstLevel, expType, nature, boost: "none", boostCandy: 0, expGot }).normalCandy
+      : calcExpAndCandy({ srcLevel, dstLevel, expType, nature, boost: boostKind.value, expGot }).candy;
+
+    // 通常モードの場合はグローバル上限なし
+    if (boostKind.value === "none") {
+      return { boostOrExpAdjustment: candy, candyPeak: candy, boostRatioPct: 100, boostReachLevel: dstLevel, mode: "candy" };
+    }
+
+    // アメブ/ミニブ: グローバル上限を考慮してリセット値を決定
+    const globalCap = boostKind.value === "mini" ? 350 : 3500;
+
+    // 他の行で使用中のアメブ合計を計算（excludeRowId を除外）
+    const otherRowsBoostTotal = rows.value
+      .filter((r) => r.id !== excludeRowId)
+      .reduce((sum, r) => sum + (r.boostOrExpAdjustment ?? 0), 0);
+
+    // グローバル残数
+    const globalRemaining = Math.max(0, globalCap - otherRowsBoostTotal);
+
+    // リセット値 = min(必要数, グローバル残数)
+    const resetValue = Math.min(candy, globalRemaining);
+
+    // 割合を計算
+    const ratio = candy > 0 ? Math.round((resetValue / candy) * 100) : 100;
+
+    return { boostOrExpAdjustment: resetValue, candyPeak: candy, boostRatioPct: ratio, boostReachLevel: dstLevel, mode: "candy" };
+  }
+
+
   function setDstLevel(id: string, v: unknown) {
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
-    const dst = clampInt(v, r.srcLevel, 65, r.dstLevel);
-
-    const patch: Partial<CalcRow> = { dstLevel: dst };
-    const toNext = Math.max(0, calcExp(r.srcLevel, r.srcLevel + 1, r.expType));
-    const expGot = r.expRemaining !== undefined ? Math.max(0, toNext - r.expRemaining) : 0;
-
-    if (boostKind.value === "none") {
-      const res = calcExpAndCandyMixed({
-        srcLevel: r.srcLevel,
-        dstLevel: dst,
-        expType: r.expType,
-        nature: r.nature,
-        boost: "none",
-        boostCandy: 0,
-        expGot,
-      });
-      patch.boostCandyInput = res.normalCandy;
-      patch.mode = "candy";
-    } else {
-      // イベント時：dstLevelを手動変更したらピークをリセットし、必要アメブ数をセット
-      const res = calcExpAndCandy({
-        srcLevel: r.srcLevel,
-        dstLevel: dst,
-        expType: r.expType,
-        nature: r.nature,
-        boost: boostKind.value,
-        expGot,
-      });
-      patch.boostCandyInput = res.candy;
-      patch.boostCandyPeak = res.candy;
-      patch.mode = "candy";
-    }
-    updateRow(id, patch);
+    const dst = clampInt(v, r.srcLevel, MAX_LEVEL, r.dstLevel);
+    updateRow(id, { dstLevel: dst, ...calcCandyPatch({ srcLevel: r.srcLevel, dstLevel: dst, expType: r.expType, nature: r.nature, expRemaining: r.expRemaining, excludeRowId: id }) });
   }
   function nudgeDstLevel(id: string, delta: number) {
     const r = rows.value.find((x) => x.id === id);
@@ -522,9 +646,7 @@ export function useCalcStore(opts: {
     const src = clampInt(v, 1, r.dstLevel, r.srcLevel);
     const dst = r.dstLevel < src ? src : r.dstLevel;
     const toNext = Math.max(0, calcExp(src, src + 1, r.expType));
-    const nextBoostReach = clampInt(r.boostReachLevel, src, dst, src);
-    // 現在Lv変更時はピークをリセット
-    updateRow(id, { srcLevel: src, dstLevel: dst, expRemaining: toNext, boostReachLevel: nextBoostReach, boostCandyPeak: 0 });
+    updateRow(id, { srcLevel: src, dstLevel: dst, expRemaining: toNext, ...calcCandyPatch({ srcLevel: src, dstLevel: dst, expType: r.expType, nature: r.nature, excludeRowId: id }) });
   }
   function nudgeSrcLevel(id: string, delta: number) {
     const r = rows.value.find((x) => x.id === id);
@@ -535,8 +657,25 @@ export function useCalcStore(opts: {
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
     const mid = clampInt(v, r.srcLevel, r.dstLevel, r.srcLevel);
-    // アメブ目標Lv変更時はピークをリセット
-    updateRow(id, { boostReachLevel: mid, mode: "boostLevel", boostCandyPeak: 0 });
+
+    // mid までのアメブ個数（srcLevel → boostReachLevel）
+    const boostPart = calcCandyPatch({ srcLevel: r.srcLevel, dstLevel: mid, expType: r.expType, nature: r.nature, expRemaining: r.expRemaining, excludeRowId: id });
+    const boostCandy = boostPart.boostOrExpAdjustment ?? 0;
+
+    // 100%時の総アメ数（srcLevel → dstLevel）
+    const fullPart = calcCandyPatch({ srcLevel: r.srcLevel, dstLevel: r.dstLevel, expType: r.expType, nature: r.nature, expRemaining: r.expRemaining, excludeRowId: id });
+    const fullCandy = fullPart.boostOrExpAdjustment ?? 0;
+
+    // 割合を計算
+    const ratio = fullCandy > 0 ? Math.round((boostCandy / fullCandy) * 100) : 100;
+
+    updateRow(id, {
+      boostReachLevel: mid,
+      boostOrExpAdjustment: boostCandy,
+      candyPeak: fullCandy,
+      boostRatioPct: ratio,
+      mode: "boostLevel",
+    });
   }
   function nudgeBoostLevel(id: string, delta: number) {
     const r = rows.value.find((x) => x.id === id);
@@ -549,11 +688,27 @@ export function useCalcStore(opts: {
     if (!r) return;
     const toNext = Math.max(0, calcExp(r.srcLevel, r.srcLevel + 1, r.expType));
     const rem = clampInt(v, 0, toNext, toNext);
-    updateRow(id, { expRemaining: rem });
+
+    // candyPeak/boostOrExpAdjustment を再計算（expRemaining を渡して内部で expGot を計算）
+    const candyPatch = calcCandyPatch({
+      srcLevel: r.srcLevel,
+      dstLevel: r.dstLevel,
+      expType: r.expType,
+      nature: r.nature,
+      expRemaining: rem,
+      excludeRowId: id,
+    });
+
+    updateRow(id, { expRemaining: rem, ...candyPatch });
   }
   function onRowNature(id: string, v: string) {
     const nat: ExpGainNature = v === "up" || v === "down" || v === "normal" ? (v as any) : "normal";
     updateRow(id, { nature: nat });
+  }
+  function onRowCandyTarget(id: string, v: string) {
+    // 空欄 = undefined (制限なし)、0以上 = 有効な目標値
+    const n = v.trim() === "" ? undefined : Math.max(0, Math.floor(Number(v) || 0));
+    updateRow(id, { candyTarget: n });
   }
   function onRowBoostLevel(id: string, v: string) {
     const r = rows.value.find((x) => x.id === id);
@@ -562,46 +717,208 @@ export function useCalcStore(opts: {
     updateRow(id, { boostReachLevel: mid, mode: "boostLevel" });
   }
   function onRowBoostRatio(id: string, v: string) {
-    const pct = clampInt(v, 0, 100, 0);
-    updateRow(id, { boostRatioPct: pct, mode: "ratio" });
-  }
-  function onRowBoostCandy(id: string, v: string) {
-    let n = Math.max(0, Math.floor(Number(v) || 0));
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
 
-    // アメ数から到達レベルを計算して dstLevel も更新する
+    const pct = clampInt(v, 0, 100, 0);
+
+    // ピークを計算
     const toNext = Math.max(0, calcExp(r.srcLevel, r.srcLevel + 1, r.expType));
     const expGot = r.expRemaining !== undefined ? Math.max(0, toNext - r.expRemaining) : 0;
 
-    // 仮の上限Lv65（設定上のMAX）まで計算
-    const sim = calcLevelByCandy({
-      srcLevel: r.srcLevel,
-      dstLevel: 65,
-      expType: r.expType,
-      nature: r.nature,
-      boost: boostKind.value,
-      candy: n,
-      expGot,
-    });
-
-    // Lv65に到達していて余りがある場合、実際に使用した量にクランプ
-    if (sim.level >= 65 && sim.candyLeft > 0) {
-      n = sim.candyUsed;
+    let computedPeak: number;
+    if (r.srcLevel === r.dstLevel) {
+      computedPeak = 0;
+    } else if (boostKind.value === "none") {
+      const res = calcExpAndCandyMixed({
+        srcLevel: r.srcLevel,
+        dstLevel: r.dstLevel,
+        expType: r.expType,
+        nature: r.nature,
+        boost: "none",
+        boostCandy: 0,
+        expGot,
+      });
+      computedPeak = res.normalCandy;
+    } else {
+      const res = calcExpAndCandy({
+        srcLevel: r.srcLevel,
+        dstLevel: r.dstLevel,
+        expType: r.expType,
+        nature: r.nature,
+        boost: boostKind.value,
+        expGot,
+      });
+      computedPeak = res.candy;
     }
 
-    // アメブ個数を増やした結果、現在の目標Lvを超えるなら目標Lvを引き上げる
-    // 減らした場合は目標Lvを維持（通常アメで補填する形になる）
-    const reachableLevel = Math.max(r.srcLevel, sim.level);
-    // アメブ個数を増やした結果、現在の目標Lvを超えるなら目標Lvを引き上げる
-    // 通常モードの場合はアメ数に応じてLvを下げることも許可
-    const newDst = boostKind.value === "none" ? reachableLevel : Math.max(r.dstLevel, reachableLevel);
+    const storedPeak = r.candyPeak ?? 0;
+    const effectivePeak = storedPeak > 0 ? storedPeak : computedPeak;
 
-    // イベント時、アメブ個数のピークを記録（減少時の補填計算用）
-    const currentPeak = r.boostCandyPeak ?? 0;
-    const newPeak = boostKind.value === "none" ? 0 : Math.max(currentPeak, n);
+    // 割合からアメブ個数を計算
+    const newCandy = Math.round(effectivePeak * pct / 100);
 
-    updateRow(id, { boostCandyInput: n, mode: "candy", dstLevel: newDst, boostCandyPeak: newPeak });
+    updateRow(id, {
+      boostOrExpAdjustment: newCandy,
+      candyPeak: effectivePeak,  // ピークを維持
+      boostRatioPct: pct,
+      mode: "candy"
+    });
+  }
+  /**
+   * アメブ個数（またはEXP調整）入力時のハンドラー
+   *
+   * ロジック:
+   * - boostOrExpAdjustment = 入力されたアメブ個数（真実のソース）
+   * - candyPeak = ピーク値（入力がピークを超えたら更新）
+   * - boostRatioPct = 派生値（表示用）
+   *
+   * 入力がピーク超え → ピーク更新、割合100%
+   * 入力がピーク以下 → ピーク維持、割合更新
+   *
+   * ※ MAX_LEVEL到達に必要なアメ数を上限としてクランプ
+   */
+  function onRowBoostCandy(id: string, v: string) {
+    const r = rows.value.find((x) => x.id === id);
+    if (!r) return;
+
+    const toNext = Math.max(0, calcExp(r.srcLevel, r.srcLevel + 1, r.expType));
+    const expGot = r.expRemaining !== undefined ? Math.max(0, toNext - r.expRemaining) : 0;
+
+    // MAX_LEVEL到達に必要なアメ数を計算（クランプ用上限）
+    let maxCandyForMaxLevel: number;
+    if (r.srcLevel >= MAX_LEVEL) {
+      maxCandyForMaxLevel = 0;
+    } else if (boostKind.value === "none") {
+      const res = calcExpAndCandyMixed({
+        srcLevel: r.srcLevel,
+        dstLevel: MAX_LEVEL,
+        expType: r.expType,
+        nature: r.nature,
+        boost: "none",
+        boostCandy: 0,
+        expGot,
+      });
+      maxCandyForMaxLevel = res.normalCandy;
+    } else {
+      const res = calcExpAndCandy({
+        srcLevel: r.srcLevel,
+        dstLevel: MAX_LEVEL,
+        expType: r.expType,
+        nature: r.nature,
+        boost: boostKind.value,
+        expGot,
+      });
+      maxCandyForMaxLevel = res.candy;
+    }
+
+    // 入力値をクランプ（0 ≤ n ≤ maxCandyForMaxLevel）
+    const rawN = Math.max(0, Math.floor(Number(v) || 0));
+    const n = Math.min(rawN, maxCandyForMaxLevel);
+
+    // computedPeak を計算（現在の目標到達に必要なアメ数）
+    let computedPeak: number;
+    if (r.srcLevel === r.dstLevel) {
+      computedPeak = 0;
+    } else if (boostKind.value === "none") {
+      const res = calcExpAndCandyMixed({
+        srcLevel: r.srcLevel,
+        dstLevel: r.dstLevel,
+        expType: r.expType,
+        nature: r.nature,
+        boost: "none",
+        boostCandy: 0,
+        expGot,
+      });
+      computedPeak = res.normalCandy;
+    } else {
+      const res = calcExpAndCandy({
+        srcLevel: r.srcLevel,
+        dstLevel: r.dstLevel,
+        expType: r.expType,
+        nature: r.nature,
+        boost: boostKind.value,
+        expGot,
+      });
+      computedPeak = res.candy;
+    }
+
+    // effectivePeak = 保存されたピークまたは computedPeak
+    const storedPeak = r.candyPeak ?? 0;
+    const effectivePeak = storedPeak > 0 ? storedPeak : computedPeak;
+
+
+
+    if (boostKind.value === "none") {
+      // 通常モード: 入力値と連動、割合は常に100%
+      // 到達レベルを計算
+      const sim = calcLevelByCandy({
+        srcLevel: r.srcLevel,
+        dstLevel: MAX_LEVEL,
+        expType: r.expType,
+        nature: r.nature,
+        boost: "none",
+        candy: n,
+        expGot,
+      });
+      const reachableLevel = Math.max(r.srcLevel, sim.level);
+      updateRow(id, {
+        mode: "candy",
+        dstLevel: reachableLevel,
+        boostOrExpAdjustment: n,
+        candyPeak: n,
+        boostRatioPct: 100,
+      });
+      return;
+    }
+
+    // イベント時（full/mini）
+    if (n > effectivePeak) {
+      // ピーク超えの入力 → ピーク更新、dstLevel更新
+      const sim = calcLevelByCandy({
+        srcLevel: r.srcLevel,
+        dstLevel: MAX_LEVEL,
+        expType: r.expType,
+        nature: r.nature,
+        boost: boostKind.value,
+        candy: n,
+        expGot,
+      });
+      const reachableLevel = Math.max(r.srcLevel, sim.level);
+      const newDst = Math.max(r.dstLevel, reachableLevel);
+      const currentBoostReach = r.boostReachLevel ?? r.srcLevel;
+      const isFullBoost = currentBoostReach >= r.dstLevel;
+      const newBoostReach = isFullBoost ? newDst : currentBoostReach;
+
+      updateRow(id, {
+        mode: "candy",
+        dstLevel: newDst,
+        boostOrExpAdjustment: n,
+        candyPeak: n,
+        boostRatioPct: 100,
+        boostReachLevel: newBoostReach,
+      });
+    } else {
+      // ピーク以下の入力 → ピーク維持、割合更新
+      if (storedPeak > 0) {
+        // ピークあり → candyPeak は変更しない
+        const newRatio = storedPeak > 0 ? Math.floor((n / storedPeak) * 100) : 100;
+        updateRow(id, {
+          mode: "candy",
+          boostOrExpAdjustment: n,
+          boostRatioPct: newRatio,
+        });
+      } else {
+        // ピークなし → effectivePeak をピークとして確定
+        const newRatio = effectivePeak > 0 ? Math.floor((n / effectivePeak) * 100) : 100;
+        updateRow(id, {
+          mode: "candy",
+          boostOrExpAdjustment: n,
+          candyPeak: effectivePeak,
+          boostRatioPct: newRatio,
+        });
+      }
+    }
   }
 
   function indexOfRow(id: string): number {
@@ -675,208 +992,80 @@ export function useCalcStore(opts: {
     return { toNext, expGot: Math.max(0, Math.min(got, toNext)), expRemaining: remaining };
   }
 
-  function calcRowMixedByBoostLevel(r: CalcRow, expGot: number) {
-    const src = r.srcLevel;
-    const dst = r.dstLevel;
-    const mid = clampInt(r.boostReachLevel, src, dst, src);
-    if (mid <= src) {
-      return calcExpAndCandyMixed({
-        srcLevel: src,
-        dstLevel: dst,
-        expType: r.expType,
-        nature: r.nature,
-        boost: "none",
-        boostCandy: 0,
-        expGot,
-      });
-    }
-
-    const boostOnlyNeed = calcExpAndCandy({
-      srcLevel: src,
-      dstLevel: mid,
-      expType: r.expType,
-      nature: r.nature,
-      boost: boostKind.value,
-      expGot,
-    });
-
-    const boostSeg = calcExpAndCandyMixed({
-      srcLevel: src,
-      dstLevel: mid,
-      expType: r.expType,
-      nature: r.nature,
-      boost: boostKind.value,
-      boostCandy: boostOnlyNeed.candy,
-      expGot,
-    });
-
-    const atMid = calcLevelByCandy({
-      srcLevel: src,
-      dstLevel: mid,
-      expType: r.expType,
-      nature: r.nature,
-      boost: boostKind.value,
-      candy: boostOnlyNeed.candy,
-      expGot,
-    });
-
-    const normalSeg = calcExpAndCandyMixed({
-      srcLevel: mid,
-      dstLevel: dst,
-      expType: r.expType,
-      nature: r.nature,
-      boost: "none",
-      boostCandy: 0,
-      expGot: atMid.expGot,
-    });
-
-    return {
-      exp: boostSeg.exp + normalSeg.exp,
-      expNormalApplied: normalSeg.expNormalApplied,
-      expBoostApplied: boostSeg.expBoostApplied,
-      normalCandy: normalSeg.normalCandy,
-      boostCandy: boostSeg.boostCandy,
-      shards: boostSeg.shardsBoost + normalSeg.shardsNormal,
-      shardsNormal: normalSeg.shardsNormal,
-      shardsBoost: boostSeg.shardsBoost,
-      boostCandyLeft: 0,
-      expLeftNext: normalSeg.expLeftNext,
-    };
-  }
-
   function calcRowView(r: CalcRow) {
-    const src = clampInt(r.srcLevel, 1, 65, 1);
+    const src = clampInt(r.srcLevel, 1, MAX_LEVEL, 1);
     const dstFromText =
-      typeof r.dstLevelText === "string" && r.dstLevelText.trim() !== "" ? clampInt(r.dstLevelText, 1, 65, r.dstLevel) : null;
-    const dst = clampInt(dstFromText ?? r.dstLevel, src, 65, src);
+      typeof r.dstLevelText === "string" && r.dstLevelText.trim() !== "" ? clampInt(r.dstLevelText, 1, MAX_LEVEL, r.dstLevel) : null;
+    const dst = clampInt(dstFromText ?? r.dstLevel, src, MAX_LEVEL, src);
     const expT = r.expType;
     const nat = r.nature;
     const expInfo = calcRowExpGot({ ...r, srcLevel: src, dstLevel: dst, expType: expT, nature: nat });
     const expGot = expInfo.expGot;
 
-    const requiredExp = calcExpAndCandy({
-      srcLevel: src,
-      dstLevel: dst,
-      expType: expT,
-      nature: nat,
-      boost: "none",
-      expGot,
-    });
-
-    const byRatio = calcExpAndCandyByBoostExpRatio({
-      srcLevel: src,
-      dstLevel: dst,
-      expType: expT,
-      nature: nat,
-      boost: boostKind.value as any /* cast to any to fix build error */,
-      expGot,
-      boostExpRatio: boostKind.value === "none" ? 0 : clampInt(r.boostRatioPct, 0, 100, 100) / 100,
-    });
-
-
-
-    let byCandy = calcExpAndCandyMixed({
-      srcLevel: src,
-      dstLevel: dst,
-      expType: expT,
-      nature: nat,
-      boost: boostKind.value as any,
-      boostCandy: Math.max(0, Math.floor(Number(r.boostCandyInput) || 0)),
-      expGot,
-    });
-
-    // 通常モードかつアメ個数モード: ユーザー入力を正として計算結果を補正
-    if (r.mode === "candy" && boostKind.value === "none") {
-      const input = Math.max(0, Math.floor(Number(r.boostCandyInput) || 0));
-      const sim = calcLevelByCandy({
-        srcLevel: src,
-        dstLevel: 100,
-        expType: expT,
-        nature: nat,
-        boost: "none",
-        candy: input,
-        expGot,
-      });
-      const nextReq = calcExp(sim.level, sim.level + 1, expT);
-      const left = nextReq - sim.expGot;
-      byCandy = {
-        ...byCandy,
-        normalCandy: input,
-        boostCandy: 0,
-        expLeftNext: Math.max(0, left),
-      };
-    }
-
-    // イベント時、ピーク計算を1回だけ行う
-    const peak = r.boostCandyPeak ?? 0;
-    const current = Math.max(0, Math.floor(Number(r.boostCandyInput) || 0));
-    const hasPeak = boostKind.value !== "none" && peak > 0;
-    const peakResult = hasPeak
-      ? calcExpAndCandyMixed({
+    // ─────────────────────────────────────────────────────────────
+    // boostCandyPeak を computed 化
+    // 現在の boostKind と目標Lv から必要なアメ数を計算
+    // ─────────────────────────────────────────────────────────────
+    let computedPeak: number;
+    if (src === dst) {
+      computedPeak = 0;
+    } else if (boostKind.value === "none") {
+      // 通常モード: 通常アメの必要数
+      const res = calcExpAndCandyMixed({
         srcLevel: src,
         dstLevel: dst,
         expType: expT,
         nature: nat,
-        boost: boostKind.value as any,
-        boostCandy: peak,
+        boost: "none",
+        boostCandy: 0,
         expGot,
-      })
-      : null;
-
-    // イベント時、アメブ個数モードで個数がピークより減少した場合、差分を通常アメで補填
-    if (r.mode === "candy" && peakResult && peak > current) {
-      const expPerBoost = calcExpPerCandy(src, nat, boostKind.value as any);
-      const expPerNormal = calcExpPerCandy(src, nat, "none");
-      const deltaExp = (peak - current) * expPerBoost;
-      const supplementNormal = Math.ceil(deltaExp / expPerNormal);
-      byCandy = {
-        ...byCandy,
-        normalCandy: byCandy.normalCandy + supplementNormal,
-        expLeftNext: peakResult.expLeftNext,
-      };
+      });
+      computedPeak = res.normalCandy;
+    } else {
+      // イベント時（full/mini）: アメブの必要数
+      const res = calcExpAndCandy({
+        srcLevel: src,
+        dstLevel: dst,
+        expType: expT,
+        nature: nat,
+        boost: boostKind.value,
+        expGot,
+      });
+      computedPeak = res.candy;
     }
 
-    const byBoostLevel = calcRowMixedByBoostLevel({ ...r, srcLevel: src, dstLevel: dst, expType: expT, nature: nat }, expGot);
+    // ─────────────────────────────────────────────────────────────
+    // ui.boostCandyInput: boostOrExpAdjustment が真実のソース
+    // ─────────────────────────────────────────────────────────────
+    // 保存された candyPeak を使用（なければ computedPeak をフォールバック）
+    const storedPeak = r.candyPeak ?? 0;
+    const effectivePeak = storedPeak > 0 ? storedPeak : computedPeak;
+    // 保存された boostOrExpAdjustment を使用（なければ effectivePeak をフォールバック）
+    const storedAdjustment = r.boostOrExpAdjustment ?? effectivePeak;
 
-    let mixed = r.mode === "boostLevel" ? byBoostLevel : r.mode === "ratio" ? byRatio : byCandy;
-
-    // イベント時、割合モードでピークがある場合、ピーク基準で計算
-    if (r.mode === "ratio" && peakResult && peak > 0) {
-      const ratio = clampInt(r.boostRatioPct, 0, 100, 100) / 100;
-      const expPerBoost = calcExpPerCandy(src, nat, boostKind.value as any);
-      const expPerNormal = calcExpPerCandy(src, nat, "none");
-
-      // ピーク時の総EXPを基準に、割合で配分
-      const peakTotalExp = peak * expPerBoost;
-      const boostExp = peakTotalExp * ratio;
-      const normalExp = peakTotalExp * (1 - ratio);
-
-      const boostCandyCount = Math.floor(boostExp / expPerBoost);
-      const normalCandyCount = Math.ceil(normalExp / expPerNormal);
-
-      mixed = {
-        ...mixed,
-        boostCandy: boostCandyCount,
-        normalCandy: normalCandyCount,
-        expBoostApplied: boostCandyCount * expPerBoost,
-        expNormalApplied: normalCandyCount * expPerNormal,
-        expLeftNext: peakResult.expLeftNext,
-      };
+    let uiCandy: number;
+    if (r.mode === "boostLevel") {
+      // boostLevel モード: アメ目標Lv までに必要なアメブ数を計算
+      const mid = clampInt(r.boostReachLevel, src, dst, src);
+      if (mid <= src) {
+        uiCandy = 0;
+      } else {
+        const boostOnlyNeed = calcExpAndCandy({
+          srcLevel: src,
+          dstLevel: mid,
+          expType: expT,
+          nature: nat,
+          boost: boostKind.value,
+          expGot,
+        });
+        uiCandy = boostOnlyNeed.candy;
+      }
+    } else {
+      // candy モード: boostOrExpAdjustment をそのまま使用
+      uiCandy = storedAdjustment;
     }
 
-    const uiCandy =
-      r.mode === "ratio"
-        ? (peakResult && peak > 0 ? mixed.boostCandy : byRatio.boostCandy)
-        : r.mode === "boostLevel"
-          ? byBoostLevel.boostCandy
-          : Math.max(0, Math.floor(Number(r.boostCandyInput) || 0));
-
-    const base = requiredExp.exp;
-    const uiRatioPct =
-      r.mode === "ratio"
-        ? boostKind.value === "none" ? 0 : clampInt(r.boostRatioPct, 0, 100, 0)
-        : clampInt(base > 0 ? Math.round((mixed.expBoostApplied / base) * 100) : 0, 0, 100, 0);
-
+    // ui.boostReachLevel: アメブで到達可能なレベル
     const boostOnly = calcLevelByCandy({
       srcLevel: src,
       dstLevel: dst,
@@ -889,13 +1078,38 @@ export function useCalcStore(opts: {
     const uiBoostReachLevel =
       r.mode === "boostLevel" ? clampInt(r.boostReachLevel, src, dst, src) : clampInt(boostOnly.level, src, dst, src);
 
+    // スライダー割合はピークに対するアメブ個数の割合（派生値）
+    const uiRatioPct = effectivePeak > 0 ? Math.round((uiCandy / effectivePeak) * 100) : 100;
+
+    // expLeftNext: アメを使った後の次Lvまでの残EXP
+    // ピーク維持の場合、獲得EXP = ピーク（固定）なので、ピークをキャンディ数として使用
+    let totalCandyForSim: number;
+    if (boostKind.value === "none") {
+      // 通常モード: 入力値をそのまま使用
+      totalCandyForSim = uiCandy;
+    } else {
+      // アメブ時: ピークを使用
+      totalCandyForSim = effectivePeak;
+    }
+    const simResult = calcLevelByCandy({
+      srcLevel: src,
+      dstLevel: MAX_LEVEL, // システム上限まで
+      expType: expT,
+      nature: nat,
+      boost: boostKind.value,
+      candy: totalCandyForSim,
+      expGot,
+    });
+    const nextLevelReq = calcExp(simResult.level, simResult.level + 1, expT);
+    const expLeftNext = Math.max(0, nextLevelReq - simResult.expGot);
+
     const resolvedTitle =
       r.boxId && resolveTitleByBoxId ? resolveTitleByBoxId(r.boxId) ?? (String(r.title ?? "").trim() || "(no name)") : String(r.title ?? "").trim() || "(no name)";
 
     return {
       title: resolvedTitle,
       normalized: { srcLevel: src, dstLevel: dst, expRemaining: expInfo.expRemaining },
-      mixed,
+      expLeftNext,
       ui: { boostCandyInput: uiCandy, boostRatioPct: uiRatioPct, boostReachLevel: uiBoostReachLevel },
     };
   }
@@ -909,7 +1123,8 @@ export function useCalcStore(opts: {
         srcLevel: v.normalized.srcLevel,
         dstLevel: v.normalized.dstLevel,
         expRemaining: v.normalized.expRemaining,
-        result: v.mixed,
+        expLeftNext: v.expLeftNext,
+        // boostCandyPeak は rows の値をそのまま使用（上書きしない）
         ui: v.ui,
       };
     })
@@ -930,55 +1145,46 @@ export function useCalcStore(opts: {
     return "";
   }
 
-  const exportRows = computed(() =>
-    rowsView.value.map((r) => {
-      const boostCandy = Math.max(0, Math.floor(r.result.boostCandy || 0));
-      const normalCandy = Math.max(0, Math.floor(r.result.normalCandy || 0));
-      const shards = Math.max(0, Math.floor(r.result.shards || 0));
+  const exportRows = computed(() => {
+    if (!planResult.value) return [];
+    return rowsView.value.map((r) => {
+      const p = getPokemonResult(r.id);
+      if (!p) return null;
 
-      // アメ補填情報を取得
-      let candySupply = "";
-      let shortage = 0;
-      if (allocationResult.value) {
-        const alloc = allocationResult.value.pokemons.find(p => p.id === r.id);
-        if (alloc) {
-          shortage = alloc.remaining;
-          const parts: string[] = [];
-          if (alloc.typeSUsed > 0 || alloc.typeMUsed > 0) {
-            const typeParts: string[] = [];
-            if (alloc.typeMUsed > 0) typeParts.push(`M${alloc.typeMUsed}`);
-            if (alloc.typeSUsed > 0) typeParts.push(`S${alloc.typeSUsed}`);
-            parts.push(`${t("calc.candy.typeAbbr")}${typeParts.join(",")}`);
-          }
-          if (alloc.uniSUsed > 0 || alloc.uniMUsed > 0 || alloc.uniLUsed > 0) {
-            const uniParts: string[] = [];
-            if (alloc.uniLUsed > 0) uniParts.push(`L${alloc.uniLUsed}`);
-            if (alloc.uniMUsed > 0) uniParts.push(`M${alloc.uniMUsed}`);
-            if (alloc.uniSUsed > 0) uniParts.push(`S${alloc.uniSUsed}`);
-            parts.push(`${t("calc.candy.uniAbbr")}${uniParts.join(",")}`);
-          }
-          if (alloc.remaining > 0) {
-            parts.push(`${t("calc.candy.shortage")}${alloc.remaining}`);
-          }
-          candySupply = parts.join(" ");
-        }
-      }
+      // 個数指定がある場合は candyTarget 行の値を使用
+      const hasCandyTarget = r.candyTarget != null && r.candyTarget >= 0;
+      const boostCandy = hasCandyTarget ? (p.candyTargetBoost ?? 0) : p.targetBoost;
+      const normalCandy = hasCandyTarget ? (p.candyTargetNormal ?? 0) : p.targetNormal;
+      const shards = hasCandyTarget ? (p.candyTargetShards ?? 0) : p.targetShards;
+      const displayDstLevel = hasCandyTarget && p.candyTarget !== undefined
+        ? p.reachedLevel  // 個数指定時は到達Lvを表示
+        : r.dstLevel;
+
+      // アメ補填情報
+      const parts: string[] = [];
+      if (p.reachableItems.typeM > 0) parts.push(`${t("calc.candy.typeAbbr")}M${p.reachableItems.typeM}`);
+      if (p.reachableItems.typeS > 0) parts.push(`${t("calc.candy.typeAbbr")}S${p.reachableItems.typeS}`);
+      if (p.reachableItems.universalL > 0) parts.push(`${t("calc.candy.uniAbbr")}L${p.reachableItems.universalL}`);
+      if (p.reachableItems.universalM > 0) parts.push(`${t("calc.candy.uniAbbr")}M${p.reachableItems.universalM}`);
+      if (p.reachableItems.universalS > 0) parts.push(`${t("calc.candy.uniAbbr")}S${p.reachableItems.universalS}`);
+      if (p.shortage.candy > 0) parts.push(`${t("calc.candy.shortage")}${p.shortage.candy}`);
+      const candySupply = parts.join(" ");
 
       return {
         id: r.id,
         title: String(r.title ?? "").trim() || "(no name)",
         natureLabel: natureLabel(r.nature),
         srcLevel: r.srcLevel,
-        dstLevel: r.dstLevel,
+        dstLevel: displayDstLevel,
         boostCandy,
         normalCandy,
         totalCandy: boostCandy + normalCandy,
         shards,
         candySupply,
-        shortage,
+        shortage: p.shortage.candy,
       };
-    })
-  );
+    }).filter((x): x is NonNullable<typeof x> => x !== null);
+  });
 
   const exportTotals = computed(() => {
     let boostCandy = 0;
@@ -1002,7 +1208,8 @@ export function useCalcStore(opts: {
     return 0.76;
   });
 
-  const totalShardsUsed = computed(() => rowsView.value.reduce((a, r) => a + (r.result.shards || 0), 0));
+  // 理論値ベースのかけら合計 (planResult から取得)
+  const totalShardsUsed = computed(() => planResult.value?.theoreticalShardsTotal ?? 0);
   const shardsCap = computed(() => Math.max(0, Math.floor(Number(totalShards.value) || 0)));
   const shardsOver = computed(() => totalShardsUsed.value - shardsCap.value);
   const shardsUsedPct = computed(() => (shardsCap.value > 0 ? (totalShardsUsed.value / shardsCap.value) * 100 : 0));
@@ -1022,7 +1229,8 @@ export function useCalcStore(opts: {
     return Math.min(100, Math.max(0, 100 - shardsFillPctForBar.value));
   });
 
-  const totalBoostCandyUsed = computed(() => rowsView.value.reduce((a, r) => a + (r.result.boostCandy || 0), 0));
+  // 理論値ベースのアメブ合計 (planResult から取得)
+  const totalBoostCandyUsed = computed(() => planResult.value?.theoreticalBoostTotal ?? 0);
   // アメブ種別による上限（デフォルト値）
   const boostCandyDefaultCap = computed(() => {
     if (boostKind.value === "mini") return 350;
@@ -1051,13 +1259,18 @@ export function useCalcStore(opts: {
   });
 
   // --- 選択中ポケモンの使用量（バー表示用） ---
+  // planResult から取得
   const activeRowShardsUsed = computed(() => {
-    const row = rowsView.value.find(r => r.id === activeRowId.value);
-    return row?.result.shards ?? 0;
+    const activeId = activeRowId.value;
+    if (!activeId || !planResult.value) return 0;
+    const p = planResult.value.pokemons.find(p => p.id === activeId);
+    return p?.targetShards ?? 0;
   });
   const activeRowBoostCandyUsed = computed(() => {
-    const row = rowsView.value.find(r => r.id === activeRowId.value);
-    return row?.result.boostCandy ?? 0;
+    const activeId = activeRowId.value;
+    if (!activeId || !planResult.value) return 0;
+    const p = planResult.value.pokemons.find(p => p.id === activeId);
+    return p?.targetBoost ?? 0;
   });
 
   // バー用: 選択中ポケモン分のかけら%（超過がない場合のみ正しく表示）
@@ -1134,101 +1347,244 @@ export function useCalcStore(opts: {
     return undefined;
   }
 
-  const allocationResult = computed<AllocationSummary | null>(() => {
+  // ─────────────────────────────────────────────────────────────
+  // planResult (新フェーズベースのレベルアップ計画)
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * レベルアップ計画結果
+   */
+  const planResult = computed<LevelUpPlanResult | null>(() => {
     const rv = rowsView.value;
-    const needs: PokemonCandyNeed[] = [];
+    if (rv.length === 0) return null;
+
+    const inventory = candyStore.getInventory();
+    const requests = [];
 
     for (const r of rv) {
       const pokedexId = getRowPokedexId(r);
       if (!pokedexId) continue;
 
-      const candyNeed = Math.max(0, r.result.boostCandy + r.result.normalCandy);
-      if (candyNeed <= 0) continue;
-
       const pokemonType = r.pokemonType || getPokemonType(pokedexId);
-      needs.push({
+      const toNextLevel = calcExp(r.srcLevel, r.srcLevel + 1, r.expType);
+      const expGot = Math.max(0, toNextLevel - r.expRemaining);
+
+      // ピークと入力値からアメ数を計算
+      const peak = r.candyPeak || r.ui.boostCandyInput;
+
+      let candyNeed: number;
+      let boostOrExpAdjustment: number;
+      let dynamicDstLevel: number;
+      let dynamicDstExpInLevel: number;
+
+      if (boostKind.value === "none") {
+        // 通常モード: ピークと入力が連動、アメブがないので入力値がそのまま必要アメ数
+        candyNeed = r.ui.boostCandyInput;
+        boostOrExpAdjustment = r.ui.boostCandyInput;
+
+        // ピークで到達可能なLv+expGotを計算
+        const peakResult = calcLevelByCandy({
+          srcLevel: r.srcLevel,
+          dstLevel: MAX_LEVEL, // システム上限まで
+          expType: r.expType,
+          nature: r.nature,
+          boost: boostKind.value,
+          candy: peak,
+          expGot,
+        });
+        dynamicDstLevel = peakResult.level;
+        dynamicDstExpInLevel = peakResult.expGot;
+      } else if (r.mode === "boostLevel") {
+        // アメブ目標Lvモード: boostReachLevelまでアメブ、残りは通常アメ
+        // calcExpAndCandyMixedでboostCandyを使った場合のnormalCandyを計算
+        const boostCandy = r.ui.boostCandyInput;
+        const mixedResult = calcExpAndCandyMixed({
+          srcLevel: r.srcLevel,
+          dstLevel: r.dstLevel,
+          expType: r.expType,
+          nature: r.nature,
+          boost: boostKind.value,
+          boostCandy,
+          expGot,
+        });
+        candyNeed = boostCandy + mixedResult.normalCandy;
+        boostOrExpAdjustment = boostCandy;
+
+        // boostLevelモードでは目標Lvはユーザー設定のまま
+        dynamicDstLevel = r.dstLevel;
+        dynamicDstExpInLevel = 0;
+      } else {
+        // 割合/個数モード（ピーク維持）: ピークで到達可能なLv+expGotを維持しながら端数も正確に計算
+        //
+        // 1. ピーク（100%アメブ）で到達可能な「Lv + expGot」を計算
+        // 2. その同じ到達点を目標に、少ないアメブ + 通常アメで計算
+        // → これによりEXP（=到達点）が維持され、端数も正確に計算される
+        const boostCandy = r.ui.boostCandyInput;
+
+        // ピークで到達可能なLv+expGotを計算
+        const peakResult = calcLevelByCandy({
+          srcLevel: r.srcLevel,
+          dstLevel: MAX_LEVEL, // システム上限まで
+          expType: r.expType,
+          nature: r.nature,
+          boost: boostKind.value,
+          candy: peak,
+          expGot,
+        });
+
+        // その到達点を目標として calcExpAndCandyMixed を呼ぶ
+        const mixedResult = calcExpAndCandyMixed({
+          srcLevel: r.srcLevel,
+          dstLevel: peakResult.level,
+          dstExpInLevel: peakResult.expGot,  // ピークで到達したexpGotを目標に
+          expType: r.expType,
+          nature: r.nature,
+          boost: boostKind.value,
+          boostCandy,
+          expGot,
+        });
+        candyNeed = boostCandy + mixedResult.normalCandy;
+        boostOrExpAdjustment = boostCandy;
+        dynamicDstLevel = peakResult.level;
+        dynamicDstExpInLevel = peakResult.expGot;
+      }
+
+      // 必要EXPは動的な目標レベルまでのEXP
+      const calcResult = calcExpAndCandy({
+        srcLevel: r.srcLevel,
+        dstLevel: dynamicDstLevel,
+        dstExpInLevel: dynamicDstExpInLevel,
+        expType: r.expType,
+        nature: r.nature,
+        boost: boostKind.value,
+        expGot,
+      });
+      const expNeed = calcResult.exp;
+
+      requests.push({
         id: r.id,
         pokedexId,
+        form: 0,
         pokemonName: r.title,
         type: pokemonType,
+        srcLevel: r.srcLevel,
+        dstLevel: dynamicDstLevel,
+        dstExpInLevel: dynamicDstExpInLevel,
+        expType: r.expType,
+        nature: r.nature,
+        expGot,
         candyNeed,
+        expNeed,
+        boostOrExpAdjustment,
+        candyTarget: r.candyTarget,
       });
     }
 
-    if (needs.length === 0) return null;
+    if (requests.length === 0) return null;
 
-    const inventory = candyStore.getInventory();
-    return allocateCandy(needs, inventory);
+    const config = {
+      boostKind: boostKind.value,
+      globalBoostLimit: boostCandyRemaining.value ?? boostCandyDefaultCap.value,
+      globalShardsLimit: shardsCap.value,
+    };
+
+    return planLevelUp(requests, inventory, config);
   });
 
+  /**
+   * ポケモンの計画結果を取得
+   */
+  function getPokemonResult(id: string): PokemonLevelUpResult | null {
+    return planResult.value?.pokemons.find(p => p.id === id) ?? null;
+  }
+
+  /**
+   * 理論値行を取得（個数指定があれば candyTarget、なければ target）
+   */
+  function getTheoreticalRow(p: PokemonLevelUpResult): ItemUsage {
+    if (p.candyTarget !== undefined && p.candyTargetItems) {
+      return p.candyTargetItems;
+    }
+    return p.targetItems;
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // 万能アメ関連 (planResult ベース)
+  // ─────────────────────────────────────────────────────────────
+
   const universalCandyUsagePct = computed(() => {
-    if (!allocationResult.value) return 0;
     const inv = candyStore.universalCandy.value;
-    const used = allocationResult.value.universalUsed;
-    // 不足分も加算して必要量ベースで計算
-    const totalRemaining = allocationResult.value.pokemons.reduce((sum, p) => sum + p.remaining, 0);
+    const needed = universalCandyNeeded.value;
 
     const totalValue = inv.s * CANDY_VALUES.universal.s + inv.m * CANDY_VALUES.universal.m + inv.l * CANDY_VALUES.universal.l;
-    const usedValue = used.s * CANDY_VALUES.universal.s + used.m * CANDY_VALUES.universal.m + used.l * CANDY_VALUES.universal.l;
-    const neededValue = usedValue + totalRemaining;
+    const neededValue = needed.s * CANDY_VALUES.universal.s + needed.m * CANDY_VALUES.universal.m + needed.l * CANDY_VALUES.universal.l;
 
     if (totalValue <= 0) return 0;
     return Math.round((neededValue / totalValue) * 100);
   });
 
-  // 万能アメの必要数（上限を超える分も含む）
-  const universalCandyNeeded = computed(() => {
-    if (!allocationResult.value) return { s: 0, m: 0, l: 0, total: 0 };
-    const used = allocationResult.value.universalUsed;
-    // 残り不足分をS換算で加算
-    const totalRemaining = allocationResult.value.pokemons.reduce((sum, p) => sum + p.remaining, 0);
-    // 必要数 = 使用数 + 不足分をS個数換算
-    const neededS = used.s + Math.ceil(totalRemaining / CANDY_VALUES.universal.s);
-    return {
-      s: neededS,
-      m: used.m,
-      l: used.l,
-      total: neededS + used.m + used.l,
-    };
-  });
-
-  // 万能アメ使用ランキング（使用率が高い順）
+  // 万能アメ使用ランキング（planResult.itemUsageRanking を使用）
   const universalCandyRanking = computed(() => {
-    if (!allocationResult.value) return [];
+    if (!planResult.value) return [];
+
     const totalUniversalValue =
-      allocationResult.value.universalUsed.s * CANDY_VALUES.universal.s +
-      allocationResult.value.universalUsed.m * CANDY_VALUES.universal.m +
-      allocationResult.value.universalUsed.l * CANDY_VALUES.universal.l;
+      planResult.value.universalUsed.s * CANDY_VALUES.universal.s +
+      planResult.value.universalUsed.m * CANDY_VALUES.universal.m +
+      planResult.value.universalUsed.l * CANDY_VALUES.universal.l;
 
     if (totalUniversalValue <= 0) return [];
 
-    return allocationResult.value.pokemons
-      .map(p => {
+    return planResult.value.pokemons
+      .map((p: PokemonLevelUpResult) => {
         const uniValue =
-          p.uniSUsed * CANDY_VALUES.universal.s +
-          p.uniMUsed * CANDY_VALUES.universal.m +
-          p.uniLUsed * CANDY_VALUES.universal.l;
+          p.reachableItems.universalS * CANDY_VALUES.universal.s +
+          p.reachableItems.universalM * CANDY_VALUES.universal.m +
+          p.reachableItems.universalL * CANDY_VALUES.universal.l;
         const usagePct = totalUniversalValue > 0 ? (uniValue / totalUniversalValue) * 100 : 0;
         return {
           id: p.id,
           pokemonName: p.pokemonName,
           universalValue: uniValue,
           usagePct: Math.round(usagePct),
-          uniSUsed: p.uniSUsed,
-          uniMUsed: p.uniMUsed,
-          uniLUsed: p.uniLUsed,
-          typeSUsed: p.typeSUsed,
-          typeMUsed: p.typeMUsed,
+          uniSUsed: p.reachableItems.universalS,
+          uniMUsed: p.reachableItems.universalM,
+          uniLUsed: p.reachableItems.universalL,
+          typeSUsed: p.reachableItems.typeS,
+          typeMUsed: p.reachableItems.typeM,
         };
       })
-      .filter(x => x.universalValue > 0)
-      .sort((a, b) => b.usagePct - a.usagePct);
+      .filter((x: { universalValue: number }) => x.universalValue > 0)
+      .sort((a: { usagePct: number }, b: { usagePct: number }) => b.usagePct - a.usagePct);
   });
 
-  // 万能アメ合計使用数
+  // 万能アメ合計使用数 (planResult から取得)
   const universalCandyUsedTotal = computed(() => {
-    if (!allocationResult.value) return { s: 0, m: 0, l: 0 };
-    return allocationResult.value.universalUsed;
+    if (!planResult.value) return { s: 0, m: 0, l: 0 };
+    return planResult.value.universalUsed;
+  });
+
+  // 万能アメの必要数（サマリー用、理論値ベース）
+  const universalCandyNeeded = computed(() => {
+    if (!planResult.value) return { s: 0, m: 0, l: 0, total: 0 };
+
+    let totalS = 0;
+    let totalM = 0;
+    let totalL = 0;
+
+    for (const p of planResult.value.pokemons) {
+      // 理論値行（個数指定があれば candyTargetItems、なければ targetItems）を使用
+      const items = getTheoreticalRow(p);
+      totalS += items.universalS;
+      totalM += items.universalM;
+      totalL += items.universalL;
+    }
+
+    return {
+      s: totalS,
+      m: totalM,
+      l: totalL,
+      total: totalS + totalM + totalL,
+    };
   });
 
   function upsertFromBox(p: {
@@ -1246,51 +1602,37 @@ export function useCalcStore(opts: {
     const anchorEl = (p.ev?.currentTarget as HTMLElement | null) ?? null;
     const prevTop = anchorEl ? anchorEl.getBoundingClientRect().top : null;
 
-    const srcLevel = clampInt(p.srcLevel, 1, 65, 10);
-    const dstLevel = clampInt(p.dstLevelDefault ?? 50, srcLevel, 65, srcLevel);
+    const srcLevel = clampInt(p.srcLevel, 1, MAX_LEVEL, 10);
+    const dstLevel = clampInt(p.dstLevelDefault ?? 50, srcLevel, MAX_LEVEL, srcLevel);
     const toNext = Math.max(0, calcExp(srcLevel, srcLevel + 1, p.expType));
     const remaining =
       p.expRemaining !== undefined && Number.isFinite(p.expRemaining) ? clampInt(p.expRemaining, 0, toNext, toNext) : toNext;
+
+    // 共通ヘルパーでアメ計算パッチを生成（expRemaining を渡して内部で expGot を計算）
+    // 既存行がある場合は excludeRowId で自分を除外、新規行の場合は除外不要（まだ rows に存在しない）
+    const existing = rows.value.find((x) => x.boxId === p.boxId) ?? null;
+    const candyPatchResult = calcCandyPatch({ srcLevel, dstLevel, expType: p.expType, nature: p.nature, expRemaining: remaining, excludeRowId: existing?.id });
 
     const title =
       String(p.title ?? "").trim() ||
       (resolveTitleByBoxId ? resolveTitleByBoxId(p.boxId) ?? "" : "") ||
       "(no name)";
 
-    const existing = rows.value.find((x) => x.boxId === p.boxId) ?? null;
-    const basePatch: Partial<CalcRow> = {
-      title,
-      boxId: p.boxId,
-      srcLevel,
-      expType: p.expType,
-      nature: p.nature,
-      expRemaining: remaining,
-      pokedexId: p.pokedexId,
-      pokemonType: p.pokemonType,
-    };
 
     if (existing) {
-      updateRow(existing.id, basePatch);
+      updateRow(existing.id, {
+        title, boxId: p.boxId, srcLevel, dstLevel, expType: p.expType, nature: p.nature,
+        expRemaining: remaining, pokedexId: p.pokedexId, pokemonType: p.pokemonType,
+        ...candyPatchResult,
+      });
       activeRowId.value = existing.id;
     } else {
       const row: CalcRow = {
-        id: cryptoRandomId(),
-        title,
-        boxId: p.boxId,
-        pokedexId: p.pokedexId,
-        pokemonType: p.pokemonType,
-        srcLevel,
-        dstLevel,
-        expRemaining: remaining,
-        expType: p.expType,
-        nature: p.nature,
-        boostReachLevel: dstLevel,
-        boostRatioPct: boostKind.value === "none" ? 0 : 100,
-        boostCandyInput: 0,
-        boostCandyPeak: 0,
-        mode: "ratio",
+        id: cryptoRandomId(), title, boxId: p.boxId, pokedexId: p.pokedexId, pokemonType: p.pokemonType,
+        srcLevel, dstLevel, expRemaining: remaining, expType: p.expType, nature: p.nature,
+        ...candyPatchResult,
       };
-      rows.value = [row, ...rows.value];
+      rows.value = [...rows.value, row];
       activeRowId.value = row.id;
     }
 
@@ -1321,6 +1663,7 @@ export function useCalcStore(opts: {
 
   return {
     boostKind,
+    setSlotBoostKind,
     totalShards,
     totalShardsText,
     boostCandyRemaining,
@@ -1330,6 +1673,9 @@ export function useCalcStore(opts: {
     rows,
     activeRowId,
     activeSlotTab,
+
+    sleepSettings,
+    updateSleepSettings,
 
     exportOpen,
     openLevelPickRowId,
@@ -1373,7 +1719,9 @@ export function useCalcStore(opts: {
     activeRowShardsUsagePct,
     activeRowBoostCandyUsagePct,
 
-    allocationResult,
+    planResult,
+    getPokemonResult,
+    getTheoreticalRow,
     universalCandyUsagePct,
     universalCandyNeeded,
     universalCandyRanking,
@@ -1398,9 +1746,7 @@ export function useCalcStore(opts: {
     clear,
     removeRowById,
 
-    onSlotSave,
-    onSlotLoad,
-    onSlotDelete,
+    switchToSlot,
 
     openDstLevelPick,
     openSrcLevelPick,
@@ -1415,6 +1761,7 @@ export function useCalcStore(opts: {
 
     onRowExpRemaining,
     onRowNature,
+    onRowCandyTarget,
     onRowBoostLevel,
     onRowBoostRatio,
     onRowBoostCandy,

@@ -74,7 +74,7 @@ a:hover {
 
 .dashboard {
   display: grid;
-  gap: 24px;
+  gap: 10px;
   grid-template-columns: 1fr;
   align-items: start;
 }
@@ -83,7 +83,7 @@ a:hover {
   .dashboard {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
-    gap: 24px;
+    gap: 10px;
   }
 }
 
@@ -364,14 +364,7 @@ a:hover {
   /* Corporate print-like style */
 }
 
-/* Enforce 4:3 for the export container if captured */
-.exportCalc {
-  aspect-ratio: 4/3;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
+
 
 .hintIcon {
   display: inline-flex;

@@ -1,10 +1,10 @@
 <template>
   <main :class="['shell', { 'shell--exportOpen': calc.exportOpen.value }]" :data-locale="locale">
-    <HeroHeader :locale="uiLocale" :support-links="supportLinks" :set-locale="setLocale" />
-    <MobileNav :scroll-to-panel="scrollToPanel" />
+    <HeroHeader :locale="uiLocale" :support-links="supportLinks" :set-locale="setLocale" :open-help="() => showHelp = true" />
+    <MobileNav :scroll-to-panel="scrollToPanel" v-show="!calc.exportOpen.value" />
 
     <div class="dashboard">
-      <CalcPanel :calc="calc" :resolve-pokedex-id-by-box-id="resolvePokedexIdByBoxId" @apply-to-box="applyCalculatorToBox($event)" />
+      <CalcPanel :calc="calc" :resolve-pokedex-id-by-box-id="resolvePokedexIdByBoxId" @apply-to-box="applyCalculatorToBox($event)" @open-help="showHelp = true" />
 
     <BoxPanel :box="box" :gt="gt" @apply-to-calc="applyBoxToCalculator($event)" />
     </div>
@@ -34,17 +34,20 @@
       :boost-kind="calc.boostKind.value"
       @close="calc.closeExport()"
     />
+
+    <HelpOverlay v-if="showHelp" @close="showHelp = false" />
   </main>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { localizeGameTerm } from "./i18n/terms";
 import type { ExpGainNature, ExpType } from "./domain/types";
 import { getPokemonType } from "./domain/pokesleep/pokemon-names";
 
 import ExportOverlay from "./components/ExportOverlay.vue";
+import HelpOverlay from "./components/HelpOverlay.vue";
 import CalcPanel from "./components/CalcPanel.vue";
 import BoxPanel from "./components/BoxPanel.vue";
 import HeroHeader from "./components/HeroHeader.vue";
@@ -59,6 +62,7 @@ function setLocale(next: "ja" | "en") {
   locale.value = next;
   localStorage.setItem("candy-boost-planner:lang", next);
 }
+const showHelp = ref(false);
 
 function gt(s: string): string {
   return localizeGameTerm(s, locale.value as any);
@@ -176,143 +180,19 @@ function scrollToPanel(id: string) {
   margin: 0 auto;
   padding: 28px 18px 64px;
 }
-.mobileNav {
-  display: none;
-}
 @media (max-width: 1023px) {
   .shell {
     padding-top: 0; /* sticky nav sits at top */
   }
-  .shell--exportOpen .mobileNav {
-    display: none !important;
-  }
-  .mobileNav {
-    display: flex;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    background: color-mix(in oklab, var(--paper) 95%, var(--ink) 5%);
-    backdrop-filter: blur(8px);
-    border-bottom: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
-    margin: 0 -18px 16px; /* Negate shell padding */
-    padding: 0 18px;
-  }
-  .mobileNav__item {
-    flex: 1;
-    text-align: center;
-    padding: 10px 0;
-    font-weight: 700;
-    font-size: 14px;
-    color: color-mix(in oklab, var(--ink) 50%, transparent);
-    border-bottom: 3px solid transparent;
-    cursor: pointer;
-  }
-  .mobileNav__item:hover {
-    background: rgba(0,0,0,0.02);
-    color: var(--ink);
-  }
-  .calcSticky {
-    top: 42px;
+}
+@media (max-width: 560px) {
+  .shell {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
   }
 }
 
-.hero {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 18px;
-  align-items: start;
-  margin-top: 16px;
-  margin-bottom: 12px;
-}
-.kicker {
-  font-family: var(--font-body);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  font-size: 12px;
-  color: color-mix(in oklab, var(--ink) 55%, transparent);
-}
-.title {
-  font-family: var(--font-heading);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.05;
-  font-size: clamp(34px, 5vw, 56px);
-  margin: 10px 0 10px;
-}
-.lede {
-  font-family: var(--font-body);
-  font-size: 15px;
-  line-height: 1.7;
-  color: color-mix(in oklab, var(--ink) 72%, transparent);
-  max-width: min(74ch, 100%);
-}
-.lang {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-}
-.lang__btn {
-  appearance: none;
-  font: inherit;
-  cursor: pointer;
-  padding: 7px 10px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
-  background: color-mix(in oklab, var(--paper) 94%, var(--ink) 6%);
-  color: color-mix(in oklab, var(--ink) 70%, transparent);
-  letter-spacing: 0.08em;
-  font-size: 12px;
-}
-.lang__btn:hover {
-  border-color: color-mix(in oklab, var(--ink) 22%, transparent);
-}
-.lang__btn--on {
-  background: color-mix(in oklab, var(--accent-warm) 20%, var(--paper) 80%);
-  color: color-mix(in oklab, var(--ink) 90%, transparent);
-  box-shadow: 0 10px 22px color-mix(in oklab, var(--accent-warm) 12%, transparent);
-}
 
-.support {
-  display: grid;
-  justify-items: end;
-  gap: 8px;
-}
-.support__label {
-  margin: 0;
-  font-family: var(--font-body);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  font-size: 11px;
-  color: color-mix(in oklab, var(--ink) 55%, transparent);
-}
-.support__links {
-  display: inline-flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
-}
-.support__link {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  text-decoration: none;
-  font: inherit;
-  cursor: pointer;
-  padding: 7px 10px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
-  background: color-mix(in oklab, var(--paper) 94%, var(--ink) 6%);
-  color: color-mix(in oklab, var(--ink) 72%, transparent);
-  font-size: 12px;
-}
-.support__link:hover {
-  border-color: color-mix(in oklab, var(--ink) 22%, transparent);
-  color: color-mix(in oklab, var(--ink) 86%, transparent);
-}
-.support__link:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 18%, transparent);
-}
 .panel {
   border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
   background: linear-gradient(
@@ -330,25 +210,8 @@ function scrollToPanel(id: string) {
 }
 
 /* --- Mobile layout polish (avoid horizontal clipping) --- */
+/* --- Mobile layout polish (avoid horizontal clipping) --- */
 @media (max-width: 560px) {
-  .hero {
-    grid-template-columns: 1fr; /* stack support under title */
-    gap: 14px;
-  }
-  .support {
-    justify-items: start;
-  }
-  .support__links {
-    justify-content: flex-start;
-    max-width: 100%;
-  }
-  .support__link {
-    font-size: 11px;
-    padding: 6px 9px;
-    max-width: 100%;
-    white-space: normal; /* allow wrap instead of overflowing */
-  }
-
   /* Mobile is narrow: remove outer "panel" frame so content can breathe */
   .panel.panel--calc,
   .panel.panel--box {
@@ -395,660 +258,8 @@ function scrollToPanel(id: string) {
   }
 }
 
-/* --- Calculator (multi) --- */
-.calcTop {
-  margin-top: 12px;
-}
-.calcTop__row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 16px 24px;
-}
-@media (min-width: 900px) {
-  .calcTop__row {
-    flex-wrap: nowrap;
-  }
-}
-.calcTop__field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.calcTop__label {
-  font-size: 11px;
-  font-weight: 600;
-  color: color-mix(in oklab, var(--ink) 60%, transparent);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.calcTop__input {
-  height: 32px;
-  padding: 0 10px;
-  font-size: 13px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in oklab, var(--ink) 16%, transparent);
-  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
-  color: var(--ink);
-  font-family: inherit;
-}
-.calcTop__input--shards {
-  width: 95px;
-  text-align: right;
-}
-.calcTop__input--remaining {
-  width: 90px;
-  text-align: right;
-}
-.calcTop__field--candy {
-  flex-direction: column;
-  align-items: flex-start;
-}
-.calcTop__candyInputs {
-  display: flex;
-  gap: 12px;
-}
-.calcTop__candyInput {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.calcTop__candyLabel {
-  font-size: 13px;
-  font-weight: 600;
-  color: color-mix(in oklab, var(--ink) 70%, transparent);
-}
-.calcTop__input--candy {
-  width: 50px;
-  text-align: center;
-  padding: 0 4px;
-}
-.field__input--sm {
-  width: 60px;
-  padding: 6px 8px;
-  font-size: 14px;
-}
-.field__input--xs,
-input.field__input--xs {
-  width: 50px;
-  padding: 4px 6px;
-  font-size: 13px;
-  color: var(--ink);
-  text-align: center;
-}
-.field__input--compact,
-input.field__input--compact {
-  width: 80px;
-  padding: 4px 8px;
-  font-size: 13px;
-  color: var(--ink);
-  text-align: right;
-}
-.calcTop__typeCandy {
-  margin-top: 12px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: color-mix(in oklab, var(--ink) 4%, transparent);
-}
-.calcTop__typeCandyToggle {
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  color: color-mix(in oklab, var(--ink) 70%, transparent);
-}
-.calcTop__typeCandyToggle:hover {
-  color: var(--ink);
-}
-.calcTop__typeCandyGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 6px 16px;
-  margin-top: 10px;
-}
-.typeRow {
-  display: grid;
-  grid-template-columns: 55px 1fr 1fr;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 0;
-}
-.typeRow__name {
-  font-size: 12px;
-  font-weight: 500;
-  color: color-mix(in oklab, var(--ink) 80%, transparent);
-}
-.candyInput {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.candyInput__label {
-  font-size: 11px;
-  font-weight: 600;
-  min-width: 14px;
-}
-.candyInput--sm .candyInput__label {
-  font-size: 11px;
-}
-.calcSticky {
-  position: sticky;
-  top: 10px;
-  z-index: 30;
-  margin-top: 10px;
-  padding: 12px;
-  border-radius: 16px;
-  background: var(--paper);
-  border: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
-  box-shadow: 0 14px 36px color-mix(in oklab, var(--ink) 12%, transparent);
-}
-.calcSticky__summary {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 10px;
-}
-.calcSticky__summary .calcSum {
-  flex: 1 1 auto;
-  min-width: 100px;
-}
-.calcSum__v {
-  font-family: var(--font-heading);
-  font-weight: 800;
-  font-size: 18px;
-  margin-top: 2px;
-  color: var(--ink);
-}
-.calcSum--hi .calcSum__v {
-  background: transparent;
-  box-shadow: none;
-  padding: 0;
-  color: var(--ink);
-  font-size: 1.4rem;
-}
-@media (max-width: 560px) {
-  .calcSum--hi .calcSum__v {
-    font-size: 1.1rem;
-  }
-}
-.calcSum--candy {
-  flex: 2 1 auto;
-  min-width: 180px;
-}
-.calcSum__v--over {
-  color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 10%);
-}
-.calcSum__candyDetails {
-  font-size: 14px;
-  font-weight: 600;
-  margin-left: 8px;
-  color: var(--ink);
-}
-@media (max-width: 560px) {
-  .calcSum__candyDetails {
-    /* 改行しない */
-    margin-left: 6px;
-    font-size: 13px;
-  }
-}
-.calcSum--danger .calcSum__v {
-  color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 10%);
-}
-.calcSum__overVal {
-  color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 10%);
-  font-weight: 700;
-  margin-left: 4px;
-}
-.calcSum--bar {
-  flex: 2; /* バーは少し広めに */
-  min-width: 220px;
-}
-.calcSticky__candy {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px dashed color-mix(in oklab, var(--ink) 14%, transparent);
-  font-size: 13px;
-  color: color-mix(in oklab, var(--ink) 70%, transparent);
-}
-.calcSticky__candyRow {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-.calcSticky__candyLabel {
-  font-weight: 600;
-}
-.calcSticky__candyPct {
-  font-weight: 700;
-  font-size: 16px;
-  color: var(--ink);
-}
-.calcSticky__candyPct--over {
-  color: color-mix(in oklab, hsl(6 78% 52%) 75%, var(--ink) 10%);
-}
-.calcSticky__candyDetails {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 14px;
-}
-.calcSticky__candyItem {
-  font-variant-numeric: tabular-nums;
-}
-
-/* Mobile: keep "Shards" and "Remaining" compact and side-by-side */
-@media (max-width: 560px) {
-  .calcSticky {
-    top: 42px;
-    padding: 8px;
-    border-radius: 12px;
-  }
-  .calcSticky__summary {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    margin-bottom: 8px;
-  }
-  .calcSticky__summary .calcSum--candy {
-    grid-column: 1 / -1;
-  }
 
 
-
-  /* Mobile: shrink header texts (calc title / editing / pokemon name / apply button) */
-  .panel__title {
-    font-size: 22px;
-    line-height: 1.12;
-    margin-bottom: 8px;
-  }
-  .panel__head {
-    gap: 10px;
-  }
-  .panel__side {
-    gap: 8px;
-  }
-  .chip {
-    padding: 5px 8px;
-    gap: 6px;
-  }
-  .chip__k {
-    font-size: 11px;
-  }
-  .chip__v {
-    font-size: 12px;
-  }
-  .panel__side > .btn {
-    font-size: 12px;
-    padding: 8px 10px;
-    white-space: nowrap;
-  }
-  .calcRow__title {
-    font-size: 15px;
-    max-width: calc(100vw - 280px); /* More restrictive for English UI buttons */
-  }
-  .calcRow__headRight {
-    gap: 4px; /* Tighter spacing on mobile */
-  }
-  .calcRow__headRight .linkBtn {
-    font-size: 12px;
-    padding: 2px 4px;
-  }
-  .calcRow {
-    overflow: hidden; /* Prevent horizontal overflow */
-    max-width: 100%;
-  }
-  .calcRow__head {
-    max-width: 100%;
-    overflow: hidden;
-  }
-  button.calcRow__dragHandle {
-    padding: 4px 2px;
-    font-size: 13px;
-  }
-
-  /* Mobile: keep shards + candy(total) side-by-side under inputs (moved near base rules for correct cascade) */
-}
-
-
-.calcSum__head {
-  display: flex;
-  align-items: baseline;
-  /* justify-content: space-between; Removed to allow manual spacing with margins */
-  gap: 10px;
-}
-.calcSum__head > .calcSum__k {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 4px;
-  min-width: 0;
-  white-space: nowrap; /* prevent wrap -> stable height on mobile */
-}
-.calcSum__kText {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.calcSum__k--right {
-  white-space: nowrap;
-  text-align: right;
-  margin-left: auto; /* Push to right */
-}
-.calcSum__overVal {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-.calcSum__selectedVal {
-  flex: 0 0 auto;
-  white-space: nowrap;
-  margin-left: 10px;
-  font-size: 12px;
-  font-weight: 600;
-  color: color-mix(in oklab, var(--accent) 80%, var(--ink) 20%);
-}
-/* モバイルで選択中ラベルを改行可能にする */
-/* モバイルレイアウト: 1行目: Main, 2行目: Selected + Cap */
-@media (max-width: 560px) {
-  .calcSum__head {
-    flex-wrap: wrap;
-    row-gap: 2px; /* 縦方向の隙間 */
-  }
-  .calcSum__head > .calcSum__k:first-child {
-    flex: 1 1 100%; /* 1行目を占有 */
-    width: 100%;
-  }
-  .calcSum__selectedVal {
-    order: 2;
-    margin-left: 0 !important;
-    font-size: 11px !important;
-  }
-  .calcSum__k--right {
-    order: 3;
-    /* margin-left: auto is already set globally */
-  }
-}
-.calcBar {
-  margin-top: 8px;
-}
-/* Default behavior for stacked bars */
-.calcBarBlock + .calcBarBlock {
-  margin-top: 12px;
-}
-/* When bars are inside .calcSum--bar (e.g. usage bars), remove separation border fully */
-.calcSum--bar .calcBarBlock + .calcBarBlock {
-  border-top: 0;
-  padding-top: 0;
-  margin-top: 12px;
-}
-.calcBarBlock--candy .calcBar {
-  margin-top: 6px;
-}
-.calcBar__fill--candy {
-  background: linear-gradient(
-    90deg,
-    color-mix(in oklab, var(--accent-cool) 58%, var(--paper) 42%),
-    color-mix(in oklab, var(--accent) 64%, var(--paper) 36%)
-  );
-}
-.calcBar__track {
-  position: relative;
-  height: 10px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--ink) 9%, transparent);
-  overflow: hidden;
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ink) 12%, transparent);
-  display: flex; /* flexbox で複数セグメントを並べる */
-}
-.calcBar__fill {
-  position: relative;
-  height: 100%;
-  background: var(--accent); /* フォールバック */
-  transition: width 240ms ease;
-}
-/* 選択中ポケモン（楽しそうなピンク） */
-.calcBar__fill--active {
-  background: hsl(330, 85%, 60%);
-  z-index: 2;
-  /* 境界線をつけて区切りを明確に */
-  box-shadow: 1px 0 0 0 var(--paper);
-}
-/* 他ポケモン（楽しそうな水色） */
-.calcBar__fill--others {
-  background: hsl(190, 80%, 65%);
-  z-index: 1;
-}
-/* アメブ用も共通の色にする（区別しない） */
-.calcBar__fill--candy.calcBar__fill--active {
-  background: hsl(330, 85%, 60%);
-}
-.calcBar__fill--candy.calcBar__fill--others {
-  background: hsl(190, 80%, 65%);
-}
-.calcSum--muted .calcBar__fill {
-  opacity: 0.35;
-}
-.calcBar__over {
-  position: relative;
-  height: 100%;
-  background: repeating-linear-gradient(
-    135deg,
-    color-mix(in oklab, hsl(6 78% 52%) 78%, var(--paper) 22%) 0 6px,
-    color-mix(in oklab, hsl(6 78% 52%) 62%, var(--paper) 38%) 6px 12px
-  );
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, hsl(6 78% 52%) 55%, transparent);
-  transition: width 240ms ease;
-}
-
-.calcActions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-top: 12px;
-}
-
-.calcSlots {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-  margin-top: 10px;
-  margin-bottom: 6px;
-}
-.calcSlot {
-  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
-  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
-  border-radius: 14px;
-  padding: 10px 12px;
-}
-.calcSlot--empty {
-  background: color-mix(in oklab, var(--paper) 96%, var(--ink) 4%);
-  border-style: dashed;
-}
-/* Removed old exportCard styles */
-.calcRows {
-  display: grid;
-  gap: 10px;
-  margin-top: 8px;
-}
-.calcRow {
-  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
-  background: color-mix(in oklab, var(--paper) 97%, var(--ink) 3%);
-  border-radius: 16px;
-  padding: 6px;
-}
-.calcRow--active {
-  border-color: color-mix(in oklab, var(--accent-warm) 34%, var(--ink) 10%);
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--accent-warm) 12%, var(--paper) 88%),
-    color-mix(in oklab, var(--paper) 94%, var(--ink) 6%)
-  );
-  box-shadow:
-    0 0 0 4px color-mix(in oklab, var(--accent-warm) 12%, transparent),
-    0 18px 40px color-mix(in oklab, var(--ink) 10%, transparent);
-}
-.calcRow--dragOver {
-  border-color: color-mix(in oklab, var(--accent) 55%, var(--ink) 10%);
-  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 14%, transparent);
-}
-.calcRow--dragging {
-  opacity: 0.65;
-}
-.calcRow__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.calcRow__headLeft {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1 1 auto; /* allow title to shrink within the row */
-  min-width: 0;
-}
-.calcRow__headRight {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-  margin-left: auto; /* 右寄せ */
-}
-.calcRow__dragHandle {
-  cursor: grab;
-  user-select: none;
-  line-height: 1;
-  letter-spacing: -2px;
-  min-width: 0;
-}
-button.calcRow__dragHandle {
-  padding: 6px 6px; /* Override .btn padding with higher specificity */
-}
-.calcRow__dragHandle:active {
-  cursor: grabbing;
-}
-/* .calcRow__subHead removed */
-.calcRow__title {
-  font-family: var(--font-heading);
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  flex: 1 1 auto;
-  min-width: 0; /* critical: allow shrinking even for long unbroken EN nicknames */
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.calcRow__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px;
-  margin-top: 1px;
-}
-.calcRow__grid > * {
-  min-width: 0;
-}
-@media (min-width: 560px) {
-  .calcRow__grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-.calcRow__result {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr)); /* 4列で一覧性向上 */
-  gap: 4px 12px; /* コンパクトに */
-  margin-top: 5px;
-  padding-top: 5px;
-  border-top: 1px dashed color-mix(in oklab, var(--ink) 14%, transparent);
-}
-.calcRow__result--inline {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 16px;
-}
-.calcRow__result--inline .calcRow__res {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 4px;
-}
-.calcRow__result--inline .calcRow__k {
-  font-size: 12px;
-}
-.calcRow__result--inline .calcRow__num {
-  font-size: 15px;
-  font-weight: 700;
-}
-/* モバイルでは2列×2行に */
-@media (max-width: 640px) {
-  .calcRow__result:not(.calcRow__result--inline) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px 16px;
-  }
-  /* Mobile EN: large numbers like "2,180,569" can force flex items to exceed width.
-     Allow wrapping/break opportunities so the layout doesn't widen and clip the right side. */
-  .shell[data-locale="en"] .calcRow__result .calcRow__v {
-    min-width: 0;
-  }
-  .shell[data-locale="en"] .calcRow__result .calcRow__num {
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-}
-.calcRow__res {
-  display: flex;
-  justify-content: space-between; /* ラベル左、数字右 */
-  align-items: baseline;
-  min-width: 0;
-}
-.calcRow__k {
-  font-family: var(--font-body);
-  font-size: 11px;
-  color: color-mix(in oklab, var(--ink) 60%, transparent);
-}
-.calcRow__v {
-  font-family: var(--font-heading);
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-.calcRow__result .calcRow__v {
-  font-size: 16px;
-}
-.calcRow__num {
-  font-weight: 700;
-  font-size: 19px; /* 数字を大きく統一 */
-  background: transparent;
-  box-shadow: none;
-  padding: 0;
-  color: var(--ink);
-}
-.calcRow__num--text {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--ink);
-}
-
-/* 万能アメ配分説明 */
-.calcAllocInfo {
-  margin: 12px 0;
-  padding: 8px 12px;
-  background: color-mix(in oklab, var(--ink) 5%, transparent);
-  border-radius: 8px;
-  font-size: 12px;
-  color: color-mix(in oklab, var(--ink) 70%, transparent);
-}
-.calcAllocInfo__title {
-  cursor: pointer;
-  font-weight: 600;
-  color: color-mix(in oklab, var(--ink) 80%, transparent);
-}
-.calcAllocInfo__title:hover {
-  color: var(--ink);
-}
-.calcAllocInfo__desc {
-  margin: 8px 0 0 0;
-  font-family: inherit;
-  font-size: 12px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-}
 
 .field--sm {
   gap: 1px; /* ラベルと入力の距離を詰める */
@@ -1199,204 +410,7 @@ input.field__input, select.field__input {
   gap: 10px;
   margin-top: 12px;
 }
-.levelChip {
-  width: 38px;
-  height: 38px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in oklab, var(--ink) 18%, transparent);
-  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
-  font: inherit;
-  cursor: pointer;
-  font-family: var(--font-heading);
-  font-weight: 800;
-}
-.levelChip:hover {
-  border-color: color-mix(in oklab, var(--ink) 28%, transparent);
-}
-.levelChip--on {
-  border-color: color-mix(in oklab, var(--accent) 55%, var(--ink) 16%);
-  background: color-mix(in oklab, var(--accent) 14%, var(--paper) 86%);
-}
-.levelChip:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.field {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-.field--wide {
-  grid-column: 1 / -1;
-}
-.field__label {
-  font-family: var(--font-body);
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: color-mix(in oklab, var(--ink) 62%, transparent);
-}
-.field__input {
-  font: inherit;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in oklab, var(--ink) 16%, transparent);
-  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
-  outline: none;
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-}
-.field__input--static {
-  display: flex;
-  align-items: center;
-  cursor: default;
-  user-select: text;
-  color: color-mix(in oklab, var(--ink) 84%, transparent);
-}
-.field__range {
-  width: 100%;
-  accent-color: color-mix(in oklab, var(--accent) 72%, var(--ink) 20%);
-}
-.field__sub {
-  font-family: var(--font-body);
-  font-size: 12px;
-  color: color-mix(in oklab, var(--ink) 58%, transparent);
-}
-.field__input:focus-visible {
-  border-color: color-mix(in oklab, var(--accent) 60%, var(--ink) 20%);
-  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 18%, transparent);
-}
-.field__input--error {
-  border-color: color-mix(in oklab, hsl(6 78% 52%) 55%, var(--ink) 20%);
-  box-shadow: 0 0 0 4px color-mix(in oklab, hsl(6 78% 52%) 18%, transparent);
-}
-.field__error {
-  font-family: var(--font-body);
-  font-size: 12px;
-  color: color-mix(in oklab, hsl(6 78% 52%) 70%, var(--ink) 10%);
-}
 
-.tabs {
-  display: inline-flex;
-  gap: 8px;
-  padding: 6px;
-  border-radius: 16px;
-  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
-  background: color-mix(in oklab, var(--paper) 92%, var(--ink) 8%);
-  margin: 6px 0 12px;
-  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--paper) 70%, transparent);
-}
-.tab {
-  font: inherit;
-  border: 0;
-  cursor: pointer;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: transparent;
-  color: color-mix(in oklab, var(--ink) 68%, transparent);
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-.tab--active {
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--paper) 94%, var(--accent-warm) 6%),
-    color-mix(in oklab, var(--paper) 88%, var(--accent) 12%)
-  );
-  color: var(--ink);
-  box-shadow:
-    0 1px 0 color-mix(in oklab, var(--paper) 60%, transparent),
-    0 10px 22px color-mix(in oklab, var(--ink) 10%, transparent);
-}
-.tab:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 18%, transparent);
-}
-.tab__count {
-  font-family: var(--font-heading);
-  font-weight: 800;
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--ink) 10%, transparent);
-}
-
-/* .btn styles moved to main.css */
-
-.chip {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
-  border-radius: 999px;
-  padding: 6px 10px;
-  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
-  background: color-mix(in oklab, var(--paper) 96%, var(--ink) 4%);
-}
-.chip__k {
-  font-family: var(--font-body);
-  font-size: 12px;
-  color: color-mix(in oklab, var(--ink) 60%, transparent);
-}
-.chip__v {
-  font-family: var(--font-heading);
-  font-weight: 800;
-}
-
-.boxGrid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-  margin-top: 10px;
-}
-.boxCard {
-  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
-  background: color-mix(in oklab, var(--paper) 97%, var(--ink) 3%);
-  border-radius: 16px;
-  padding: 14px;
-}
-.boxCard--inner {
-  padding: 12px;
-  border-radius: 14px;
-  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
-}
-.boxDisclosure {
-  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
-  background: color-mix(in oklab, var(--paper) 97%, var(--ink) 3%);
-  border-radius: 16px;
-  padding: 10px 12px;
-}
-.boxDisclosure__summary {
-  list-style: none;
-  cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 10px;
-  font-family: var(--font-heading);
-  font-weight: 800;
-  width: 100%;
-  text-align: left;
-  appearance: none;
-  background: transparent;
-  border: 0;
-  padding: 0;
-}
-.boxDisclosure__summary::-webkit-details-marker { display: none; }
-.boxDisclosure__title {
-  letter-spacing: -0.01em;
-}
-.boxDisclosure__hint {
-  font-family: var(--font-body);
-  font-weight: 400;
-  font-size: 12px;
-  color: color-mix(in oklab, var(--ink) 60%, transparent);
-}
-.boxDisclosure[open] .boxDisclosure__summary,
-.boxDisclosure--open .boxDisclosure__summary {
-  margin-bottom: 10px;
-}
 .boxSort {
   display: inline-flex;
   gap: 8px;
@@ -1423,7 +437,7 @@ input.field__input, select.field__input {
 }
 
 /* ENは文言が長めなので、ソートUIの幅を少しだけ広げて崩れを防ぐ（モバイルでは逆に溢れるので適用しない） */
-@media (min-width: 640px) {
+@media (min-width: 561px) {
   .shell[data-locale="en"] .boxSort__select {
     min-width: 96px; /* "Label/Level" に合わせて少しコンパクトに */
   }
@@ -1433,7 +447,7 @@ input.field__input, select.field__input {
 }
 
 /* 日本語モバイル：ソート行を1行に収める */
-@media (max-width: 480px) {
+@media (max-width: 560px) {
   .boxSortRow {
     flex-wrap: nowrap;
     gap: 6px;
@@ -1475,10 +489,10 @@ input.field__input, select.field__input {
   /* ポケモン名と表記名は各3列（50%）、高さも揃える */
   .boxAddGrid .field--name {
     grid-column: span 3;
-    display: grid !important;
-    grid-template-rows: 20px 40px 20px !important; /* ラベル・入力・サブテキスト固定 */
-    align-content: start !important;
-    gap: 4px !important;
+    display: grid;
+    grid-template-rows: 20px 40px 20px; /* ラベル・入力・サブテキスト固定 */
+    align-content: start;
+    gap: 4px;
   }
   /* 通常のフィールドは各2列（33%）*/
   .boxAddGrid .field:not(.field--wide):not(.field--name) {
@@ -1491,50 +505,63 @@ input.field__input, select.field__input {
 }
 /* 新規追加フォームの高さを統一 - field--wide, field--name以外に適用 */
 .boxAddGrid .field:not(.field--wide):not(.field--name) {
-  display: grid !important;
-  grid-template-rows: 20px 40px min-content !important; /* ラベル・入力・サブテキスト */
-  align-content: start !important;
-  gap: 4px !important;
+  display: grid;
+  grid-template-rows: 20px 40px min-content; /* ラベル・入力・サブテキスト */
+  align-content: start;
+  gap: 4px;
 }
 .boxAddGrid .field__label {
-  height: 20px !important;
-  min-height: 20px !important;
-  max-height: 20px !important;
-  display: flex !important;
-  align-items: flex-end !important;
-  line-height: 1 !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  overflow: hidden !important;
+  height: 20px;
+  min-height: 20px;
+  max-height: 20px;
+  display: flex;
+  align-items: flex-end;
+  line-height: 1;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
 }
 .boxAddGrid .field__input,
 .boxAddGrid select.field__input {
-  height: 40px !important;
-  min-height: 40px !important;
-  max-height: 40px !important;
-  box-sizing: border-box !important;
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
+  box-sizing: border-box;
 }
 /* field--sm も同様に */
 .boxAddGrid .field--sm {
-  grid-template-rows: 20px 40px min-content !important;
+  grid-template-rows: 20px 40px min-content;
 }
 .boxAddGrid .field--sm .field__label {
-  height: 20px !important;
-  min-height: 20px !important;
-  max-height: 20px !important;
+  height: 20px;
+  min-height: 20px;
+  max-height: 20px;
 }
 .boxAddGrid .field--sm .field__input {
-  height: 40px !important;
-  min-height: 40px !important;
-  max-height: 40px !important;
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
 }
 .boxAddActions {
   grid-column: 1 / -1;
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: 10px;
+  gap: 16px;
   flex-wrap: nowrap;
+  margin-top: 24px;
+}
+.boxAddCalcCheck {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  color: color-mix(in oklab, var(--ink) 80%, transparent);
+  cursor: pointer;
+  user-select: none;
+}
+.boxAddCalcCheck input {
+  margin: 0;
 }
 .boxAddFav {
   grid-column: 1 / -1;
@@ -1792,7 +819,7 @@ input.field__input, select.field__input {
 }
 
 /* Mobile: remove excess padding so tabs don't wrap */
-@media (max-width: 520px) {
+@media (max-width: 560px) {
   .slotTabs { padding: 0 2px; }
   .slotTab {
     padding: 7px 10px;
@@ -1952,7 +979,7 @@ input.field__input, select.field__input {
   overflow: auto;
   padding-right: 6px;
 }
-@media (min-width: 600px) {
+@media (min-width: 561px) {
   .boxAdvanced__list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2325,43 +1352,8 @@ input.field__input, select.field__input {
 }
 </style>
 
+
 <style>
-/* Layout Fixes */
-.calcTop__input--remaining {
-  width: 72px !important;
-}
-.calcTop__row {
-  column-gap: 16px !important;
-  flex-wrap: wrap !important; /* 幅が狭い時に折り返す */
-  row-gap: 8px !important;    /* 折り返し時の縦間隔 */
-}
-.calcTop__candyRow {
-  gap: 6px !important;
-}
-.calcTop__candyInput input {
-  width: 48px !important; /* 万能アメ数を少し狭く */
-  padding: 0 4px !important;
-}
-.calcTop__label {
-  font-size: 11px !important; /* ラベル文字サイズを少し小さくしてスペース確保 */
-}
-
-@media (max-width: 600px) {
-  /* モバイルでも非表示（これは下記のグローバルルールでカバーされるが、念のため残しても良い。今回はグローバルにするので削除してOKだが、安全に書く） */
-}
-
-/* 常に非表示にする（通常モード時） */
-.field--boost-control.is-none {
-  display: none !important;
-}
-
-/* 通常モード（項目6個）のときはPCで3列表示にする */
-@media (min-width: 601px) {
-  .calcRow__grid--normal {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-  }
-}
-
 /* モバイル: スクロール時にstickyヘッダーの高さを考慮 */
 @media (max-width: 560px) {
   html {

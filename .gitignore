@@ -50,3 +50,17 @@ Thumbs.db
 !.cursor/rules/**
 !.cursor/commands/
 !.cursor/commands/**
+
+# ------------------------------
+# Antigravity
+# ------------------------------
+.agent/
+
+# ------------------------------
+# Test outputs
+# ------------------------------
+test-results.json
+test-output.json
+test-failures.txt
+test-list.txt
+*debug*

@@ -1,4 +1,4 @@
-# CandyBoost Planner
+﻿# CandyBoost Planner
 
 [日本語版 README](README.ja.md)
 

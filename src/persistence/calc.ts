@@ -1,4 +1,6 @@
-import type { BoostEvent, ExpGainNature, ExpType } from "../domain/types";
+import type { BoostEvent, ExpGainNature, ExpType, SleepSettings } from "../domain/types";
+import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
+import { defaultBoostKind } from "../domain/pokesleep/boost-config";
 
 export type CalcMode = "boostLevel" | "ratio" | "candy";
 
@@ -20,57 +22,32 @@ export type CalcRowV1 = {
   expType: ExpType;
   nature: ExpGainNature;
   boostReachLevel: number;
-  boostRatioPct: number; // 0..100
-  boostCandyInput: number; // 手入力用（mode=candyのとき有効）
-  /** アメブ個数の最大投入実績（減少時の補填計算用） */
-  boostCandyPeak?: number;
+  boostRatioPct: number; // 0..100（派生値、表示用）
+  /** 入力されたアメブ個数（またはEXP調整値）- 真実のソース */
+  boostOrExpAdjustment?: number;
+  /** ピーク値（100%時のアメブ個数）- 入力がピークを超えたら更新 */
+  candyPeak?: number;
+  /** アメ個数指定（未設定=無制限、1以上=目標個数） */
+  candyTarget?: number;
   mode: CalcMode;
-};
-
-export type CalcAutosaveV1 = {
-  schemaVersion: 1;
-  totalShards: number;
-  boostKind: BoostEvent;
-  /** アメブ残数（未設定の場合はboostKindによる上限を使用） */
-  boostCandyRemaining?: number;
-  rows: CalcRowV1[];
-  activeRowId: string | null;
 };
 
 export type CalcSaveSlotV1 = {
   savedAt: string;
   rows: CalcRowV1[];
   activeRowId: string | null;
+  /** スロットのアメブ種別 */
+  boostKind: BoostEvent;
 };
+
 
 type CalcSlotsStoreV1 = {
   schemaVersion: 1;
   slots: Array<CalcSaveSlotV1 | null>;
 };
 
-const AUTOSAVE_KEY = "candy-boost-planner:calc:autosave:v1";
 const SLOTS_KEY = "candy-boost-planner:calc:slots:v1";
 const LEGACY_TOTAL_SHARDS_KEY = "candy-boost-planner:calc:totalShards";
-
-export function loadCalcAutosave(): CalcAutosaveV1 | null {
-  try {
-    const raw = localStorage.getItem(AUTOSAVE_KEY);
-    if (!raw) return null;
-    const json = JSON.parse(raw);
-    if (!json || typeof json !== "object") return null;
-    return normalizeAutosave(json);
-  } catch {
-    return null;
-  }
-}
-
-export function saveCalcAutosave(v: CalcAutosaveV1) {
-  try {
-    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(v));
-  } catch {
-    // localStorage can throw (quota exceeded / blocked). Persistence must not break UI.
-  }
-}
 
 export function loadCalcSlots(): Array<CalcSaveSlotV1 | null> {
   try {
@@ -115,17 +92,72 @@ export function loadLegacyTotalShards(): number {
   }
 }
 
-function normalizeAutosave(x: any): CalcAutosaveV1 {
-  const totalShards = toInt(x.totalShards, 0);
-  const boostKind: Exclude<BoostEvent, "none"> = x.boostKind === "mini" ? "mini" : "full";
-  const boostCandyRemaining = typeof x.boostCandyRemaining === "number" && x.boostCandyRemaining >= 0
-    ? Math.floor(x.boostCandyRemaining)
-    : undefined;
-  const rows = toRows(x.rows);
-  const activeRowId = typeof x.activeRowId === "string" ? x.activeRowId : null;
-  // legacy compatibility: previous versions used `version`
-  return { schemaVersion: 1, totalShards, boostKind, boostCandyRemaining, rows, activeRowId };
+export function saveTotalShards(v: number): void {
+  try {
+    localStorage.setItem(LEGACY_TOTAL_SHARDS_KEY, String(Math.max(0, Math.floor(v))));
+  } catch {
+    // localStorage can throw (quota exceeded / blocked). Persistence must not break UI.
+  }
 }
+
+const BOOST_CANDY_REMAINING_KEY = "candy-boost-planner:calc:boostCandyRemaining";
+
+export function loadBoostCandyRemaining(): number | null {
+  try {
+    const raw = localStorage.getItem(BOOST_CANDY_REMAINING_KEY);
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveBoostCandyRemaining(v: number | null): void {
+  try {
+    if (v == null) {
+      localStorage.removeItem(BOOST_CANDY_REMAINING_KEY);
+    } else {
+      localStorage.setItem(BOOST_CANDY_REMAINING_KEY, String(Math.max(0, Math.floor(v))));
+    }
+  } catch {
+    // localStorage can throw (quota exceeded / blocked). Persistence must not break UI.
+  }
+}
+
+const SLEEP_SETTINGS_KEY = "candy-boost-planner:calc:sleepSettings";
+
+/** デフォルトの睡眠設定 */
+export const DEFAULT_SLEEP_SETTINGS: SleepSettings = {
+  dailySleepHours: 8.5,
+  sleepExpBonusCount: 0,
+  includeGSD: true,
+};
+
+export function loadSleepSettings(): SleepSettings {
+  try {
+    const raw = localStorage.getItem(SLEEP_SETTINGS_KEY);
+    if (!raw) return { ...DEFAULT_SLEEP_SETTINGS };
+    const json = JSON.parse(raw);
+    const normalized = normalizeSleepSettings(json);
+    return normalized ?? { ...DEFAULT_SLEEP_SETTINGS };
+  } catch {
+    return { ...DEFAULT_SLEEP_SETTINGS };
+  }
+}
+
+export function saveSleepSettings(v: SleepSettings | undefined): void {
+  try {
+    if (v == null) {
+      localStorage.removeItem(SLEEP_SETTINGS_KEY);
+    } else {
+      localStorage.setItem(SLEEP_SETTINGS_KEY, JSON.stringify(v));
+    }
+  } catch {
+    // localStorage can throw (quota exceeded / blocked). Persistence must not break UI.
+  }
+}
+
 
 function normalizeSlot(x: any): CalcSaveSlotV1 | null {
   if (!x || typeof x !== "object") return null;
@@ -133,8 +165,13 @@ function normalizeSlot(x: any): CalcSaveSlotV1 | null {
   const rows = toRows(x.rows);
   const activeRowId = typeof x.activeRowId === "string" ? x.activeRowId : null;
   if (!rows.length) return null;
-  return { savedAt, rows, activeRowId };
+  // boostKind: 旧データは defaultBoostKind を適用
+  const boostKind: BoostEvent = x.boostKind === "full" || x.boostKind === "mini" || x.boostKind === "none"
+    ? x.boostKind
+    : defaultBoostKind;
+  return { savedAt, rows, activeRowId, boostKind };
 }
+
 
 function toRows(v: unknown): CalcRowV1[] {
   if (!Array.isArray(v)) return [];
@@ -146,19 +183,24 @@ function toRows(v: unknown): CalcRowV1[] {
     if (!id) continue;
     const title = typeof o.title === "string" ? o.title : "";
     const expType = toExpType(o.expType, 600);
-    const srcLevel = clampInt(o.srcLevel, 1, 65, 1);
-    const dstLevel = clampInt(o.dstLevel, srcLevel, 65, srcLevel);
+    const srcLevel = clampInt(o.srcLevel, 1, MAX_LEVEL, 1);
+    const dstLevel = clampInt(o.dstLevel, srcLevel, MAX_LEVEL, srcLevel);
     const toNextFallback = 0; // App側で補正する
     const expRemaining = clampInt(o.expRemaining, 0, 999999, toNextFallback);
     const nature = toNature(o.nature, "normal");
     const boostReachLevel = clampInt(o.boostReachLevel, srcLevel, dstLevel, dstLevel);
     const boostRatioPct = clampInt(o.boostRatioPct, 0, 100, 100);
-    const boostCandyInput = Math.max(0, Math.floor(Number(o.boostCandyInput) || 0));
     const mode: CalcMode = o.mode === "boostLevel" || o.mode === "candy" || o.mode === "ratio" ? o.mode : "ratio";
     const boxId = typeof o.boxId === "string" && o.boxId.trim() ? o.boxId : undefined;
     const dstLevelText = typeof o.dstLevelText === "string" ? o.dstLevelText : undefined;
     const pokedexId = typeof o.pokedexId === "number" && o.pokedexId > 0 ? o.pokedexId : undefined;
     const pokemonType = typeof o.pokemonType === "string" && o.pokemonType.trim() ? o.pokemonType : undefined;
+    // boostOrExpAdjustment: 入力されたアメブ個数（真実のソース）
+    const boostOrExpAdjustment = typeof o.boostOrExpAdjustment === "number" ? Math.max(0, Math.floor(o.boostOrExpAdjustment)) : undefined;
+    // candyPeak: ピーク値
+    const candyPeak = typeof o.candyPeak === "number" ? Math.max(0, Math.floor(o.candyPeak)) : undefined;
+    // candyTarget: undefined = 無制限、1以上 = 目標個数
+    const candyTarget = typeof o.candyTarget === "number" && o.candyTarget >= 0 ? Math.floor(o.candyTarget) : undefined;
     out.push({
       id,
       boxId,
@@ -173,7 +215,9 @@ function toRows(v: unknown): CalcRowV1[] {
       nature,
       boostReachLevel,
       boostRatioPct,
-      boostCandyInput,
+      boostOrExpAdjustment,
+      candyPeak,
+      candyTarget,
       mode,
     });
   }
@@ -201,4 +245,36 @@ function toNature(v: unknown, fallback: ExpGainNature): ExpGainNature {
   const s = typeof v === "string" ? v : String(v ?? "");
   if (s === "up" || s === "down" || s === "normal") return s;
   return fallback;
+}
+
+/**
+ * SleepSettings のノーマライズ
+ * 未設定の場合は undefined を返す（デフォルト値はUI側で適用）
+ */
+function normalizeSleepSettings(x: unknown): SleepSettings | undefined {
+  if (!x || typeof x !== "object") return undefined;
+  const o = x as any;
+
+  // 必須フィールドがすべて有効な場合のみ返す
+  const dailySleepHours = typeof o.dailySleepHours === "number" && o.dailySleepHours >= 1 && o.dailySleepHours <= 13
+    ? o.dailySleepHours
+    : undefined;
+  const sleepExpBonusCount = typeof o.sleepExpBonusCount === "number" && o.sleepExpBonusCount >= 0 && o.sleepExpBonusCount <= 5
+    ? Math.floor(o.sleepExpBonusCount)
+    : undefined;
+  const includeGSD = typeof o.includeGSD === "boolean"
+    ? o.includeGSD
+    : undefined;
+
+  // すべて undefined なら設定なしとして undefined を返す
+  if (dailySleepHours === undefined && sleepExpBonusCount === undefined && includeGSD === undefined) {
+    return undefined;
+  }
+
+  // 部分的に設定されている場合はデフォルト値で補完
+  return {
+    dailySleepHours: dailySleepHours ?? 8.5,
+    sleepExpBonusCount: sleepExpBonusCount ?? 0,
+    includeGSD: includeGSD ?? true,
+  };
 }
