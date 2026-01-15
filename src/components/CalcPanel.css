@@ -41,10 +41,6 @@
   color: color-mix(in oklab, var(--ink) 70%, transparent);
 }
 
-.panel--calc {
-  container-type: inline-size;
-}
-
 .calcTop__typeCandy {
   margin-top: 12px;
   padding: 8px 12px;
@@ -270,8 +266,7 @@
   }
 
   .calcRow {
-    overflow: hidden;
-    /* Prevent horizontal overflow */
+    /* Prevent horizontal overflow (but allow popover to escape) */
     max-width: 100%;
   }
 
@@ -658,11 +653,6 @@ button.calcRow__dragHandle {
   /* 要素が縦に引き伸ばされるのを防ぐ */
 }
 
-/* ラベルと入力欄の間隔を少し開ける */
-.field--sm {
-  gap: 2px !important;
-}
-
 .calcRow__grid>* {
   min-width: 0;
 }
@@ -1039,36 +1029,53 @@ button.calcRow__dragHandle {
   display: flex;
 }
 
+/* --- スロットタブ --- */
 .slotTabs {
   display: flex;
+  align-items: flex-end;
   gap: 4px;
-  /* タブ間の隙間 */
   width: 100%;
+  padding: 0 4px;
 }
 
 .slotTab {
-  flex: 1;
-  padding: 8px 0;
-  text-align: center;
-  font-family: var(--font-body);
-  font-weight: 700;
-  font-size: 14px;
-  /* 自己主張 */
-  color: color-mix(in oklab, var(--ink) 50%, transparent);
-  background: #e4e6eb;
-  /* 濃いめのグレー */
-  border: 1px solid #c0c2c6;
+  appearance: none;
+  font: inherit;
+  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
   border-bottom: none;
   border-radius: 8px 8px 0 0;
+  background: color-mix(in oklab, var(--paper) 92%, var(--ink) 8%);
+  color: color-mix(in oklab, var(--ink) 60%, transparent);
+  padding: 8px 12px;
   cursor: pointer;
-  transition: all 0.1s;
+  margin-right: -1px;
   position: relative;
   top: 1px;
-  /* 下のボーダーに重ねる */
+  font-weight: 700;
+  font-size: 13px;
+  flex: 0.7;
+  /* 非選択タブは狭く */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.2s, color 0.2s, flex 0.2s;
+}
+
+.slotTab:first-child {
+  border-top-left-radius: 12px;
+}
+
+.slotTab:last-child {
+  border-top-right-radius: 12px;
+  margin-right: 0;
 }
 
 .slotTab:hover {
-  background: #d8dadf;
+  background: color-mix(in oklab, var(--paper) 88%, var(--ink) 12%);
 }
 
 .slotTab--active {
@@ -1077,7 +1084,8 @@ button.calcRow__dragHandle {
   border: 1px solid var(--accent);
   border-bottom: 1px solid #ffffff;
   padding-top: 8px;
-  z-index: 3;
+  flex: 1.6;
+  /* 選択タブは広く */
 }
 
 /* スロットタブ内のセレクター */
@@ -1111,6 +1119,70 @@ button.calcRow__dragHandle {
   font-weight: 600;
 }
 
+/* Mobile: タブをコンパクトに */
+@media (max-width: 560px) {
+  .slotTabs {
+    padding: 0 2px;
+    gap: 3px;
+  }
+
+  .slotTab {
+    padding: 6px 8px;
+    font-size: 11px;
+    gap: 6px;
+    flex: 0.6;
+    /* モバイルでさらに狭く */
+  }
+
+  .slotTab--active {
+    padding-top: 6px;
+    flex: 1.8;
+    /* モバイルでさらに広く */
+  }
+
+  .slotTab__select {
+    font-size: 11px;
+    padding: 2px 20px 2px 4px;
+  }
+}
+
+/* --- Slot Content (タブの下のコンテンツエリア) --- */
+.slotContent {
+  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
+  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
+  border-radius: 0;
+  padding: 10px 12px;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.calcSlot__actions {
+  display: inline-flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.calcSlot__state {
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
+.calcSlot__btn {
+  white-space: nowrap;
+  padding: 4px 10px;
+}
+
+/* If first tab is active, fix top-left corner */
+.slotTabs:has(.slotTab--active:first-child)+.slotContent {
+  border-top-left-radius: 0;
+}
+
 /* 計算機リスト全体を囲むコンテナ装飾 */
 
 .calcSlotContainer {
@@ -1140,13 +1212,12 @@ button.calcRow__dragHandle {
   /* 4px -> 12px */
 }
 
-.boxEmpty {
+/* 計算機が空の時の表示 */
+.calcEmpty {
   text-align: left;
-  /* ブロック自体を中央に寄せる */
   width: fit-content;
   margin: 60px auto;
   padding: 0 20px;
-
   font-size: 15px;
   font-weight: 500;
   color: color-mix(in oklab, var(--ink) 60%, transparent);
@@ -1154,20 +1225,19 @@ button.calcRow__dragHandle {
   line-height: 1.8;
 }
 
-.boxEmpty__content {
+.calcEmpty__content {
   margin-bottom: 24px;
 }
 
-.boxEmpty__title {
+.calcEmpty__title {
   margin-bottom: 10px;
-  /* ここで微調整 */
 }
 
-.boxEmpty__link {
+.calcEmpty__link {
   font-size: 14px;
 }
 
-.boxEmpty__linkBtn {
+.calcEmpty__linkBtn {
   appearance: none;
   background: transparent;
   border: none;
@@ -1182,7 +1252,7 @@ button.calcRow__dragHandle {
   display: inline;
 }
 
-.boxEmpty__linkBtn:hover {
+.calcEmpty__linkBtn:hover {
   text-decoration: none;
   color: var(--accent-hover);
 }
@@ -1235,13 +1305,6 @@ button.calcRow__dragHandle {
 /* 睡眠育成ボタン（1000h/2000h） */
 .field--sleepTarget {
   gap: 3px !important;
-}
-
-.field__labelRow {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
 }
 
 .sleepLinks {

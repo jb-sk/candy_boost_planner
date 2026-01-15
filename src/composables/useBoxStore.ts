@@ -559,9 +559,14 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     selectedSubSkillEns.value = [...cur];
   }
 
-  const sortedBoxEntries = computed(() => {
+  // 手動ソート用のキャッシュ（自動ソートではなくボタンクリック時のみソート）
+  const sortedBoxEntriesCache = ref<PokemonBoxEntryV1[]>([]);
+
+  // ソートを実行する関数
+  function applySort(direction: "asc" | "desc") {
+    boxSortDir.value = direction;
     const list = [...filteredBoxEntries.value];
-    const dir = boxSortDir.value === "asc" ? 1 : -1;
+    const dir = direction === "asc" ? 1 : -1;
     const key = boxSortKey.value;
     const favPriority = key === "labelFav" || key === "levelFav" || key === "dexFav";
     const sortByLevel = key === "level" || key === "levelFav";
@@ -593,7 +598,45 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
       }
       return displayBoxTitle(a).localeCompare(displayBoxTitle(b), locale.value === "en" ? "en" : "ja") * dir;
     });
-    return list;
+    sortedBoxEntriesCache.value = list;
+    importStatus.value = t("status.sorted");
+  }
+
+  // フィルタ変更時やデータ変更時はソート順を維持しつつリストを更新
+  const sortedBoxEntries = computed(() => {
+    const filtered = filteredBoxEntries.value;
+    const cached = sortedBoxEntriesCache.value;
+
+    // キャッシュが空の場合はフィルタ結果をそのまま返す
+    if (cached.length === 0) {
+      return filtered;
+    }
+
+    // キャッシュのIDセットを作成
+    const cachedIds = new Set(cached.map(e => e.id));
+    const filteredIds = new Set(filtered.map(e => e.id));
+
+    // キャッシュの順序を維持しつつ、フィルタ結果に含まれるもののみ返す
+    // また、フィルタ結果にあってキャッシュにないものは末尾に追加
+    const result: PokemonBoxEntryV1[] = [];
+
+    // キャッシュの順序に従ってフィルタ結果を並べる
+    for (const e of cached) {
+      if (filteredIds.has(e.id)) {
+        // フィルタ結果から最新データを取得
+        const latest = filtered.find(f => f.id === e.id);
+        if (latest) result.push(latest);
+      }
+    }
+
+    // フィルタ結果にあってキャッシュにないものを末尾に追加
+    for (const e of filtered) {
+      if (!cachedIds.has(e.id)) {
+        result.push(e);
+      }
+    }
+
+    return result;
   });
 
   // 画面幅に応じた「タイル列数」をCSSのbreakpointと揃える（2 / 3 / 4）
@@ -1315,6 +1358,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     onRedo,
     canUndo,
     canRedo,
+    applySort,
 
 
     // handlers / helpers

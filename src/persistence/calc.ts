@@ -2,7 +2,12 @@ import type { BoostEvent, ExpGainNature, ExpType, SleepSettings } from "../domai
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { defaultBoostKind } from "../domain/pokesleep/boost-config";
 
-export type CalcMode = "boostLevel" | "ratio" | "candy";
+/**
+ * 計算モード
+ * - "targetLevel": 目標Lvモード（デフォルト）- dstExpInLevel = 0
+ * - "peak": ピークモード - ユーザーがアメ数を100%超に増やした
+ */
+export type CalcMode = "targetLevel" | "peak";
 
 export type CalcRowV1 = {
   id: string;
@@ -190,7 +195,10 @@ function toRows(v: unknown): CalcRowV1[] {
     const nature = toNature(o.nature, "normal");
     const boostReachLevel = clampInt(o.boostReachLevel, srcLevel, dstLevel, dstLevel);
     const boostRatioPct = clampInt(o.boostRatioPct, 0, 100, 100);
-    const mode: CalcMode = o.mode === "boostLevel" || o.mode === "candy" || o.mode === "ratio" ? o.mode : "ratio";
+    // TODO: 2025-04 以降に削除予定
+    // マイグレーション: 旧モード（boostLevel, ratio, candy）→ 新モード（targetLevel, peak）
+    // 旧モードは全て targetLevel に変換、既に新モードなら維持
+    const mode: CalcMode = o.mode === "peak" ? "peak" : "targetLevel";
     const boxId = typeof o.boxId === "string" && o.boxId.trim() ? o.boxId : undefined;
     const dstLevelText = typeof o.dstLevelText === "string" ? o.dstLevelText : undefined;
     const pokedexId = typeof o.pokedexId === "number" && o.pokedexId > 0 ? o.pokedexId : undefined;

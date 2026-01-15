@@ -116,6 +116,7 @@ export function applyPhase3Finalize(
       targetNormal: pokemon.targetNormal ?? 0,
       targetShards: pokemon.targetShards ?? 0,
       targetItems,
+      targetExpToNextLevel: pokemon.targetExpToNextLevel ?? 0,
 
       // 個数指定行（Phase 3 で補填）
       candyTargetBoost: pokemon.candyTargetBoost,

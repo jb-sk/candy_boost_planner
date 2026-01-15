@@ -47,8 +47,6 @@ export type CalcBoxPlannerPatch = {
   boxId: string;
   level: number;
   expRemaining: number;
-  expType: ExpType;
-  expGainNature: ExpGainNature;
 };
 
 type CalcUndoState = {
@@ -591,7 +589,7 @@ export function useCalcStore(opts: {
     const { srcLevel, dstLevel, expType, nature, expRemaining, excludeRowId } = params;
 
     if (srcLevel === dstLevel) {
-      return { boostOrExpAdjustment: 0, candyPeak: 0, boostRatioPct: 100, boostReachLevel: dstLevel, mode: "candy" };
+      return { boostOrExpAdjustment: 0, candyPeak: 0, boostRatioPct: 100, boostReachLevel: dstLevel, mode: "targetLevel" };
     }
 
     // expRemaining から expGot を計算
@@ -599,25 +597,32 @@ export function useCalcStore(opts: {
     const toNextLevel = calcExp(srcLevel, srcLevel + 1, expType);
     const expGot = expRemaining !== undefined ? Math.max(0, toNextLevel - expRemaining) : 0;
 
+    // 目標Lvモード: dstExpInLevel = 0（目標Lvにちょうど到達）
+    const dstExpInLevel = 0;
+
     const candy = boostKind.value === "none"
-      ? calcExpAndCandyMixed({ srcLevel, dstLevel, expType, nature, boost: "none", boostCandy: 0, expGot }).normalCandy
-      : calcExpAndCandy({ srcLevel, dstLevel, expType, nature, boost: boostKind.value, expGot }).candy;
+      ? calcExpAndCandyMixed({ srcLevel, dstLevel, dstExpInLevel, expType, nature, boost: "none", boostCandy: 0, expGot }).normalCandy
+      : calcExpAndCandy({ srcLevel, dstLevel, dstExpInLevel, expType, nature, boost: boostKind.value, expGot }).candy;
 
     // 通常モードの場合はグローバル上限なし
     if (boostKind.value === "none") {
-      return { boostOrExpAdjustment: candy, candyPeak: candy, boostRatioPct: 100, boostReachLevel: dstLevel, mode: "candy" };
+      return { boostOrExpAdjustment: candy, candyPeak: candy, boostRatioPct: 100, boostReachLevel: dstLevel, mode: "targetLevel" };
     }
 
     // アメブ/ミニブ: グローバル上限を考慮してリセット値を決定
     const globalCap = boostKind.value === "mini" ? 350 : 3500;
 
-    // 他の行で使用中のアメブ合計を計算（excludeRowId を除外）
-    const otherRowsBoostTotal = rows.value
-      .filter((r) => r.id !== excludeRowId)
-      .reduce((sum, r) => sum + (r.boostOrExpAdjustment ?? 0), 0);
+    // 対象ポケモンより上位のポケモンの実使用量を合計
+    // リスト上位から優先的にリソースを配分するため、上位が使った残りを下位に割り当てる
+    const targetIndex = rows.value.findIndex((r) => r.id === excludeRowId);
+    const upperPokemonsBoostUsed = planResult.value
+      ? planResult.value.pokemons
+        .slice(0, targetIndex >= 0 ? targetIndex : rows.value.length)
+        .reduce((sum, p) => sum + p.reachableItems.boostCount, 0)
+      : 0;
 
-    // グローバル残数
-    const globalRemaining = Math.max(0, globalCap - otherRowsBoostTotal);
+    // グローバル残数 = グローバル上限 - 上位ポケモンの実使用量
+    const globalRemaining = Math.max(0, globalCap - upperPokemonsBoostUsed);
 
     // リセット値 = min(必要数, グローバル残数)
     const resetValue = Math.min(candy, globalRemaining);
@@ -625,7 +630,19 @@ export function useCalcStore(opts: {
     // 割合を計算
     const ratio = candy > 0 ? Math.round((resetValue / candy) * 100) : 100;
 
-    return { boostOrExpAdjustment: resetValue, candyPeak: candy, boostRatioPct: ratio, boostReachLevel: dstLevel, mode: "candy" };
+    // アメブ個数から到達可能レベルを計算
+    const reachSim = calcLevelByCandy({
+      srcLevel,
+      dstLevel,
+      expType,
+      nature,
+      boost: boostKind.value,
+      candy: resetValue,
+      expGot,
+    });
+    const reachLevel = Math.max(srcLevel, reachSim.level);
+
+    return { boostOrExpAdjustment: resetValue, candyPeak: candy, boostRatioPct: ratio, boostReachLevel: reachLevel, mode: "targetLevel" };
   }
 
 
@@ -658,13 +675,22 @@ export function useCalcStore(opts: {
     if (!r) return;
     const mid = clampInt(v, r.srcLevel, r.dstLevel, r.srcLevel);
 
-    // mid までのアメブ個数（srcLevel → boostReachLevel）
-    const boostPart = calcCandyPatch({ srcLevel: r.srcLevel, dstLevel: mid, expType: r.expType, nature: r.nature, expRemaining: r.expRemaining, excludeRowId: id });
-    const boostCandy = boostPart.boostOrExpAdjustment ?? 0;
+    // expGot を計算
+    const toNextLevel = calcExp(r.srcLevel, r.srcLevel + 1, r.expType);
+    const expGot = r.expRemaining !== undefined ? Math.max(0, toNextLevel - r.expRemaining) : 0;
 
-    // 100%時の総アメ数（srcLevel → dstLevel）
-    const fullPart = calcCandyPatch({ srcLevel: r.srcLevel, dstLevel: r.dstLevel, expType: r.expType, nature: r.nature, expRemaining: r.expRemaining, excludeRowId: id });
-    const fullCandy = fullPart.boostOrExpAdjustment ?? 0;
+    // 目標Lvモード: dstExpInLevel = 0（目標Lvにちょうど到達）
+    const dstExpInLevel = 0;
+
+    // アメブ目標Lv (mid) までのアメブ個数（グローバル制限なし）
+    const boostCandy = boostKind.value === "none"
+      ? calcExpAndCandyMixed({ srcLevel: r.srcLevel, dstLevel: mid, dstExpInLevel, expType: r.expType, nature: r.nature, boost: "none", boostCandy: 0, expGot }).normalCandy
+      : calcExpAndCandy({ srcLevel: r.srcLevel, dstLevel: mid, dstExpInLevel, expType: r.expType, nature: r.nature, boost: boostKind.value, expGot }).candy;
+
+    // 100%時の総アメ数（dstLevel まで、グローバル制限なし）
+    const fullCandy = boostKind.value === "none"
+      ? calcExpAndCandyMixed({ srcLevel: r.srcLevel, dstLevel: r.dstLevel, dstExpInLevel, expType: r.expType, nature: r.nature, boost: "none", boostCandy: 0, expGot }).normalCandy
+      : calcExpAndCandy({ srcLevel: r.srcLevel, dstLevel: r.dstLevel, dstExpInLevel, expType: r.expType, nature: r.nature, boost: boostKind.value, expGot }).candy;
 
     // 割合を計算
     const ratio = fullCandy > 0 ? Math.round((boostCandy / fullCandy) * 100) : 100;
@@ -674,13 +700,13 @@ export function useCalcStore(opts: {
       boostOrExpAdjustment: boostCandy,
       candyPeak: fullCandy,
       boostRatioPct: ratio,
-      mode: "boostLevel",
+      mode: "targetLevel",
     });
   }
   function nudgeBoostLevel(id: string, delta: number) {
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
-    setBoostLevel(id, r.boostReachLevel + delta);
+    setBoostLevel(id, (r.boostReachLevel ?? 0) + delta);
   }
 
   function onRowExpRemaining(id: string, v: string) {
@@ -714,7 +740,7 @@ export function useCalcStore(opts: {
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
     const mid = clampInt(v, r.srcLevel, r.dstLevel, r.srcLevel);
-    updateRow(id, { boostReachLevel: mid, mode: "boostLevel" });
+    updateRow(id, { boostReachLevel: mid, mode: "targetLevel" });
   }
   function onRowBoostRatio(id: string, v: string) {
     const r = rows.value.find((x) => x.id === id);
@@ -758,11 +784,24 @@ export function useCalcStore(opts: {
     // 割合からアメブ個数を計算
     const newCandy = Math.round(effectivePeak * pct / 100);
 
+    // アメブ個数から到達可能レベルを計算
+    const sim = calcLevelByCandy({
+      srcLevel: r.srcLevel,
+      dstLevel: r.dstLevel,
+      expType: r.expType,
+      nature: r.nature,
+      boost: boostKind.value,
+      candy: newCandy,
+      expGot,
+    });
+    const newBoostReachLevel = Math.max(r.srcLevel, sim.level);
+
     updateRow(id, {
       boostOrExpAdjustment: newCandy,
       candyPeak: effectivePeak,  // ピークを維持
       boostRatioPct: pct,
-      mode: "candy"
+      boostReachLevel: newBoostReachLevel,
+      mode: "targetLevel"
     });
   }
   /**
@@ -863,7 +902,7 @@ export function useCalcStore(opts: {
       });
       const reachableLevel = Math.max(r.srcLevel, sim.level);
       updateRow(id, {
-        mode: "candy",
+        mode: "peak",
         dstLevel: reachableLevel,
         boostOrExpAdjustment: n,
         candyPeak: n,
@@ -891,7 +930,7 @@ export function useCalcStore(opts: {
       const newBoostReach = isFullBoost ? newDst : currentBoostReach;
 
       updateRow(id, {
-        mode: "candy",
+        mode: "peak",
         dstLevel: newDst,
         boostOrExpAdjustment: n,
         candyPeak: n,
@@ -900,22 +939,36 @@ export function useCalcStore(opts: {
       });
     } else {
       // ピーク以下の入力 → ピーク維持、割合更新
+      // アメブ個数から到達可能レベルを計算
+      const sim = calcLevelByCandy({
+        srcLevel: r.srcLevel,
+        dstLevel: r.dstLevel,
+        expType: r.expType,
+        nature: r.nature,
+        boost: boostKind.value,
+        candy: n,
+        expGot,
+      });
+      const newBoostReachLevel = Math.max(r.srcLevel, sim.level);
+
       if (storedPeak > 0) {
         // ピークあり → candyPeak は変更しない
         const newRatio = storedPeak > 0 ? Math.floor((n / storedPeak) * 100) : 100;
         updateRow(id, {
-          mode: "candy",
+          mode: "targetLevel",
           boostOrExpAdjustment: n,
           boostRatioPct: newRatio,
+          boostReachLevel: newBoostReachLevel,
         });
       } else {
         // ピークなし → effectivePeak をピークとして確定
         const newRatio = effectivePeak > 0 ? Math.floor((n / effectivePeak) * 100) : 100;
         updateRow(id, {
-          mode: "candy",
+          mode: "targetLevel",
           boostOrExpAdjustment: n,
           candyPeak: effectivePeak,
           boostRatioPct: newRatio,
+          boostReachLevel: newBoostReachLevel,
         });
       }
     }
@@ -1014,6 +1067,7 @@ export function useCalcStore(opts: {
       const res = calcExpAndCandyMixed({
         srcLevel: src,
         dstLevel: dst,
+        dstExpInLevel: 0,  // 目標Lvにちょうど到達
         expType: expT,
         nature: nat,
         boost: "none",
@@ -1026,6 +1080,7 @@ export function useCalcStore(opts: {
       const res = calcExpAndCandy({
         srcLevel: src,
         dstLevel: dst,
+        dstExpInLevel: 0,  // 目標Lvにちょうど到達
         expType: expT,
         nature: nat,
         boost: boostKind.value,
@@ -1043,27 +1098,8 @@ export function useCalcStore(opts: {
     // 保存された boostOrExpAdjustment を使用（なければ effectivePeak をフォールバック）
     const storedAdjustment = r.boostOrExpAdjustment ?? effectivePeak;
 
-    let uiCandy: number;
-    if (r.mode === "boostLevel") {
-      // boostLevel モード: アメ目標Lv までに必要なアメブ数を計算
-      const mid = clampInt(r.boostReachLevel, src, dst, src);
-      if (mid <= src) {
-        uiCandy = 0;
-      } else {
-        const boostOnlyNeed = calcExpAndCandy({
-          srcLevel: src,
-          dstLevel: mid,
-          expType: expT,
-          nature: nat,
-          boost: boostKind.value,
-          expGot,
-        });
-        uiCandy = boostOnlyNeed.candy;
-      }
-    } else {
-      // candy モード: boostOrExpAdjustment をそのまま使用
-      uiCandy = storedAdjustment;
-    }
+    // アメブ個数: 常に boostOrExpAdjustment を真実のソースとして使用
+    const uiCandy = storedAdjustment;
 
     // ui.boostReachLevel: アメブで到達可能なレベル
     const boostOnly = calcLevelByCandy({
@@ -1076,7 +1112,7 @@ export function useCalcStore(opts: {
       expGot,
     });
     const uiBoostReachLevel =
-      r.mode === "boostLevel" ? clampInt(r.boostReachLevel, src, dst, src) : clampInt(boostOnly.level, src, dst, src);
+      (r.mode === "targetLevel" && r.boostReachLevel !== undefined && r.boostReachLevel < dst) ? clampInt(r.boostReachLevel, src, dst, src) : clampInt(boostOnly.level, src, dst, src);
 
     // スライダー割合はピークに対するアメブ個数の割合（派生値）
     const uiRatioPct = effectivePeak > 0 ? Math.round((uiCandy / effectivePeak) * 100) : 100;
@@ -1393,8 +1429,9 @@ export function useCalcStore(opts: {
           expGot,
         });
         dynamicDstLevel = peakResult.level;
-        dynamicDstExpInLevel = peakResult.expGot;
-      } else if (r.mode === "boostLevel") {
+        // 目標Lvモード: dstExpInLevel = 0、ピークモード: peakResult.expGot
+        dynamicDstExpInLevel = r.mode === 'peak' ? peakResult.expGot : 0;
+      } else if (r.mode === "targetLevel" && r.boostReachLevel !== undefined && r.boostReachLevel < r.dstLevel) {
         // アメブ目標Lvモード: boostReachLevelまでアメブ、残りは通常アメ
         // calcExpAndCandyMixedでboostCandyを使った場合のnormalCandyを計算
         const boostCandy = r.ui.boostCandyInput;
@@ -1414,11 +1451,7 @@ export function useCalcStore(opts: {
         dynamicDstLevel = r.dstLevel;
         dynamicDstExpInLevel = 0;
       } else {
-        // 割合/個数モード（ピーク維持）: ピークで到達可能なLv+expGotを維持しながら端数も正確に計算
-        //
-        // 1. ピーク（100%アメブ）で到達可能な「Lv + expGot」を計算
-        // 2. その同じ到達点を目標に、少ないアメブ + 通常アメで計算
-        // → これによりEXP（=到達点）が維持され、端数も正確に計算される
+        // 割合/個数モード: ピークで到達可能なLv+expGotを計算
         const boostCandy = r.ui.boostCandyInput;
 
         // ピークで到達可能なLv+expGotを計算
@@ -1432,11 +1465,15 @@ export function useCalcStore(opts: {
           expGot,
         });
 
+        // 目標Lvモード: dstExpInLevel = 0（目標Lvにちょうど到達）
+        // ピークモード: peakResult.expGot を使用
+        const targetDstExpInLevel = r.mode === 'peak' ? peakResult.expGot : 0;
+
         // その到達点を目標として calcExpAndCandyMixed を呼ぶ
         const mixedResult = calcExpAndCandyMixed({
           srcLevel: r.srcLevel,
           dstLevel: peakResult.level,
-          dstExpInLevel: peakResult.expGot,  // ピークで到達したexpGotを目標に
+          dstExpInLevel: targetDstExpInLevel,
           expType: r.expType,
           nature: r.nature,
           boost: boostKind.value,
@@ -1446,7 +1483,7 @@ export function useCalcStore(opts: {
         candyNeed = boostCandy + mixedResult.normalCandy;
         boostOrExpAdjustment = boostCandy;
         dynamicDstLevel = peakResult.level;
-        dynamicDstExpInLevel = peakResult.expGot;
+        dynamicDstExpInLevel = targetDstExpInLevel;
       }
 
       // 必要EXPは動的な目標レベルまでのEXP
@@ -1477,6 +1514,7 @@ export function useCalcStore(opts: {
         expNeed,
         boostOrExpAdjustment,
         candyTarget: r.candyTarget,
+        mode: r.mode,
       });
     }
 
@@ -1603,7 +1641,9 @@ export function useCalcStore(opts: {
     const prevTop = anchorEl ? anchorEl.getBoundingClientRect().top : null;
 
     const srcLevel = clampInt(p.srcLevel, 1, MAX_LEVEL, 10);
-    const dstLevel = clampInt(p.dstLevelDefault ?? 50, srcLevel, MAX_LEVEL, srcLevel);
+    // デフォルト目標Lv: 現在Lv < 60 なら 60、現在Lv >= 60 ならシステム上限
+    const defaultDstLevel = srcLevel < 60 ? 60 : MAX_LEVEL;
+    const dstLevel = clampInt(p.dstLevelDefault ?? defaultDstLevel, srcLevel, MAX_LEVEL, srcLevel);
     const toNext = Math.max(0, calcExp(srcLevel, srcLevel + 1, p.expType));
     const remaining =
       p.expRemaining !== undefined && Number.isFinite(p.expRemaining) ? clampInt(p.expRemaining, 0, toNext, toNext) : toNext;
@@ -1656,8 +1696,6 @@ export function useCalcStore(opts: {
       boxId: r.boxId,
       level: r.srcLevel,
       expRemaining: r.expRemaining,
-      expType: r.expType,
-      expGainNature: r.nature,
     };
   }
 

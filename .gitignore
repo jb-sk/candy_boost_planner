@@ -34,10 +34,6 @@ Thumbs.db
 
 # VS Code workspace noise (keep shareable configs)
 .vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
 
 # JetBrains / others
 .idea/
@@ -46,10 +42,6 @@ Thumbs.db
 # Cursor (keep rules/commands if you add them)
 # ------------------------------
 .cursor/*
-!.cursor/rules/
-!.cursor/rules/**
-!.cursor/commands/
-!.cursor/commands/**
 
 # ------------------------------
 # Antigravity

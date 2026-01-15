@@ -328,8 +328,21 @@
               <option value="level">{{ t("box.list.sortLevel") }}</option>
               <option value="dex">{{ t("box.list.sortDex") }}</option>
             </select>
-            <button class="btn btn--ghost" type="button" @click="boxSortDir = boxSortDir === 'asc' ? 'desc' : 'asc'">
-              {{ boxSortDir === "asc" ? t("box.list.sortAsc") : t("box.list.sortDesc") }}
+            <button
+              class="btn btn--ghost"
+              :class="{ 'btn--active': boxSortDir === 'asc' }"
+              type="button"
+              @click="box.applySort('asc')"
+            >
+              {{ t("box.list.sortAsc") }}
+            </button>
+            <button
+              class="btn btn--ghost"
+              :class="{ 'btn--active': boxSortDir === 'desc' }"
+              type="button"
+              @click="box.applySort('desc')"
+            >
+              {{ t("box.list.sortDesc") }}
             </button>
           </div>
         </div>

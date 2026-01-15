@@ -190,6 +190,12 @@ a:hover {
   box-shadow: none;
 }
 
+.btn--active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
 /* Inputs */
 .field__input,
 .boxSearch,
