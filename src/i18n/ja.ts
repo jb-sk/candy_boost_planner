@@ -25,8 +25,8 @@ export const ja = {
   },
   calc: {
     title: "アメブースト計算",
-    applyToBoxTitle: "編集内容（現在Lv/あとEXP/EXPタイプ/性格補正）をボックスへ保存",
-    applyToBox: "ボックスへ",
+    applyToBoxTitle: "編集内容（現在Lv/あとEXP）をボックスへ保存",
+    applyToBox: "ボックス反映",
     maxShardsLabel: "最大かけら",
     maxShardsHelp: "超過しても計算は継続し、超過分を赤字で表示します。",
     boostKindLabel: "アメブ種別",
@@ -299,6 +299,8 @@ export const ja = {
     fileLoaded: "ファイルを読み込みました: {name}",
     fileEmpty: "ファイルが空です",
     fileReadError: "ファイルの読み込みに失敗しました",
+    sorted: "並び替えしました",
+    updated: "更新しました",
   },
   confirm: {
     deleteOne: "削除しますか？\n{label}",

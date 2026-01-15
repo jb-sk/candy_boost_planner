@@ -25,8 +25,8 @@ export const en = {
   },
   calc: {
     title: "Calculator: Multiple Pokémon (Target Level)",
-    applyToBoxTitle: "Save edits (current Lv / EXP to next / EXP type / nature) to Pokémon Box",
-    applyToBox: "To Box",
+    applyToBoxTitle: "Save edits (current Lv / EXP to next) to Pokémon Box",
+    applyToBox: "Apply to Box",
     maxShardsLabel: "Max Shards",
     maxShardsHelp: "Calculation continues even if you exceed the cap; the overage is shown in red.",
     boostKindLabel: "Candy Boost type",
@@ -297,6 +297,8 @@ export const en = {
     fileLoaded: "Loaded file: {name}",
     fileEmpty: "File is empty",
     fileReadError: "Failed to read file",
+    sorted: "Sorted",
+    updated: "Updated",
   },
   confirm: {
     deleteOne: "Delete?\n{label}",

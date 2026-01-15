@@ -420,8 +420,8 @@
           <label class="field field--sm">
             <span class="field__label">
               {{ t("calc.row.dstLevel") }}
-              <span v-if="r.expLeftNext > 0" style="font-weight:normal; margin-left:4px; opacity:0.8">
-                {{ t("calc.row.expLeftNext", { exp: calc.fmtNum(r.expLeftNext) }) }}
+              <span v-if="(calc.getPokemonResult(r.id)?.targetExpToNextLevel ?? 0) > 0" style="font-weight:normal; margin-left:4px; opacity:0.8">
+                {{ t("calc.row.expLeftNext", { exp: calc.fmtNum(calc.getPokemonResult(r.id)?.targetExpToNextLevel ?? 0) }) }}
               </span>
             </span>
             <div class="levelPick">
@@ -645,19 +645,19 @@
             <span class="calcRow__resultItems">
               <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                 <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
-                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'boost') }">{{ calc.fmtNum(getResult(r.id)?.targetBoost ?? 0) }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'boost') }">{{ calc.fmtNum(calc.getPokemonResult(r.id)?.targetBoost ?? 0) }}</span>
               </span>
               <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                 <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
-                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'normal') }">{{ calc.fmtNum(getResult(r.id)?.targetNormal ?? 0) }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'normal') }">{{ calc.fmtNum(calc.getPokemonResult(r.id)?.targetNormal ?? 0) }}</span>
               </span>
               <span class="calcRow__res">
                 <span class="calcRow__k">{{ t(calc.boostKind.value === 'none' ? "calc.row.candy" : "calc.row.candyTotal") }}</span>
-                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'candy') }">{{ calc.fmtNum((getResult(r.id)?.targetBoost ?? 0) + (getResult(r.id)?.targetNormal ?? 0)) }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'candy') }">{{ calc.fmtNum((calc.getPokemonResult(r.id)?.targetBoost ?? 0) + (calc.getPokemonResult(r.id)?.targetNormal ?? 0)) }}</span>
               </span>
               <span class="calcRow__res">
                 <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
-                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'shards') }">{{ calc.fmtNum(getResult(r.id)?.targetShards ?? 0) }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'shards') }">{{ calc.fmtNum(calc.getPokemonResult(r.id)?.targetShards ?? 0) }}</span>
               </span>
               <span class="calcRow__res" v-if="hasItemUsage(r)">
                 <span class="calcRow__k">{{ t("calc.row.itemRequired") }}</span>
@@ -676,7 +676,7 @@
           <div style="display: flex; flex-direction: column; gap: 0;">
             <!-- 個数指定行（個数指定ありかつ不足がある場合のみ表示） -->
             <div
-              v-if="isExpanded(r.id) && hasLimit(r) && getTheoreticalResources(r) && getResult(r.id)?.diagnosis.limitingFactor !== null"
+              v-if="isExpanded(r.id) && hasLimit(r) && getTheoreticalResources(r) && calc.getPokemonResult(r.id)?.diagnosis.limitingFactor !== null"
               class="calcRow__resultRow calcRow__resultRow--used"
               style="margin-bottom: 0; padding-bottom: 4px; border-bottom-left-radius: 0; border-bottom-right-radius: 0;"
             >
@@ -720,7 +720,7 @@
 
             <!-- 使用行（展開時のみ表示） -->
             <div
-              v-if="isExpanded(r.id) && getResult(r.id)"
+              v-if="isExpanded(r.id) && calc.getPokemonResult(r.id)"
               class="calcRow__resultRow calcRow__resultRow--used"
               :style="hasLimit(r) && getTheoreticalResources(r) && getTheoreticalShortageType(r) !== null ? 'margin-top: 0; padding-top: 4px; border-top-left-radius: 0; border-top-right-radius: 0;' : ''"
             >
@@ -729,19 +729,19 @@
               <span class="calcRow__resultItems">
                 <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                   <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'boost') }">{{ calc.fmtNum(getResult(r.id)!.reachableItems.boostCount) }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'boost') }">{{ calc.fmtNum(calc.getPokemonResult(r.id)!.reachableItems.boostCount) }}</span>
                 </span>
                 <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                   <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'normal') }">{{ calc.fmtNum(getResult(r.id)!.reachableItems.normalCount) }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'normal') }">{{ calc.fmtNum(calc.getPokemonResult(r.id)!.reachableItems.normalCount) }}</span>
                 </span>
                 <span class="calcRow__res">
                   <span class="calcRow__k">{{ t(calc.boostKind.value === 'none' ? "calc.row.candy" : "calc.row.candyTotal") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'candy') }">{{ calc.fmtNum(getResult(r.id)!.reachableItems.boostCount + getResult(r.id)!.reachableItems.normalCount) }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'candy') }">{{ calc.fmtNum(calc.getPokemonResult(r.id)!.reachableItems.boostCount + calc.getPokemonResult(r.id)!.reachableItems.normalCount) }}</span>
                 </span>
                 <span class="calcRow__res">
                   <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'shards') }">{{ calc.fmtNum(getResult(r.id)!.reachableItems.shardsCount) }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'shards') }">{{ calc.fmtNum(calc.getPokemonResult(r.id)!.reachableItems.shardsCount) }}</span>
                 </span>
                 <span class="calcRow__res" v-if="getResultItemUsageItems(r).length > 0">
                   <span class="calcRow__k">{{ t("calc.row.itemUsage") }}</span>
@@ -753,29 +753,29 @@
                   </span>
                 </span>
                 <!-- 主要な不足要因（到達Lvの前に表示） -->
-                <span class="calcRow__res" v-if="getResult(r.id)!.diagnosis.limitingFactor === 'candy'">
+                <span class="calcRow__res" v-if="calc.getPokemonResult(r.id)!.diagnosis.limitingFactor === 'candy'">
                   <span class="calcRow__k calcRow__k--danger">{{ t("calc.row.candyShortage") }}</span>
-                  <span class="calcRow__num calcRow__num--danger">{{ getResult(r.id)!.shortage.candy }}</span>
+                  <span class="calcRow__num calcRow__num--danger">{{ calc.getPokemonResult(r.id)!.shortage.candy }}</span>
                 </span>
-                <span class="calcRow__res" v-if="getResult(r.id)!.diagnosis.limitingFactor === 'boost'">
+                <span class="calcRow__res" v-if="calc.getPokemonResult(r.id)!.diagnosis.limitingFactor === 'boost'">
                   <span class="calcRow__k calcRow__k--danger">{{ t("calc.row.boostCandyShortage") }}</span>
-                  <span class="calcRow__num calcRow__num--danger">{{ getResult(r.id)!.shortage.boost }}</span>
+                  <span class="calcRow__num calcRow__num--danger">{{ calc.getPokemonResult(r.id)!.shortage.boost }}</span>
                 </span>
-                <span class="calcRow__res" v-if="getResult(r.id)!.diagnosis.limitingFactor === 'shards'">
+                <span class="calcRow__res" v-if="calc.getPokemonResult(r.id)!.diagnosis.limitingFactor === 'shards'">
                   <span class="calcRow__k calcRow__k--danger">{{ t("calc.row.shardsShortage") }}</span>
-                  <span class="calcRow__num calcRow__num--danger">{{ calc.fmtNum(getResult(r.id)!.shortage.shards) }}</span>
+                  <span class="calcRow__num calcRow__num--danger">{{ calc.fmtNum(calc.getPokemonResult(r.id)!.shortage.shards) }}</span>
                 </span>
                 <span class="calcRow__res">
                   <span class="calcRow__k calcRow__k--info">{{ t("calc.row.reachedLv") }}</span>
-                  <span class="calcRow__num calcRow__num--info">{{ getResult(r.id)!.reachedLevel }}</span>
-                  <span class="calcRow__k calcRow__k--info" v-if="getResult(r.id)!.expToNextLevel > 0" style="margin-left: 4px;">({{ t("calc.row.expRemaining") }}</span>
-                  <span class="calcRow__num calcRow__num--info" v-if="getResult(r.id)!.expToNextLevel > 0">{{ calc.fmtNum(getResult(r.id)!.expToNextLevel) }}</span><span class="calcRow__k calcRow__k--info" v-if="getResult(r.id)!.expToNextLevel > 0">)</span>
+                  <span class="calcRow__num calcRow__num--info">{{ calc.getPokemonResult(r.id)!.reachedLevel }}</span>
+                  <span class="calcRow__k calcRow__k--info" v-if="calc.getPokemonResult(r.id)!.expToNextLevel > 0" style="margin-left: 4px;">({{ t("calc.row.expRemaining") }}</span>
+                  <span class="calcRow__num calcRow__num--info" v-if="calc.getPokemonResult(r.id)!.expToNextLevel > 0">{{ calc.fmtNum(calc.getPokemonResult(r.id)!.expToNextLevel) }}</span><span class="calcRow__k calcRow__k--info" v-if="calc.getPokemonResult(r.id)!.expToNextLevel > 0">)</span>
                 </span>
-                <span class="calcRow__res" v-if="getResult(r.id)!.expToTarget > 0">
+                <span class="calcRow__res" v-if="calc.getPokemonResult(r.id)!.expToTarget > 0">
                   <span class="calcRow__k calcRow__k--info">{{ t("calc.row.remainingExp") }}</span>
-                  <span class="calcRow__num calcRow__num--info">{{ calc.fmtNum(getResult(r.id)!.expToTarget) }}</span>
-                  <span class="calcRow__sleepTime" v-if="getSleepTimeText(r.id, getResult(r.id)!.expToTarget)">
-                    {{ getSleepTimeText(r.id, getResult(r.id)!.expToTarget) }}
+                  <span class="calcRow__num calcRow__num--info">{{ calc.fmtNum(calc.getPokemonResult(r.id)!.expToTarget) }}</span>
+                  <span class="calcRow__sleepTime" v-if="getSleepTimeText(r.id, calc.getPokemonResult(r.id)!.expToTarget)">
+                    {{ getSleepTimeText(r.id, calc.getPokemonResult(r.id)!.expToTarget) }}
                   </span>
                 </span>
               </span>
@@ -784,13 +784,13 @@
         </div>
       </div>
     </div>
-    <div class="boxEmpty" v-else>
-      <div class="boxEmpty__content">
-        <div class="boxEmpty__title">{{ t("calc.empty").split('\n')[0] }}</div>
-        <div class="boxEmpty__list">{{ t("calc.empty").split('\n').slice(1).join('\n') }}</div>
+    <div class="calcEmpty" v-else>
+      <div class="calcEmpty__content">
+        <div class="calcEmpty__title">{{ t("calc.empty").split('\n')[0] }}</div>
+        <div class="calcEmpty__list">{{ t("calc.empty").split('\n').slice(1).join('\n') }}</div>
       </div>
-      <div class="boxEmpty__link">
-        {{ t("calc.emptyLinkPre") }}<button type="button" class="boxEmpty__linkBtn" @click="$emit('open-help')">{{ t("calc.emptyLinkText") }}</button>{{ t("calc.emptyLinkPost") }}
+      <div class="calcEmpty__link">
+        {{ t("calc.emptyLinkPre") }}<button type="button" class="calcEmpty__linkBtn" @click="$emit('open-help')">{{ t("calc.emptyLinkText") }}</button>{{ t("calc.emptyLinkPost") }}
       </div>
     </div>
     </div>
@@ -808,7 +808,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import type { CalcStore, CalcRowView } from "../composables/useCalcStore";
 import { useCandyStore } from "../composables/useCandyStore";
@@ -830,6 +830,35 @@ const props = defineProps<{
 const calc = props.calc;
 const { t, locale } = useI18n();
 const candyStore = useCandyStore();
+
+// レベルピッカー外クリックで閉じる
+function handleLevelPickClickOutside(e: MouseEvent) {
+  const target = e.target as HTMLElement;
+  // ポップオーバー内のクリックは無視
+  if (target.closest(".levelPick__popover") || target.closest(".levelPick__button")) {
+    return;
+  }
+  calc.closeLevelPick();
+}
+
+watch(
+  () => calc.openLevelPickRowId.value,
+  (newVal, oldVal) => {
+    if (newVal !== null && oldVal === null) {
+      // ポップオーバーが開いた: リスナーを追加（少し遅延させて開くクリックを無視）
+      setTimeout(() => {
+        document.addEventListener("click", handleLevelPickClickOutside);
+      }, 0);
+    } else if (newVal === null && oldVal !== null) {
+      // ポップオーバーが閉じた: リスナーを削除
+      document.removeEventListener("click", handleLevelPickClickOutside);
+    }
+  }
+);
+
+onUnmounted(() => {
+  document.removeEventListener("click", handleLevelPickClickOutside);
+});
 
 // 折りたたみ状態を管理（rowId => expanded）
 const expandedRows = ref<Set<string>>(new Set());
@@ -994,10 +1023,7 @@ function getRowPokedexId(r: { pokedexId?: number; boxId?: string }): number | un
   return undefined;
 }
 
-// PokemonLevelUpResult への直接アクセス
-function getResult(rowId: string) {
-  return calc.getPokemonResult(rowId);
-}
+// PokemonLevelUpResult への直接アクセス: calc.getPokemonResult(rowId) を使用
 
 
 // アイテム使用リストの項目型
@@ -1011,7 +1037,7 @@ function buildItemUsageList(
   r: CalcRowView,
   mode: ItemDangerMode
 ): ItemUsageItem[] {
-  const p = getResult(r.id);
+  const p = calc.getPokemonResult(r.id);
   if (!p) return [];
 
   // モードに応じてアイテムソースを決定
@@ -1111,7 +1137,7 @@ function getResultItemUsageItems(r: CalcRowView): ItemUsageItem[] {
 // アイテム使用があるか判定（目標まで行用 = targetItems）
 // 種族アメのみで足りた場合はfalse、タイプアメまたは万能アメを使用した場合のみtrue
 function hasItemUsage(r: CalcRowView): boolean {
-  const p = getResult(r.id);
+  const p = calc.getPokemonResult(r.id);
   if (!p) return false;
   const items = p.targetItems;
   return (
@@ -1133,7 +1159,7 @@ function isDanger(
   row: 'target' | 'limit' | 'reachable',
   field: 'boost' | 'normal' | 'candy' | 'shards'
 ): boolean {
-  const p = getResult(r.id);
+  const p = calc.getPokemonResult(r.id);
   if (!p) return false;
 
   if (field === 'normal' && calc.boostKind.value === 'none') return false;
@@ -1151,7 +1177,7 @@ function isDanger(
 
 // アメ不足判定（🍬アイコン用）
 function isCandyShort(r: CalcRowView): boolean {
-  const p = getResult(r.id);
+  const p = calc.getPokemonResult(r.id);
   if (!p) return false;
   return p.shortage.candy > 0;
 }
@@ -1173,7 +1199,7 @@ interface TheoreticalResources {
 function getTheoreticalResources(r: CalcRowView): TheoreticalResources | null {
   if (!hasLimit(r)) return null;
 
-  const p = getResult(r.id);
+  const p = calc.getPokemonResult(r.id);
   if (!p) return null;
 
   const boostCandy = p.candyTargetBoost ?? p.targetBoost;
@@ -1194,7 +1220,7 @@ type ShortageType = "boost" | "candy" | "shards" | null;
 function getTheoreticalShortageType(r: CalcRowView): ShortageType {
   if (!hasLimit(r)) return null;
 
-  const p = getResult(r.id);
+  const p = calc.getPokemonResult(r.id);
   if (!p) return null;
 
   // diagnosis.limitingFactor を直接使用

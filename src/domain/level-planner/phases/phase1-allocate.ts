@@ -282,6 +282,11 @@ export function applyPhase1Allocate(
       targetBoost: targetRowInfo.boostValue,
       targetNormal: targetRowInfo.normalValue,
       targetShards: targetRowInfo.shardsValue,
+      targetExpToNextLevel: calcRemainingExpInLevel(
+        targetRowInfo.expectedLevel,
+        targetRowInfo.expectedExpInLevel,
+        pokemon.expType
+      ),
       // 個数指定行（理論値、candyTarget がある場合のみ）
       candyTargetItems: candyTargetRowInfo?.items,
       candyTargetBoost: candyTargetRowInfo?.boostValue,
@@ -360,7 +365,7 @@ function calcTargetRowInfo(
   const targetTotal = targetBoost + targetNormal;
 
   // Lv+EXP を計算（アメブ → 通常アメの順）
-  // dstExpInLevel を上限として使用
+  // UIから正しい値が渡される（目標Lvモード: 0、ピークモード: 計算値）
   const dstExpInLevel = pokemon.dstExpInLevel ?? 0;
 
   const boostResult = (targetBoost > 0 && boostKind !== 'none')

@@ -126,6 +126,13 @@ export type PokemonLevelUpRequest = {
    * 指定した個数を使いたい。使えなければ不足表示
    */
   candyTarget?: number;
+
+  /**
+   * 計算モード
+   * - 'targetLevel': 目標Lvモード（デフォルト）- dstExpInLevel = 0
+   * - 'peak': ピークモード - dstExpInLevel を使用
+   */
+  mode?: 'targetLevel' | 'peak';
 };
 
 /**
@@ -357,6 +364,9 @@ export type PokemonLevelUpResult = PokemonLevelUpRequest & {
   /** 目標まで: 必要アイテム詳細 */
   targetItems: ItemUsage;
 
+  /** 目標まで: あとEXP（次レベルまでのEXP） */
+  targetExpToNextLevel: number;
+
   // ────────────────────────────────────────
   // 第2目標（個数指定行用、candyTargetがある場合のみ）
   // ────────────────────────────────────────
@@ -518,6 +528,9 @@ export type PokemonWorkingState = PokemonLevelUpRequest & {
 
   /** 目標まで行: かけら必要量 */
   targetShards?: number;
+
+  /** 目標まで行: あとEXP（次レベルまでのEXP） */
+  targetExpToNextLevel?: number;
 
   // ────────────────────────────────────────
   // 個数指定行（フェーズ1で計算、フェーズ3で補填、candyTarget がある場合のみ）

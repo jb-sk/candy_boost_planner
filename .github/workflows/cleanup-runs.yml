@@ -1,0 +1,30 @@
+# 古いワークフロー実行履歴を自動削除
+# 週1回実行し、7日より古い実行を削除
+name: Cleanup Old Workflow Runs
+
+on:
+  schedule:
+    # 毎週日曜日 UTC 02:00 (JST 11:00) に実行
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      days_to_keep:
+        description: 'Days to keep (delete older runs)'
+        type: number
+        default: 7
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Delete old workflow runs
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          retain_days: ${{ github.event.inputs.days_to_keep || 7 }}
+          keep_minimum_runs: 3

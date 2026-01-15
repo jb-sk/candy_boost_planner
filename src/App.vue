@@ -153,8 +153,6 @@ function applyCalculatorToBox(rowId: string) {
         ...(x.planner ?? {}),
         level: patch.level,
         expRemaining: patch.expRemaining,
-        expType: patch.expType,
-        expGainNature: patch.expGainNature,
       },
       updatedAt: now,
     };
@@ -299,6 +297,12 @@ input.field__input, select.field__input {
   /* margin は環境によって効きが弱いので、視覚的に確実に下げる */
   transform: translateY(4px);
   margin-bottom: -2px; /* サブ表示との距離を詰める */
+}
+.field__labelRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .linkBtn {
@@ -739,6 +743,7 @@ input.field__input, select.field__input {
   gap: 10px;
   margin-top: 10px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow-anchor: none; /* 詳細パネル開閉時のスクロール位置ジャンプを防止 */
 }
 @media (min-width: 560px) {
   .boxList {
@@ -765,112 +770,6 @@ input.field__input, select.field__input {
   font-size: 12px;
   color: color-mix(in oklab, var(--ink) 62%, transparent);
 }
-.calcSlots {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  margin-top: 14px; /* 「結果を1枚にまとめる」下の余白を少し広げる */
-}
-
-/* --- Slot Tabs --- */
-.slotTabs {
-  display: flex;
-  align-items: flex-end;
-  padding: 0 4px;
-}
-.slotTab {
-  appearance: none;
-  font: inherit;
-  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
-  border-bottom: none;
-  border-radius: 8px 8px 0 0;
-  background: color-mix(in oklab, var(--paper) 92%, var(--ink) 8%);
-  color: color-mix(in oklab, var(--ink) 60%, transparent);
-  padding: 8px 16px;
-  cursor: pointer;
-  margin-right: -1px;
-  position: relative;
-  font-weight: 700;
-  font-size: 13px;
-  flex: 1;
-  /* Prevent mobile wrap: keep "スロットN" + badge in one line */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  white-space: nowrap;
-  transition: background 0.2s, color 0.2s;
-}
-.slotTab:first-child {
-  border-top-left-radius: 12px;
-}
-.slotTab:last-child {
-  border-top-right-radius: 12px;
-  margin-right: 0;
-}
-.slotTab--active {
-  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%); /* Match content bg */
-  color: var(--ink);
-  z-index: 2;
-  padding-top: 10px; /* Pop up slightly */
-  margin-top: -2px;
-  border-bottom: 1px solid transparent; /* Hide border */
-  margin-bottom: -1px; /* Overlap content border */
-}
-
-/* Mobile: remove excess padding so tabs don't wrap */
-@media (max-width: 560px) {
-  .slotTabs { padding: 0 2px; }
-  .slotTab {
-    padding: 7px 10px;
-    font-size: 12px;
-    gap: 8px;
-  }
-  .slotTab--active {
-    padding-top: 8px;
-    margin-top: -1px;
-  }
-  .tab__count {
-    padding: 2px 6px;
-    font-size: 11px;
-  }
-}
-
-.slotContent {
-  border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
-  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
-  border-radius: 0;
-
-  padding: 10px 12px;
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 12px;
-  flex-wrap: wrap; /* 画面が狭い時は自然に折り返し */
-}
-.calcSlot__actions {
-  display: inline-flex;
-  gap: 12px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.calcSlot__state {
-  margin-left: 8px; /* ボタンの右隣に寄せつつ、少しだけ間を空ける */
-  white-space: nowrap;
-}
-.calcSlot__btn {
-  white-space: nowrap;
-  padding: 4px 10px; /* 少し押しやすく */
-}
-/* If first tab is active, fix top-left corner */
-.slotTabs:has(.slotTab--active:first-child) + .slotContent {
-  border-top-left-radius: 0;
-}
-/* Fallback for no :has support (though modern browsers have it) or just keep 0 radius for top corners generally?
-   Let's keep top-left 0 as implied by the design where tabs are usually left-aligned. */
-
 
 .boxTile__fav {
   margin-left: 8px;
@@ -1093,6 +992,45 @@ input.field__input, select.field__input {
   }
 }
 
+.boxEmpty {
+  text-align: left;
+  width: fit-content;
+  margin: 60px auto;
+  padding: 0 20px;
+  font-size: 15px;
+  font-weight: 500;
+  color: color-mix(in oklab, var(--ink) 60%, transparent);
+  white-space: pre-line;
+  line-height: 1.8;
+}
+.boxEmpty__content {
+  margin-bottom: 24px;
+}
+.boxEmpty__title {
+  margin-bottom: 10px;
+}
+.boxEmpty__link {
+  font-size: 14px;
+}
+.boxEmpty__linkBtn {
+  appearance: none;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0 4px;
+  font-size: inherit;
+  font-family: inherit;
+  font-weight: 700;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+  display: inline;
+}
+.boxEmpty__linkBtn:hover {
+  text-decoration: none;
+  color: var(--accent-hover);
+}
+
 .suggest {
   position: relative;
 }
@@ -1171,6 +1109,7 @@ input.field__input, select.field__input {
   padding: 12px 12px;
   border: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
   background: color-mix(in oklab, var(--paper) 97%, var(--ink) 3%);
+  overflow-anchor: none; /* 詳細パネル開閉時のスクロール位置ジャンプを防止 */
 }
 .boxDetail__head {
   display: flex;
@@ -1308,12 +1247,6 @@ input.field__input, select.field__input {
   background: color-mix(in oklab, var(--paper) 99%, var(--ink) 1%);
   outline: none;
   resize: vertical;
-}
-.boxEmpty {
-  font-family: var(--font-body);
-  font-size: 13px;
-  color: color-mix(in oklab, var(--ink) 60%, transparent);
-  margin: 12px 0 0;
 }
 .result {
   margin-top: 14px;
