@@ -17,7 +17,7 @@ export const ja = {
   app: {
     title: "アメブプランナー",
     kicker: "Candy Boost Event Planner",
-    lede: "複数ポケモンのアメブースト配分を、総アメ・総かけら制約つきでリアルタイムに計画します。",
+    lede: "アメとかけらの合計コストをチェックしながら、ポケモンの育成をまとめてシミュレーションします。",
   },
   nav: {
     calc: "計算機",
@@ -78,7 +78,7 @@ export const ja = {
       expLeftNext: "(あとEXP {exp})",
       expType: "EXPタイプ",
       expTypeFixedHint: "EXPタイプは種族固定のため編集できません。",
-      nature: "EXP補正（性格）",
+      nature: "EXP性格補正",
       natureNormal: "-",
       natureUp: "▲",
       natureDown: "▼",
@@ -193,7 +193,7 @@ export const ja = {
       labelOpt: "表記名",
       labelOptPh: "例: ピカチュウA / 推し個体",
       level: "現在Lv",
-      nature: "EXP補正（性格）",
+      nature: "EXP性格補正",
       specialtyOpt: "とくい",
       specialtyUnknown: "不明",
       expType: "EXPタイプ",

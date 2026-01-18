@@ -11,11 +11,11 @@
 
     <div class="boxGrid">
       <details class="boxDisclosure">
-        <summary class="boxDisclosure__summary">
+        <summary class="boxDisclosure__head">
           <span class="boxDisclosure__title">{{ t("box.addNew") }}</span>
         </summary>
-        <div class="boxCard boxCard--inner">
-          <p class="boxCard__desc">
+        <div class="boxCard boxDisclosure__inner">
+          <p class="boxDisclosure__note">
             {{ t("box.addNewDesc") }}
           </p>
           <div class="boxAddGrid">
@@ -65,7 +65,7 @@
               <span class="field__label">{{ t("box.add.level") }}</span>
               <input v-model.number="addLevel" type="number" min="1" :max="MAX_LEVEL" class="field__input" />
             </label>
-            <label class="field field--sm">
+            <label class="field">
               <span class="field__label">{{ t("box.add.nature") }}</span>
               <NatureSelect
                 v-model="addNature"
@@ -200,7 +200,53 @@
         </div>
       </details>
 
-      <BoxImportDisclosure v-model:importText="importText" v-model:importStatus="importStatus" @import="(fav) => box.onImport({ markFavorite: fav })" />
+      <details class="boxDisclosure">
+        <summary class="boxDisclosure__head">
+          <span class="boxDisclosure__title">{{ t("box.import.title") }}</span>
+        </summary>
+        <div class="boxCard boxDisclosure__inner">
+          <p class="boxDisclosure__note">
+            {{ t("box.import.desc") }}
+          </p>
+          <textarea
+            ref="textareaRef"
+            :value="importText"
+            class="boxTextarea"
+            rows="7"
+            :placeholder="t('box.import.ph')"
+            @input="importText = ($event.target as HTMLTextAreaElement).value"
+            @paste="onPasteEvent"
+          ></textarea>
+          <label class="boxImport__favCheck">
+            <input type="checkbox" v-model="importFavorite" />
+            {{ t("box.import.addAllFavorite") }}
+          </label>
+          <div class="boxCard__actions boxCard__actions--row">
+            <button class="btn btn--primary" type="button" @click="box.onImport({ markFavorite: importFavorite })">
+              {{ t("box.import.run") }}
+            </button>
+            <button class="btn btn--ghost" type="button" @click="onPasteImport">
+              {{ t("box.import.paste") }}
+            </button>
+            <label class="btn btn--ghost boxImport__fileLabel">
+              {{ t("box.import.fileSelect") }}
+              <input
+                type="file"
+                accept=".txt,text/plain"
+                class="boxImport__fileInput"
+                @change="onFileSelect"
+              />
+            </label>
+            <button class="btn btn--ghost" type="button" @click="importText = ''">
+              {{ t("common.clear") }}
+            </button>
+          </div>
+          <div class="boxCard__hints">
+            <span class="boxCard__status boxCard__status--hint" aria-hidden="true">{{ t("box.import.pasteHelp") }}</span>
+            <span class="boxCard__status" v-if="importStatus">{{ importStatus }}</span>
+          </div>
+        </div>
+      </details>
 
       <div class="boxCard">
         <div class="boxCard__head">
@@ -330,7 +376,7 @@
             </select>
             <button
               class="btn btn--ghost"
-              :class="{ 'btn--active': boxSortDir === 'asc' }"
+              :class="{ 'btn--primary': boxSortDir === 'asc' }"
               type="button"
               @click="box.applySort('asc')"
             >
@@ -338,7 +384,7 @@
             </button>
             <button
               class="btn btn--ghost"
-              :class="{ 'btn--active': boxSortDir === 'desc' }"
+              :class="{ 'btn--primary': boxSortDir === 'desc' }"
               type="button"
               @click="box.applySort('desc')"
             >
@@ -359,7 +405,7 @@
               <div class="boxTile__name">{{ box.displayBoxTitle(e) }}</div>
               <div class="boxTile__lv">
                 Lv{{ e.planner?.level ?? e.derived?.level ?? "-" }}
-                <span v-if="e.favorite" class="boxTile__fav" :aria-label="t('box.list.favorite')" :title="t('box.list.favorite')">★</span>
+                <span v-if="e.favorite" class="boxTile__fav" :aria-label="t('box.list.favorite')" :title="t('box.list.favorite')" v-html="iconStarSvg"></span>
               </div>
             </button>
 
@@ -650,16 +696,16 @@
                           <option v-for="tt in IngredientTypes" :key="tt" :value="tt">{{ tt }}</option>
                         </select>
                       </div>
-                      <div v-if="selectedDetail.ingredientSlots">
+                      <div v-if="selectedDetail.ingredientSlots" class="boxDetail__ingredientsList">
                         {{ selectedDetail.ingredientSlots.map(box.toIngredientLabel).join(" / ") }}
                       </div>
-                      <div v-else>{{ t("box.detail.unknown") }}</div>
+                      <div v-else class="boxDetail__ingredientsList">{{ t("box.detail.unknown") }}</div>
                     </div>
                   </div>
 
                   <div class="boxDetail__kv">
                     <div class="boxDetail__k">{{ t("box.detail.subSkills") }}</div>
-                    <div class="boxDetail__v boxDetail__v--mono">
+                    <div class="boxDetail__v">
                       <div class="boxDetail__subEdit">
                         <div v-for="lv in [10, 25, 50, 75, 100]" :key="lv" class="subField">
                           <span class="subField__k">Lv{{ lv }}</span>
@@ -698,7 +744,7 @@ import { getPokemonType } from "../domain/pokesleep/pokemon-names";
 import { getPokemonNameLocalized } from "../domain/pokesleep/pokemon-name-localize";
 import { useCandyStore } from "../composables/useCandyStore";
 import NatureSelect from "./NatureSelect.vue";
-import BoxImportDisclosure from "./BoxImportDisclosure.vue";
+
 import type { BoxStore } from "../composables/useBoxStore";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 
@@ -786,4 +832,59 @@ function onCreateToBox(ev: MouseEvent) {
     box.onCreateManual({ mode: "toBox" });
   }
 }
+
+const textareaRef = ref<HTMLTextAreaElement | null>(null);
+const importFavorite = ref(false);
+
+function onFileSelect(ev: Event) {
+  const input = ev.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    const text = reader.result;
+    if (typeof text === "string" && text.length) {
+      importText.value = text;
+      importStatus.value = t("status.fileLoaded", { name: file.name });
+    } else {
+      importStatus.value = t("status.fileEmpty");
+    }
+  };
+  reader.onerror = () => {
+    importStatus.value = t("status.fileReadError");
+  };
+  reader.readAsText(file, "UTF-8");
+  // 同じファイルを再選択できるようにリセット
+  input.value = "";
+}
+
+function onPasteEvent(ev: ClipboardEvent) {
+  const text = ev.clipboardData?.getData("text/plain");
+  if (typeof text === "string" && text.length) {
+    ev.preventDefault();
+    importText.value = text;
+    importStatus.value = t("status.pasted");
+  }
+}
+
+async function onPasteImport() {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const nav: any = navigator as any;
+    if (nav?.clipboard?.readText) {
+      const t0 = await nav.clipboard.readText();
+      if (typeof t0 === "string" && t0.length) {
+        importText.value = t0;
+        importStatus.value = t("status.pasted");
+        return;
+      }
+    }
+    importStatus.value = t("status.pasteNotAvailable");
+  } catch {
+    importStatus.value = t("status.pasteNotAvailable");
+  }
+}
 </script>
+
+<style src="./BoxPanel.css"></style>
