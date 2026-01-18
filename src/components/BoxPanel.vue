@@ -242,8 +242,7 @@
             </button>
           </div>
           <div class="boxCard__hints">
-            <span class="boxCard__status boxCard__status--hint" aria-hidden="true">{{ t("box.import.pasteHelp") }}</span>
-            <span class="boxCard__status" v-if="importStatus">{{ importStatus }}</span>
+            <span class="boxCard__status--hint" aria-hidden="true">{{ t("box.import.pasteHelp") }}</span>
           </div>
         </div>
       </details>

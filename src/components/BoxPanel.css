@@ -329,13 +329,10 @@
   margin-top: 8px;
 }
 
-.boxCard__status {
+.boxCard__status--hint {
   font-family: var(--font-body);
   font-size: 12px;
   color: color-mix(in oklab, var(--ink) 60%, transparent);
-}
-
-.boxCard__status--hint {
   flex-basis: 100%;
   margin-top: 4px;
 }

@@ -595,6 +595,10 @@
   min-height: 120px;
 }
 
+.calcSlotContainer:focus-within {
+  z-index: 20;
+}
+
 .calcRows {
   display: grid;
   gap: 10px;
