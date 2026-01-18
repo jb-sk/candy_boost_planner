@@ -602,6 +602,14 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     importStatus.value = t("status.sorted");
   }
 
+  // 初期化時にソートを実行（リロード時にソート順を維持）
+  nextTick(() => {
+    if (boxEntries.value.length > 0) {
+      applySort(boxSortDir.value);
+      importStatus.value = ""; // 初期化時はステータスをクリア
+    }
+  });
+
   // フィルタ変更時やデータ変更時はソート順を維持しつつリストを更新
   const sortedBoxEntries = computed(() => {
     const filtered = filteredBoxEntries.value;

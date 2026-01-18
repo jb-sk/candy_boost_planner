@@ -260,9 +260,6 @@
       </button>
     </div>
 
-
-
-
     <div class="calcSlots">
       <div class="slotTabs">
         <template v-for="i in 3" :key="i">
@@ -501,8 +498,8 @@
             />
           </label>
 
-          <label class="field field--sm field--boost-control" :class="{ 'is-none': calc.boostKind.value === 'none' }">
-            <span class="field__label">{{ calc.boostKind.value === 'none' ? t("calc.row.boostReachLevelNormal") : t("calc.row.boostReachLevel") }}</span>
+          <label class="field field--sm" v-if="calc.boostKind.value !== 'none'">
+            <span class="field__label">{{ t("calc.row.boostReachLevel") }}</span>
             <div class="levelPick">
               <button
                 type="button"
@@ -510,7 +507,6 @@
                 @click.stop="calc.openBoostLevelPick(r.id)"
                 aria-haspopup="dialog"
                 :aria-expanded="calc.openLevelPickRowId.value === r.id && calc.openLevelPickKind.value === 'boost'"
-                :disabled="calc.boostKind.value === 'none'"
               >
                 {{ r.ui.boostReachLevel }}
               </button>
@@ -565,8 +561,8 @@
               </div>
             </div>
           </label>
-          <label class="field field--sm field--boost-control" :class="{ 'is-none': calc.boostKind.value === 'none' }">
-            <span class="field__label">{{ calc.boostKind.value === 'none' ? t("calc.row.boostRatioNormal") : t("calc.row.boostRatio") }}</span>
+          <label class="field field--sm" v-if="calc.boostKind.value !== 'none'">
+            <span class="field__label">{{ t("calc.row.boostRatio") }}</span>
             <input
               :value="r.ui.boostRatioPct"
               type="range"
@@ -575,7 +571,6 @@
               step="1"
               class="field__range"
               @input="calc.onRowBoostRatio(r.id, ($event.target as HTMLInputElement).value)"
-              :disabled="calc.boostKind.value === 'none'"
             />
             <span class="field__sub">{{ r.ui.boostRatioPct }}%</span>
           </label>
@@ -631,7 +626,6 @@
           </div>
         </div>
 
-
         <!-- 必要/使用の折りたたみ表示 -->
         <div class="calcRow__resultCollapse">
           <!-- 必要行（クリックで展開） -->
@@ -670,7 +664,6 @@
               </span>
             </span>
           </div>
-
 
           <!-- 個数指定行と到達可能行をグループ化して表示（隙間をなくすため） -->
           <div style="display: flex; flex-direction: column; gap: 0;">
@@ -716,7 +709,6 @@
                 </span>
               </span>
             </div>
-
 
             <!-- 使用行（展開時のみ表示） -->
             <div
@@ -794,7 +786,6 @@
       </div>
     </div>
     </div>
-
 
     <div v-if="hintState.visible" class="hintOverlay" @click.stop="closeHint"></div>
     <div
@@ -1025,7 +1016,6 @@ function getRowPokedexId(r: { pokedexId?: number; boxId?: string }): number | un
 
 // PokemonLevelUpResult への直接アクセス: calc.getPokemonResult(rowId) を使用
 
-
 // アイテム使用リストの項目型
 type ItemUsageItem = { label: string; value: number; isDanger: boolean };
 
@@ -1187,8 +1177,6 @@ function hasLimit(r: CalcRowView): boolean {
   return r.candyTarget != null && r.candyTarget >= 0;
 }
 
-
-
 // 個数指定がある場合の理論値ベースのリソースを取得
 interface TheoreticalResources {
   candy: number;
@@ -1226,8 +1214,6 @@ function getTheoreticalShortageType(r: CalcRowView): ShortageType {
   // diagnosis.limitingFactor を直接使用
   return p.diagnosis.limitingFactor;
 }
-
-
 
 // ヒントアイコン用
 // ヒントポップオーバーの状態

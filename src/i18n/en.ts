@@ -17,7 +17,7 @@ export const en = {
   app: {
     title: "CandyBoost Planner",
     kicker: "Candy Boost Event Planner",
-    lede: "Plan Candy Boost allocation across multiple Pokémon in real time under total candy and Dream Shards constraints.",
+    lede: "Simulate leveling for multiple Pokémon while monitoring total Candy and Shard costs.",
   },
   nav: {
     calc: "Calculator",
