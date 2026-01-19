@@ -13,6 +13,7 @@ export const ja = {
     save: "保存",
     delete: "削除",
     optional: "（任意）",
+    required: "（必須）",
   },
   app: {
     title: "アメブプランナー",
@@ -120,7 +121,7 @@ export const ja = {
       typeCandyToggle: "タイプアメを設定",
       typeS: "S",
       typeM: "M",
-      usageLabel: "万能アメ使用",
+      usageLabel: "万能アメ",
       usagePct: "{pct}%",
       // 補填表示用
       typeAbbr: "タ",
@@ -184,9 +185,9 @@ export const ja = {
     title: "ポケモンボックス",
     clearAll: "ボックス全消去",
     addNew: "新規追加",
-    addNewDesc: "「ポケモン名」から図鑑番号を自動判定してフォームを補完します。",
+    addNewDesc: "「ポケモン名」から図鑑番号を自動判定して入力フォームを補完します。",
     add: {
-      nameDex: "ポケモン名（必須）",
+      nameDex: "ポケモン名",
       nameDexPh: "例: ピカチュウ / ピカチュウ (ホリデー)",
       detected: "判定: {name}（#{id} / EXP{expType}）",
       noMatch: "一致なし（手入力扱い）",
@@ -209,8 +210,8 @@ export const ja = {
     },
     import: {
       title: "インポート（にとよん非公式サポート）",
-      desc: "1行=1匹（iv または iv＠nickname）。食材/サブスキル等の不要データも含めて raw を保持します。",
-      ph: "ここに貼り付け（複数行）",
+      desc: "「個体値計算機 for ポケモンスリープ」からエクスポートしたテキストデータを張り付けてください。",
+      ph: "ここに貼り付け",
       paste: "貼り付け",
       fileSelect: "ファイルから読込",
       pasteHelp: "iOSでペーストできない場合: テキストエリアをタップ後、画面下部のキーボード上でペーストするか、ファイルで読み込んでください",
@@ -249,6 +250,7 @@ export const ja = {
       selected: "選択中: {name}",
     },
     detail: {
+      level: "レベル",
       speciesUnknownHint: "（種族不明のため仮設定）",
       unknownAuto: "不明（自動）",
       unknown: "（不明）",
@@ -264,7 +266,6 @@ export const ja = {
       relinkButton: "再リンク",
       relinkCandidate: "候補: {name}（#{id} / EXP{expType}）",
       relinkNoCandidate: "候補なし",
-      level: "レベル",
     },
     deleteFromBox: "ボックスから削除",
     empty: "まだ1匹もありません。上でインポートするか、新規追加してください。",

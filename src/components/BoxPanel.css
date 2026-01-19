@@ -49,8 +49,9 @@
 .boxDisclosure__note {
   font-family: var(--font-body);
   margin: 0 0 10px;
-  font-size: 12px;
-  color: color-mix(in oklab, var(--ink) 60%, transparent);
+  line-height: 1.5;
+  font-size: 13px;
+  color: color-mix(in oklab, var(--ink) 90%, transparent);
 }
 
 /* --- Add New Grid (Form) --- */
@@ -253,10 +254,8 @@
   margin: 0;
 }
 
-/* --- Import Section --- */
 .boxTextarea {
   width: 100%;
-  font-family: var(--font-body);
   font-family: var(--font-body);
   font-size: 15px;
   padding: 8px 12px;

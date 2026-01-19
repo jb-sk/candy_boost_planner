@@ -345,61 +345,12 @@
           <label class="field field--sm">
             <span class="field__label">{{ t("calc.row.srcLevel") }}</span>
             <div class="levelPick">
-              <button
-                type="button"
-                class="field__input field__input--button levelPick__button"
-                @click.stop="calc.openSrcLevelPick(r.id)"
-                aria-haspopup="dialog"
-                :aria-expanded="calc.openLevelPickRowId.value === r.id && calc.openLevelPickKind.value === 'src'"
-              >
-                {{ r.srcLevel }}
-              </button>
-
-              <div
-                v-if="calc.openLevelPickRowId.value === r.id && calc.openLevelPickKind.value === 'src'"
-                class="levelPick__popover"
-                role="dialog"
-                :aria-label="t('calc.row.pickLevelAria', { label: t('calc.row.srcLevel') })"
-              >
-                <div class="levelPick__top">
-                  <div class="levelPick__title">{{ t("calc.row.srcLevel") }}: Lv{{ r.srcLevel }}</div>
-                  <button class="btn btn--ghost btn--xs" type="button" @mousedown.stop.prevent @click.stop.prevent="calc.closeLevelPick()">
-                    {{ t("common.close") }}
-                  </button>
-                </div>
-
-                <div class="levelPick__sliderRow">
-                  <button class="btn btn--ghost btn--xs" type="button" @click="calc.nudgeSrcLevel(r.id, -1)" :disabled="r.srcLevel <= 1">
-                    ◀
-                  </button>
-                  <input
-                    class="levelPick__range"
-                    type="range"
-                    min="1"
-                    :max="r.dstLevel"
-                    step="1"
-                    :value="r.srcLevel"
-                    @input="calc.setSrcLevel(r.id, ($event.target as HTMLInputElement).value)"
-                  />
-                  <button class="btn btn--ghost btn--xs" type="button" @click="calc.nudgeSrcLevel(r.id, 1)" :disabled="r.srcLevel >= r.dstLevel">
-                    ▶
-                  </button>
-                </div>
-
-                <div class="levelPick__chips">
-                  <button
-                    v-for="lv in levelPresets"
-                    :key="`src_${lv}`"
-                    type="button"
-                    class="levelChip"
-                    :class="{ 'levelChip--on': lv === r.srcLevel }"
-                    @click="calc.setSrcLevel(r.id, lv)"
-                    :disabled="lv < 1 || lv > r.dstLevel"
-                  >
-                    {{ lv }}
-                  </button>
-                </div>
-              </div>
+              <LevelPicker
+                :model-value="r.srcLevel"
+                @update:model-value="calc.setSrcLevel(r.id, $event)"
+                :label="`${t('calc.row.srcLevel')}: Lv${r.srcLevel}`"
+                :max="r.dstLevel"
+              />
             </div>
           </label>
 
@@ -422,69 +373,17 @@
               </span>
             </span>
             <div class="levelPick">
-              <button
-                type="button"
-                class="field__input field__input--button levelPick__button"
-                @click.stop="calc.openDstLevelPick(r.id)"
-                aria-haspopup="dialog"
-                :aria-expanded="calc.openLevelPickRowId.value === r.id && calc.openLevelPickKind.value === 'dst'"
+              <LevelPicker
+                :model-value="r.dstLevel"
+                @update:model-value="calc.setDstLevel(r.id, $event)"
+                :min="r.srcLevel"
+                :max="MAX_LEVEL"
               >
-                {{ r.dstLevel }}
-              </button>
-
-              <div
-                v-if="calc.openLevelPickRowId.value === r.id && calc.openLevelPickKind.value === 'dst'"
-                class="levelPick__popover"
-                role="dialog"
-                :aria-label="t('calc.row.pickLevelAria', { label: t('calc.row.dstLevel') })"
-              >
-                <div class="levelPick__top">
-                  <div class="levelPick__title">
-                    Lv{{ r.srcLevel }} → Lv{{ r.dstLevel }}
-                    <span v-if="isCandyShort(r)" title="アメ不足" style="font-size: 1.2em; vertical-align: middle; margin-left: 4px;">🍬</span>
-                  </div>
-                  <button class="btn btn--ghost btn--xs" type="button" @mousedown.stop.prevent @click.stop.prevent="calc.closeLevelPick()">
-                    {{ t("common.close") }}
-                  </button>
-                </div>
-
-                <div class="levelPick__sliderRow">
-                  <button
-                    class="btn btn--ghost btn--xs"
-                    type="button"
-                    @click="calc.nudgeDstLevel(r.id, -1)"
-                    :disabled="r.dstLevel <= r.srcLevel"
-                  >
-                    ◀
-                  </button>
-                  <input
-                    class="levelPick__range"
-                    type="range"
-                    :min="r.srcLevel"
-                    :max="MAX_LEVEL"
-                    step="1"
-                    :value="r.dstLevel"
-                    @input="calc.setDstLevel(r.id, ($event.target as HTMLInputElement).value)"
-                  />
-                  <button class="btn btn--ghost btn--xs" type="button" @click="calc.nudgeDstLevel(r.id, 1)" :disabled="r.dstLevel >= MAX_LEVEL">
-                    ▶
-                  </button>
-                </div>
-
-                <div class="levelPick__chips">
-                  <button
-                    v-for="lv in levelPresets"
-                    :key="lv"
-                    type="button"
-                    class="levelChip"
-                    :class="{ 'levelChip--on': lv === r.dstLevel }"
-                    @click="calc.setDstLevel(r.id, lv)"
-                    :disabled="lv < r.srcLevel"
-                  >
-                    {{ lv }}
-                  </button>
-                </div>
-              </div>
+                <template #title>
+                  Lv{{ r.srcLevel }} → Lv{{ r.dstLevel }}
+                  <span v-if="isCandyShort(r)" title="アメ不足" style="font-size: 1.2em; vertical-align: middle; margin-left: 4px;">🍬</span>
+                </template>
+              </LevelPicker>
             </div>
           </label>
           <label class="field field--sm" v-if="getRowPokedexId(r)">
@@ -801,6 +700,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
+import LevelPicker from "./LevelPicker.vue";
 import type { CalcStore, CalcRowView } from "../composables/useCalcStore";
 import { useCandyStore } from "../composables/useCandyStore";
 import { PokemonTypes, getTypeName } from "../domain/pokesleep/pokemon-types";
@@ -1249,6 +1149,7 @@ function showHint(ev: MouseEvent, message: string) {
 function closeHint() {
   hintState.value.visible = false;
 }
+
 </script>
 
 <style scoped src="./CalcPanel.css"></style>
