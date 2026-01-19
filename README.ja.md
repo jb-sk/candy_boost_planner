@@ -1,4 +1,4 @@
-# CandyBoost Planner
+# アメブプランナー
 
 [English README](README.md)
 

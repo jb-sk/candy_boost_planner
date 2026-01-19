@@ -20,7 +20,10 @@
           </p>
           <div class="boxAddGrid">
             <label class="field field--name">
-              <span class="field__label">{{ t("box.add.nameDex") }}</span>
+              <span class="field__label">
+                {{ t("box.add.nameDex") }}
+                <span style="color: var(--danger)">{{ t("common.required") }}</span>
+              </span>
               <div class="suggest">
                 <input
                   v-model="addName"
@@ -61,10 +64,10 @@
               <span class="field__label">{{ t("box.add.labelOpt") }}</span>
               <input v-model="addLabel" class="field__input" :placeholder="t('box.add.labelOptPh')" />
             </label>
-            <label class="field">
-              <span class="field__label">{{ t("box.add.level") }}</span>
-              <input v-model.number="addLevel" type="number" min="1" :max="MAX_LEVEL" class="field__input" />
-            </label>
+            <div class="field">
+              <span class="field__label">{{ t("box.detail.level") }}</span>
+              <LevelPicker v-model="addLevel" :label="t('box.detail.level')" :max="MAX_LEVEL" />
+            </div>
             <label class="field">
               <span class="field__label">{{ t("box.add.nature") }}</span>
               <NatureSelect
@@ -517,71 +520,12 @@
                     <div class="boxDetail__k">{{ t("box.detail.level") }}</div>
                     <div class="boxDetail__v">
                       <div class="levelPick">
-                        <button
-                          type="button"
-                          class="field__input field__input--button levelPick__button"
-                          @click.stop="box.toggleBoxLevelPick"
-                          aria-haspopup="dialog"
-                          :aria-expanded="openBoxLevelPick"
-                        >
-                          {{ selectedDetail?.level ?? 1 }}
-                        </button>
-
-                        <div
-                          v-if="openBoxLevelPick"
-                          class="levelPick__popover"
-                          role="dialog"
-                          :aria-label="t('calc.row.pickLevelAria', { label: t('box.detail.level') })"
-                        >
-                          <div class="levelPick__top">
-                            <div class="levelPick__title">{{ t("box.detail.level") }}</div>
-                            <button class="btn btn--ghost btn--xs" type="button" @mousedown.stop.prevent @click.stop.prevent="box.closeBoxLevelPick">
-                              {{ t("common.close") }}
-                            </button>
-                          </div>
-
-                          <div class="levelPick__sliderRow">
-                            <button
-                              class="btn btn--ghost btn--xs"
-                              type="button"
-                              @click="box.nudgeBoxLevel(-1)"
-                              :disabled="(selectedDetail?.level ?? 1) <= 1"
-                            >
-                              ◀
-                            </button>
-                            <input
-                              class="levelPick__range"
-                              type="range"
-                              min="1"
-                              :max="MAX_LEVEL"
-                              step="1"
-                              :value="selectedDetail?.level ?? 1"
-                              @input="box.setBoxLevel(($event.target as HTMLInputElement).value)"
-                            />
-                            <button
-                              class="btn btn--ghost btn--xs"
-                              type="button"
-                              @click="box.nudgeBoxLevel(1)"
-                              :disabled="(selectedDetail?.level ?? 1) >= MAX_LEVEL"
-                            >
-                              ▶
-                            </button>
-                          </div>
-
-                          <div class="levelPick__chips">
-                            <button
-                              v-for="lv in levelPresets"
-                              :key="`box_${lv}`"
-                              type="button"
-                              class="levelChip"
-                              :class="{ 'levelChip--on': lv === (selectedDetail?.level ?? 1) }"
-                              @click="box.setBoxLevel(lv)"
-                              :disabled="lv < 1 || lv > MAX_LEVEL"
-                            >
-                              {{ lv }}
-                            </button>
-                          </div>
-                        </div>
+                        <LevelPicker
+                          :model-value="selectedDetail?.level ?? 1"
+                          @update:model-value="box.setBoxLevel($event)"
+                          :label="t('box.detail.level')"
+                          :max="MAX_LEVEL"
+                        />
                       </div>
                     </div>
                   </div>
@@ -819,6 +763,7 @@ const relinkOpen = box.relinkOpen;
 const selectedNature = box.selectedNature;
 
 import { ref } from "vue";
+import LevelPicker from "./LevelPicker.vue";
 const addToCalcChecked = ref(true);
 
 function onCreateToBox(ev: MouseEvent) {
