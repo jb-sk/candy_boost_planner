@@ -272,7 +272,10 @@ function createAsk() {
 
 async function confirmOrAbort({ interactive, title, details }) {
   const canPrompt = !!(interactive && process.stdin.isTTY && process.stdout.isTTY);
-  if (!canPrompt) return true;
+  if (!canPrompt) {
+    if (details) console.log(details);
+    return true;
+  }
   const ask = createAsk();
   try {
     const ans = normalize(

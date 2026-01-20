@@ -28,7 +28,15 @@ function main() {
   const forceNonInteractive = hasArg("--non-interactive");
 
   const interactive = forceNonInteractive ? false : forceInteractive ? true : Boolean(process.stdin.isTTY);
-  const masterArgs = interactive ? ["scripts/generate-pokemon-master.mjs", "--interactive"] : ["scripts/generate-pokemon-master.mjs", "--non-interactive"];
+
+  // Pass --dry-run if present
+  const dryRun = hasArg("--dry-run");
+  const extraArgs = [];
+  if (dryRun) extraArgs.push("--dry-run");
+
+  const masterArgs = interactive
+    ? ["scripts/generate-pokemon-master.mjs", "--interactive", ...extraArgs]
+    : ["scripts/generate-pokemon-master.mjs", "--non-interactive", ...extraArgs];
 
   // Step 1: wiki -> intermediate db json
   if (process.platform === "win32") {
