@@ -1859,6 +1859,24 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%8F%E3%82%AC%E3%83%8D%E3%83%BC%E3%83%AB"
   },
   {
+    "dexNo": 213,
+    "pokedexId": 213,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "ツボツボ",
+    "baseNameJa": "ツボツボ",
+    "specialty": "Skills",
+    "type": "Bug",
+    "typeJa": "むし",
+    "expType": 600,
+    "ingredients": {
+      "a": "oil",
+      "b": "coffee",
+      "c": "honey"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%84%E3%83%9C%E3%83%84%E3%83%9C"
+  },
+  {
     "dexNo": 214,
     "pokedexId": 214,
     "form": 0,
