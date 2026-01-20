@@ -121,7 +121,7 @@
               </select>
             </label>
 
-            <label class="field field--wide">
+            <div class="field field--wide">
               <span class="field__label">{{ t("box.add.subSkills") }}</span>
               <div class="subGrid">
                 <label class="subField">
@@ -185,7 +185,7 @@
                   <span v-if="addSubErrors['100']" class="field__error">{{ addSubErrors["100"] }}</span>
                 </label>
               </div>
-            </label>
+            </div>
             <label class="boxAddFav">
               <input type="checkbox" v-model="box.addFavorite.value" />
               {{ t("box.add.addFavorite") }}

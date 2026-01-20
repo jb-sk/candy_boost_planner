@@ -147,11 +147,11 @@
   top: 0px;
   z-index: 20;
   margin-top: 10px;
+  box-shadow: none;
   padding: 12px;
   border-radius: 16px;
   background: var(--paper);
-  border: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
-  box-shadow: 0 14px 36px color-mix(in oklab, var(--ink) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--ink) 18%, transparent);
   container-type: inline-size;
   /* コンテナクエリを有効化 */
 }
@@ -637,6 +637,12 @@
   box-shadow:
     0 0 0 4px color-mix(in oklab, var(--accent-warm) 12%, transparent),
     0 18px 40px color-mix(in oklab, var(--ink) 10%, transparent);
+}
+
+@media (max-width: 1023px) {
+  .calcRow--active {
+    box-shadow: none !important;
+  }
 }
 
 .calcRow--dragOver {
