@@ -82,6 +82,7 @@ a:hover {
 @media (max-width: 1023px) {
   .dashboard {
     grid-template-columns: 1fr;
+    gap: 26px;
   }
 }
 
@@ -138,13 +139,14 @@ a:hover {
 }
 
 /* --- Mobile layout polish (avoid horizontal clipping) --- */
-@media (max-width: 560px) {
+@media (max-width: 1023px) {
 
   /* Mobile is narrow: remove outer "panel" frame so content can breathe */
   .panel.panel--calc,
   .panel.panel--box {
     border: 0;
     box-shadow: none;
+    -webkit-box-shadow: none;
     background: transparent;
     border-radius: 0;
     padding: 0;
