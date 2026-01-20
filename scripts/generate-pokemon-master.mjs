@@ -272,7 +272,10 @@ function createAsk() {
 
 async function confirmOrAbort({ interactive, title, details }) {
   const canPrompt = !!(interactive && process.stdin.isTTY && process.stdout.isTTY);
-  if (!canPrompt) return true;
+  if (!canPrompt) {
+    if (details) console.log(details);
+    return true;
+  }
   const ask = createAsk();
   try {
     const ans = normalize(
@@ -437,14 +440,25 @@ function readExistingIdForms() {
   const masterPath = path.resolve(args.outMaster);
   if (!fs.existsSync(masterPath)) return new Set();
   const txt = fs.readFileSync(masterPath, "utf8");
-  const re = /"idForm"\s*:\s*(\d+)/g;
-  const set = new Set();
-  for (; ;) {
-    const m = re.exec(txt);
-    if (!m) break;
-    set.add(Number(m[1]));
+
+  // pokemon-master.ts の構造:
+  // export const pokemonMaster: PokemonMasterEntry[] = [...] as const;
+  // "] = [" を探して代入式の配列開始位置を特定（型定義の [] を避ける）
+  const assignmentIndex = txt.indexOf("] = [");
+  if (assignmentIndex < 0) return new Set();
+
+  const jsonStart = assignmentIndex + 4; // "[" の位置
+  const jsonEnd = txt.lastIndexOf("]");
+  if (jsonStart >= jsonEnd) return new Set();
+
+  const jsonStr = txt.slice(jsonStart, jsonEnd + 1);
+  try {
+    const data = JSON.parse(jsonStr);
+    return new Set(data.map(x => toIdForm(x.dexNo ?? x.pokedexId, x.form ?? 0)));
+  } catch (e) {
+    console.warn("[readExistingIdForms] パース失敗:", e.message);
+    return new Set();
   }
-  return set;
 }
 
 const existingIdForms = readExistingIdForms();
