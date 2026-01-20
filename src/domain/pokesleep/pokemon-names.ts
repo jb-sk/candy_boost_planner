@@ -117,6 +117,7 @@ export const pokemonNameJaByIdForm = {
   "199": "ヤドキング",
   "202": "ソーナンス",
   "208": "ハガネール",
+  "213": "ツボツボ",
   "214": "ヘラクロス",
   "215": "ニューラ",
   "225": "デリバード",
@@ -332,6 +333,7 @@ export const pokemonExpTypeByIdForm = {
   "199": 600,
   "202": 600,
   "208": 600,
+  "213": 600,
   "214": 600,
   "215": 600,
   "225": 600,
@@ -547,6 +549,7 @@ export const pokemonSpecialtyByIdForm = {
   "199": "Skills",
   "202": "Skills",
   "208": "Berries",
+  "213": "Skills",
   "214": "Skills",
   "215": "Berries",
   "225": "Ingredients",
@@ -762,6 +765,7 @@ export const pokemonTypeByIdForm = {
   "199": "Water",
   "202": "Psychic",
   "208": "Steel",
+  "213": "Bug",
   "214": "Bug",
   "215": "Dark",
   "225": "Flying",
@@ -977,6 +981,7 @@ export const pokemonTypeJaByIdForm = {
   "199": "みず",
   "202": "エスパー",
   "208": "はがね",
+  "213": "むし",
   "214": "むし",
   "215": "あく",
   "225": "ひこう",
@@ -1563,6 +1568,11 @@ export const pokemonIngredientsByIdForm = {
     "a": "tomato",
     "b": "sausage",
     "c": "potato"
+  },
+  "213": {
+    "a": "oil",
+    "b": "coffee",
+    "c": "honey"
   },
   "214": {
     "a": "honey",
@@ -2456,6 +2466,9 @@ export const pokemonIdFormsByNameJa = {
   ],
   "ハガネール": [
     208
+  ],
+  "ツボツボ": [
+    213
   ],
   "ヘラクロス": [
     214
