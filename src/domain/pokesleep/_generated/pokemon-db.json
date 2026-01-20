@@ -2238,6 +2238,28 @@
       "link": "https://wikiwiki.jp/poke_sleep/%E3%83%8F%E3%82%AC%E3%83%8D%E3%83%BC%E3%83%AB"
     },
     {
+      "dexNo": 213,
+      "nameJa": "ツボツボ",
+      "specialtyJa": "スキル",
+      "sleepTypeJa": "うとうと",
+      "berryJa": [
+        "ラムのみ"
+      ],
+      "ingAJa": [
+        "ピュアなオイル"
+      ],
+      "ingBJa": [
+        "めざましコーヒー"
+      ],
+      "ingCJa": [
+        "あまいミツ"
+      ],
+      "mainSkillJa": "きのみジュース(げんきオールS)",
+      "fp": 16,
+      "helpSeconds": 3600,
+      "link": "https://wikiwiki.jp/poke_sleep/%E3%83%84%E3%83%9C%E3%83%84%E3%83%9C"
+    },
+    {
       "dexNo": 214,
       "nameJa": "ヘラクロス",
       "specialtyJa": "スキル",
