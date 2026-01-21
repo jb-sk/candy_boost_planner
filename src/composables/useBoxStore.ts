@@ -85,7 +85,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
   const addNameSuggestOpen = ref(false);
   const isComposing = ref(false);
   const addLabel = ref("");
-  const addLevel = ref(30);
+  const addLevel = ref(15);
   const addExpType = ref<ExpType>(600);
   const addExpTypeTouched = ref(false);
   const addNature = ref<ExpGainNature>("normal");
@@ -499,13 +499,24 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     return decoded;
   }
 
+  // ひらがな→カタカナ変換（検索用）
+  function toKatakana(str: string): string {
+    return str.replace(/[\u3041-\u3096]/g, (char) =>
+      String.fromCharCode(char.charCodeAt(0) + 0x60)
+    );
+  }
+
   const filteredBoxEntries = computed(() => {
-    const q = boxFilter.value.trim().toLowerCase();
+    const q = toKatakana(boxFilter.value.trim().toLowerCase());
     const base = !q
       ? boxEntries.value
       : boxEntries.value.filter((e) => {
         const id = e.derived?.pokedexId ? String(e.derived.pokedexId) : "";
-        return (e.label || "").toLowerCase().includes(q) || id.includes(q) || e.rawText.toLowerCase().includes(q);
+        const label = toKatakana((e.label || "").toLowerCase());
+        const speciesName = e.derived?.pokedexId
+          ? toKatakana((getPokemonNameLocalized(e.derived.pokedexId, e.derived.form ?? 0, locale.value as any) ?? "").toLowerCase())
+          : "";
+        return label.includes(q) || id.includes(q) || speciesName.includes(q);
       });
 
     const hasFavoriteFilter = favoritesOnly.value;

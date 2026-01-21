@@ -464,6 +464,16 @@
   margin-bottom: 12px;
 }
 
+.calcActions__settings {
+  margin-left: auto;
+}
+
+@media (max-width: 1023px) {
+  .calcActions__settings {
+    display: none;
+  }
+}
+
 /* --- Slots (Tabs) --- */
 .calcSlots {
   display: flex;
@@ -1539,5 +1549,15 @@ select.field__input {
   /* Adjust text size */
   .calcSum__v {
     font-size: 15px;
+  }
+}
+
+.panel__actions {
+  display: block;
+}
+
+@media (max-width: 1023px) {
+  .panel__actions {
+    display: none;
   }
 }

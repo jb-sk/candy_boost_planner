@@ -236,7 +236,10 @@ function writeTextIfChanged(p, content) {
   fs.mkdirSync(path.dirname(p), { recursive: true });
   if (fs.existsSync(p)) {
     const prev = fs.readFileSync(p, "utf8");
-    if (prev === content) return false;
+    // 改行コード（CRLF/LF）を正規化して比較
+    const normalizedPrev = prev.replace(/\r\n/g, "\n");
+    const normalizedContent = content.replace(/\r\n/g, "\n");
+    if (normalizedPrev === normalizedContent) return false;
   }
   fs.writeFileSync(p, content, "utf8");
   return true;

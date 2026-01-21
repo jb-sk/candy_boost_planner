@@ -6,6 +6,9 @@
     <a href="#neo-box" class="mobileNav__item" @click.prevent="scrollToPanel('neo-box')">
       {{ t("nav.box") }}
     </a>
+    <a href="#" class="mobileNav__item" @click.prevent="$emit('open-settings')">
+      {{ t("common.settings") }}
+    </a>
   </nav>
 </template>
 
@@ -14,6 +17,10 @@ import { useI18n } from "vue-i18n";
 
 defineProps<{
   scrollToPanel: (id: string) => void;
+}>();
+
+defineEmits<{
+  (e: "open-settings"): void;
 }>();
 
 const { t } = useI18n();
@@ -41,7 +48,7 @@ const { t } = useI18n();
     padding: 6px 0;
     font-weight: 700;
     font-size: 14px;
-    color: color-mix(in oklab, var(--ink) 50%, transparent);
+    color: color-mix(in oklab, var(--ink) 75%, transparent);
     border-bottom: 3px solid transparent;
     cursor: pointer;
     text-decoration: none;

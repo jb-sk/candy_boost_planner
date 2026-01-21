@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+     <linearGradient id="candyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="10%" style="stop-color:#ff4d94;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#ffdd55;stop-opacity:1" />
+      <stop offset="90%" style="stop-color:#4ddbe8;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <g transform="rotate(-45, 32, 32)">
+    <!-- Scale factor approx 1.5 from center -->
+
+    <!-- Left Wrapper (Wavy) -->
+    <path d="M8 20 L22 32 L8 44 C4 38, 0 38, 0 32 C0 26, 4 26, 8 20 Z" fill="url(#candyGrad)" stroke="#333" stroke-width="3" stroke-linejoin="round" />
+
+    <!-- Right Wrapper (Wavy) -->
+    <path d="M56 20 L42 32 L56 44 C60 38, 64 38, 64 32 C64 26, 60 26, 56 20 Z" fill="url(#candyGrad)" stroke="#333" stroke-width="3" stroke-linejoin="round" />
+
+    <!-- Center Candy -->
+    <circle cx="32" cy="32" r="20" fill="url(#candyGrad)" stroke="#333" stroke-width="3" />
+
+    <!-- Star Highlight -->
+    <!-- Main Star -->
+    <path d="M40 20 L42 24 L46 25 L43 28 L44 32 L40 30 L36 32 L37 28 L34 25 L38 24 Z" fill="white" opacity="0.95"/>
+    <!-- Sub Star -->
+    <path d="M24 38 L25 40 L28 40.5 L26 42.5 L26.5 45 L24 43.5 L21.5 45 L22 42.5 L20 40.5 L23 40 Z" fill="white" opacity="0.8"/>
+  </g>
+</svg>

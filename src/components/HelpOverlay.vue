@@ -15,6 +15,10 @@
               {{ t("help.basic.addDesc") }}
             </li>
             <li>
+              <strong>{{ t("help.basic.usageTitle") }}</strong>:
+              {{ t("help.basic.usageDesc") }}
+            </li>
+            <li>
               <strong>{{ t("help.basic.stockTitle") }}</strong>:
               {{ t("help.basic.stockDesc") }}
             </li>
@@ -29,10 +33,6 @@
             <li>
               <strong>{{ t("help.basic.orderTitle") }}</strong>:
               {{ t("help.basic.orderDesc") }}
-            </li>
-            <li>
-              <strong>{{ t("help.basic.usageTitle") }}</strong>:
-              {{ t("help.basic.usageDesc") }}
             </li>
             <li>
               <strong>{{ t("help.basic.resultTitle") }}</strong>:

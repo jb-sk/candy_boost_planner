@@ -30,10 +30,10 @@
         </div>
       </div>
     </header>
-    <MobileNav :scroll-to-panel="scrollToPanel" v-show="!calc.exportOpen.value" />
+    <MobileNav :scroll-to-panel="scrollToPanel" v-show="!calc.exportOpen.value" @open-settings="openSettings" />
 
     <div class="dashboard">
-      <CalcPanel :calc="calc" :resolve-pokedex-id-by-box-id="resolvePokedexIdByBoxId" @apply-to-box="applyCalculatorToBox($event)" @open-help="showHelp = true" />
+      <CalcPanel :calc="calc" :resolve-pokedex-id-by-box-id="resolvePokedexIdByBoxId" @apply-to-box="applyCalculatorToBox($event)" @open-help="showHelp = true" @open-settings="openSettings" />
 
     <BoxPanel :box="box" :gt="gt" @apply-to-calc="applyBoxToCalculator($event)" />
     </div>
@@ -65,6 +65,8 @@
     />
 
     <HelpOverlay v-if="showHelp" @close="showHelp = false" />
+
+    <SettingsOverlay v-if="showSettings" :calc="calc" @close="showSettings = false" />
   </main>
 </template>
 
@@ -77,6 +79,7 @@ import { getPokemonType } from "./domain/pokesleep/pokemon-names";
 
 import ExportOverlay from "./components/ExportOverlay.vue";
 import HelpOverlay from "./components/HelpOverlay.vue";
+import SettingsOverlay from "./components/SettingsOverlay.vue";
 import CalcPanel from "./components/CalcPanel.vue";
 import BoxPanel from "./components/BoxPanel.vue";
 import MobileNav from "./components/MobileNav.vue";
@@ -93,6 +96,11 @@ function setLocale(next: "ja" | "en") {
 type SupportLink = { id: "ofuse" | "bmac"; label: string; href: string; ariaLabel: string };
 
 const showHelp = ref(false);
+const showSettings = ref(false);
+
+function openSettings() {
+  showSettings.value = true;
+}
 
 function gt(s: string): string {
   return localizeGameTerm(s, locale.value as any);

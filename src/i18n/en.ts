@@ -14,6 +14,12 @@ export const en = {
     delete: "Delete",
     optional: " (optional)",
     required: " (required)",
+    settings: "Stock & Sleep",
+  },
+  settings: {
+    globalTitle: "Basic Settings",
+    sleepTitle: "Sleep Growth Settings",
+    typeCandyTitle: "Type Candy Stock",
   },
   app: {
     title: "CandyBoost Planner",
@@ -28,7 +34,7 @@ export const en = {
     title: "Calculator: Multiple Pokémon (Target Level)",
     applyToBoxTitle: "Save edits (current Lv / EXP to next) to Pokémon Box",
     applyToBox: "Apply to Box",
-    maxShardsLabel: "Max Shards",
+    maxShardsLabel: "Shard Stock",
     maxShardsHelp: "Calculation continues even if you exceed the cap; the overage is shown in red.",
     boostKindLabel: "Candy Boost type",
     boostKindFull: "Candy Boost (Shards ×{shards} / EXP ×{exp})",
@@ -37,7 +43,7 @@ export const en = {
     boostKindFullShort: "Boost",
     boostKindMiniShort: "Mini",
     boostKindNoneShort: "Normal",
-    boostRemainingLabel: "Boost remaining",
+    boostRemainingLabel: "Boost Cap",
     boostRemainingHelp: "If mid-event, enter remaining usable count. Leave blank to reset to max.",
     boostRemainingPlaceholder: "{cap}",
     over: "Over",
@@ -63,10 +69,12 @@ export const en = {
 • If S is insufficient → Use M→L, then S for fine-tuning
 * Pokémon higher in the list get priority
 * For reference to reduce bag space`,
-    empty: `No Pokemon to calculate yet.
-1. Add new or import from Box.
-2. Enter Current Lv, EXP Remaining, and Target Lv.
-3. Configure Candy Boost/Shards settings (Optional)`,
+    emptyTitle: "No Pokémon to calculate yet.",
+    emptySteps: {
+      step1: "1. Add new or import from Box.",
+      step2: "2. Enter Current Lv, EXP Remaining, and Target Lv.",
+      step3: "3. Configure Shards/Sleep in {settingsLink} (Optional)",
+    },
     emptyLinkPre: "See ",
     emptyLinkText: "Usage Guide",
     emptyLinkPost: " for details.",
@@ -130,7 +138,7 @@ export const en = {
     },
     sleep: {
       sectionToggle: "Sleep Time, Sleep EXP Bonus, Type Candy Settings",
-      dailySleepLabel: "Sleep",
+      dailySleepLabel: "Sleep Time",
       dailySleepUnit: "h",
       sleepExpBonusLabel: "EXP Bonus",
       sleepExpBonusUnit: " Pokémon",
@@ -203,7 +211,7 @@ export const en = {
       specialtyUnknown: "Unknown",
       expType: "EXP type",
       expType600Hint: " (standard)",
-      ingredientType: "Ingredients (type)",
+      ingredientType: "Ingredients",
       ingredientTypeNone: "Not selected",
       subSkills: "Sub Skills",
 
@@ -226,7 +234,7 @@ export const en = {
       title: "Search",
       searchPh: "Search (label / Dex#)",
       clearSearch: "Clear",
-      advancedSettings: "Advanced",
+      advancedSettings: "Filtering Settings",
       join: "Filter join",
       joinAnd: "AND (all)",
       joinOr: "OR (any)",
@@ -327,7 +335,7 @@ export const en = {
       orderTitle: "List Order",
       orderDesc: "Resources (Handy Candy & Shards) are allocated from top to bottom. Drag the □ on the left of the name or use ↑↓ on the right to reorder.",
       usageTitle: "Set Targets",
-      usageDesc: "Set \"Current Lv\", \"Target Lv\", and \"EXP to next Lv\". If you increase Boost ratio above 100%, Target Lv also goes up.",
+      usageDesc: "Set \"Current Lv\", \"Next EXP\", and \"Target Lv\" to display the required resources in the \"Target\" row.",
       resultTitle: "Viewing Results",
       resultDesc: "\"To Target\" shows all required resources including shortage. \"Reachable\" shows the actual level reachable with current resources.",
       summaryTitle: "Summary",
