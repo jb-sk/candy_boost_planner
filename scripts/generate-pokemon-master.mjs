@@ -10,6 +10,7 @@ const __dirname = path.dirname(__filename);
 const DEFAULT_DB_JSON = path.join(__dirname, "../src/domain/pokesleep/_generated/pokemon-db.json");
 const DEFAULT_OVERRIDES = path.join(__dirname, "./exp-type-overrides.json");
 const DEFAULT_KNOWN = path.join(__dirname, "./exp-type-known.json");
+const DEFAULT_ING_NULL_KNOWN = path.join(__dirname, "./ing-null-known.json");
 const DEFAULT_ING_C_NULL_KNOWN = path.join(__dirname, "./ing-c-null-known.json");
 const DEFAULT_FORM_JA_TO_NUMBER = path.join(__dirname, "./form-ja-to-number.json");
 const DEFAULT_FORM_LABEL_JA_TO_EN = path.join(__dirname, "./form-label-ja-to-en.json");
@@ -86,7 +87,10 @@ function writeTextIfChanged(p, content) {
   fs.mkdirSync(path.dirname(p), { recursive: true });
   if (fs.existsSync(p)) {
     const prev = fs.readFileSync(p, "utf8");
-    if (prev === content) return false;
+    // 改行コード（CRLF/LF）を正規化して比較
+    const normalizedPrev = prev.replace(/\r\n/g, "\n");
+    const normalizedContent = content.replace(/\r\n/g, "\n");
+    if (normalizedPrev === normalizedContent) return false;
   }
   // dryRun モードでは書き込みをスキップ
   if (args.dryRun) {
@@ -468,12 +472,19 @@ const addedEntries = master.filter(x => !existingIdForms.has(toIdForm(x.dexNo, x
 const removedIdForms = [...existingIdForms].filter(id => !newIdForms.has(id));
 
 // --- preflight summary / confirm (write前に運用者確認) ---
+// 食材null（A/B取得不可）の既知リストを読み込む
+const ingNullKnownPath = path.resolve(DEFAULT_ING_NULL_KNOWN);
+const ingNullKnownArr = fs.existsSync(ingNullKnownPath) ? readJson(ingNullKnownPath) : [];
+const ingNullKnownSet = new Set(Array.isArray(ingNullKnownArr) ? ingNullKnownArr.map(Number).filter(Number.isFinite) : []);
+
 // 食材C未実装の既知リストを読み込む
 const ingCNullKnownPath = path.resolve(DEFAULT_ING_C_NULL_KNOWN);
 const ingCNullKnownArr = fs.existsSync(ingCNullKnownPath) ? readJson(ingCNullKnownPath) : [];
 const ingCNullKnownSet = new Set(Array.isArray(ingCNullKnownArr) ? ingCNullKnownArr.map(Number).filter(Number.isFinite) : []);
 
-const ingredientsNullCount = master.filter((x) => x.ingredients === null).length;
+const ingredientsNullAll = master.filter((x) => x.ingredients === null);
+const ingredientsNullKnown = ingredientsNullAll.filter((x) => ingNullKnownSet.has(x.dexNo));
+const ingredientsNullNew = ingredientsNullAll.filter((x) => !ingNullKnownSet.has(x.dexNo));
 const ingredientCNullAll = master.filter((x) => x.ingredients && x.ingredients.c === null);
 const ingredientCNullKnown = ingredientCNullAll.filter((x) => ingCNullKnownSet.has(x.dexNo));
 const ingredientCNullNew = ingredientCNullAll.filter((x) => !ingCNullKnownSet.has(x.dexNo));
@@ -485,10 +496,14 @@ let details = "";
 if (args.dryRun) {
   details += `[ドライランモード: ファイルは書き込まれません]\n\n`;
 }
-details += `- entries: ${master.length} (既存: ${existingIdForms.size})\n`;
+// 重複エントリ数を計算
+const duplicateCount = master.length - newIdForms.size;
+details += `- Wikiエントリ: ${master.length} (うち重複: ${duplicateCount})\n`;
+details += `- ユニーク種類: ${newIdForms.size} (既存: ${existingIdForms.size})\n`;
 details += `- 追加: ${addedEntries.length}\n`;
 details += `- 削除: ${removedIdForms.length}\n`;
-details += `- ingredients:null: ${ingredientsNullCount}\n`;
+details += `- ingredients:null (既知): ${ingredientsNullKnown.length}\n`;
+details += `- ingredients:null (新規): ${ingredientsNullNew.length}\n`;
 details += `- ingredients.c:null (既知): ${ingredientCNullKnown.length}\n`;
 details += `- ingredients.c:null (新規): ${ingredientCNullNew.length}\n`;
 details += `- link:null: ${linkNullCount}\n`;

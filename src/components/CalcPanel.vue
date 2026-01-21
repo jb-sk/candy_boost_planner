@@ -3,132 +3,6 @@
     <div class="panel__head">
       <h2 class="panel__title">{{ t("calc.title") }}</h2>
     </div>
-    <div class="calcTop">
-      <div class="calcTop__row">
-        <div class="calcTop__field">
-          <span class="calcTop__label">{{ t("calc.boostRemainingLabel") }}</span>
-          <input
-            :value="calc.boostCandyRemainingText.value"
-            type="text"
-            inputmode="numeric"
-            autocomplete="off"
-            class="field__input field__input--sm field__input--compact"
-            :placeholder="t('calc.boostRemainingPlaceholder', { cap: calc.fmtNum(calc.boostCandyDefaultCap.value) })"
-            :title="t('calc.boostRemainingHelp')"
-            @input="calc.onBoostCandyRemainingInput(($event.target as HTMLInputElement).value)"
-            :disabled="calc.boostKind.value === 'none'"
-          />
-        </div>
-        <div class="calcTop__field">
-          <span class="calcTop__label">{{ t("calc.maxShardsLabel") }}</span>
-          <input
-            :value="calc.totalShardsText.value"
-            type="text"
-            inputmode="numeric"
-            autocomplete="off"
-            class="field__input field__input--sm field__input--compact"
-            @input="calc.onTotalShardsInput(($event.target as HTMLInputElement).value)"
-          />
-        </div>
-        <div class="calcTop__field calcTop__field--candy">
-          <span class="calcTop__label">{{ t("calc.candy.universalLabel") }}</span>
-          <div class="candyInputs">
-            <label class="candyInput candyInput--md">
-              <span class="candyInput__label">{{ t("calc.candy.universalS") }}</span>
-              <input
-                type="number"
-                min="0"
-                class="field__input field__input--xs field__input--compact"
-                :value="candyStore.universalCandy.value.s"
-                @input="candyStore.updateUniversalCandy({ s: parseInt(($event.target as HTMLInputElement).value) || 0 })"
-              />
-            </label>
-            <label class="candyInput candyInput--md">
-              <span class="candyInput__label">{{ t("calc.candy.universalM") }}</span>
-              <input
-                type="number"
-                min="0"
-                class="field__input field__input--xs field__input--compact"
-                :value="candyStore.universalCandy.value.m"
-                @input="candyStore.updateUniversalCandy({ m: parseInt(($event.target as HTMLInputElement).value) || 0 })"
-              />
-            </label>
-            <label class="candyInput candyInput--md">
-              <span class="candyInput__label">{{ t("calc.candy.universalL") }}</span>
-              <input
-                type="number"
-                min="0"
-                class="field__input field__input--xs field__input--compact"
-                :value="candyStore.universalCandy.value.l"
-                @input="candyStore.updateUniversalCandy({ l: parseInt(($event.target as HTMLInputElement).value) || 0 })"
-              />
-            </label>
-          </div>
-        </div>
-      </div>
-      <details class="calcTop__typeCandy">
-        <summary class="calcTop__typeCandyToggle">{{ t("calc.sleep.sectionToggle") }}</summary>
-        <!-- 睡眠育成設定 -->
-        <div class="calcTop__sleepRow">
-          <label class="sleepField">
-            <span class="sleepField__label">{{ t("calc.sleep.dailySleepLabel") }}</span>
-            <input
-              type="number"
-              min="1"
-              max="13"
-              step="0.5"
-              class="field__input field__input--xs field__input--compact"
-              :value="calc.sleepSettings.value.dailySleepHours"
-              @input="calc.updateSleepSettings({ dailySleepHours: parseFloat(($event.target as HTMLInputElement).value) || 8.5 })"
-            />
-            <span class="sleepField__unit">{{ t("calc.sleep.dailySleepUnit") }}</span>
-          </label>
-          <label class="sleepField">
-            <span class="sleepField__label">{{ t("calc.sleep.sleepExpBonusLabel") }}</span>
-            <select
-              class="field__input field__input--compact"
-              :value="calc.sleepSettings.value.sleepExpBonusCount"
-              @change="calc.updateSleepSettings({ sleepExpBonusCount: parseInt(($event.target as HTMLSelectElement).value) || 0 })"
-            >
-              <option v-for="n in 6" :key="n - 1" :value="n - 1">{{ n - 1 }}</option>
-            </select>
-          </label>
-          <label class="sleepField sleepField--checkbox" :title="t('calc.sleep.includeGSDTitle')">
-            <input
-              type="checkbox"
-              :checked="calc.sleepSettings.value.includeGSD"
-              @change="calc.updateSleepSettings({ includeGSD: ($event.target as HTMLInputElement).checked })"
-            />
-            <span class="sleepField__label">{{ t("calc.sleep.includeGSDLabel") }}</span>
-          </label>
-        </div>
-        <div class="calcTop__typeCandyGrid">
-          <div v-for="typeName in pokemonTypes" :key="typeName" class="typeRow">
-            <span class="typeRow__name">{{ getTypeName(typeName, locale) }}</span>
-            <label class="candyInput candyInput--sm">
-              <span class="candyInput__label">{{ t("calc.candy.typeS") }}</span>
-              <input
-                type="number"
-                min="0"
-                class="field__input field__input--xs field__input--compact"
-                :value="candyStore.getTypeCandyFor(typeName).s"
-                @input="candyStore.updateTypeCandy(typeName, { s: parseInt(($event.target as HTMLInputElement).value) || 0 })"
-              />
-            </label>
-            <label class="candyInput candyInput--sm">
-              <span class="candyInput__label">{{ t("calc.candy.typeM") }}</span>
-              <input
-                type="number"
-                min="0"
-                class="field__input field__input--xs field__input--compact"
-                :value="candyStore.getTypeCandyFor(typeName).m"
-                @input="candyStore.updateTypeCandy(typeName, { m: parseInt(($event.target as HTMLInputElement).value) || 0 })"
-              />
-            </label>
-          </div>
-        </div>
-      </details>
-    </div>
 
     <div class="calcSticky">
       <div class="calcSticky__summary">
@@ -257,6 +131,9 @@
       </button>
       <button class="btn btn--ghost" type="button" @click="calc.redo()" :disabled="!calc.canRedo.value">
         {{ t("common.redo") }}
+      </button>
+      <button class="btn btn--primary calcActions__settings" type="button" @click="$emit('open-settings')">
+        {{ t("common.settings") }}
       </button>
     </div>
 
@@ -677,8 +554,18 @@
     </div>
     <div class="calcEmpty" v-else>
       <div class="calcEmpty__content">
-        <div class="calcEmpty__title">{{ t("calc.empty").split('\n')[0] }}</div>
-        <div class="calcEmpty__list">{{ t("calc.empty").split('\n').slice(1).join('\n') }}</div>
+        <div class="calcEmpty__title">{{ t("calc.emptyTitle") }}</div>
+        <div class="calcEmpty__list">
+          <div>{{ t("calc.emptySteps.step1") }}</div>
+          <div>{{ t("calc.emptySteps.step2") }}</div>
+          <i18n-t keypath="calc.emptySteps.step3" tag="div">
+            <template #settingsLink>
+              <button type="button" class="calcEmpty__linkBtn" @click="$emit('open-settings')">
+                {{ t("common.settings") }}
+              </button>
+            </template>
+          </i18n-t>
+        </div>
       </div>
       <div class="calcEmpty__link">
         {{ t("calc.emptyLinkPre") }}<button type="button" class="calcEmpty__linkBtn" @click="$emit('open-help')">{{ t("calc.emptyLinkText") }}</button>{{ t("calc.emptyLinkPost") }}
@@ -711,6 +598,7 @@ import { calcExp } from "../domain/pokesleep/exp";
 defineEmits<{
   (e: "apply-to-box", rowId: string): void;
   (e: "open-help"): void;
+  (e: "open-settings"): void;
 }>();
 
 const props = defineProps<{

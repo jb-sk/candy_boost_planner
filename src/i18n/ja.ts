@@ -14,6 +14,12 @@ export const ja = {
     delete: "削除",
     optional: "（任意）",
     required: "（必須）",
+    settings: "在庫・睡眠設定",
+  },
+  settings: {
+    globalTitle: "基本設定",
+    sleepTitle: "睡眠育成設定",
+    typeCandyTitle: "タイプアメ在庫",
   },
   app: {
     title: "アメブプランナー",
@@ -28,7 +34,7 @@ export const ja = {
     title: "アメブースト計算",
     applyToBoxTitle: "編集内容（現在Lv/あとEXP）をボックスへ保存",
     applyToBox: "ボックス反映",
-    maxShardsLabel: "最大かけら",
+    maxShardsLabel: "かけら在庫",
     maxShardsHelp: "超過しても計算は継続し、超過分を赤字で表示します。",
     boostKindLabel: "アメブ種別",
     boostKindFull: "アメブ（かけら×{shards} / EXP×{exp}）",
@@ -37,7 +43,7 @@ export const ja = {
     boostKindFullShort: "アメブ",
     boostKindMiniShort: "ミニブ",
     boostKindNoneShort: "通常",
-    boostRemainingLabel: "アメブ残数",
+    boostRemainingLabel: "アメブ上限",
     boostRemainingHelp: "イベント途中の場合、使用可能な残り個数を入力。空欄で上限にリセット。",
     boostRemainingPlaceholder: "{cap}",
     over: "超過",
@@ -63,10 +69,12 @@ export const ja = {
 ・Sが不足なら → M→Lの順で使用し、Sで端数調整
 ※リスト上位のポケモンに優先的に使用
 ※バッグ圧縮のための参考値として`,
-    empty: `まだ計算対象がありません。
-1. 新規追加またはポケモンボックスから追加する。
-2. 現在Lv、あとEXP、目標Lvを入力する。
-3. ページ上部のアメブやかけら、ポケモンのアメ等の設定をする（任意）`,
+    emptyTitle: "まだ計算対象がありません。",
+    emptySteps: {
+      step1: "1. 新規追加またはポケモンボックスから追加する。",
+      step2: "2. 現在Lv、あとEXP、目標Lvを入力する。",
+      step3: "3. {settingsLink}でかけらや万能アメ、睡眠時間等の設定をする（任意）",
+    },
     emptyLinkPre: "詳しくは",
     emptyLinkText: "使い方ガイド",
     emptyLinkPost: "を参照してください",
@@ -131,11 +139,11 @@ export const ja = {
     },
     sleep: {
       sectionToggle: "睡眠時間、睡眠EXPボーナス、GSD、タイプアメ設定",
-      dailySleepLabel: "睡眠",
+      dailySleepLabel: "睡眠時間",
       dailySleepUnit: "h",
       sleepExpBonusLabel: "睡眠EXPボーナス ×",
       sleepExpBonusUnit: "体",
-      includeGSDLabel: "GSD",
+      includeGSDLabel: "グッドスリープデー",
       includeGSDTitle: "グッドスリープデー（月400ポイント相当）を含める",
       btn1000h: "1000h",
       btn2000h: "2000h",
@@ -199,7 +207,7 @@ export const ja = {
       specialtyUnknown: "不明",
       expType: "EXPタイプ",
       expType600Hint: "（標準）",
-      ingredientType: "食材（タイプ）",
+      ingredientType: "食材",
       ingredientTypeNone: "未選択",
       subSkills: "サブスキル",
 
@@ -222,7 +230,7 @@ export const ja = {
       title: "探す",
       searchPh: "検索（ラベル/図鑑番号）",
       clearSearch: "クリア",
-      advancedSettings: "詳細設定",
+      advancedSettings: "フィルタリング設定",
       join: "フィルタ間の結合",
       joinAnd: "AND（両方）",
       joinOr: "OR（どちらか）",
@@ -323,7 +331,7 @@ export const ja = {
       orderTitle: "リストの並び順",
       orderDesc: "計算機のリストの上から順にリソース（万能アメ・かけら）が割り当てられます。名前左の□をドラッグ＆ドロップするか、右の↑↓で優先度を入れ替えられます。",
       usageTitle: "目標設定",
-      usageDesc: "「現在Lv」「あとEXP」「目標Lv」などを設定。アメブ個数を100%以上に上げると、目標Lvも上がります。",
+      usageDesc: "「現在Lv」「あとEXP」「目標Lv」を設定すると、「目標まで」行に必要なリソースが表示されます。",
       resultTitle: "結果の見方",
       resultDesc: "「目標まで」は不足分も含めた必要な全リソース、「到達可能」は現在のリソースで実際に到達できるレベルを示します。",
       summaryTitle: "サマリー（合計）",
