@@ -98,7 +98,7 @@ export const en = {
       boostRatio: "Candy Boost ratio vs EXP",
       boostRatioNormal: "(Disabled)",
       boostCandyCount: "Candy Boost amount",
-      boostCandyCountHint: "Increase: Target Lv goes up with count<br>Decrease: Use normal candy instead of boost",
+      boostCandyCountHint: "Adjust: Balance between boost and normal candy.<br>Over 100%: Target Lv (EXP to next) increases.<br><br>*Set boost cap in <button class=\"hintLink\" data-action=\"open-settings\">settings</button> for mid-event calculations or combining multiple mini-boost events",
       boostCandyCountNormal: "Target EXP adjust",
       boostCandyCountNormalHint: "Changes Target Lv based on count. Does not affect allocation.",
       shards: "Dream Shards",
@@ -146,7 +146,7 @@ export const en = {
       includeGSDTitle: "Include Good Sleep Day (+400 score/month)",
       btn1000h: "1000h",
       btn2000h: "2000h",
-      sleepBtnHint: "To calculate 1000/2000 hours of sleep EXP, sufficient stock (candy & shards) and sleep settings are required (at top of page).",
+      sleepBtnHint: "To calculate 1000/2000 hours of sleep EXP, sufficient stock (candy & shards) and <button class=\"hintLink\" data-action=\"open-settings\">sleep settings</button> are required (at top of page).",
       remainingDays: "{days}d ({hours}h)",
     },
     export: {

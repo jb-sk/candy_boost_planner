@@ -535,4 +535,109 @@ describe('エッジケーステスト', () => {
       expect(p.reachedLevel).toBe(46);
     });
   });
+
+  // ========================================
+  // テスト56: グローバルアメブ上限がアメ在庫制限より優先される
+  // ========================================
+  // シナリオ（ユーザー報告バグ）:
+  // - スイクン: Lv58 → Lv65
+  // - アメ在庫: 147（種族アメ）
+  // - タイプM: 6個（= 150価値）
+  // - 合計アメ在庫価値: 147 + 6*25 = 297
+  // - グローバルアメブ上限: 150（イベント途中の残数）
+  // - 目標まで必要: アメブ790
+  //
+  // バグ（修正前）:
+  // - アメブ個数を手動で643～297に設定すると、到達可能行のアメブが297（在庫制限）になる
+  // - アメブ個数を手動で296～151に設定すると、到達可能行のアメブが入力値になる
+  // - いずれもグローバル上限150を超えている
+  //
+  // 期待（修正後）:
+  // - 到達可能行のアメブは常にグローバル上限150以下
+  // - アメ在庫制限よりグローバル上限が優先される
+  describe('Test56: グローバルアメブ上限がアメ在庫制限より優先される', () => {
+    it('到達可能行はグローバル上限150を守る（アメブ入力297の場合）', () => {
+      const result = planLevelUp(
+        [pokemon({
+          id: 'suicune',
+          pokedexId: 245,
+          pokemonName: 'スイクン',
+          type: 'water',
+          srcLevel: 58,
+          dstLevel: 65,
+          expType: 1080,
+          nature: 'normal',
+          expGot: 0,
+          candyNeed: 790,  // 目標まで790アメ必要
+          boostOrExpAdjustment: 297,  // ユーザーがアメブ297に設定
+        })],
+        inventory({
+          species: { '245': 147 },  // 種族アメ147
+          typeCandy: { water: { s: 0, m: 6 } },  // タイプM 6個 = 価値150
+          universal: { s: 0, m: 0, l: 0 },
+        }),
+        config({ boostKind: 'full', globalBoostLimit: 150, globalShardsLimit: 4000000 })
+      );
+
+      const p = getPokemon(result, 'suicune');
+      // 到達可能行のアメブはグローバル上限150以下であるべき
+      expect(p.reachableItems.boostCount).toBeLessThanOrEqual(150);
+    });
+
+    it('到達可能行はグローバル上限150を守る（アメブ入力151の場合）', () => {
+      const result = planLevelUp(
+        [pokemon({
+          id: 'suicune',
+          pokedexId: 245,
+          pokemonName: 'スイクン',
+          type: 'water',
+          srcLevel: 58,
+          dstLevel: 65,
+          expType: 1080,
+          nature: 'normal',
+          expGot: 0,
+          candyNeed: 790,
+          boostOrExpAdjustment: 151,  // ユーザーがアメブ151に設定（上限+1）
+        })],
+        inventory({
+          species: { '245': 147 },
+          typeCandy: { water: { s: 0, m: 6 } },
+          universal: { s: 0, m: 0, l: 0 },
+        }),
+        config({ boostKind: 'full', globalBoostLimit: 150, globalShardsLimit: 4000000 })
+      );
+
+      const p = getPokemon(result, 'suicune');
+      // 到達可能行のアメブはグローバル上限150以下であるべき
+      expect(p.reachableItems.boostCount).toBeLessThanOrEqual(150);
+    });
+
+    it('アメブ100%でも到達可能行はグローバル上限150を守る', () => {
+      const result = planLevelUp(
+        [pokemon({
+          id: 'suicune',
+          pokedexId: 245,
+          pokemonName: 'スイクン',
+          type: 'water',
+          srcLevel: 58,
+          dstLevel: 65,
+          expType: 1080,
+          nature: 'normal',
+          expGot: 0,
+          candyNeed: 790,
+          boostOrExpAdjustment: 790,  // アメブ100%
+        })],
+        inventory({
+          species: { '245': 147 },
+          typeCandy: { water: { s: 0, m: 6 } },
+          universal: { s: 0, m: 0, l: 0 },
+        }),
+        config({ boostKind: 'full', globalBoostLimit: 150, globalShardsLimit: 4000000 })
+      );
+
+      const p = getPokemon(result, 'suicune');
+      // 到達可能行のアメブはグローバル上限150であるべき（ユーザー確認済み正常動作）
+      expect(p.reachableItems.boostCount).toBe(150);
+    });
+  });
 });

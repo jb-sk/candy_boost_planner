@@ -43,6 +43,8 @@ export type CalcSaveSlotV1 = {
   activeRowId: string | null;
   /** スロットのアメブ種別 */
   boostKind: BoostEvent;
+  /** スロットのアメブ上限（ユーザー入力値、未設定=デフォルト値を使用） */
+  boostCandyRemaining?: number | null;
 };
 
 
@@ -174,7 +176,11 @@ function normalizeSlot(x: any): CalcSaveSlotV1 | null {
   const boostKind: BoostEvent = x.boostKind === "full" || x.boostKind === "mini" || x.boostKind === "none"
     ? x.boostKind
     : defaultBoostKind;
-  return { savedAt, rows, activeRowId, boostKind };
+  // boostCandyRemaining: 未設定の場合は undefined（UI側でデフォルト値を適用）
+  const boostCandyRemaining = typeof x.boostCandyRemaining === "number" && x.boostCandyRemaining >= 0
+    ? Math.floor(x.boostCandyRemaining)
+    : undefined;
+  return { savedAt, rows, activeRowId, boostKind, boostCandyRemaining };
 }
 
 

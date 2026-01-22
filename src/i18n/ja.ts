@@ -98,7 +98,7 @@ export const ja = {
       boostRatio: "経験値に対するアメブ割合",
       boostRatioNormal: "（無効）",
       boostCandyCount: "アメブ個数",
-      boostCandyCountHint: "上限突破：個数に応じて目標Lvが上がります<br>下げる：アメブの代わりに通常アメを使います",
+      boostCandyCountHint: "上げ下げ：アメブと通常アメの割合を調整します。<br>100%超え：目標Lv（あとEXP）が上がります。<br><br>※<button class=\"hintLink\" data-action=\"open-settings\">基本設定</button>のアメブ上限の設定により、イベント途中からの計算や、イベント複数回分のミニブをまとめて計算できます",
       boostCandyCountNormal: "目標EXP調整アメ",
       boostCandyCountNormalHint: "アメの数に合わせて目標Lv（あとEXP）が上下します。",
       shards: "かけら",
@@ -147,7 +147,7 @@ export const ja = {
       includeGSDTitle: "グッドスリープデー（月400ポイント相当）を含める",
       btn1000h: "1000h",
       btn2000h: "2000h",
-      sleepBtnHint: "1000/2000時間の睡眠EXPを計算するには、十分な在庫（アメ＆かけら）と、睡眠時間等の設定が必要です（ページ上部）",
+      sleepBtnHint: "1000/2000時間の睡眠EXPを計算するには、十分な在庫（アメ＆かけら）と、睡眠時間等の<button class=\"hintLink\" data-action=\"open-settings\">設定</button>が必要です",
       remainingDays: "{days}日（{hours}時間）",
     },
     export: {
