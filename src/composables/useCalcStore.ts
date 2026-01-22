@@ -303,6 +303,23 @@ export function useCalcStore(opts: {
       boostCandyRemaining.value = n;
       boostCandyRemainingText.value = fmtNum(n);
     }
+    // アメブ上限変更時に全行のアメブ個数を再計算
+    recalculateAllRows();
+  }
+
+  // 全行のアメブ個数を再計算（アメブ上限変更時用）
+  function recalculateAllRows() {
+    // リスト上位から順に再計算（上位が優先的にリソースを使用するため）
+    for (const r of rows.value) {
+      // 既存の目標Lvで再計算（calcCandyPatch が呼ばれる）
+      nextTick(() => {
+        const row = rows.value.find(x => x.id === r.id);
+        if (row) {
+          // setDstLevel を呼ぶことで calcCandyPatch が実行される
+          setDstLevel(row.id, row.dstLevel);
+        }
+      });
+    }
   }
 
   function resetBoostCandyRemaining() {
@@ -407,6 +424,7 @@ export function useCalcStore(opts: {
       rows: cloneCalcRows(rows.value),
       activeRowId: activeRowId.value,
       boostKind: boostKind.value,  // 保存時の boostKind を記録
+      boostCandyRemaining: boostCandyRemaining.value,  // スロットごとに保存
     };
     slots.value = slots.value.map((x, idx) => (idx === i ? slot : x));
   }
@@ -428,15 +446,15 @@ export function useCalcStore(opts: {
     if (slot) {
       rows.value = JSON.parse(JSON.stringify(slot.rows));
       activeRowId.value = slot.activeRowId ?? rows.value[0]?.id ?? null;
+      // スロットから boostCandyRemaining を復元（未設定の場合は null = デフォルト値使用）
+      boostCandyRemaining.value = slot.boostCandyRemaining ?? null;
     } else {
       rows.value = [];
       activeRowId.value = null;
+      // 空スロットは null（デフォルト値を使用）
+      boostCandyRemaining.value = null;
     }
     openLevelPickRowId.value = null;
-
-    // boostCandyRemaining をリセット（スロットごとに異なる boostKind を持つため）
-    boostCandyRemaining.value = null;
-    boostCandyRemainingText.value = "";
 
     // undo/redoスタックをクリア
     undoStack.value = [];
@@ -610,7 +628,9 @@ export function useCalcStore(opts: {
     }
 
     // アメブ/ミニブ: グローバル上限を考慮してリセット値を決定
-    const globalCap = boostKind.value === "mini" ? 350 : 3500;
+    // ユーザーが設定した上限があればそれを使用、なければデフォルト値（アメブ:3500、ミニブ:350）
+    const defaultCap = boostKind.value === "mini" ? 350 : 3500;
+    const globalCap = boostCandyRemaining.value ?? defaultCap;
 
     // 対象ポケモンより上位のポケモンの実使用量を合計
     // リスト上位から優先的にリソースを配分するため、上位が使った残りを下位に割り当てる

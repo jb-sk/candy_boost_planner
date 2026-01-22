@@ -994,6 +994,17 @@ function calcReachableItems(
     shardsCount = Math.min(diagnosis.byShardsLimit.shardsUsed, resourceSnapshot.availableShards);
   }
 
+  // ─────────────────────────────────────────
+  // グローバルアメブ上限でクランプ
+  // ─────────────────────────────────────────
+  // かけら制限と同様に、グローバル残数を守る
+  // limitingFactor === 'boost' の場合は既にクランプ済み
+  if (boostCount > resourceSnapshot.availableBoost) {
+    const boostDiff = boostCount - resourceSnapshot.availableBoost;
+    candyNeedForReachable = Math.max(0, candyNeedForReachable - boostDiff);
+    boostCount = resourceSnapshot.availableBoost;
+  }
+
   if (candyNeedForReachable <= 0) {
     return createEmptyItemUsage();
   }

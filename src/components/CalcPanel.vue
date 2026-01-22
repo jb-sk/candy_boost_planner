@@ -578,7 +578,7 @@
       v-if="hintState.visible"
       class="hintPopover"
       :style="{ left: hintState.left + 'px', top: hintState.top + 'px' }"
-      @click.stop
+      @click.stop="handleHintClick"
       v-html="hintState.message"
     ></div>
   </section>
@@ -595,7 +595,7 @@ import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { markForSleep, calcCandyTargetFromSleepExp, calcSleepTimeForExp } from "../domain/pokesleep/sleep-growth";
 import { calcExp } from "../domain/pokesleep/exp";
 
-defineEmits<{
+const emit = defineEmits<{
   (e: "apply-to-box", rowId: string): void;
   (e: "open-help"): void;
   (e: "open-settings"): void;
@@ -1036,6 +1036,20 @@ function showHint(ev: MouseEvent, message: string) {
 
 function closeHint() {
   hintState.value.visible = false;
+}
+
+/**
+ * ツールチップ内のクリックを処理
+ * data-action属性を持つボタンのアクションを実行
+ */
+function handleHintClick(ev: MouseEvent) {
+  const target = ev.target as HTMLElement;
+  const action = target.dataset?.action;
+
+  if (action === 'open-settings') {
+    closeHint();
+    emit('open-settings');
+  }
 }
 
 </script>
