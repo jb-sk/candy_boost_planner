@@ -346,7 +346,10 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
         planner: {
           ...(x.planner ?? {}),
           // expTypeは「上書きしていない場合」だけ追従
-          expType: x.planner?.expType ?? found.expType,
+          // → 種族変更に伴い、種族依存のフィールド（EXPタイプ、とくい、食材構成）はリセットして自動判定に戻す
+          expType: undefined,
+          specialty: undefined,
+          ingredientType: undefined,
         },
         updatedAt: now,
       };

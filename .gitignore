@@ -7,6 +7,7 @@ _local/
 # Node / Vite / Vue
 # ------------------------------
 node_modules/
+**/node_modules/
 .pnpm-store/
 .vite/
 dist/
@@ -51,8 +52,29 @@ Thumbs.db
 # ------------------------------
 # Test outputs
 # ------------------------------
-test-results.json
+test-results*.json
 test-output.json
 test-failures.txt
 test-list.txt
-*debug*
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/
+
+# ------------------------------
+# Remotion (Video Project) - Excluded from repo
+# ------------------------------
+video/
+
+# ------------------------------
+# Dev Container
+# ------------------------------
+.devcontainer/*
+!.devcontainer/devcontainer.json
+!.devcontainer/Dockerfile
+!.devcontainer/docker-compose.yml
+!.devcontainer/entrypoint.sh
+# Secrets and large backups inside .devcontainer are ignored
+.devcontainer/openclaw-config/
