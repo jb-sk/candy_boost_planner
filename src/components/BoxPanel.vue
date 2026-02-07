@@ -3,15 +3,15 @@
     <div class="panel__head">
       <h2 class="panel__title">{{ t("box.title") }}</h2>
       <div class="panel__side">
-        <button class="btn btn--danger" type="button" @click="box.onClearBox" :disabled="!boxEntries.length">
+        <button class="btn btn--danger" type="button" data-testid="box-clear-all" @click="box.onClearBox" :disabled="!boxEntries.length">
           {{ t("box.clearAll") }}
         </button>
       </div>
     </div>
 
     <div class="boxGrid">
-      <details class="boxDisclosure">
-        <summary class="boxDisclosure__head">
+      <details class="boxDisclosure" data-testid="box-add-panel">
+        <summary class="boxDisclosure__head" data-testid="box-add-summary">
           <span class="boxDisclosure__title">{{ t("box.addNew") }}</span>
         </summary>
         <div class="boxCard boxDisclosure__inner">
@@ -28,6 +28,7 @@
                 <input
                   v-model="addName"
                   class="field__input"
+                  data-testid="box-add-name-input"
                   :placeholder="t('box.add.nameDexPh')"
                   @focus="box.onAddNameFocus"
                   @blur="box.onAddNameBlur"
@@ -36,12 +37,13 @@
                   @compositionstart="isComposing = true"
                   @compositionend="isComposing = false"
                 />
-                <div v-if="showAddNameSuggest" class="suggest__panel" role="listbox">
+                <div v-if="showAddNameSuggest" class="suggest__panel" data-testid="box-add-suggest-panel" role="listbox">
                   <button
                     v-for="n in addNameSuggestList"
                     :key="n.nameJa"
                     type="button"
                     class="suggest__item"
+                    data-testid="box-add-suggest-item"
                     role="option"
                     @mousedown.prevent="box.pickAddName(n.nameJa)"
                   >
@@ -64,11 +66,11 @@
               <span class="field__label">{{ t("box.add.labelOpt") }}</span>
               <input v-model="addLabel" class="field__input" :placeholder="t('box.add.labelOptPh')" />
             </label>
-            <div class="field">
+            <div class="field" data-testid="box-add-level-field">
               <span class="field__label">{{ t("box.detail.level") }}</span>
               <LevelPicker v-model="addLevel" :label="t('box.detail.level')" :max="MAX_LEVEL" />
             </div>
-            <label class="field">
+            <label class="field" data-testid="box-add-nature-field">
               <span class="field__label">{{ t("box.add.nature") }}</span>
               <NatureSelect
                 v-model="addNature"
@@ -83,6 +85,7 @@
               <select
                 v-model="addIngredientType"
                 class="field__input"
+                data-testid="box-add-ingredient-select"
                 @change="box.onAddIngredientTypeChanged"
               >
                 <option value="">{{ t("box.add.ingredientTypeNone") }}</option>
@@ -103,7 +106,7 @@
             </label>
             <label class="field">
               <span class="field__label">{{ t("box.add.specialtyOpt") }}</span>
-              <select v-model="addSpecialty" class="field__input" :disabled="!!addLookup" @change="box.onAddSpecialtyChanged">
+              <select v-model="addSpecialty" class="field__input" data-testid="box-add-specialty-select" :disabled="!!addLookup" @change="box.onAddSpecialtyChanged">
                 <option value="">{{ t("box.add.specialtyUnknown") }}</option>
                 <option value="Berries">{{ gt("きのみ") }}</option>
                 <option value="Ingredients">{{ gt("食材") }}</option>
@@ -113,7 +116,7 @@
             </label>
             <label class="field">
               <span class="field__label">{{ t("box.add.expType") }}</span>
-              <select v-model.number="addExpType" class="field__input" :disabled="!!addLookup" @change="box.onAddExpTypeChanged">
+              <select v-model.number="addExpType" class="field__input" data-testid="box-add-exptype-select" :disabled="!!addLookup" @change="box.onAddExpTypeChanged">
                 <option :value="600">600{{ !addLookup ? t("box.add.expType600Hint") : '' }}</option>
                 <option :value="900">900</option>
                 <option :value="1080">1080</option>
@@ -123,7 +126,7 @@
 
             <div class="field field--wide">
               <span class="field__label">{{ t("box.add.subSkills") }}</span>
-              <div class="subGrid">
+              <div class="subGrid" data-testid="box-add-subskills">
                 <label class="subField">
                   <span class="subField__k">Lv10</span>
                   <select
@@ -192,10 +195,10 @@
             </label>
             <div class="boxAddActions">
               <label class="boxAddCalcCheck">
-                <input type="checkbox" v-model="addToCalcChecked" />
+                <input type="checkbox" v-model="addToCalcChecked" data-testid="box-add-to-calc-checkbox" />
                 {{ t("box.add.addToCalc") }}
               </label>
-              <button class="btn btn--primary" type="button" @click="onCreateToBox($event)">
+              <button class="btn btn--primary" type="button" data-testid="box-add-submit" @click="onCreateToBox($event)">
                 {{ t("box.add.toBox") }}
               </button>
             </div>
@@ -203,8 +206,8 @@
         </div>
       </details>
 
-      <details class="boxDisclosure">
-        <summary class="boxDisclosure__head">
+      <details class="boxDisclosure" data-testid="box-import-panel">
+        <summary class="boxDisclosure__head" data-testid="box-import-summary">
           <span class="boxDisclosure__title">{{ t("box.import.title") }}</span>
         </summary>
         <div class="boxCard boxDisclosure__inner">
@@ -215,6 +218,7 @@
             ref="textareaRef"
             :value="importText"
             class="boxTextarea"
+            data-testid="box-import-textarea"
             rows="7"
             :placeholder="t('box.import.ph')"
             @input="importText = ($event.target as HTMLTextAreaElement).value"
@@ -225,10 +229,10 @@
             {{ t("box.import.addAllFavorite") }}
           </label>
           <div class="boxCard__actions boxCard__actions--row">
-            <button class="btn btn--primary" type="button" @click="box.onImport({ markFavorite: importFavorite })">
+            <button class="btn btn--primary" type="button" data-testid="box-import-submit" @click="box.onImport({ markFavorite: importFavorite })">
               {{ t("box.import.run") }}
             </button>
-            <button class="btn btn--ghost" type="button" @click="onPasteImport">
+            <button class="btn btn--ghost" type="button" data-testid="box-import-paste" @click="onPasteImport">
               {{ t("box.import.paste") }}
             </button>
             <label class="btn btn--ghost boxImport__fileLabel">
@@ -237,10 +241,11 @@
                 type="file"
                 accept=".txt,text/plain"
                 class="boxImport__fileInput"
+                data-testid="box-import-file-input"
                 @change="onFileSelect"
               />
             </label>
-            <button class="btn btn--ghost" type="button" @click="importText = ''">
+            <button class="btn btn--ghost" type="button" data-testid="box-import-clear" @click="importText = ''">
               {{ t("common.clear") }}
             </button>
           </div>
@@ -257,8 +262,8 @@
 
         <!-- 検索 -->
         <div class="boxSearchRow">
-          <input v-model="boxFilter" class="boxSearch" :placeholder="t('box.list.searchPh')" />
-          <button class="btn btn--ghost btn--sm" type="button" @click="boxFilter = ''" :disabled="!boxFilter.trim()">
+          <input v-model="boxFilter" class="boxSearch" data-testid="box-search-input" :placeholder="t('box.list.searchPh')" />
+          <button class="btn btn--ghost btn--sm" type="button" data-testid="box-search-clear" @click="boxFilter = ''" :disabled="!boxFilter.trim()">
             {{ t("box.list.clearSearch") }}
           </button>
         </div>
@@ -269,6 +274,7 @@
             class="chipBtn"
             :class="{ 'chipBtn--on': favoritesOnly }"
             type="button"
+            data-testid="box-filter-favorite"
             @click="favoritesOnly = !favoritesOnly"
             :title="t('box.list.favoritesOnlyTitle')"
             :aria-label="t('box.list.favoritesOnlyAria')"
@@ -280,6 +286,7 @@
             class="chipBtn"
             :class="{ 'chipBtn--on': selectedSpecialties.includes('Berries') }"
             type="button"
+            data-testid="box-filter-berry"
             @click="box.toggleSpecialty('Berries')"
             :aria-label="t('box.list.specialtyAria', { name: gt('きのみ') })"
           >
@@ -290,6 +297,7 @@
             class="chipBtn"
             :class="{ 'chipBtn--on': selectedSpecialties.includes('Ingredients') }"
             type="button"
+            data-testid="box-filter-ingredient"
             @click="box.toggleSpecialty('Ingredients')"
             :aria-label="t('box.list.specialtyAria', { name: gt('食材') })"
           >
@@ -300,6 +308,7 @@
             class="chipBtn"
             :class="{ 'chipBtn--on': selectedSpecialties.includes('Skills') }"
             type="button"
+            data-testid="box-filter-skill"
             @click="box.toggleSpecialty('Skills')"
             :aria-label="t('box.list.specialtyAria', { name: gt('スキル') })"
           >
@@ -310,6 +319,7 @@
             class="chipBtn"
             :class="{ 'chipBtn--on': selectedSpecialties.includes('All') }"
             type="button"
+            data-testid="box-filter-all"
             @click="box.toggleSpecialty('All')"
             :aria-label="t('box.list.specialtyAria', { name: gt('オール') })"
           >
@@ -319,14 +329,14 @@
         </div>
 
         <!-- 詳細設定 -->
-        <details class="boxAdvanced">
-          <summary class="boxAdvanced__summary">
+        <details class="boxAdvanced" data-testid="box-advanced-panel">
+          <summary class="boxAdvanced__summary" data-testid="box-advanced-summary">
             <span>{{ t("box.list.advancedSettings") }}</span>
           </summary>
           <div class="boxAdvanced__content">
             <div class="boxAdvanced__row">
               <span class="boxAdvanced__label">{{ t("box.list.join") }}</span>
-              <select v-model="filterJoinMode" class="field__input boxAdvanced__select" :aria-label="t('box.list.join')">
+              <select v-model="filterJoinMode" class="field__input boxAdvanced__select" data-testid="box-filter-join-select" :aria-label="t('box.list.join')">
                 <option value="and">{{ t("box.list.joinAnd") }}</option>
                 <option value="or">{{ t("box.list.joinOr") }}</option>
               </select>
@@ -335,22 +345,23 @@
 
               <div class="boxAdvanced__row">
                 <span class="boxAdvanced__label">{{ t("box.list.subskillJoin") }}</span>
-                <select v-model="subSkillJoinMode" class="field__input boxAdvanced__select" :aria-label="t('box.list.subskillJoin')">
+                <select v-model="subSkillJoinMode" class="field__input boxAdvanced__select" data-testid="box-subskill-join-select" :aria-label="t('box.list.subskillJoin')">
                   <option value="or">{{ t("box.list.subskillJoinOr") }}</option>
                   <option value="and">{{ t("box.list.subskillJoinAnd") }}</option>
                 </select>
                 <button
                   class="btn btn--ghost btn--sm"
                   type="button"
+                  data-testid="box-subskill-clear"
                   @click="selectedSubSkillEns = []"
                   :disabled="!selectedSubSkillEns.length"
                 >
                   {{ t("box.list.subskillClear") }}
                 </button>
               </div>
-              <div class="boxAdvanced__list">
+              <div class="boxAdvanced__list" data-testid="box-subskill-filter-list">
                 <label v-for="s in availableSubSkills" :key="s.nameEn" class="boxAdvanced__item">
-                  <input type="checkbox" class="boxAdvanced__check" :value="s.nameEn" v-model="selectedSubSkillEns" />
+                  <input type="checkbox" class="boxAdvanced__check" :data-testid="'box-subskill-filter-' + s.nameEn" :value="s.nameEn" v-model="selectedSubSkillEns" />
                   <span class="boxAdvanced__itemLabel">{{ box.subSkillLabel(s) }}</span>
                 </label>
               </div>
@@ -360,10 +371,10 @@
 
         <div class="boxSortRow">
           <div class="boxSortRow__left">
-            <button class="btn btn--ghost" type="button" @click="box.onUndo" :disabled="!canUndo" :title="t('box.list.undoTitle')">
+            <button class="btn btn--ghost" type="button" data-testid="box-undo" @click="box.onUndo" :disabled="!canUndo" :title="t('box.list.undoTitle')">
               {{ t("common.undo") }}
             </button>
-            <button class="btn btn--ghost" type="button" @click="box.onRedo" :disabled="!canRedo">
+            <button class="btn btn--ghost" type="button" data-testid="box-redo" @click="box.onRedo" :disabled="!canRedo">
               {{ t("common.redo") }}
             </button>
           </div>
@@ -400,6 +411,7 @@
             <button
               type="button"
               class="boxTile"
+              data-testid="box-tile"
               :class="[box.boxTileTypeClass(e), { 'boxTile--active': e.id === selectedBoxId }]"
               :data-type="e.derived ? getPokemonType(e.derived.pokedexId, e.derived.form) : 'unknown'"
               @click="box.onSelectBox(e.id)"
@@ -411,14 +423,14 @@
               </div>
             </button>
 
-            <div v-if="idx === detailInsertAfterIndex && selectedBox && selectedDetail" class="boxDetail boxDetail--inline">
+            <div v-if="idx === detailInsertAfterIndex && selectedBox && selectedDetail" class="boxDetail boxDetail--inline" data-testid="box-detail-panel">
               <div class="boxDetail__head">
                 <h4 class="boxDetail__title">{{ t("box.list.selected", { name: box.displayBoxTitle(selectedBox) }) }}</h4>
                 <div class="boxDetail__actions">
-                  <button class="btn btn--primary" type="button" @click="$emit('apply-to-calc', $event)">
+                  <button class="btn btn--primary" type="button" data-testid="box-detail-calc" @click="$emit('apply-to-calc', $event)">
                     {{ t("box.add.toCalc") }}
                   </button>
-                  <button class="btn btn--danger" type="button" @click="box.onDeleteSelected">
+                  <button class="btn btn--danger" type="button" data-testid="box-detail-delete" @click="box.onDeleteSelected">
                     {{ t("box.deleteFromBox") }}
                   </button>
                 </div>
@@ -440,12 +452,13 @@
                         <input
                           v-model="relinkName"
                           class="field__input"
+                          data-testid="box-detail-relink-input"
                           :placeholder="t('box.detail.relinkPh')"
                           @focus="relinkOpen = true"
                           @blur="box.onRelinkBlur"
                           @input="box.onRelinkInput"
                         />
-                        <button class="btn btn--ghost" type="button" @click="box.onRelinkApply" :disabled="!relinkName.trim()">
+                        <button class="btn btn--ghost" type="button" data-testid="box-detail-relink-button" @click="box.onRelinkApply" :disabled="!relinkName.trim()">
                           {{ t("box.detail.relinkButton") }}
                         </button>
                         <div class="boxDetail__minor" v-if="relinkFound">
@@ -458,7 +471,7 @@
                           }}
                         </div>
                         <div class="boxDetail__minor" v-else-if="relinkName.trim()">{{ t("box.detail.relinkNoCandidate") }}</div>
-                        <div v-if="relinkOpen && relinkSuggestList.length" class="suggest__panel" role="listbox">
+                        <div v-if="relinkOpen && relinkSuggestList.length" class="suggest__panel" data-testid="box-detail-relink-suggest-panel" role="listbox">
                           <button
                             v-for="n in relinkSuggestList"
                             :key="n.nameJa"
@@ -483,6 +496,7 @@
                         <div class="boxDetail__nickInput">
                           <input
                             class="field__input"
+                            data-testid="box-detail-nickname-input"
                             :value="selectedBox.label ?? ''"
                             :placeholder="box.displayPokemonName(selectedBox) ?? t('common.optional')"
                             @change="box.onEditSelectedLabel(($event.target as HTMLInputElement).value)"
@@ -493,6 +507,7 @@
                           class="chipBtn chipBtn--iconOnly"
                           :class="{ 'chipBtn--on': !!selectedBox.favorite }"
                           type="button"
+                          data-testid="box-detail-favorite"
                           @click="box.toggleSelectedFavorite"
                           :title="t('box.list.favorite')"
                         >
@@ -510,6 +525,7 @@
                         type="number"
                         min="0"
                         class="field__input"
+                        data-testid="box-detail-candy-input"
                         :value="candyStore.getSpeciesCandyFor(selectedDetail.pokedexId)"
                         @input="candyStore.updateSpeciesCandy(selectedDetail!.pokedexId, parseInt(($event.target as HTMLInputElement).value) || 0)"
                       />
@@ -537,6 +553,7 @@
                         type="number"
                         min="0"
                         class="field__input"
+                        data-testid="box-detail-exp-remaining-input"
                         :value="selectedDetail?.expRemaining"
                         @input="box.onEditSelectedExpRemaining(($event.target as HTMLInputElement).value)"
                         :placeholder="t('common.optional')"
@@ -567,6 +584,7 @@
                       <div
                         v-if="(selectedDetail?.pokedexId ?? 0) > 0"
                         class="field__input field__input--static"
+                        data-testid="box-detail-specialty-display"
                         :title="t('calc.row.expTypeFixedHint')"
                       >
                         {{
@@ -602,6 +620,7 @@
                       <div
                         v-if="(selectedDetail?.pokedexId ?? 0) > 0"
                         class="field__input field__input--static"
+                        data-testid="box-detail-exptype-display"
                         :title="t('calc.row.expTypeFixedHint')"
                       >
                         {{ selectedDetail?.expType ?? 600 }}
@@ -632,6 +651,7 @@
                       <div class="boxDetail__editRow">
                         <select
                           class="field__input"
+                          data-testid="box-detail-ingredient-select"
                           :value="selectedDetail.ingredientType ?? ''"
                           @change="box.onEditSelectedIngredientType(($event.target as HTMLSelectElement).value)"
                         >
@@ -649,7 +669,7 @@
                   <div class="boxDetail__kv">
                     <div class="boxDetail__k">{{ t("box.detail.subSkills") }}</div>
                     <div class="boxDetail__v">
-                      <div class="boxDetail__subEdit">
+                      <div class="boxDetail__subEdit" data-testid="box-detail-subskills">
                         <div v-for="lv in [10, 25, 50, 75, 100]" :key="lv" class="subField">
                           <span class="subField__k">Lv{{ lv }}</span>
                           <select

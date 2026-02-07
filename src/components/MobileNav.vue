@@ -6,7 +6,7 @@
     <a href="#neo-box" class="mobileNav__item" @click.prevent="scrollToPanel('neo-box')">
       {{ t("nav.box") }}
     </a>
-    <a href="#" class="mobileNav__item" @click.prevent="$emit('open-settings')">
+    <a href="#" class="mobileNav__item" data-testid="settings-open-button-mobile" @click.prevent="$emit('open-settings')">
       {{ t("common.settings") }}
     </a>
   </nav>

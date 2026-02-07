@@ -2,6 +2,10 @@
 # Local-only (do not commit)
 # ------------------------------
 _local/
+.agent/*
+!.agent/workflows/
+.sub-agent/
+
 
 # ------------------------------
 # Node / Vite / Vue
@@ -32,6 +36,7 @@ pnpm-debug.log*
 # ------------------------------
 .DS_Store
 Thumbs.db
+nul
 
 # VS Code workspace noise (keep shareable configs)
 .vscode/*
@@ -45,14 +50,15 @@ Thumbs.db
 .cursor/*
 
 # ------------------------------
-# Antigravity
+# Claude Code
 # ------------------------------
-.agent/
+.claude/
+.mcp.json
 
 # ------------------------------
 # Test outputs
 # ------------------------------
-test-results*.json
+# test-results*.json
 test-output.json
 test-failures.txt
 test-list.txt

@@ -124,6 +124,10 @@ jobs:
             echo "変更なし → PR作成スキップ"
           fi
 
+
+      # テスト設定（test-config.json の latestPokemon.name）は
+      # generate-pokemon-master.mjs 内で追加ポケモン検出時に自動更新される
+
       - name: Build
         if: steps.final_check.outputs.has_any_changes == 'true'
         run: npm run build

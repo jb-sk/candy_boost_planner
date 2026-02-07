@@ -1,23 +1,24 @@
 <template>
-  <div class="exportOverlay" @click.self="emit('close')" role="dialog" :aria-label="t('calc.export.open')">
+  <div class="exportOverlay" data-testid="export-overlay" @click.self="emit('close')" role="dialog" :aria-label="t('calc.export.open')">
     <div class="exportSheetWrap">
       <div
         ref="exportSheetEl"
         class="exportSheet"
+        data-testid="export-sheet"
         :class="{ 'exportSheet--capture': exportBusy }"
         :style="{ transform: exportBusy ? 'none' : `scale(${scale})` }"
         @click="exportCsvMenuOpen = false"
       >
         <div class="exportHead">
           <div class="exportHead__top">
-            <div class="exportBrand">🍬 {{ boostKind === 'full' ? t("calc.export.brandBoost") : boostKind === 'mini' ? t("calc.export.brandMini") : t("calc.export.brand") }}</div>
+            <div class="exportBrand" data-testid="brandLabel">🍬 {{ boostKind === 'full' ? t("calc.export.brandBoost") : boostKind === 'mini' ? t("calc.export.brandMini") : t("calc.export.brand") }}</div>
           </div>
 
           <div class="exportMeta">
-            <div class="exportMonth" aria-label="month">{{ exportMonthLabel }}</div>
+            <div class="exportMonth" aria-label="month" data-testid="monthLabel">{{ exportMonthLabel }}</div>
 
             <div class="exportActions" @click.stop>
-              <button class="linkBtn" type="button" @click="downloadCalcExportPng" :disabled="exportBusy">
+              <button class="linkBtn" type="button" @click="downloadCalcExportPng" :disabled="exportBusy" data-testid="saveImageButton">
                 {{ t("calc.export.saveImage") }}
               </button>
               <div class="exportCsvMenuTrigger">
@@ -28,24 +29,25 @@
                   :disabled="exportBusy"
                   :aria-expanded="exportCsvMenuOpen"
                   aria-haspopup="menu"
+                  data-testid="csvMenuButton"
                 >
                   {{ t("calc.export.csv") }} ▾
                 </button>
-                <div v-if="exportCsvMenuOpen" class="exportCsvMenu" role="menu" :aria-label="t('calc.export.csv')">
-                  <button class="exportCsvMenu__item" type="button" @click="downloadCalcExportCsv" :disabled="exportBusy">
+                <div v-if="exportCsvMenuOpen" class="exportCsvMenu" data-testid="export-csv-menu" role="menu" :aria-label="t('calc.export.csv')">
+                  <button class="exportCsvMenu__item" type="button" @click="downloadCalcExportCsv" :disabled="exportBusy" data-testid="csvDownloadButton">
                     {{ t("calc.export.csvDownload") }}
                   </button>
-                  <button class="exportCsvMenu__item" type="button" @click="copyCalcExportCsv" :disabled="exportBusy">
+                  <button class="exportCsvMenu__item" type="button" @click="copyCalcExportCsv" :disabled="exportBusy" data-testid="csvCopyButton">
                     {{ t("calc.export.csvCopy") }}
                   </button>
                 </div>
               </div>
-              <button class="linkBtn linkBtn--basic" type="button" @click="emit('close')" :disabled="exportBusy">{{ t("calc.export.close") }}</button>
+              <button class="linkBtn linkBtn--basic" type="button" @click="emit('close')" :disabled="exportBusy" data-testid="closeButton">{{ t("calc.export.close") }}</button>
             </div>
           </div>
         </div>
 
-        <div v-if="exportStatus" class="exportStatus" role="status">{{ exportStatus }}</div>
+        <div v-if="exportStatus" class="exportStatus" data-testid="export-status" role="status">{{ exportStatus }}</div>
 
         <div class="exportCalc">
           <div class="exportCalcTop">
@@ -58,6 +60,7 @@
                   [`statCard--${card.variant}`]: card.variant,
                   'statCard--danger': card.variant === 'danger',
                 }"
+                data-testid="statCard"
               >
                 <div class="statCard__icon">{{ card.icon }}</div>
                 <div class="statCard__content">
@@ -86,6 +89,7 @@
                   aria-valuemin="0"
                   :aria-valuemax="Math.max(1, boostCap)"
                   :aria-label="t('calc.boostCandyUsageAria', { pct: boostUsagePct, cap: fmtNum(boostCap) })"
+                  data-testid="boostBar"
                 >
                   <div class="exportBar__track">
                     <div class="exportBar__fill" :style="{ width: `${boostFillPct}%` }"></div>
@@ -116,6 +120,7 @@
                       ? t('calc.shardsUsageAria', { pct: shardsUsagePct, cap: fmtNum(shardsCap) })
                       : t('calc.shardsCapUnsetAria')
                   "
+                  data-testid="shardsBar"
                 >
                   <div class="exportBar__track">
                     <div class="exportBar__fill" :style="{ width: `${shardsFillPct}%` }"></div>
@@ -127,7 +132,7 @@
           </div>
 
           <div class="exportList" :class="{ 'exportList--normal': !isBoostMode, 'exportList--hasShortage': totals.shortage > 0 }">
-            <div class="exportList__head">
+            <div class="exportList__head" data-testid="listHead">
               <div class="exportList__col">{{ t("calc.export.colPokemon") }}</div>
               <div class="exportList__col u-align-center">{{ t("calc.row.srcLevel") }} → {{ t("calc.row.dstLevel") }}</div>
               <div v-if="isBoostMode" class="exportList__col u-align-right">{{ t("calc.export.colBoost") }}</div>
@@ -137,7 +142,7 @@
               <div v-if="totals.shortage > 0" class="exportList__col u-align-right">{{ t("calc.export.colShortage") }}</div>
             </div>
 
-            <div v-for="row in rows" :key="row.id" class="exportList__row">
+            <div v-for="row in rows" :key="row.id" class="exportList__row" data-testid="listRow">
               <div class="exportList__col exportList__nameCol">
                 <span class="exportList__name">{{ row.title }}</span>
                 <span v-if="row.natureLabel" class="exportList__badge">{{ row.natureLabel }}</span>
@@ -171,7 +176,7 @@
               </div>
             </div>
 
-            <div class="exportList__row exportList__row--total" aria-label="total">
+            <div class="exportList__row exportList__row--total" aria-label="total" data-testid="totalRow">
               <div class="exportList__col exportList__nameCol">
                 <span class="exportList__name" aria-hidden="true"></span>
               </div>
@@ -200,16 +205,16 @@
           </div>
 
           <!-- 万能アメ使用ランキング -->
-          <div v-if="universalCandyRanking.length > 0" class="exportRanking">
-            <div class="exportRanking__title">{{ t("calc.export.universalRankingTitle") }}</div>
-            <div class="exportRanking__total">
+          <div v-if="universalCandyRanking.length > 0" class="exportRanking" data-testid="rankingSection">
+            <div class="exportRanking__title" data-testid="export-ranking-title">{{ t("calc.export.universalRankingTitle") }}</div>
+            <div class="exportRanking__total" data-testid="export-ranking-total">
               <span>{{ t("calc.export.rankingTotal") }}</span>
               <span v-if="universalCandyUsedTotal.s > 0">{{ t("calc.export.totalUniversalS") }} {{ fmtNum(universalCandyUsedTotal.s) }}</span>
               <span v-if="universalCandyUsedTotal.m > 0">{{ t("calc.export.totalUniversalM") }} {{ fmtNum(universalCandyUsedTotal.m) }}</span>
               <span v-if="universalCandyUsedTotal.l > 0">{{ t("calc.export.totalUniversalL") }} {{ fmtNum(universalCandyUsedTotal.l) }}</span>
             </div>
             <div class="exportRanking__list">
-              <div v-for="item in universalCandyRanking" :key="item.id" class="exportRanking__item">
+              <div v-for="item in universalCandyRanking" :key="item.id" class="exportRanking__item" data-testid="rankingItem">
                 <div class="exportRanking__name">{{ item.pokemonName }}</div>
                 <div class="exportRanking__pct">{{ item.usagePct }}%</div>
                 <div class="exportRanking__barWrap">

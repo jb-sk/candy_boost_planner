@@ -1,0 +1,29 @@
+{
+  "name": "Candy Boost Planner (Stable)",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/candy_boost_planner",
+  // No complex features, just basics if needed.
+  // Note: desktop-lite (VNC) is removed to prevent conflicts and load.
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": "true",
+      "configureZshAsDefaultShell": "true"
+    }
+  },
+  // On attach, we can check status, but no heavy installations here.
+  "postAttachCommand": "pm2 list",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh"
+      },
+      "extensions": [
+        "Vue.volar",
+        "ms-playwright.playwright",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  }
+}

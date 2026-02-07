@@ -3,6 +3,7 @@
     <button
       type="button"
       class="natureSelect__trigger field__input"
+      data-testid="nature-select-trigger"
       @click="toggle"
       @blur="handleBlur"
       :aria-label="label"
@@ -13,12 +14,13 @@
         <path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </button>
-    <div v-if="isOpen" class="natureSelect__dropdown">
+    <div v-if="isOpen" class="natureSelect__dropdown" data-testid="nature-select-dropdown">
       <button
         type="button"
         v-for="option in options"
         :key="option.value"
         class="natureSelect__option"
+        data-testid="nature-select-option"
         :class="{ 'natureSelect__option--selected': option.value === modelValue }"
         @mousedown.prevent="select(option.value)"
       >

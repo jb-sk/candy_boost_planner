@@ -55,12 +55,13 @@ onUnmounted(() => {
     <button
       type="button"
       class="field__input field__input--button levelPick__button"
+      data-testid="level-picker-trigger"
       @click.stop="isOpen = !isOpen"
     >
       {{ modelValue }}
     </button>
 
-    <div v-if="isOpen" class="levelPick__popover" role="dialog" style="z-index: 100">
+    <div v-if="isOpen" class="levelPick__popover" data-testid="level-picker-popover" role="dialog" style="z-index: 100">
       <div class="levelPick__top">
         <div class="levelPick__title">
           <slot name="title">{{ label }}</slot>
@@ -97,6 +98,7 @@ onUnmounted(() => {
         <button
           class="btn btn--ghost btn--xs"
           type="button"
+          data-testid="level-picker-increment"
           @click.stop="update(modelValue + 1)"
           :disabled="modelValue >= (max ?? 65)"
         >

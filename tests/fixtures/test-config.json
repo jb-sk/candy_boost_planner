@@ -1,0 +1,12 @@
+{
+  "description": "E2Eテスト設定",
+  "latestPokemon": {
+    "name": "ツボツボ",
+    "comment": "最新ポケモン名。ゲームに新ポケモンが追加されたら更新する。"
+  },
+  "importData": {
+    "singlePokemon": "0TRAEBRERw1p@100ウッウ（油）",
+    "lowLevelPokemon": "0RPAjRwdTEFu@75マルノーム",
+    "importText": "MQwAjwQeBy0Q\n0TRAEBRERw1p@100ウッウ（油）\n4SIADphlKBgN@100イワパレス\nUQkAEMgbByKJ@100カイリュー\noRFAcNQcijmA\nsTkAsJQErB1j@100パーモット\n0RPAjRwdTEFu@75マルノーム\nUQ8AjhQlhw0r@75スイクン\n4StAkBQZ7ABv\n4SuArBR97Cho@75デデンネ\n0TQAj5RCxxFw@仮ウッウ（芋）\nYQJAsNQYgCVw\nsR5AsBg5YAhkAAMA@仮ダークライ（おてきのスピ）\n4RJAsNwc7Hwf@仮ヤミラミ\nARxAsNwc7Hwf@仮ルカリオ\nQRBAMBQdgAWH@100仮ラグラージ\nwQQAD8hF-38f@仮ゴローニャ\nITkAD8hF-38f@仮ウェーニバル\n4RoAjxgZh30f@仮ドンカラス\nYQBAD4gdCTVv@75リザードン\nIS4ADwgdCjVP@75クワガノン\nMQUAD0AlKBUt\ngS+ADAREr0Fq\ngS8ADwRE70Bq@仮キテルグマ\ngQ8AjwgZ6DVw@仮バンギラスH\nEQ4ADxhlB31-@仮デリバード\noRSATAgY7iEN@仮フライゴン\nwStAsNRkR31-@仮ニンフィア\nQT0EDwg4aD1h@仮ドオー\nMQdAjUhTCDYG@色ガルーラ\nwTgAD4R0Bz1w@100仮マスカーニャ\ncSwIDwRB538f@仮パンプジン (ちゅうだましゅ)\nQT2EBwRobj1h@仮ドオー\nwTgAj8hF-38f@仮マスカーニャ（乳）\noRsADxhoB0Fr@仮ミカルゲ\nEQcADxRxgymI@仮ラッキー\ngQ8Aj4hE7jRv@仮バンギラス\nQRDAKhQdgAVn@100仮ラグラージ\nUSBAY5iDDDwL\nwRwAj8gFCyVn@100ユキノオー\nQQ+AjBQ9LBQP"
+  }
+}

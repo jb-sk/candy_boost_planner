@@ -5,7 +5,7 @@
     </div>
 
     <div class="calcSticky">
-      <div class="calcSticky__summary">
+      <div class="calcSticky__summary" data-testid="calc-sticky-summary">
         <div class="calcSum calcSum--hi" v-if="calc.boostKind.value !== 'none'" :class="{ 'calcSum--danger': calc.boostCandyOver.value > 0 }">
           <div class="calcSum__k">{{ t("calc.export.sumBoostTotal") }}</div>
           <div class="calcSum__v">{{ calc.fmtNum(calc.totalBoostCandyUsed.value) }}</div>
@@ -35,7 +35,7 @@
           'calcSum--muted': calc.shardsCap.value <= 0,
         }"
       >
-        <div class="calcBarBlock calcBarBlock--candy" v-if="calc.boostKind.value !== 'none'" :class="{ 'calcBarBlock--danger': calc.boostCandyOver.value > 0 }">
+        <div class="calcBarBlock calcBarBlock--candy" data-testid="calc-boost-candy-block" v-if="calc.boostKind.value !== 'none'" :class="{ 'calcBarBlock--danger': calc.boostCandyOver.value > 0 }">
           <div class="calcSum__head">
             <div class="calcSum__k">
               <span class="calcSum__kText">
@@ -51,6 +51,7 @@
           </div>
           <div
             class="calcBar"
+            data-testid="calc-boost-candy-bar"
             role="progressbar"
             :aria-valuenow="Math.max(0, calc.totalBoostCandyUsed.value)"
             aria-valuemin="0"
@@ -72,7 +73,7 @@
           </div>
         </div>
 
-        <div class="calcBarBlock">
+        <div class="calcBarBlock" data-testid="calc-shards-block">
           <div class="calcSum__head">
             <div class="calcSum__k">
               <span class="calcSum__kText">
@@ -92,6 +93,7 @@
           </div>
           <div
             class="calcBar"
+            data-testid="calc-shards-bar"
             role="progressbar"
             :aria-valuenow="Math.max(0, calc.totalShardsUsed.value)"
             aria-valuemin="0"
@@ -119,34 +121,36 @@
       </div>
     </div>
 
-    <div class="calcActions">
-      <button class="btn btn--primary" type="button" @click="calc.openExport()" :disabled="!calc.rowsView.value.length">
+    <div class="calcActions" data-testid="calc-actions">
+      <button class="btn btn--primary" data-testid="calc-export-button" type="button" @click="calc.openExport()" :disabled="!calc.rowsView.value.length">
         {{ t("calc.export.open") }}
       </button>
-      <button class="btn btn--danger" type="button" @click="calc.clear()" :disabled="!calc.rowsView.value.length">
+      <button class="btn btn--danger" data-testid="calc-clear-button" type="button" @click="calc.clear()" :disabled="!calc.rowsView.value.length">
         {{ t("calc.clearPokemons") }}
       </button>
-      <button class="btn btn--ghost" type="button" @click="calc.undo()" :disabled="!calc.canUndo.value">
+      <button class="btn btn--ghost" data-testid="calc-undo-button" type="button" @click="calc.undo()" :disabled="!calc.canUndo.value">
         {{ t("common.undo") }}
       </button>
-      <button class="btn btn--ghost" type="button" @click="calc.redo()" :disabled="!calc.canRedo.value">
+      <button class="btn btn--ghost" data-testid="calc-redo-button" type="button" @click="calc.redo()" :disabled="!calc.canRedo.value">
         {{ t("common.redo") }}
       </button>
-      <button class="btn btn--primary calcActions__settings" type="button" @click="$emit('open-settings')">
+      <button class="btn btn--primary calcActions__settings" data-testid="settings-open-button-desktop" type="button" @click="$emit('open-settings')">
         {{ t("common.settings") }}
       </button>
     </div>
 
     <div class="calcSlots">
-      <div class="slotTabs">
+      <div class="slotTabs" data-testid="calc-slot-tabs">
         <template v-for="i in 3" :key="i">
           <!-- 選択中タブ: セレクター -->
           <div
             v-if="calc.activeSlotTab.value === i - 1"
             class="slotTab slotTab--active"
+            data-testid="calc-slot-tab-active"
           >
             <select
               class="slotTab__select"
+              data-testid="calc-boost-kind-select"
               :value="calc.boostKind.value"
               @change="calc.setSlotBoostKind(($event.target as HTMLSelectElement).value as any)"
             >
@@ -159,6 +163,7 @@
           <button
             v-else
             class="slotTab"
+            data-testid="calc-slot-tab"
             @click="calc.switchToSlot(i - 1)"
           >
             {{ getSlotBoostKindLabel(i - 1) }}
@@ -169,11 +174,12 @@
 
     <!-- コンテンツエリアのラッパー -->
     <div class="calcSlotContainer">
-      <div class="calcRows" v-if="calc.rowsView.value.length">
+      <div class="calcRows" data-testid="calc-rows" v-if="calc.rowsView.value.length">
       <div
         v-for="r in calc.rowsView.value"
         :key="r.id"
         class="calcRow"
+        data-testid="calc-row"
         :class="{
           'calcRow--active': r.id === calc.activeRowId.value,
           'calcRow--dragOver': r.id === calc.dragOverRowId.value,
@@ -187,6 +193,7 @@
         <div class="calcRow__head">
           <div class="calcRow__headLeft">
             <button
+              data-testid="dragHandle"
               class="btn btn--ghost btn--xs calcRow__dragHandle"
               type="button"
               :title="t('calc.row.dragReorder')"
@@ -203,10 +210,11 @@
             <div class="calcRow__title">{{ r.title }}</div>
           </div>
           <div class="calcRow__headRight">
-            <button class="linkBtn" type="button" @click.stop="calc.moveRowUp(r.id)" :disabled="!calc.canMoveRowUp(r.id)">↑</button>
-            <button class="linkBtn" type="button" @click.stop="calc.moveRowDown(r.id)" :disabled="!calc.canMoveRowDown(r.id)">↓</button>
+            <button data-testid="moveUpBtn" class="linkBtn" type="button" @click.stop="calc.moveRowUp(r.id)" :disabled="!calc.canMoveRowUp(r.id)">↑</button>
+            <button data-testid="moveDownBtn" class="linkBtn" type="button" @click.stop="calc.moveRowDown(r.id)" :disabled="!calc.canMoveRowDown(r.id)">↓</button>
             <button
               v-if="r.boxId"
+              data-testid="applyToBoxBtn"
               class="linkBtn"
               type="button"
               @click.stop="$emit('apply-to-box', r.id)"
@@ -214,14 +222,14 @@
             >
               {{ t("calc.applyToBox") }}
             </button>
-            <button class="linkBtn linkBtn--danger" type="button" @click.stop="calc.removeRowById(r.id)">{{ t("common.delete") }}</button>
+            <button data-testid="deleteBtn" class="linkBtn linkBtn--danger" type="button" @click.stop="calc.removeRowById(r.id)">{{ t("common.delete") }}</button>
           </div>
         </div>
 
         <div class="calcRow__grid" :class="{ 'calcRow__grid--normal': calc.boostKind.value === 'none' }">
           <label class="field field--sm">
             <span class="field__label">{{ t("calc.row.srcLevel") }}</span>
-            <div class="levelPick">
+            <div class="levelPick" data-testid="srcLevel">
               <LevelPicker
                 :model-value="r.srcLevel"
                 @update:model-value="calc.setSrcLevel(r.id, $event)"
@@ -234,6 +242,7 @@
           <label class="field field--sm">
             <span class="field__label">{{ t("calc.row.expRemaining") }}</span>
             <input
+              data-testid="expRemaining"
               :value="r.expRemaining"
               type="number"
               min="0"
@@ -249,7 +258,7 @@
                 {{ t("calc.row.expLeftNext", { exp: calc.fmtNum(calc.getPokemonResult(r.id)?.targetExpToNextLevel ?? 0) }) }}
               </span>
             </span>
-            <div class="levelPick">
+            <div class="levelPick" data-testid="dstLevel">
               <LevelPicker
                 :model-value="r.dstLevel"
                 @update:model-value="calc.setDstLevel(r.id, $event)"
@@ -266,6 +275,7 @@
           <label class="field field--sm" v-if="getRowPokedexId(r)">
             <span class="field__label">{{ t("calc.row.speciesCandy") }}</span>
             <input
+              data-testid="speciesCandy"
               type="number"
               min="0"
               class="field__input"
@@ -276,7 +286,7 @@
 
           <label class="field field--sm" v-if="calc.boostKind.value !== 'none'">
             <span class="field__label">{{ t("calc.row.boostReachLevel") }}</span>
-            <div class="levelPick">
+            <div class="levelPick" data-testid="boostReachLevel">
               <button
                 type="button"
                 class="field__input field__input--button levelPick__button"
@@ -340,6 +350,7 @@
           <label class="field field--sm" v-if="calc.boostKind.value !== 'none'">
             <span class="field__label">{{ t("calc.row.boostRatio") }}</span>
             <input
+              data-testid="boostRatio"
               :value="r.ui.boostRatioPct"
               type="range"
               min="0"
@@ -354,12 +365,14 @@
             <span class="field__label">
               {{ calc.boostKind.value === 'none' ? t("calc.row.boostCandyCountNormal") : t("calc.row.boostCandyCount") }}
               <button
+                data-testid="hintBtn"
                 type="button"
                 class="hintIcon"
                 @click.stop="showHint($event, calc.boostKind.value === 'none' ? t('calc.row.boostCandyCountNormalHint') : t('calc.row.boostCandyCountHint'))"
               >?</button>
             </span>
             <input
+              data-testid="boostCandyCount"
               :value="r.ui.boostCandyInput"
               type="number"
               min="0"
@@ -373,6 +386,7 @@
               <span class="field__label">{{ t("calc.row.candyTarget") }}</span>
             </div>
             <input
+              data-testid="candyTarget"
               type="number"
               min="0"
               class="field__input"
@@ -382,18 +396,21 @@
             />
             <div class="sleepLinks">
               <button
+                data-testid="sleepBtn1000h"
                 type="button"
                 class="sleepChip"
                 @click.stop="applySleepGrowth(r.id, 1000)"
                 :title="t('calc.sleep.btn1000h')"
               >1000h</button>
               <button
+                data-testid="sleepBtn2000h"
                 type="button"
                 class="sleepChip"
                 @click.stop="applySleepGrowth(r.id, 2000)"
                 :title="t('calc.sleep.btn2000h')"
               >2000h</button>
               <button
+                data-testid="sleepHintBtn"
                 type="button"
                 class="hintIcon"
                 @click.stop="showHint($event, t('calc.sleep.sleepBtnHint'))"
@@ -406,6 +423,7 @@
         <div class="calcRow__resultCollapse">
           <!-- 必要行（クリックで展開） -->
           <div
+            data-testid="resultRowRequired"
             class="calcRow__resultRow calcRow__resultRow--required"
             :class="{ 'is-expanded': isExpanded(r.id) }"
             @click="toggleExpand(r.id)"
@@ -446,6 +464,7 @@
             <!-- 個数指定行（個数指定ありかつ不足がある場合のみ表示） -->
             <div
               v-if="isExpanded(r.id) && hasLimit(r) && getTheoreticalResources(r) && calc.getPokemonResult(r.id)?.diagnosis.limitingFactor !== null"
+              data-testid="resultRowCandyTarget"
               class="calcRow__resultRow calcRow__resultRow--used"
               style="margin-bottom: 0; padding-bottom: 4px; border-bottom-left-radius: 0; border-bottom-right-radius: 0;"
             >
@@ -489,6 +508,7 @@
             <!-- 使用行（展開時のみ表示） -->
             <div
               v-if="isExpanded(r.id) && calc.getPokemonResult(r.id)"
+              data-testid="resultRowReachable"
               class="calcRow__resultRow calcRow__resultRow--used"
               :style="hasLimit(r) && getTheoreticalResources(r) && getTheoreticalShortageType(r) !== null ? 'margin-top: 0; padding-top: 4px; border-top-left-radius: 0; border-top-right-radius: 0;' : ''"
             >
@@ -552,7 +572,7 @@
         </div>
       </div>
     </div>
-    <div class="calcEmpty" v-else>
+    <div class="calcEmpty" data-testid="calc-empty" v-else>
       <div class="calcEmpty__content">
         <div class="calcEmpty__title">{{ t("calc.emptyTitle") }}</div>
         <div class="calcEmpty__list">
@@ -560,7 +580,7 @@
           <div>{{ t("calc.emptySteps.step2") }}</div>
           <i18n-t keypath="calc.emptySteps.step3" tag="div">
             <template #settingsLink>
-              <button type="button" class="calcEmpty__linkBtn" @click="$emit('open-settings')">
+              <button type="button" class="calcEmpty__linkBtn" data-testid="calc-empty-settings-link" @click="$emit('open-settings')">
                 {{ t("common.settings") }}
               </button>
             </template>
@@ -568,15 +588,16 @@
         </div>
       </div>
       <div class="calcEmpty__link">
-        {{ t("calc.emptyLinkPre") }}<button type="button" class="calcEmpty__linkBtn" @click="$emit('open-help')">{{ t("calc.emptyLinkText") }}</button>{{ t("calc.emptyLinkPost") }}
+        {{ t("calc.emptyLinkPre") }}<button type="button" class="calcEmpty__linkBtn" data-testid="calc-empty-help-link" @click="$emit('open-help')">{{ t("calc.emptyLinkText") }}</button>{{ t("calc.emptyLinkPost") }}
       </div>
     </div>
     </div>
 
-    <div v-if="hintState.visible" class="hintOverlay" @click.stop="closeHint"></div>
+    <div v-if="hintState.visible" class="hintOverlay" data-testid="calc-hint-overlay" @click.stop="closeHint"></div>
     <div
       v-if="hintState.visible"
       class="hintPopover"
+      data-testid="calc-hint-popover"
       :style="{ left: hintState.left + 'px', top: hintState.top + 'px' }"
       @click.stop="handleHintClick"
       v-html="hintState.message"
