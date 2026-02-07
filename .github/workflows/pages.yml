@@ -2,8 +2,11 @@ name: Deploy to GitHub Pages
 run-name: Deploy (${{ github.ref_name }})
 
 on:
-  push:
-    branches: [ "main" ]
+  workflow_run:
+    workflows: ["E2E and Unit Tests"]
+    branches: ["main"]
+    types:
+      - completed
   workflow_dispatch:
 
 permissions:
@@ -17,6 +20,7 @@ concurrency:
 
 jobs:
   build:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
