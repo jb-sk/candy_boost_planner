@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { planLevelUp } from '../core';
+import { planLevelUp } from '../../../src/domain/level-planner/core';
 import { pokemon, inventory, config, getPokemon } from './helpers';
 
 describe('不足タイプ判定テスト', () => {
@@ -263,4 +263,3 @@ describe('不足タイプ判定テスト', () => {
     });
   });
 });
-

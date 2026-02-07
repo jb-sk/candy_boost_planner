@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { calcLevelByCandy } from '../../pokesleep/exp';
+import { calcLevelByCandy } from '../../../src/domain/pokesleep/exp';
 
 describe('calcLevelByCandy 検証テスト', () => {
   // ========================================
