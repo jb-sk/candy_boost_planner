@@ -7,8 +7,8 @@ import type {
   CandyInventory,
   PlanConfig,
   BoostKind,
-} from '../types';
-import type { ExpType, ExpGainNature } from '../../types';
+} from '../../../src/domain/level-planner/types';
+import type { ExpType, ExpGainNature } from '../../../src/domain/types';
 
 // ============================================================
 // デフォルト値
@@ -38,7 +38,7 @@ export const DEFAULT_CONFIG: PlanConfig = {
 // リクエスト作成
 // ============================================================
 
-import { calcExpAndCandy } from '../../pokesleep/exp';
+import { calcExpAndCandy } from '../../../src/domain/pokesleep/exp';
 
 export type PokemonInputSimple = {
   id: string;
@@ -180,7 +180,7 @@ export function config(input?: ConfigInput): PlanConfig {
 // ============================================================
 
 import { expect } from 'vitest';
-import type { LevelUpPlanResult } from '../types';
+import type { LevelUpPlanResult } from '../../../src/domain/level-planner/types';
 
 /**
  * ポケモン結果を取得
@@ -241,7 +241,7 @@ export function expectTotalShardsWithinLimit(result: LevelUpPlanResult, limit: n
 // Invariants検証（包括的）
 // ============================================================
 
-import type { PokemonLevelUpResult } from '../types';
+import type { PokemonLevelUpResult } from '../../../src/domain/level-planner/types';
 
 export type InvariantContext = {
   globalBoostLimit: number;

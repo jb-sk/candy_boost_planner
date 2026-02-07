@@ -6,7 +6,7 @@ export default defineConfig({
     environment: 'node',
 
     // テストファイルのパターン
-    include: ['src/**/*.test.ts', 'src/**/*.spec.ts'],
+    include: ['src/**/*.test.ts', 'src/**/*.spec.ts', 'tests/unit/**/*.test.ts', 'tests/unit/**/*.spec.ts'],
 
     // グローバルなテスト関数を使用可能に
     globals: true,

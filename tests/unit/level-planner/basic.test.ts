@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { planLevelUp } from '../core';
+import { planLevelUp } from '../../../src/domain/level-planner/core';
 import { pokemon, inventory, config, getPokemon, validatePokemonInvariants } from './helpers';
 
 describe('基本制限テスト', () => {
