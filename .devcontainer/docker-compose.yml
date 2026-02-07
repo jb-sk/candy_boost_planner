@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    working_dir: /workspaces/candy_boost_planner
+    volumes:
+      # Workspace mount (Project Root)
+      - ../:/workspaces/candy_boost_planner:cached
+
+      # 1. Persist OpenClaw configuration (Identity, Auth)
+      #    Mount local folder to container home for persistence
+      - ../.devcontainer/openclaw-config:/home/node/.openclaw
+
+      # 2. Persist node_modules to avoid reinstalling on every rebuild
+      #    Using a named volume improves performance on Windows
+      - node_modules_volume:/workspaces/candy_boost_planner/node_modules
+
+    # Port mapping
+    ports:
+      - "5174:5173" # Port Shifting for Vite (Windows: 5173, Container: 5174)
+      - "6080:6080"
+      - "18792:18792"
+
+    environment:
+      DISPLAY: ":1"
+      HOME: "/home/node"
+
+    # Define the command to run (managed by entrypoint.sh)
+    command: /usr/local/bin/entrypoint.sh
+
+volumes:
+  node_modules_volume:

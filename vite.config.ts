@@ -10,5 +10,10 @@ export default defineConfig(() => {
     // ルーティング方式（history/hash）を入れる場合は別途調整します。
     base,
     plugins: [vue()],
+    server: {
+      host: true,
+      port: 5173,
+      strictPort: true,
+    },
   };
 });

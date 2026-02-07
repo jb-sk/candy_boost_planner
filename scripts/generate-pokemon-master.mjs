@@ -840,3 +840,31 @@ if (wroteFormLabelTs) console.log(`[generate-pokemon-master] wrote form-label-ja
 
 if (wroteMaster) console.log(`[generate-pokemon-master] wrote master: ${masterOut}`);
 if (wroteIndex) console.log(`[generate-pokemon-master] wrote index: ${indexOut}`);
+
+// E2Eテスト設定の最新ポケモン名を更新
+const testConfigPath = path.resolve(__dirname, "../tests/fixtures/test-config.json");
+if (addedEntries.length > 0 && !args.dryRun) {
+  // 追加されたポケモンの中から最後のもの（最新実装）を取得
+  const latestAdded = addedEntries[addedEntries.length - 1];
+  const latestPokemonName = latestAdded.nameJa;
+
+  if (fs.existsSync(testConfigPath)) {
+    try {
+      const testConfig = JSON.parse(fs.readFileSync(testConfigPath, "utf8"));
+      const previousName = testConfig.latestPokemon?.name;
+
+      if (previousName !== latestPokemonName) {
+        testConfig.latestPokemon = {
+          ...testConfig.latestPokemon,
+          name: latestPokemonName,
+        };
+        fs.writeFileSync(testConfigPath, JSON.stringify(testConfig, null, 2) + "\n", "utf8");
+        console.log(`[generate-pokemon-master] ✅ テスト設定更新: 最新ポケモン「${previousName}」→「${latestPokemonName}」`);
+      }
+    } catch (e) {
+      console.warn(`[generate-pokemon-master] ⚠️ テスト設定更新失敗: ${e.message}`);
+    }
+  } else {
+    console.log(`[generate-pokemon-master] ℹ️ テスト設定ファイルがありません: ${testConfigPath}`);
+  }
+}

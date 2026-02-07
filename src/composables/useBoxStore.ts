@@ -75,7 +75,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
   });
 
   const filterJoinMode = ref<FilterJoinMode>("and"); // とくい/サブスキル の結合
-  const subSkillJoinMode = ref<FilterJoinMode>("or"); // 複数サブスキル の結合
+  const subSkillJoinMode = ref<FilterJoinMode>("and"); // 複数サブスキル の結合
   const selectedSpecialties = ref<Array<"Berries" | "Ingredients" | "Skills" | "All">>([]);
   const selectedSubSkillEns = ref<string[]>([]);
   const favoritesOnly = ref(false);
