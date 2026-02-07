@@ -8,9 +8,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { planLevelUp } from '../core';
+import { planLevelUp } from '../../../src/domain/level-planner/core';
 import { pokemon, inventory, config, getPokemon } from './helpers';
-import { calcExpPerCandy } from '../../pokesleep/exp';
+import { calcExpPerCandy } from '../../../src/domain/pokesleep/exp';
 
 describe('エッジケーステスト', () => {
   // ========================================
