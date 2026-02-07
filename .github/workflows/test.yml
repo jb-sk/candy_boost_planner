@@ -23,26 +23,8 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Measure Start Time
-        id: start-time
-        run: echo "start_time=$(date +%s)" >> $GITHUB_OUTPUT
-
       - name: Run Unit Tests
         run: npx vitest run --no-color --reporter=verbose
-
-      - name: Measure End Time & Output Summary
-        if: always()
-        run: |
-          end_time=$(date +%s)
-          start_time=${{ steps.start-time.outputs.start_time }}
-          duration=$((end_time - start_time))
-
-          echo "## Unit Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
-          echo "| Start Time | $(date -d @$start_time) |" >> $GITHUB_STEP_SUMMARY
-          echo "| End Time | $(date -d @$end_time) |" >> $GITHUB_STEP_SUMMARY
-          echo "| Duration | ${duration}s |" >> $GITHUB_STEP_SUMMARY
 
   test-e2e:
     name: E2E Tests
@@ -78,29 +60,11 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
-      - name: Measure Start Time
-        id: start-time
-        run: echo "start_time=$(date +%s)" >> $GITHUB_OUTPUT
-
       - name: Run E2E Tests
         env:
           CI: true
           NO_COLOR: 1
         run: npx playwright test --project=chromium
-
-      - name: Measure End Time & Output Summary
-        if: always()
-        run: |
-          end_time=$(date +%s)
-          start_time=${{ steps.start-time.outputs.start_time }}
-          duration=$((end_time - start_time))
-
-          echo "## E2E Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
-          echo "| Start Time | $(date -d @$start_time) |" >> $GITHUB_STEP_SUMMARY
-          echo "| End Time | $(date -d @$end_time) |" >> $GITHUB_STEP_SUMMARY
-          echo "| Duration | ${duration}s |" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload Playwright Report
         if: always()
