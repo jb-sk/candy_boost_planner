@@ -58,7 +58,7 @@ nul
 # ------------------------------
 # Test outputs
 # ------------------------------
-# test-results*.json
+test-results*.json
 test-output.json
 test-failures.txt
 test-list.txt
