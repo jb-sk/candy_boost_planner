@@ -206,6 +206,8 @@ export const pokemonNameJaByIdForm = {
   "736": "アゴジムシ",
   "737": "デンヂムシ",
   "738": "クワガノン",
+  "742": "アブリー",
+  "743": "アブリボン",
   "759": "ヌイコグマ",
   "760": "キテルグマ",
   "764": "キュワワー",
@@ -422,6 +424,8 @@ export const pokemonExpTypeByIdForm = {
   "736": 600,
   "737": 600,
   "738": 600,
+  "742": 600,
+  "743": 600,
   "759": 600,
   "760": 600,
   "764": 600,
@@ -638,6 +642,8 @@ export const pokemonSpecialtyByIdForm = {
   "736": "Ingredients",
   "737": "Ingredients",
   "738": "Ingredients",
+  "742": "Ingredients",
+  "743": "Ingredients",
   "759": "Ingredients",
   "760": "Ingredients",
   "764": "Ingredients",
@@ -854,6 +860,8 @@ export const pokemonTypeByIdForm = {
   "736": "Bug",
   "737": "Bug",
   "738": "Bug",
+  "742": "Fairy",
+  "743": "Fairy",
   "759": "Fighting",
   "760": "Fighting",
   "764": "Fairy",
@@ -1070,6 +1078,8 @@ export const pokemonTypeJaByIdForm = {
   "736": "むし",
   "737": "むし",
   "738": "むし",
+  "742": "フェアリー",
+  "743": "フェアリー",
   "759": "かくとう",
   "760": "かくとう",
   "764": "フェアリー",
@@ -2009,6 +2019,16 @@ export const pokemonIngredientsByIdForm = {
     "b": "mushroom",
     "c": "honey"
   },
+  "742": {
+    "a": "honey",
+    "b": "oil",
+    "c": "corn"
+  },
+  "743": {
+    "a": "honey",
+    "b": "oil",
+    "c": "corn"
+  },
   "759": {
     "a": "corn",
     "b": "sausage",
@@ -2754,6 +2774,12 @@ export const pokemonIdFormsByNameJa = {
   ],
   "クワガノン": [
     738
+  ],
+  "アブリー": [
+    742
+  ],
+  "アブリボン": [
+    743
   ],
   "ヌイコグマ": [
     759

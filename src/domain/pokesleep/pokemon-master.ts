@@ -3583,6 +3583,42 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%82%AF%E3%83%AF%E3%82%AC%E3%83%8E%E3%83%B3"
   },
   {
+    "dexNo": 742,
+    "pokedexId": 742,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "アブリー",
+    "baseNameJa": "アブリー",
+    "specialty": "Ingredients",
+    "type": "Fairy",
+    "typeJa": "フェアリー",
+    "expType": 600,
+    "ingredients": {
+      "a": "honey",
+      "b": "oil",
+      "c": "corn"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%A2%E3%83%96%E3%83%AA%E3%83%BC"
+  },
+  {
+    "dexNo": 743,
+    "pokedexId": 743,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "アブリボン",
+    "baseNameJa": "アブリボン",
+    "specialty": "Ingredients",
+    "type": "Fairy",
+    "typeJa": "フェアリー",
+    "expType": 600,
+    "ingredients": {
+      "a": "honey",
+      "b": "oil",
+      "c": "corn"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%A2%E3%83%96%E3%83%AA%E3%83%9C%E3%83%B3"
+  },
+  {
     "dexNo": 759,
     "pokedexId": 759,
     "form": 0,
