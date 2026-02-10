@@ -4,10 +4,8 @@ name: Auto Update Pokemon Data
 
 on:
   schedule:
-    # 毎日 UTC 00:00 (JST 09:00) に実行
-    - cron: '0 0 * * *'
-    # 毎月1日 UTC 01:00 (JST 10:00) に全件チェック
-    - cron: '0 1 1 * *'
+    # 毎日 UTC 01:00 (JST 10:00) に実行（毎月1日はコード内分岐で全件チェック）
+    - cron: '0 1 * * *'
   workflow_dispatch:
     inputs:
       refresh_en_names:
@@ -54,9 +52,9 @@ jobs:
             echo "マスターデータ変更あり"
           fi
 
-          # サマリーを保存
+          # サマリーを保存（追加/削除の差分情報を抽出）
           echo 'master_summary<<EOF' >> $GITHUB_OUTPUT
-          echo "$OUTPUT" | grep -A 100 "entries:" | head -50 >> $GITHUB_OUTPUT
+          echo "$OUTPUT" | grep -E "^(- (Wikiエントリ|ユニーク|追加|削除)|\[追加される|\[削除される|  [+-] #)" | head -50 >> $GITHUB_OUTPUT
           echo 'EOF' >> $GITHUB_OUTPUT
 
       - name: Update master data
@@ -102,9 +100,9 @@ jobs:
             echo "英語名変更なし"
           fi
 
-          # サマリーを保存（追加/変更/削除の行）
+          # サマリーを保存（追加/変更/削除の行 + 個別ポケモン名）
           echo 'en_summary<<EOF' >> $GITHUB_OUTPUT
-          echo "$EN_OUTPUT" | grep -E "^(✅|📝|🗑️|変更なし)" | head -30 >> $GITHUB_OUTPUT
+          echo "$EN_OUTPUT" | grep -E "^(✅|📝|🗑️|変更なし|   #)" | head -50 >> $GITHUB_OUTPUT
           echo 'EOF' >> $GITHUB_OUTPUT
 
       - name: Check if any changes exist
