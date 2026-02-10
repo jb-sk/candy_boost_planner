@@ -4350,6 +4350,50 @@
       "link": "https://wikiwiki.jp/poke_sleep/%E3%82%AF%E3%83%AF%E3%82%AC%E3%83%8E%E3%83%B3"
     },
     {
+      "dexNo": 742,
+      "nameJa": "アブリー",
+      "specialtyJa": "食材",
+      "sleepTypeJa": "すやすや",
+      "berryJa": [
+        "モモンのみ"
+      ],
+      "ingAJa": [
+        "あまいミツ"
+      ],
+      "ingBJa": [
+        "ピュアなオイル"
+      ],
+      "ingCJa": [
+        "ワカクサコーン"
+      ],
+      "mainSkillJa": "食材セレクトS",
+      "fp": 5,
+      "helpSeconds": 4500,
+      "link": "https://wikiwiki.jp/poke_sleep/%E3%82%A2%E3%83%96%E3%83%AA%E3%83%BC"
+    },
+    {
+      "dexNo": 743,
+      "nameJa": "アブリボン",
+      "specialtyJa": "食材",
+      "sleepTypeJa": "すやすや",
+      "berryJa": [
+        "モモンのみ"
+      ],
+      "ingAJa": [
+        "あまいミツ"
+      ],
+      "ingBJa": [
+        "ピュアなオイル"
+      ],
+      "ingCJa": [
+        "ワカクサコーン"
+      ],
+      "mainSkillJa": "食材セレクトS",
+      "fp": 12,
+      "helpSeconds": 2300,
+      "link": "https://wikiwiki.jp/poke_sleep/%E3%82%A2%E3%83%96%E3%83%AA%E3%83%9C%E3%83%B3"
+    },
+    {
       "dexNo": 759,
       "nameJa": "ヌイコグマ",
       "specialtyJa": "食材",
