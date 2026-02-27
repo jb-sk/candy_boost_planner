@@ -18,7 +18,7 @@ describe('calcLevelByCandy 検証テスト', () => {
   //
   // 期待:
   // - 501アメの方が到達EXPが高い
-  describe('Test55: スイクン 500 vs 501 アメブ', () => {
+  describe('Test54: スイクン 500 vs 501 アメブ', () => {
     it('1アメの差が到達EXPに反映される', () => {
       const base = {
         srcLevel: 50,

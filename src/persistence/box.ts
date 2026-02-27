@@ -24,14 +24,14 @@ export function loadBox(): PokemonBoxEntryV1[] {
     // legacy: array of entries
     const arr = Array.isArray(json)
       ? json
-      : json && typeof json === "object" && Array.isArray((json as any).entries)
-        ? (json as any).entries
+      : json && typeof json === "object" && Array.isArray((json as Record<string, unknown>).entries)
+        ? (json as Record<string, unknown>).entries as unknown[]
         : null;
     if (!arr) return [];
     // できるだけ壊れに強く（最低限の形だけ保証）
     return arr
-      .filter((x: any) => x && typeof x === "object")
-      .map((x: any) => normalizeEntry(x))
+      .filter((x: unknown): x is Record<string, unknown> => x != null && typeof x === "object")
+      .map((x) => normalizeEntry(x))
       .slice(0, 300);
   } catch {
     return [];
@@ -47,43 +47,43 @@ export function saveBox(entries: PokemonBoxEntryV1[]) {
   }
 }
 
-function normalizeEntry(x: any): PokemonBoxEntryV1 {
+function normalizeEntry(x: Record<string, unknown>): PokemonBoxEntryV1 {
   const now = new Date().toISOString();
   const source: BoxEntrySource = x.source === "manual" ? "manual" : "nitoyon";
 
-  const derived =
-    typeof x.derived === "object" && x.derived
-      ? {
-          pokedexId: toInt(x.derived.pokedexId, 0),
-          form: toInt(x.derived.form, 0),
-          level: toInt(x.derived.level, 1),
-          expType: toExpType(x.derived.expType, 600),
-          expGainNature: toExpGainNature(x.derived.expGainNature, "normal"),
-          natureName: typeof x.derived.natureName === "string" ? x.derived.natureName : "",
-        }
-      : undefined;
+  const d = typeof x.derived === "object" && x.derived ? (x.derived as Record<string, unknown>) : null;
+  const derived = d
+    ? {
+        pokedexId: toInt(d.pokedexId, 0),
+        form: toInt(d.form, 0),
+        level: toInt(d.level, 1),
+        expType: toExpType(d.expType, 600),
+        expGainNature: toExpGainNature(d.expGainNature, "normal"),
+        natureName: typeof d.natureName === "string" ? d.natureName : "",
+      }
+    : undefined;
 
-  const planner =
-    typeof x.planner === "object" && x.planner
-      ? {
-          level: x.planner.level === undefined ? undefined : toInt(x.planner.level, 1),
-          expRemaining: x.planner.expRemaining === undefined ? undefined : toInt(x.planner.expRemaining, 0),
-          expType: x.planner.expType === undefined ? undefined : toExpType(x.planner.expType, 600),
-          expGainNature:
-            x.planner.expGainNature === undefined
-              ? undefined
-              : toExpGainNature(x.planner.expGainNature, "normal"),
-          specialty: x.planner.specialty === undefined ? undefined : toSpecialty(x.planner.specialty),
-          ingredientType:
-            x.planner.ingredientType === undefined
-              ? undefined
-              : toIngredientType(x.planner.ingredientType),
-          subSkills:
-            x.planner.subSkills === undefined
-              ? undefined
-              : toSubSkills(x.planner.subSkills),
-        }
-      : undefined;
+  const p = typeof x.planner === "object" && x.planner ? (x.planner as Record<string, unknown>) : null;
+  const planner = p
+    ? {
+        level: p.level === undefined ? undefined : toInt(p.level, 1),
+        expRemaining: p.expRemaining === undefined ? undefined : toInt(p.expRemaining, 0),
+        expType: p.expType === undefined ? undefined : toExpType(p.expType, 600),
+        expGainNature:
+          p.expGainNature === undefined
+            ? undefined
+            : toExpGainNature(p.expGainNature, "normal"),
+        specialty: p.specialty === undefined ? undefined : toSpecialty(p.specialty),
+        ingredientType:
+          p.ingredientType === undefined
+            ? undefined
+            : toIngredientType(p.ingredientType),
+        subSkills:
+          p.subSkills === undefined
+            ? undefined
+            : toSubSkills(p.subSkills),
+      }
+    : undefined;
 
   return {
     id: String(x.id ?? cryptoRandomId()),
@@ -133,18 +133,18 @@ function toSubSkills(v: unknown): BoxSubSkillSlotV1[] | undefined {
   const out: BoxSubSkillSlotV1[] = [];
   for (const x of v) {
     if (!x || typeof x !== "object") continue;
-    const lv = Number((x as any).lv);
-    const nameEn = String((x as any).nameEn ?? "").trim();
+    const r = x as Record<string, unknown>;
+    const lv = Number(r.lv);
+    const nameEn = String(r.nameEn ?? "").trim();
     if (!nameEn) continue;
     if (lv !== 10 && lv !== 25 && lv !== 50 && lv !== 75 && lv !== 100) continue;
-    out.push({ lv: lv as any, nameEn });
+    out.push({ lv: lv as 10 | 25 | 50 | 75 | 100, nameEn });
   }
   return out.length ? out : undefined;
 }
 
 export function cryptoRandomId(): string {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const c: any = globalThis.crypto;
+  const c = globalThis.crypto;
   if (c && typeof c.randomUUID === "function") return c.randomUUID();
   return `id_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`;
 }

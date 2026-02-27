@@ -20,72 +20,62 @@ PowerShellでの文字化けを防ぎ、JSON出力を生成するための正式
 2. 標準出力の結果は信頼しない（文字化けや省略の可能性があるため）
 3. 生成された `test-results.json` を `view_file` で読み込んで結果を確認すること
 
-## 📝 プロンプト作成ルール（引き継ぎ・要約時）
-
-次セッションへの引き継ぎプロンプトや要約を作成する際は、IDEの自動リンク機能による表示崩れを防ぐため、以下のルールを厳守すること。
-
-### 1. プレーンテキスト運用の徹底
-- プロンプト部分は **Markdown装飾（太字、斜体、リンク、バッククォート）を使用せず、プレーンテキスト形式** で出力すること。
-- コードブロック ` ```text ` を使用してプロンプト全体を囲むこと。
-
-### 2. ファイルパス表記（厳禁事項）
-- **絶対パス禁止**: プロジェクトルートからの相対パスのみ使用する。
-- **バッククォート禁止**: パスをバッククォートで囲んではならない（逆にリンク化されるリスクがあるため）。
-- **Markdownリンク禁止**: `[file](path)` の形式は絶対に使用しない。
-
-### 3. 出力例（正解）
-
-```text
-# 次のタスク
-src/main.ts のリファクタリング
-
-## 参照ファイル
-src/main.ts
-docs/README.md
-```
-
-### 4. 通常会話時のファイルパス（例外）
-- プロンプト出力**以外**の通常の会話や説明においては、従来通りバッククォート (`) で囲んで可読性を確保してもよい。ただし絶対パスは極力避けること。
-
 ## 🎨 画像生成・保存ルール
 
-画像生成を行う際は、以下のルールに従って自動的に保存すること：
+画像生成を行う際は、以下のルールに従って保存すること。
 
-1.  **保存先**: `_local/img/YYYY/MM/`
-    *   年/月フォルダが存在しない場合は自動的に作成すること。
-2.  **ファイル名規則**: `YYYYMMDD_Description.EXT`
-    *   **重要**: ツールから出力されたファイルの中身（マジックナンバー）を確認し、正しい拡張子（`.jpg` または `.png`）を付与すること。ツールが誤った拡張子で出力する場合があるため、拡張子を鵜呑みにしないこと。
-    *   例: `20260131_hero_banner.jpg` (中身がJPEGの場合)
-3.  **確認**: 生成後はファイルが保存されたことをユーザーに報告すること。
+### 保存先・ファイル名
 
-## 🎨 好みの画像スタイル（Design Preference）
+*   **保存先**: `_local/img/YYYY/MM/`（自動作成される）
+*   **ファイル名規則**: `YYYYMMDD_Description_NN`（拡張子はツールが自動判定）
+    *   例: `20260224_cinderace_silhouette_01`
 
-ユーザーは以下のスタイルを好みます。画像生成のプロンプトを作成する際は、これらのキーワードやトーンを優先してください。
+### 保存手順（必須 — image-saver MCP を使うこと）
 
-### 1. キャラクターアイコン (Icon)
-*   **Style**: Anime style, Vibrant colors, Clean background
-*   **Mood**: Energetic, Happy, Cute, Adorable
-*   **Example**: `cute_cinderace_icon` (Step 492) のような、明るくかわいらしい表情。
+`run_shell_command` による画像コピーは**ハングするため禁止**。
+必ず `image-saver` MCP ツールを使用すること。
 
-### 2. アイキャッチ / 背景 (Eyecatch)
-*   **Style**: Simple and deformed art style, Flat colors, Clean lines, No detailed textures
-*   **Ref**: Similar to "Pokemon Sleep" style
-*   **Mood**: Relaxing, Peaceful, Minimalist
-*   **Example**: `snorlax_sleeping_field_simple` (Step 513) のような、描き込みすぎないシンプルなデフォルメ調。
+#### Step 1: 画像を生成する
 
-## 🔧 gemini-delegation 使用ルール
+通常通り画像生成を行う。生成された画像は `brain/<session-id>/` に保存される。
 
-以下のタスクは gemini-delegation MCP を使用してサブエージェントに委譲できます：
-
-- **テスト実行**: `npx playwright test` / `npx vitest run`
-- **ファイル調査**: エラーコンテキスト（error-context.md）の読み取りと分析
-- **デバッグ**: 失敗原因の調査
-- **Lint**: ESLint/Prettier実行
-- **Audit**: 依存関係の脆弱性チェック
+#### Step 2: 生成ファイルを確認する
 
 ```
-mcp_gemini-delegation_delegate_to_agent
-  agent_type: "test" または "debug" または "lint" または "audit"
-  task: "タスクの説明"
-  workdir: "d:\\Dev\\Projects\\candy_boost_planner"
+mcp_image-saver_list_brain_images
+  session_id: (省略で最新セッションを自動選択)
 ```
+
+#### Step 3: 画像を保存する
+
+```
+mcp_image-saver_save_images
+  session_id: "<session-id>"
+  yyyy: "2026"
+  mm: "02"
+  files:
+    - src: "cinderace_silhouette_1_1771900720100.png"
+      dest: "20260224_cinderace_silhouette_01"
+    - src: "cinderace_silhouette_2_1771900740962.png"
+      dest: "20260224_cinderace_silhouette_02"
+```
+
+拡張子はツールがファイルのマジックナンバーから自動判定する。`dest` には拡張子を含めないこと。
+
+#### Step 4: 保存結果を確認する
+
+```
+mcp_image-saver_list_saved_images
+  yyyy: "2026"
+  mm: "02"
+```
+
+## ⚠️ run_shell_command 制約事項
+
+`run_shell_command` は同期実行であり、完了を返さないとセッション全体がハングする。以下を厳守すること：
+
+1.  **`Start-Sleep` 禁止** — pwsh プロセスがゾンビ化する。待機が必要な場合はユーザーに報告し、次のターンで続行すること。
+2.  **ファイルコピー・移動の禁止** — `Copy-Item` / `Move-Item` は `run_shell_command` で実行しない。画像保存には `image-saver` MCP を使うこと。
+3.  **長時間実行コマンド禁止** — 完了まで数十秒以上かかるコマンドは避けること。
+4.  **`[System.IO.File]::ReadAllBytes()` 禁止** — ファイルロックによるハングの原因となる。
+5.  **`.ps1` スクリプトの実行禁止** — `run_shell_command` で `.ps1` を実行してもハングする。

@@ -1,0 +1,177 @@
+/* Dark Theme — Elegant Deep Navy & Gold */
+@import "./core/reset.css";
+@import "./core/components.css";
+
+/* ===== Variables ===== */
+:root {
+  /* Core Palette */
+  --bg-decor: #0d1117;
+  --paper: #161b27;
+  --ink: #e8dcc8;
+  --muted: #a89e91;
+  --accent: #c9a84c;
+  --accent-strong: #d4a020;
+  --danger: #e05c5c;
+
+  /* Surfaces */
+  --surface: #1a2035;
+  --surface-alt: #1f2a40;
+  --border: #2e3a52;
+
+  /* Overlay */
+  --overlay-bg: rgba(5, 8, 18, 0.75);
+  /* Interactive */
+  --btn-bg: var(--accent);
+  --btn-ink: #0d1117;
+  --input-bg: #111827;
+  --input-border: #2e3a52;
+  --ring: #c9a84c;
+
+  /* Data Visualization */
+  --bar-fill: #c9a84c;
+  --bar-track: #2e3a52;
+  --bar-over: #e05c5c;
+  --export-divider: #c9a84c;
+
+  /* Pie Chart Palette */
+  --pie-0: #c9a84c;
+  --pie-1: #6ba3a0;
+  --pie-2: #e05c5c;
+  --pie-3: #8b9dc3;
+  --pie-4: #d4a76a;
+  --pie-5: #7b8c6e;
+  --pie-6: #c7917b;
+  --pie-7: #a89e91;
+
+  /* Semantic Accents */
+  --star-color: #f0c040;
+  --nature-up: hsl(145, 55%, 42%);
+  --nature-down: hsl(350, 60%, 50%);
+
+  /* Border Radius */
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-pill: 99px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(201, 168, 76, 0.08);
+  --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(201, 168, 76, 0.12);
+
+}
+
+
+
+/* ===== Hero ===== */
+.hero {
+  background: linear-gradient(160deg, #0f1624 0%, #1a2340 60%, #0f1624 100%);
+  border-bottom: 1px solid rgba(201, 168, 76, 0.3);
+  box-shadow: 0 2px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* ===== Panel ===== */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+}
+
+/* ===== Buttons ===== */
+.btn--primary {
+  background: linear-gradient(135deg, #d4a84e 0%, #b8922e 100%);
+  color: #0d1117;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border: none;
+  box-shadow: 0 2px 8px rgba(201, 168, 76, 0.35), inset 0 1px 0 rgba(255,255,255,0.15);
+  transition: box-shadow 0.15s, transform 0.1s;
+}
+
+.btn--primary:hover {
+  box-shadow: 0 4px 16px rgba(201, 168, 76, 0.5), inset 0 1px 0 rgba(255,255,255,0.2);
+  transform: translateY(-1px);
+}
+
+.btn--primary:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(201, 168, 76, 0.3);
+}
+
+/* ===== Field Input ===== */
+.field__input {
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.field__input:focus {
+  border-color: var(--accent);
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.3), 0 0 0 2px rgba(201, 168, 76, 0.25);
+}
+
+/* ===== Box Disclosure ===== */
+.boxDisclosure__head {
+  color: var(--ink);
+}
+
+.boxDisclosure__note,
+.boxAddFav,
+.boxAddCalcCheck,
+.boxImport__favCheck,
+.boxCard__status--hint {
+  color: color-mix(in srgb, var(--ink) 75%, transparent);
+}
+
+/* ===== Box Tiles ===== */
+.boxTile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--accent);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s, transform 0.15s;
+}
+
+.boxTile.boxTile--hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+/* ===== Chip Buttons ===== */
+.chipBtn {
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.chipBtn:hover,
+.chipBtn--on {
+  background: rgba(201, 168, 76, 0.15);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ===== Modal ===== */
+.modal {
+  background: var(--paper);
+  border: 1px solid rgba(201, 168, 76, 0.25);
+  box-shadow: var(--shadow-lg);
+}
+
+/* ===== Mobile Nav ===== */
+.mobileNav {
+  background: #10151f;
+  border-top: 1px solid rgba(201, 168, 76, 0.2);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+}
+
+/* ===== PC Desktop (≥ 1400px) ===== */
+@media (min-width: 1400px) {
+  .hero {
+    background: var(--paper);            /* drop gradient, go solid */
+    border-bottom: none;
+    box-shadow: none;
+  }
+}

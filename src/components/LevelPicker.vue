@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref, nextTick, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 
 const props = defineProps<{
@@ -17,7 +17,61 @@ const { t } = useI18n();
 
 const isOpen = ref(false);
 const root = ref<HTMLElement | null>(null);
-const presets = [10, 25, 30, 40, 50, 55, 57, 60, 65];
+const popoverStyle = ref<Record<string, string>>({});
+const presets = [10, 25, 30, 40, 50, 55, 60, 65];
+
+const EDGE_GAP = 8; // px from viewport edge
+
+/** Calculate popover position so it never overflows viewport edges */
+function adjustPopoverPosition() {
+  if (!root.value) return;
+  const popover = root.value.querySelector<HTMLElement>(".levelPick__popover");
+  if (!popover) return;
+
+  const triggerRect = root.value.getBoundingClientRect();
+  const popW = popover.offsetWidth;
+  const popH = popover.offsetHeight;
+  const vpW = window.innerWidth;
+  const vpH = window.innerHeight;
+
+  // --- 水平位置 ---
+  // Default: right-align to trigger (same as CSS right:0)
+  let left = triggerRect.right - popW;
+
+  // Clamp: don't overflow left edge
+  if (left < EDGE_GAP) {
+    left = EDGE_GAP;
+  }
+  // Clamp: don't overflow right edge
+  if (left + popW > vpW - EDGE_GAP) {
+    left = vpW - EDGE_GAP - popW;
+  }
+
+  // Convert to offset from the trigger's left edge (since parent is position:relative)
+  const offsetLeft = left - triggerRect.left;
+
+  // --- 垂直位置 ---
+  // デフォルトは下（CSS top: calc(100% + 6px)）。下に収まらない場合は上にフリップ。
+  // ただし position: fixed（legacy <=560px のセンタリング）時はスキップ。
+  const isFixed = getComputedStyle(popover).position === "fixed";
+  const gapPx = 6;
+  const overflowsBottom = triggerRect.bottom + gapPx + popH > vpH - EDGE_GAP;
+  const fitsAbove = triggerRect.top - gapPx - popH > EDGE_GAP;
+
+  if (!isFixed && overflowsBottom && fitsAbove) {
+    popoverStyle.value = { left: `${offsetLeft}px`, right: "auto", top: "auto", bottom: `calc(100% + ${gapPx}px)` };
+  } else {
+    popoverStyle.value = { left: `${offsetLeft}px`, right: "auto" };
+  }
+}
+
+async function toggle() {
+  isOpen.value = !isOpen.value;
+  if (isOpen.value) {
+    await nextTick();
+    adjustPopoverPosition();
+  }
+}
 
 function close() {
   isOpen.value = false;
@@ -56,12 +110,12 @@ onUnmounted(() => {
       type="button"
       class="field__input field__input--button levelPick__button"
       data-testid="level-picker-trigger"
-      @click.stop="isOpen = !isOpen"
+      @click.stop="toggle"
     >
       {{ modelValue }}
     </button>
 
-    <div v-if="isOpen" class="levelPick__popover" data-testid="level-picker-popover" role="dialog" style="z-index: 100">
+    <div v-if="isOpen" class="levelPick__popover" data-testid="level-picker-popover" role="dialog" :style="popoverStyle">
       <div class="levelPick__top">
         <div class="levelPick__title">
           <slot name="title">{{ label }}</slot>

@@ -5,30 +5,36 @@
     </div>
 
     <div class="calcSticky">
-      <div class="calcSticky__summary" data-testid="calc-sticky-summary">
-        <div class="calcSum calcSum--hi" v-if="calc.boostKind.value !== 'none'" :class="{ 'calcSum--danger': calc.boostCandyOver.value > 0 }">
-          <div class="calcSum__k">{{ t("calc.export.sumBoostTotal") }}</div>
-          <div class="calcSum__v">{{ calc.fmtNum(calc.totalBoostCandyUsed.value) }}</div>
-        </div>
-        <div class="calcSum calcSum--hi" :class="{ 'calcSum--danger': calc.shardsOver.value > 0 }">
-          <div class="calcSum__k">{{ t("calc.shardsTotal") }}</div>
-          <div class="calcSum__v">{{ calc.fmtNum(calc.totalShardsUsed.value) }}</div>
-        </div>
-        <div class="calcSum calcSum--candy" v-if="calc.planResult.value">
-          <div class="calcSum__k">{{ t("calc.candy.usageLabel") }}</div>
-          <div class="calcSum__v">
-            <span :class="{ 'calcSum__v--over': calc.universalCandyUsagePct.value > 100 }">
-              {{ calc.universalCandyUsagePct.value }}%
+      <div class="calcSticky__summary" data-testid="calc-sticky-summary" @click="stickyExpanded = !stickyExpanded">
+        <span class="calcSticky__toggle">{{ stickyExpanded ? '▼' : '▶' }}</span>
+        <div class="calcSticky__summaryBody">
+          <button v-if="showNoStockWarning" type="button" class="calcSticky__noStock" @click.stop="$emit('open-settings')">{{ t("calc.export.noStockWarning") }}</button>
+          <span class="calcSumInline" v-if="calc.boostKind.value !== 'none'" :class="{ 'calcSumInline--danger': calc.boostCandyOver.value > 0 }">
+            <span class="calcSumInline__k">{{ t("calc.export.sumBoostTotal") }}</span>
+            <span class="calcSumInline__v">{{ calc.fmtNum(calc.totalBoostCandyUsed.value) }}</span>
+          </span>
+          <span class="calcSumInline" :class="{ 'calcSumInline--danger': calc.shardsOver.value > 0 }">
+            <span class="calcSumInline__k">{{ t("calc.shardsTotal") }}</span>
+            <span class="calcSumInline__v">{{ calc.fmtNum(calc.totalShardsUsed.value) }}</span>
+          </span>
+          <template v-if="calc.planResult.value">
+            <span class="calcSumInline calcSumInline--candy" :class="{ 'calcSumInline--danger': calc.universalCandyNeeded.value.s > candyStore.universalCandy.value.s }">
+              <span class="calcSumInline__k">万能S</span>
+              <span class="calcSumInline__v">{{ calc.universalCandyNeeded.value.s }}/{{ candyStore.universalCandy.value.s }}</span>
             </span>
-            <span class="calcSum__candyDetails">
-              S: {{ calc.universalCandyNeeded.value.s }}/{{ candyStore.universalCandy.value.s }},
-              M: {{ calc.universalCandyNeeded.value.m }}/{{ candyStore.universalCandy.value.m }},
-              L: {{ calc.universalCandyNeeded.value.l }}/{{ candyStore.universalCandy.value.l }}
+            <span class="calcSumInline calcSumInline--candy" :class="{ 'calcSumInline--danger': calc.universalCandyNeeded.value.m > candyStore.universalCandy.value.m }">
+              <span class="calcSumInline__k">M</span>
+              <span class="calcSumInline__v">{{ calc.universalCandyNeeded.value.m }}/{{ candyStore.universalCandy.value.m }}</span>
             </span>
-          </div>
+            <span class="calcSumInline calcSumInline--candy" :class="{ 'calcSumInline--danger': calc.universalCandyNeeded.value.l > candyStore.universalCandy.value.l }">
+              <span class="calcSumInline__k">L</span>
+              <span class="calcSumInline__v">{{ calc.universalCandyNeeded.value.l }}/{{ candyStore.universalCandy.value.l }}</span>
+            </span>
+          </template>
         </div>
       </div>
       <div
+        v-show="stickyExpanded"
         class="calcSum calcSum--bar calcSum--sparkle"
         :class="{
           'calcSum--danger': calc.shardsOver.value > 0 || calc.boostCandyOver.value > 0,
@@ -122,20 +128,22 @@
     </div>
 
     <div class="calcActions" data-testid="calc-actions">
-      <button class="btn btn--primary" data-testid="calc-export-button" type="button" @click="calc.openExport()" :disabled="!calc.rowsView.value.length">
-        {{ t("calc.export.open") }}
+      <div class="calcActions__group">
+        <button class="btn btn--icon" :class="calc.canUndo.value ? 'btn--primary' : 'btn--ghost'" data-testid="calc-undo-button" type="button" @click="calc.undo()" :disabled="!calc.canUndo.value" :title="t('common.undo')" :aria-label="t('common.undo')">
+          <span class="btn__icon" v-html="iconUndoSvg" aria-hidden="true"></span>
+        </button>
+        <button class="btn btn--icon" :class="calc.canRedo.value ? 'btn--primary' : 'btn--ghost'" data-testid="calc-redo-button" type="button" @click="calc.redo()" :disabled="!calc.canRedo.value" :title="t('common.redo')" :aria-label="t('common.redo')">
+          <span class="btn__icon" v-html="iconRedoSvg" aria-hidden="true"></span>
+        </button>
+      </div>
+      <button class="btn btn--primary calcActions__settings" data-testid="settings-open-button-desktop" type="button" @click="$emit('open-settings')" :title="t('common.settings')">
+        {{ t("common.settingsShort") }}
       </button>
-      <button class="btn btn--danger" data-testid="calc-clear-button" type="button" @click="calc.clear()" :disabled="!calc.rowsView.value.length">
-        {{ t("calc.clearPokemons") }}
+      <button class="btn btn--primary" data-testid="calc-export-button" type="button" @click="calc.openExport()" :disabled="!calc.rowsView.value.length" :title="t('calc.export.open')">
+        {{ t("calc.export.openShort") }}
       </button>
-      <button class="btn btn--ghost" data-testid="calc-undo-button" type="button" @click="calc.undo()" :disabled="!calc.canUndo.value">
-        {{ t("common.undo") }}
-      </button>
-      <button class="btn btn--ghost" data-testid="calc-redo-button" type="button" @click="calc.redo()" :disabled="!calc.canRedo.value">
-        {{ t("common.redo") }}
-      </button>
-      <button class="btn btn--primary calcActions__settings" data-testid="settings-open-button-desktop" type="button" @click="$emit('open-settings')">
-        {{ t("common.settings") }}
+      <button class="btn btn--ghost" data-testid="calc-clear-button" type="button" @click="calc.clear()" :disabled="!calc.rowsView.value.length" :title="t('calc.clearPokemons')">
+        {{ t("calc.clearPokemonsShort") }}
       </button>
     </div>
 
@@ -146,13 +154,18 @@
           <div
             v-if="calc.activeSlotTab.value === i - 1"
             class="slotTab slotTab--active"
+            :class="tabDragClass(i - 1)"
             data-testid="calc-slot-tab-active"
+            @pointerdown="onTabPointerDown(i - 1, $event)"
+            @pointermove="onTabPointerMove($event)"
+            @pointerup="onTabPointerUp($event)"
+            @pointercancel="onTabPointerCancel($event)"
           >
             <select
               class="slotTab__select"
               data-testid="calc-boost-kind-select"
               :value="calc.boostKind.value"
-              @change="calc.setSlotBoostKind(($event.target as HTMLSelectElement).value as any)"
+              @change="calc.setSlotBoostKind(($event.target as HTMLSelectElement).value as BoostEvent)"
             >
               <option value="full">{{ calc.fullLabel.value }}</option>
               <option value="mini">{{ calc.miniLabel.value }}</option>
@@ -163,8 +176,13 @@
           <button
             v-else
             class="slotTab"
+            :class="tabDragClass(i - 1)"
             data-testid="calc-slot-tab"
-            @click="calc.switchToSlot(i - 1)"
+            @click="!tabDragging && calc.switchToSlot(i - 1)"
+            @pointerdown="onTabPointerDown(i - 1, $event)"
+            @pointermove="onTabPointerMove($event)"
+            @pointerup="onTabPointerUp($event)"
+            @pointercancel="onTabPointerCancel($event)"
           >
             {{ getSlotBoostKindLabel(i - 1) }}
           </button>
@@ -186,9 +204,6 @@
           'calcRow--dragging': r.id === calc.dragRowId.value,
         }"
         @click="calc.activeRowId.value = r.id"
-        @dragover.prevent="calc.onRowDragOver(r.id)"
-        @drop.prevent="calc.onRowDrop(r.id)"
-        @dragleave="calc.onRowDragLeave(r.id)"
       >
         <div class="calcRow__head">
           <div class="calcRow__headLeft">
@@ -198,12 +213,10 @@
               type="button"
               :title="t('calc.row.dragReorder')"
               :aria-label="t('calc.row.dragReorder')"
-              draggable="true"
-              @dragstart="calc.onRowDragStart(r.id, $event)"
-              @dragend="calc.onRowDragEnd"
+              @pointerdown="onRowPointerDown(r.id, $event)"
               @click.stop
             >
-              ⋮⋮
+              <svg class="calcRow__dragIcon" aria-hidden="true" viewBox="0 0 16 17" width="14" height="15"><path d="M4.5 5.5L8 2 11.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 11.5L8 15 11.5 11.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
             <span v-if="r.nature === 'up'" class="calcRow__natureIcon calcRow__natureIcon--up" title="EXP+20%">▲</span>
             <span v-else-if="r.nature === 'down'" class="calcRow__natureIcon calcRow__natureIcon--down" title="EXP-20%">▼</span>
@@ -243,10 +256,11 @@
             <span class="field__label">{{ t("calc.row.expRemaining") }}</span>
             <input
               data-testid="expRemaining"
-              :value="r.expRemaining"
+              :value="displayExpRemaining(r)"
               type="number"
-              min="0"
+              min="1"
               class="field__input"
+              :placeholder="t('calc.row.expRemainingPh')"
               @input="calc.onRowExpRemaining(r.id, ($event.target as HTMLInputElement).value)"
             />
           </label>
@@ -287,64 +301,17 @@
           <label class="field field--sm" v-if="calc.boostKind.value !== 'none'">
             <span class="field__label">{{ t("calc.row.boostReachLevel") }}</span>
             <div class="levelPick" data-testid="boostReachLevel">
-              <button
-                type="button"
-                class="field__input field__input--button levelPick__button"
-                @click.stop="calc.openBoostLevelPick(r.id)"
-                aria-haspopup="dialog"
-                :aria-expanded="calc.openLevelPickRowId.value === r.id && calc.openLevelPickKind.value === 'boost'"
+              <LevelPicker
+                :model-value="r.ui.boostReachLevel"
+                @update:model-value="calc.setBoostLevel(r.id, $event)"
+                :min="r.srcLevel"
+                :max="r.dstLevel"
               >
-                {{ r.ui.boostReachLevel }}
-              </button>
-
-              <div
-                v-if="calc.openLevelPickRowId.value === r.id && calc.openLevelPickKind.value === 'boost'"
-                class="levelPick__popover"
-                role="dialog"
-                :aria-label="t('calc.row.pickLevelAria', { label: t('calc.row.boostReachLevel') })"
-              >
-                <div class="levelPick__top">
-                  <div class="levelPick__title">
-                    Lv{{ r.srcLevel }} → Lv{{ r.ui.boostReachLevel }}
-                    <span v-if="isCandyShort(r)" title="アメ不足" style="font-size: 1.2em; vertical-align: middle; margin-left: 4px;">🍬</span>
-                  </div>
-                  <button class="btn btn--ghost btn--xs" type="button" @mousedown.stop.prevent @click.stop.prevent="calc.closeLevelPick()">
-                    {{ t("common.close") }}
-                  </button>
-                </div>
-
-                <div class="levelPick__sliderRow">
-                  <button class="btn btn--ghost btn--xs" type="button" @click="calc.nudgeBoostLevel(r.id, -1)" :disabled="r.ui.boostReachLevel <= r.srcLevel">
-                    ◀
-                  </button>
-                  <input
-                    class="levelPick__range"
-                    type="range"
-                    :min="r.srcLevel"
-                    :max="r.dstLevel"
-                    step="1"
-                    :value="r.ui.boostReachLevel"
-                    @input="calc.setBoostLevel(r.id, ($event.target as HTMLInputElement).value)"
-                  />
-                  <button class="btn btn--ghost btn--xs" type="button" @click="calc.nudgeBoostLevel(r.id, 1)" :disabled="r.ui.boostReachLevel >= r.dstLevel">
-                    ▶
-                  </button>
-                </div>
-
-                <div class="levelPick__chips">
-                  <button
-                    v-for="lv in levelPresets"
-                    :key="`boost_${lv}`"
-                    type="button"
-                    class="levelChip"
-                    :class="{ 'levelChip--on': lv === r.ui.boostReachLevel }"
-                    @click="calc.setBoostLevel(r.id, lv)"
-                    :disabled="lv < r.srcLevel || lv > r.dstLevel"
-                  >
-                    {{ lv }}
-                  </button>
-                </div>
-              </div>
+                <template #title>
+                  Lv{{ r.srcLevel }} → Lv{{ r.ui.boostReachLevel }}
+                  <span v-if="isCandyShort(r)" title="アメ不足" style="font-size: 1.2em; vertical-align: middle; margin-left: 4px;">🍬</span>
+                </template>
+              </LevelPicker>
             </div>
           </label>
           <label class="field field--sm" v-if="calc.boostKind.value !== 'none'">
@@ -370,6 +337,14 @@
                 class="hintIcon"
                 @click.stop="showHint($event, calc.boostKind.value === 'none' ? t('calc.row.boostCandyCountNormalHint') : t('calc.row.boostCandyCountHint'))"
               >?</button>
+              <button
+                data-testid="boostCandyReset"
+                type="button"
+                class="hintIcon hintIcon--reset"
+                :aria-label="t('calc.row.boostCandyCountReset')"
+                :title="t('calc.row.boostCandyCountReset')"
+                @click.stop="calc.resetRowBoostCandy(r.id)"
+              ><svg class="hintIcon__resetSvg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v4h4"/><path d="M3 7a5.5 5.5 0 1 1 1 4"/></svg></button>
             </span>
             <input
               data-testid="boostCandyCount"
@@ -382,9 +357,7 @@
             />
           </label>
           <div class="field field--sm field--sleepTarget">
-            <div class="field__labelRow">
-              <span class="field__label">{{ t("calc.row.candyTarget") }}</span>
-            </div>
+            <span class="field__label">{{ t("calc.row.candyTarget") }}</span>
             <input
               data-testid="candyTarget"
               type="number"
@@ -430,24 +403,19 @@
           >
             <span class="calcRow__expandIcon">{{ isExpanded(r.id) ? '▼' : '▶' }}</span>
             <span class="calcRow__resultLabel">{{ t("calc.row.required") }}</span>
-            <span class="calcRow__resultItems">
-              <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
+            <span class="calcRow__resultItems">{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                 <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
                 <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'boost') }">{{ calc.fmtNum(calc.getPokemonResult(r.id)?.targetBoost ?? 0) }}</span>
-              </span>
-              <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
+              </span>{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                 <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
                 <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'normal') }">{{ calc.fmtNum(calc.getPokemonResult(r.id)?.targetNormal ?? 0) }}</span>
-              </span>
-              <span class="calcRow__res">
+              </span>{{ ' ' }}<span class="calcRow__res">
                 <span class="calcRow__k">{{ t(calc.boostKind.value === 'none' ? "calc.row.candy" : "calc.row.candyTotal") }}</span>
                 <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'candy') }">{{ calc.fmtNum((calc.getPokemonResult(r.id)?.targetBoost ?? 0) + (calc.getPokemonResult(r.id)?.targetNormal ?? 0)) }}</span>
-              </span>
-              <span class="calcRow__res">
+              </span>{{ ' ' }}<span class="calcRow__res">
                 <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
                 <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'shards') }">{{ calc.fmtNum(calc.getPokemonResult(r.id)?.targetShards ?? 0) }}</span>
-              </span>
-              <span class="calcRow__res" v-if="hasItemUsage(r)">
+              </span>{{ ' ' }}<span class="calcRow__res" v-if="hasItemUsage(r)">
                 <span class="calcRow__k">{{ t("calc.row.itemRequired") }}</span>
                 <span class="calcRow__num calcRow__num--text">
                   <template v-for="(item, idx) in getItemUsageItems(r)" :key="idx">
@@ -470,31 +438,25 @@
             >
               <span class="calcRow__expandIcon" style="visibility: hidden"></span>
               <span class="calcRow__resultLabel">{{ t("calc.row.candyTargetRow") }}</span>
-              <span class="calcRow__resultItems">
-                <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
+              <span class="calcRow__resultItems">{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                   <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
                   <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'limit', 'boost') }">{{ calc.fmtNum(getTheoreticalResources(r)!.boostCandy) }}</span>
-                </span>
-                <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
+                </span>{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                   <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
                   <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'limit', 'normal') }">{{ calc.fmtNum(getTheoreticalResources(r)!.normalCandy) }}</span>
-                </span>
-                <span class="calcRow__res">
+                </span>{{ ' ' }}<span class="calcRow__res">
                   <span class="calcRow__k">{{ t(calc.boostKind.value === 'none' ? "calc.row.candy" : "calc.row.candyTotal") }}</span>
                   <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'limit', 'candy') }">{{ calc.fmtNum(getTheoreticalResources(r)!.candy) }}</span>
-                </span>
-                <span class="calcRow__res">
+                </span>{{ ' ' }}<span class="calcRow__res">
                   <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
                   <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'limit', 'shards') }">{{ calc.fmtNum(getTheoreticalResources(r)!.shards) }}</span>
-                </span>
-                <span class="calcRow__res" v-if="getLimitItemUsageItems(r).length > 0">
+                </span>{{ ' ' }}<span class="calcRow__res" v-if="getLimitItemUsageItems(r).length > 0">
                   <span
                     class="calcRow__k calcRow__k--link"
                     @click.stop="toggleLimitItems(r.id)"
                     style="cursor: pointer; text-decoration: underline;"
                   >{{ t("calc.row.itemRequired") }}</span>
-                </span>
-                <span class="calcRow__res" v-if="isLimitItemsExpanded(r.id) && getLimitItemUsageItems(r).length > 0">
+                </span>{{ ' ' }}<span class="calcRow__res" v-if="isLimitItemsExpanded(r.id) && getLimitItemUsageItems(r).length > 0">
                   <span class="calcRow__num calcRow__num--text">
                     <template v-for="(item, idx) in getLimitItemUsageItems(r)" :key="idx">
                       <span :class="{ 'calcRow__num--danger': item.isDanger }">{{ item.label }} {{ item.value }}</span>
@@ -514,24 +476,19 @@
             >
               <span class="calcRow__expandIcon" style="visibility: hidden"></span>
               <span class="calcRow__resultLabel">{{ t("calc.row.used") }}</span>
-              <span class="calcRow__resultItems">
-                <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
+              <span class="calcRow__resultItems">{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                   <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
                   <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'boost') }">{{ calc.fmtNum(calc.getPokemonResult(r.id)!.reachableItems.boostCount) }}</span>
-                </span>
-                <span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
+                </span>{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                   <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
                   <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'normal') }">{{ calc.fmtNum(calc.getPokemonResult(r.id)!.reachableItems.normalCount) }}</span>
-                </span>
-                <span class="calcRow__res">
+                </span>{{ ' ' }}<span class="calcRow__res">
                   <span class="calcRow__k">{{ t(calc.boostKind.value === 'none' ? "calc.row.candy" : "calc.row.candyTotal") }}</span>
                   <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'candy') }">{{ calc.fmtNum(calc.getPokemonResult(r.id)!.reachableItems.boostCount + calc.getPokemonResult(r.id)!.reachableItems.normalCount) }}</span>
-                </span>
-                <span class="calcRow__res">
+                </span>{{ ' ' }}<span class="calcRow__res">
                   <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
                   <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'shards') }">{{ calc.fmtNum(calc.getPokemonResult(r.id)!.reachableItems.shardsCount) }}</span>
-                </span>
-                <span class="calcRow__res" v-if="getResultItemUsageItems(r).length > 0">
+                </span>{{ ' ' }}<span class="calcRow__res" v-if="getResultItemUsageItems(r).length > 0">
                   <span class="calcRow__k">{{ t("calc.row.itemUsage") }}</span>
                   <span class="calcRow__num calcRow__num--text">
                     <template v-for="(item, idx) in getResultItemUsageItems(r)" :key="idx">
@@ -541,25 +498,21 @@
                   </span>
                 </span>
                 <!-- 主要な不足要因（到達Lvの前に表示） -->
-                <span class="calcRow__res" v-if="calc.getPokemonResult(r.id)!.diagnosis.limitingFactor === 'candy'">
+                {{ ' ' }}<span class="calcRow__res" v-if="calc.getPokemonResult(r.id)!.diagnosis.limitingFactor === 'candy'">
                   <span class="calcRow__k calcRow__k--danger">{{ t("calc.row.candyShortage") }}</span>
                   <span class="calcRow__num calcRow__num--danger">{{ calc.getPokemonResult(r.id)!.shortage.candy }}</span>
-                </span>
-                <span class="calcRow__res" v-if="calc.getPokemonResult(r.id)!.diagnosis.limitingFactor === 'boost'">
+                </span>{{ ' ' }}<span class="calcRow__res" v-if="calc.getPokemonResult(r.id)!.diagnosis.limitingFactor === 'boost'">
                   <span class="calcRow__k calcRow__k--danger">{{ t("calc.row.boostCandyShortage") }}</span>
                   <span class="calcRow__num calcRow__num--danger">{{ calc.getPokemonResult(r.id)!.shortage.boost }}</span>
-                </span>
-                <span class="calcRow__res" v-if="calc.getPokemonResult(r.id)!.diagnosis.limitingFactor === 'shards'">
+                </span>{{ ' ' }}<span class="calcRow__res" v-if="calc.getPokemonResult(r.id)!.diagnosis.limitingFactor === 'shards'">
                   <span class="calcRow__k calcRow__k--danger">{{ t("calc.row.shardsShortage") }}</span>
                   <span class="calcRow__num calcRow__num--danger">{{ calc.fmtNum(calc.getPokemonResult(r.id)!.shortage.shards) }}</span>
-                </span>
-                <span class="calcRow__res">
+                </span>{{ ' ' }}<span class="calcRow__res">
                   <span class="calcRow__k calcRow__k--info">{{ t("calc.row.reachedLv") }}</span>
                   <span class="calcRow__num calcRow__num--info">{{ calc.getPokemonResult(r.id)!.reachedLevel }}</span>
                   <span class="calcRow__k calcRow__k--info" v-if="calc.getPokemonResult(r.id)!.expToNextLevel > 0" style="margin-left: 4px;">({{ t("calc.row.expRemaining") }}</span>
                   <span class="calcRow__num calcRow__num--info" v-if="calc.getPokemonResult(r.id)!.expToNextLevel > 0">{{ calc.fmtNum(calc.getPokemonResult(r.id)!.expToNextLevel) }}</span><span class="calcRow__k calcRow__k--info" v-if="calc.getPokemonResult(r.id)!.expToNextLevel > 0">)</span>
-                </span>
-                <span class="calcRow__res" v-if="calc.getPokemonResult(r.id)!.expToTarget > 0">
+                </span>{{ ' ' }}<span class="calcRow__res" v-if="calc.getPokemonResult(r.id)!.expToTarget > 0">
                   <span class="calcRow__k calcRow__k--info">{{ t("calc.row.remainingExp") }}</span>
                   <span class="calcRow__num calcRow__num--info">{{ calc.fmtNum(calc.getPokemonResult(r.id)!.expToTarget) }}</span>
                   <span class="calcRow__sleepTime" v-if="getSleepTimeText(r.id, calc.getPokemonResult(r.id)!.expToTarget)">
@@ -571,10 +524,16 @@
           </div>
         </div>
       </div>
+      <button class="btn btn--primary calcRows__addBtn" type="button" data-testid="calc-add-pokemon-btn" @click="$emit('open-add-modal')">
+        + {{ t("addModal.title") }}
+      </button>
     </div>
     <div class="calcEmpty" data-testid="calc-empty" v-else>
       <div class="calcEmpty__content">
-        <div class="calcEmpty__title">{{ t("calc.emptyTitle") }}</div>
+        <div class="calcEmpty__title">{{ t("addModal.emptyState") }}</div>
+        <button class="btn btn--primary btn--lg" type="button" data-testid="calc-empty-add-btn" @click="$emit('open-add-modal')">
+          {{ t("addModal.emptyAdd") }}
+        </button>
         <div class="calcEmpty__list">
           <div>{{ t("calc.emptySteps.step1") }}</div>
           <div>{{ t("calc.emptySteps.step2") }}</div>
@@ -596,6 +555,7 @@
     <div v-if="hintState.visible" class="hintOverlay" data-testid="calc-hint-overlay" @click.stop="closeHint"></div>
     <div
       v-if="hintState.visible"
+      ref="hintPopoverRef"
       class="hintPopover"
       data-testid="calc-hint-popover"
       :style="{ left: hintState.left + 'px', top: hintState.top + 'px' }"
@@ -606,20 +566,25 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, onUnmounted } from "vue";
+import { computed, ref, nextTick, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import LevelPicker from "./LevelPicker.vue";
 import type { CalcStore, CalcRowView } from "../composables/useCalcStore";
 import { useCandyStore } from "../composables/useCandyStore";
-import { PokemonTypes, getTypeName } from "../domain/pokesleep/pokemon-types";
+import { getTypeName } from "../domain/pokesleep/pokemon-types";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { markForSleep, calcCandyTargetFromSleepExp, calcSleepTimeForExp } from "../domain/pokesleep/sleep-growth";
 import { calcExp } from "../domain/pokesleep/exp";
+import type { BoostEvent } from "../domain/types";
+
+import iconUndoSvg from "../assets/icons/undo.svg?raw";
+import iconRedoSvg from "../assets/icons/redo.svg?raw";
 
 const emit = defineEmits<{
   (e: "apply-to-box", rowId: string): void;
   (e: "open-help"): void;
   (e: "open-settings"): void;
+  (e: "open-add-modal"): void;
 }>();
 
 const props = defineProps<{
@@ -631,34 +596,24 @@ const calc = props.calc;
 const { t, locale } = useI18n();
 const candyStore = useCandyStore();
 
-// レベルピッカー外クリックで閉じる
-function handleLevelPickClickOutside(e: MouseEvent) {
-  const target = e.target as HTMLElement;
-  // ポップオーバー内のクリックは無視
-  if (target.closest(".levelPick__popover") || target.closest(".levelPick__button")) {
-    return;
-  }
-  calc.closeLevelPick();
-}
+/** Sticky summary bar expand/collapse */
+const stickyExpanded = ref(false);
 
-watch(
-  () => calc.openLevelPickRowId.value,
-  (newVal, oldVal) => {
-    if (newVal !== null && oldVal === null) {
-      // ポップオーバーが開いた: リスナーを追加（少し遅延させて開くクリックを無視）
-      setTimeout(() => {
-        document.addEventListener("click", handleLevelPickClickOutside);
-      }, 0);
-    } else if (newVal === null && oldVal !== null) {
-      // ポップオーバーが閉じた: リスナーを削除
-      document.removeEventListener("click", handleLevelPickClickOutside);
-    }
-  }
-);
-
-onUnmounted(() => {
-  document.removeEventListener("click", handleLevelPickClickOutside);
+/** 在庫未設定警告: ポケモン登録済みだが実使用のアメ・かけらが両方0 */
+const showNoStockWarning = computed(() => {
+  const t = calc.exportActualTotals.value;
+  return calc.planResult.value != null && t.boostCandy + t.normalCandy === 0 && t.shards === 0;
 });
+
+/**
+ * expRemaining の表示値。計算機では常に実際の数値を表示する。
+ * レベルアップ直後（expRemaining >= toNext or <= 0）のときは toNext を表示。
+ */
+function displayExpRemaining(r: CalcRowView): string {
+  const toNext = Math.max(0, calcExp(r.srcLevel, r.srcLevel + 1, r.expType));
+  if (r.expRemaining >= toNext || r.expRemaining <= 0) return String(toNext);
+  return String(r.expRemaining);
+}
 
 // 折りたたみ状態を管理（rowId => expanded）
 const expandedRows = ref<Set<string>>(new Set());
@@ -707,6 +662,192 @@ function getSlotBoostKindLabel(slotIndex: number): string {
   }
 }
 
+// ===== 行ドラッグ（Pointer Events — モバイル・PC共通） =====
+// モバイル（〜679px）: 隣と1回だけ入れ替え → pointerup まで追加スワップ禁止
+// PC（680px〜）: ドラッグ量に応じて移動先を決定（複数段移動可能）
+// document レベルでイベントを処理（DOM 再構築で要素が消えても追跡可能）
+let rowDragStartY = 0;
+const ROW_DRAG_SWAP_THRESHOLD = 25; // px — この距離を超えたら入れ替え
+/** ドラッグ中の行 ID */
+let rowDragId: string | null = null;
+/** 追跡中の pointerId */
+let rowDragPointerId: number | null = null;
+/** モバイル: 1回スワップ済みフラグ（pointerup までロック） */
+let rowDragDone = false;
+
+/** 680px 以上かどうか */
+function isWideScreen(): boolean {
+  return window.matchMedia("(min-width: 680px)").matches;
+}
+
+function onRowPointerDown(rowId: string, ev: PointerEvent) {
+  if (rowDragId) return;
+  ev.preventDefault();
+  rowDragId = rowId;
+  rowDragStartY = ev.clientY;
+  rowDragPointerId = ev.pointerId;
+  rowDragDone = false;
+  calc.dragRowId.value = rowId;
+
+  document.addEventListener("pointermove", onRowDocPointerMove);
+  document.addEventListener("pointerup", onRowDocPointerUp);
+  document.addEventListener("pointercancel", onRowDocPointerCancel);
+}
+
+function onRowDocPointerMove(ev: PointerEvent) {
+  if (!rowDragId || ev.pointerId !== rowDragPointerId) return;
+
+  const dy = ev.clientY - rowDragStartY;
+  if (Math.abs(dy) < ROW_DRAG_SWAP_THRESHOLD) return;
+
+  if (isWideScreen()) {
+    // --- PC: 閾値ごとに隣と入れ替え（連続スワップ可能） ---
+    if (dy > ROW_DRAG_SWAP_THRESHOLD && calc.canMoveRowDown(rowDragId)) {
+      calc.moveRowDown(rowDragId);
+      rowDragStartY = ev.clientY;
+    } else if (dy < -ROW_DRAG_SWAP_THRESHOLD && calc.canMoveRowUp(rowDragId)) {
+      calc.moveRowUp(rowDragId);
+      rowDragStartY = ev.clientY;
+    }
+  } else {
+    // --- モバイル: 隣と1回だけ入れ替え ---
+    if (rowDragDone) return;
+
+    if (dy > ROW_DRAG_SWAP_THRESHOLD && calc.canMoveRowDown(rowDragId)) {
+      calc.moveRowDown(rowDragId);
+      rowDragDone = true;
+    } else if (dy < -ROW_DRAG_SWAP_THRESHOLD && calc.canMoveRowUp(rowDragId)) {
+      calc.moveRowUp(rowDragId);
+      rowDragDone = true;
+    }
+  }
+}
+
+function onRowDocPointerUp(ev: PointerEvent) {
+  if (!rowDragId || ev.pointerId !== rowDragPointerId) return;
+  releaseRowDrag();
+}
+
+function onRowDocPointerCancel(ev: PointerEvent) {
+  if (!rowDragId || ev.pointerId !== rowDragPointerId) return;
+  releaseRowDrag();
+}
+
+function releaseRowDrag() {
+  rowDragId = null;
+  rowDragPointerId = null;
+  rowDragDone = false;
+  calc.dragRowId.value = null;
+  calc.dragOverRowId.value = null;
+  document.removeEventListener("pointermove", onRowDocPointerMove);
+  document.removeEventListener("pointerup", onRowDocPointerUp);
+  document.removeEventListener("pointercancel", onRowDocPointerCancel);
+}
+
+onUnmounted(() => {
+  if (rowDragId) releaseRowDrag();
+});
+
+// ===== タブドラッグ（並べ替え） =====
+const tabDragFrom = ref<number | null>(null);
+const tabDragOver = ref<number | null>(null);
+const tabDragging = ref(false);
+
+// pointer座標（タッチ / マウス共通）
+let tabDragStartX = 0;
+let tabDragStartY = 0;
+const TAB_DRAG_THRESHOLD = 8; // px: これ以上動いたらドラッグ開始
+
+// ドラッグ開始元の <select> 要素を記憶（ドラッグ確定時に操作を抑止するため）
+let tabDragSelectEl: HTMLSelectElement | null = null;
+
+function onTabPointerDown(slotIndex: number, ev: PointerEvent) {
+  tabDragFrom.value = slotIndex;
+  tabDragging.value = false;
+  tabDragStartX = ev.clientX;
+  tabDragStartY = ev.clientY;
+
+  // <select> 上で始まった場合を記憶
+  const target = ev.target as HTMLElement;
+  tabDragSelectEl = target.tagName === "SELECT" ? target as HTMLSelectElement
+    : target.closest("select") as HTMLSelectElement | null;
+
+  // ポインターキャプチャーでタッチ中も追跡
+  (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
+}
+
+function onTabPointerMove(ev: PointerEvent) {
+  if (tabDragFrom.value === null) return;
+
+  // 閾値チェック
+  if (!tabDragging.value) {
+    const dx = Math.abs(ev.clientX - tabDragStartX);
+    const dy = Math.abs(ev.clientY - tabDragStartY);
+    if (dx < TAB_DRAG_THRESHOLD && dy < TAB_DRAG_THRESHOLD) return;
+    // 縦方向のほうが大きければスクロール意図なのでキャンセル
+    if (dy > dx) {
+      tabDragFrom.value = null;
+      tabDragSelectEl = null;
+      return;
+    }
+    tabDragging.value = true;
+    // ドラッグ確定: <select> のネイティブ操作を抑止
+    if (tabDragSelectEl) {
+      tabDragSelectEl.style.pointerEvents = "none";
+    }
+  }
+
+  // ポインター位置からどのタブの上にいるか判定
+  const tabsEl = (ev.currentTarget as HTMLElement).closest(".slotTabs");
+  if (!tabsEl) return;
+  const tabs = tabsEl.querySelectorAll<HTMLElement>(".slotTab");
+  for (let i = 0; i < tabs.length; i++) {
+    const rect = tabs[i].getBoundingClientRect();
+    if (ev.clientX >= rect.left && ev.clientX <= rect.right) {
+      tabDragOver.value = i;
+      return;
+    }
+  }
+}
+
+function releaseTabDrag(ev: PointerEvent) {
+  // <select> の pointer-events を復元
+  if (tabDragSelectEl) {
+    tabDragSelectEl.style.pointerEvents = "";
+    tabDragSelectEl = null;
+  }
+  tabDragFrom.value = null;
+  tabDragOver.value = null;
+  tabDragging.value = false;
+  try {
+    (ev.currentTarget as HTMLElement).releasePointerCapture(ev.pointerId);
+  } catch {
+    // ignore
+  }
+}
+
+function onTabPointerUp(ev: PointerEvent) {
+  const from = tabDragFrom.value;
+  const to = tabDragOver.value;
+
+  if (tabDragging.value && from !== null && to !== null && from !== to) {
+    calc.swapSlots(from, to);
+  }
+
+  releaseTabDrag(ev);
+}
+
+function onTabPointerCancel(ev: PointerEvent) {
+  releaseTabDrag(ev);
+}
+
+function tabDragClass(slotIndex: number): Record<string, boolean> {
+  return {
+    "slotTab--dragSource": tabDragging.value && tabDragFrom.value === slotIndex,
+    "slotTab--dragOver": tabDragging.value && tabDragOver.value === slotIndex && tabDragFrom.value !== slotIndex,
+  };
+}
+
 // アメ使用制限入力時のラッパー（値が設定されたら折りたたみを開く）
 function onCandyTargetInput(rowId: string, value: string) {
   calc.onRowCandyTarget(rowId, value);
@@ -722,6 +863,7 @@ function onCandyTargetInput(rowId: string, value: string) {
  * markForSleep() で睡眠EXPを計算し、calcCandyTargetFromSleepExp() で個数指定値を算出
  */
 function applySleepGrowth(rowId: string, targetHours: number) {
+  calc.activeRowId.value = rowId;
   const p = calc.getPokemonResult(rowId);
   if (!p) return;
 
@@ -793,12 +935,22 @@ function getSleepTimeText(rowId: string, expToTarget: number): string | null {
 }
 
 // モバイルでのキーボード閉じた後のスクロール位置修正
+// _navScrolling フラグ: MobileNav のスクロール直後は blur 補正を抑止するため
+let _navScrolling = false;
+function setNavScrolling() {
+  _navScrolling = true;
+  setTimeout(() => { _navScrolling = false; }, 300);
+}
+defineExpose({ setNavScrolling });
+
 function handleInputBlur(event: FocusEvent) {
   // iOS Safari でキーボードを閉じた後にスクロール位置がずれる問題の対策
   // 少し待ってからスクロール位置を調整
   const target = event.target as HTMLElement;
   if (target) {
     setTimeout(() => {
+      // MobileNav によるスクロール中は補正しない
+      if (_navScrolling) return;
       // 入力欄がstickyヘッダーに隠れていたら戻す
       const rect = target.getBoundingClientRect();
       // 320px = sticky header height (approx)
@@ -808,12 +960,6 @@ function handleInputBlur(event: FocusEvent) {
     }, 100);
   }
 }
-
-const levelPresets = [10, 25, 30, 40, 50, 55, 57, 60, MAX_LEVEL] as const;
-
-// ポケモンタイプ一覧（英語名）
-const pokemonTypes = PokemonTypes;
-
 // 行から pokedexId を取得（保存済み or boxId から解決）
 function getRowPokedexId(r: { pokedexId?: number; boxId?: string }): number | undefined {
   if (r.pokedexId) return r.pokedexId;
@@ -1032,12 +1178,14 @@ const hintState = ref<{ visible: boolean; message: string; left: number; top: nu
   left: 0,
   top: 0
 });
+const hintPopoverRef = ref<HTMLElement | null>(null);
 
-function showHint(ev: MouseEvent, message: string) {
+async function showHint(ev: MouseEvent, message: string) {
   const target = ev.target as HTMLElement;
   const rect = target.getBoundingClientRect();
+  const gap = 4;
 
-  // 画面端の考慮
+  // 画面端の考慮（水平）
   const viewportWidth = window.innerWidth;
   const popoverWidth = 220; // CSS max-width(200) + padding/border margin
 
@@ -1047,12 +1195,23 @@ function showHint(ev: MouseEvent, message: string) {
   }
   if (left < 8) left = 8;
 
+  // まず下に仮配置して描画
   hintState.value = {
     visible: true,
     message,
-    left: left,
-    top: rect.bottom + 4
+    left,
+    top: rect.bottom + gap,
   };
+
+  // 描画後に実測して、下に収まらなければ上にフリップ
+  await nextTick();
+  if (hintPopoverRef.value) {
+    const popH = hintPopoverRef.value.offsetHeight;
+    const viewportHeight = window.innerHeight;
+    if (rect.bottom + gap + popH > viewportHeight && rect.top - gap - popH > 0) {
+      hintState.value.top = rect.top - gap - popH;
+    }
+  }
 }
 
 function closeHint() {
@@ -1074,5 +1233,3 @@ function handleHintClick(ev: MouseEvent) {
 }
 
 </script>
-
-<style scoped src="./CalcPanel.css"></style>

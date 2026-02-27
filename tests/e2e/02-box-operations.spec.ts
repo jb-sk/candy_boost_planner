@@ -228,15 +228,6 @@ test.describe('BOX詳細パネル', () => {
     await expect(boxPanel.detailFavoriteButton).toHaveClass(/chipBtn--on/);
   });
 
-  test('アメ在庫が編集できる', async () => {
-    await boxPanel.selectBoxTile(0);
-
-    await expect(boxPanel.detailCandyInput).toBeVisible();
-    await boxPanel.fillCandyStock(100);
-
-    await expect(boxPanel.detailCandyInput).toHaveValue('100');
-  });
-
   test('レベルピッカーが使用できる', async () => {
     await boxPanel.selectBoxTile(0);
 

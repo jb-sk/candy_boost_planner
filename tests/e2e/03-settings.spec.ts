@@ -37,6 +37,8 @@ test.describe('03-settings デスクトップ', () => {
   });
 
   test('3. [PC] 領域外クリックでモーダルが閉じる', async ({ page }) => {
+    // 1400px+ でモーダルが max-width:890px のカード表示になり領域外が存在する
+    await page.setViewportSize({ width: 1400, height: 900 });
     const settings = new SettingsModalPage(page);
 
     await settings.openSettingsFromDesktop();
@@ -398,15 +400,15 @@ test.describe('03-settings モバイル', () => {
     // スクロールしてタイプアメセクションを表示
     await settings.typeCandySection.scrollIntoViewIfNeeded();
 
-    // grid-template-columns: 1fr（1カラム）
-    const gridColumns = await settings.typeCandyGrid.evaluate((el) => {
-      return window.getComputedStyle(el).gridTemplateColumns;
+    // モバイルでは flex-direction: column（1カラム縦並び）
+    // 680px+ では grid 2カラムに切り替わる
+    const display = await settings.typeCandyGrid.evaluate((el) => {
+      const s = window.getComputedStyle(el);
+      return { display: s.display, flexDirection: s.flexDirection };
     });
 
-    // 1fr は具体的なpx値になるが、カラム数を確認
-    // モバイルでは1カラムなので、スペースで分割した配列の長さが1
-    const columnCount = gridColumns.split(' ').filter(s => s.includes('px') || s.includes('fr')).length;
-    expect(columnCount).toBe(1);
+    expect(display.display).toBe('flex');
+    expect(display.flexDirection).toBe('column');
   });
 
   test('29. [Mobile] スクロールが正常に動作する', async ({ page }) => {

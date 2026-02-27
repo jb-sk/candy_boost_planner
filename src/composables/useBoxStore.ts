@@ -1,6 +1,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Ref } from "vue";
 import type { Composer } from "vue-i18n";
-import { localizeNature } from "../i18n/terms";
+import type { AppLocale } from "../i18n";
+
 import { decodeNitoyonIvDetail, decodeNitoyonIvMinimal, parseNitoyonBoxLine } from "../domain/box/nitoyon";
 import { IngredientTypes, SubSkillAllJaSorted, SubSkillAllNames, SubSkillNameJaByEn, subSkillEnFromJa } from "../domain/box/nitoyon";
 import { getPokemonNameLocalized } from "../domain/pokesleep/pokemon-name-localize";
@@ -30,7 +31,7 @@ export type BoxStore = ReturnType<typeof useBoxStore>;
 // NOTE:
 // - This store is a direct extraction of the Pokémon Box logic from the former monolithic App.vue.
 // - It intentionally keeps behavior compatible with existing UI and persistence.
-export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
+export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) {
   const { locale, t } = opts;
 
   const boxEntries = ref<PokemonBoxEntryV1[]>(loadBox());
@@ -74,6 +75,13 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     saveSortSettings(key, dir);
   });
 
+  // ソートキー変更時に即座にソートを再実行
+  watch(boxSortKey, () => {
+    if (boxEntries.value.length > 0) {
+      applySort(boxSortDir.value);
+    }
+  });
+
   const filterJoinMode = ref<FilterJoinMode>("and"); // とくい/サブスキル の結合
   const subSkillJoinMode = ref<FilterJoinMode>("and"); // 複数サブスキル の結合
   const selectedSpecialties = ref<Array<"Berries" | "Ingredients" | "Skills" | "All">>([]);
@@ -86,6 +94,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
   const isComposing = ref(false);
   const addLabel = ref("");
   const addLevel = ref(15);
+  const addExpRemaining = ref<string>("");
   const addExpType = ref<ExpType>(600);
   const addExpTypeTouched = ref(false);
   const addNature = ref<ExpGainNature>("normal");
@@ -149,8 +158,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
   const pokemonNameJaToEn = computed(() => {
     const map: Record<string, string> = {};
     for (const nameJa of allPokemonNameJa) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const idForms = (pokemonIdFormsByNameJa as any)[nameJa] as readonly number[] | undefined;
+      const idForms = (pokemonIdFormsByNameJa as Record<string, readonly number[]>)[nameJa] as readonly number[] | undefined;
       if (!idForms || idForms.length === 0) continue;
       const idForm = idForms[0];
       const dexNo = idForm & 0xfff;
@@ -197,9 +205,14 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
   });
 
 
-  const showAddNameSuggest = computed(
-    () => addNameHasFocus.value && addNameSuggestOpen.value && !isComposing.value && addNameSuggestList.value.length > 0
-  );
+  const showAddNameSuggest = computed(() => {
+    if (!addNameHasFocus.value || !addNameSuggestOpen.value || isComposing.value) return false;
+    const list = addNameSuggestList.value;
+    if (list.length === 0) return false;
+    // 候補が1件だけ & 入力値と完全一致 → 既に確定しているので閉じる
+    if (list.length === 1 && list[0].nameJa === addName.value.trim()) return false;
+    return true;
+  });
 
   const relinkName = ref("");
   const relinkOpen = ref(false);
@@ -236,6 +249,14 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     return out;
   });
 
+
+  const showRelinkSuggest = computed(() => {
+    if (!relinkOpen.value) return false;
+    const list = relinkSuggestList.value;
+    if (list.length === 0) return false;
+    if (list.length === 1 && list[0].nameJa === relinkName.value.trim()) return false;
+    return true;
+  });
 
   function onRelinkInput() {
     relinkOpen.value = true;
@@ -279,8 +300,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     const subSkillsFromPlanner = (e.planner?.subSkills ?? []).map((s) => ({
       lv: s.lv,
       nameEn: s.nameEn,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      nameJa: (SubSkillNameJaByEn as any)[s.nameEn] ?? s.nameEn,
+      nameJa: (SubSkillNameJaByEn as Record<string, string>)[s.nameEn] ?? s.nameEn,
     }));
     const subSkills = decoded?.subSkills?.length ? decoded.subSkills : subSkillsFromPlanner;
 
@@ -410,13 +430,13 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
       if (!next) return;
       if (addSpecialtyTouched.value) return;
       const sp = getPokemonSpecialty(next.pokedexId, next.form);
-      addSpecialty.value = sp && sp !== "unknown" ? (sp as any) : "";
+      addSpecialty.value = sp && sp !== "unknown" ? sp : "";
     }
   );
 
   function displayPokemonName(e: PokemonBoxEntryV1): string | null {
     if (!e.derived) return null;
-    return getPokemonNameLocalized(e.derived.pokedexId, e.derived.form, locale.value as any);
+    return getPokemonNameLocalized(e.derived.pokedexId, e.derived.form, locale.value);
   }
 
   function displayBoxTitle(e: PokemonBoxEntryV1): string {
@@ -486,12 +506,11 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
         natureName: "",
         expGainNature: e.planner?.expGainNature ?? e.derived?.expGainNature ?? "normal",
         expType: e.planner?.expType ?? e.derived?.expType ?? 600,
-        ingredientType: (e.planner?.ingredientType ?? null) as any,
+        ingredientType: (e.planner?.ingredientType ?? null) as IngredientType | null,
         subSkills: subs.map((s) => ({
           lv: s.lv,
           nameEn: s.nameEn,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          nameJa: (SubSkillNameJaByEn as any)[s.nameEn] ?? s.nameEn,
+          nameJa: (SubSkillNameJaByEn as Record<string, string>)[s.nameEn] ?? s.nameEn,
         })),
       };
     }
@@ -517,7 +536,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
         const id = e.derived?.pokedexId ? String(e.derived.pokedexId) : "";
         const label = toKatakana((e.label || "").toLowerCase());
         const speciesName = e.derived?.pokedexId
-          ? toKatakana((getPokemonNameLocalized(e.derived.pokedexId, e.derived.form ?? 0, locale.value as any) ?? "").toLowerCase())
+          ? toKatakana((getPokemonNameLocalized(e.derived.pokedexId, e.derived.form ?? 0, locale.value) ?? "").toLowerCase())
           : "";
         return label.includes(q) || id.includes(q) || speciesName.includes(q);
       });
@@ -534,7 +553,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
       const form = e.derived?.form ?? decoded?.form ?? 0;
       const sp = (e.planner?.specialty ?? (pokedexId ? getPokemonSpecialty(pokedexId, form) : "unknown")) as PokemonSpecialty;
       const favoriteOk = !!e.favorite;
-      const specialtyOk = selectedSpecialties.value.includes(sp as any);
+      const specialtyOk = (selectedSpecialties.value as readonly string[]).includes(sp);
 
       const subEns = decoded?.subSkills?.map((s) => s.nameEn) ?? [];
       const subOk = matchSubSkills(subEns, selectedSubSkillEns.value, subSkillJoinMode.value);
@@ -661,17 +680,29 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     return result;
   });
 
-  // 画面幅に応じた「タイル列数」をCSSのbreakpointと揃える（2 / 3 / 4）
-  const viewportWidth = ref(typeof window !== "undefined" ? window.innerWidth : 1024);
-  function onResize() {
-    viewportWidth.value = window.innerWidth;
-  }
-  onMounted(() => window.addEventListener("resize", onResize));
-  onUnmounted(() => window.removeEventListener("resize", onResize));
+  // .boxList コンテナの実幅から列数を算出（CSS auto-fill と同期）
+  const TILE_MIN_WIDTH = 140; // CSS minmax(140px, 1fr) と一致させる
+  const boxListEl = ref<HTMLElement | null>(null);
+  const boxListWidth = ref(0);
+  let _boxListRO: ResizeObserver | null = null;
+
+  watch(boxListEl, (el, _old, onCleanup) => {
+    if (_boxListRO) { _boxListRO.disconnect(); _boxListRO = null; }
+    if (!el) return;
+    boxListWidth.value = el.clientWidth;
+    _boxListRO = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      if (w > 0) boxListWidth.value = w;
+    });
+    _boxListRO.observe(el);
+    onCleanup(() => { _boxListRO?.disconnect(); _boxListRO = null; });
+  }, { flush: "post" });
 
   const boxColumns = computed(() => {
-    const w = viewportWidth.value;
-    return w >= 860 ? 4 : w >= 560 ? 3 : 2;
+    const w = boxListWidth.value;
+    if (w <= 0) return 2; // SSR / 初期値フォールバック
+    const gap = 10; // CSS gap と一致
+    return Math.max(1, Math.floor((w + gap) / (TILE_MIN_WIDTH + gap)));
   });
 
   const selectedIndex = computed(() => {
@@ -962,7 +993,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     const e = selectedBox.value;
     if (!e) return;
     const n = Number(v);
-    const expT: ExpType = n === 600 || n === 900 || n === 1080 || n === 1320 ? (n as any) : 600;
+    const expT: ExpType = n === 600 || n === 900 || n === 1080 || n === 1320 ? n : 600;
     const now = new Date().toISOString();
     boxEntries.value = boxEntries.value.map((x) => {
       if (x.id !== e.id) return x;
@@ -978,7 +1009,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
   function onEditSelectedNature(v: string) {
     const e = selectedBox.value;
     if (!e) return;
-    const nat: ExpGainNature = v === "up" || v === "down" || v === "normal" ? (v as any) : "normal";
+    const nat: ExpGainNature = v === "up" || v === "down" || v === "normal" ? v : "normal";
     const now = new Date().toISOString();
     boxEntries.value = boxEntries.value.map((x) => {
       if (x.id !== e.id) return x;
@@ -999,8 +1030,8 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
   function onEditSelectedIngredientType(v: string) {
     const e = selectedBox.value;
     if (!e) return;
-    const next = (v || "").trim() as any;
-    const ingredientType: IngredientType | undefined = (IngredientTypes as readonly string[]).includes(next) ? (next as any) : undefined;
+    const next = (v || "").trim();
+    const ingredientType: IngredientType | undefined = (IngredientTypes as readonly string[]).includes(next) ? (next as IngredientType) : undefined;
     const now = new Date().toISOString();
     boxEntries.value = boxEntries.value.map((x) => {
       if (x.id !== e.id) return x;
@@ -1016,7 +1047,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     const e = selectedBox.value;
     if (!e) return;
     const now = new Date().toISOString();
-    const vv = v === "Berries" || v === "Ingredients" || v === "Skills" || v === "All" ? (v as any) : undefined;
+    const vv: PokemonSpecialty | undefined = v === "Berries" || v === "Ingredients" || v === "Skills" || v === "All" ? v : undefined;
     boxEntries.value = boxEntries.value.map((x) =>
       x.id === e.id ? { ...x, planner: { ...(x.planner ?? {}), specialty: vv }, updatedAt: now } : x
     );
@@ -1035,8 +1066,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     const v = String(label ?? "").trim();
     if (!v) return null;
     // English label (nitoyon internal) -> itself
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ((SubSkillNameJaByEn as any)[v]) return v;
+    if ((SubSkillNameJaByEn as Record<string, string>)[v]) return v;
     // Japanese label -> convert to internal English
     return subSkillEnFromJa(v);
   }
@@ -1098,14 +1128,16 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     const undoSelectedId = selectedBoxId.value;
     const pokedexId = found?.pokedexId ?? 0;
     const form = found?.form ?? 0;
-    const speciesName = found ? getPokemonNameLocalized(pokedexId, form, locale.value as any) : null;
+    const speciesName = found ? getPokemonNameLocalized(pokedexId, form, locale.value) : null;
     const expT = found ? found.expType : addExpType.value;
     const specialty = addSpecialty.value ? (addSpecialty.value as PokemonSpecialty) : undefined;
     const ingredientType =
-      addIngredientType.value && IngredientTypes.includes(addIngredientType.value as any)
+      addIngredientType.value && (IngredientTypes as readonly string[]).includes(addIngredientType.value)
         ? (addIngredientType.value as IngredientType)
         : undefined;
     const subSkills = buildManualPlannerSubSkills();
+    const rawExpRem = parseInt(addExpRemaining.value, 10);
+    const expRem = Number.isFinite(rawExpRem) && rawExpRem > 0 ? rawExpRem : undefined;
     const entry: PokemonBoxEntryV1 = {
       id: cryptoRandomId(),
       source: "manual",
@@ -1124,6 +1156,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
         level: lvl,
         expType: addExpType.value,
         expGainNature: addNature.value,
+        expRemaining: expRem,
         specialty,
         ingredientType,
         subSkills,
@@ -1141,6 +1174,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     // フォーム初期化（名前は残しても良いが、ここでは軽くリセット）
     addLabel.value = "";
     addLevel.value = lvl;
+    addExpRemaining.value = "";
     if (speciesName) addName.value = speciesName;
     addIngredientType.value = "";
     addIngredientTypeTouched.value = false;
@@ -1183,7 +1217,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
         continue;
       }
       const derived0 = decodeNitoyonIvMinimal(parsed.iv);
-      const name0 = derived0 ? getPokemonNameLocalized(derived0.pokedexId, derived0.form, locale.value as any) : null;
+      const name0 = derived0 ? getPokemonNameLocalized(derived0.pokedexId, derived0.form, locale.value) : null;
       const expT0 = derived0 ? getPokemonExpType(derived0.pokedexId, derived0.form) : 600;
       const entry: PokemonBoxEntryV1 = {
         id: cryptoRandomId(),
@@ -1340,6 +1374,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     isComposing,
     addLabel,
     addLevel,
+    addExpRemaining,
     addExpType,
     addNature,
     addLookup,
@@ -1363,6 +1398,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     relinkStatus,
     relinkFound,
     relinkSuggestList,
+    showRelinkSuggest,
     selectedBox,
     selectedDetail,
     selectedNature,
@@ -1370,6 +1406,7 @@ export function useBoxStore(opts: { locale: Ref<string>; t: Composer["t"] }) {
     availableSubSkills,
     sortedBoxEntries,
     detailInsertAfterIndex,
+    boxListEl,
 
     // actions
     onImport,

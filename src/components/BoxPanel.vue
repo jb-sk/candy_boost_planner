@@ -2,11 +2,6 @@
   <section id="neo-box" class="panel panel--box">
     <div class="panel__head">
       <h2 class="panel__title">{{ t("box.title") }}</h2>
-      <div class="panel__side">
-        <button class="btn btn--danger" type="button" data-testid="box-clear-all" @click="box.onClearBox" :disabled="!boxEntries.length">
-          {{ t("box.clearAll") }}
-        </button>
-      </div>
     </div>
 
     <div class="boxGrid">
@@ -54,7 +49,7 @@
               <span class="field__sub" v-if="addLookup">
                 {{
                   t("box.add.detected", {
-                    name: getPokemonNameLocalized(addLookup.pokedexId, addLookup.form, locale as any),
+                    name: getPokemonNameLocalized(addLookup.pokedexId, addLookup.form, locale),
                     id: addLookup.pokedexId,
                     expType: addLookup.expType,
                   })
@@ -70,6 +65,17 @@
               <span class="field__label">{{ t("box.detail.level") }}</span>
               <LevelPicker v-model="addLevel" :label="t('box.detail.level')" :max="MAX_LEVEL" />
             </div>
+            <label class="field">
+              <span class="field__label">{{ t("calc.row.expRemaining") }}</span>
+              <input
+                v-model="addExpRemaining"
+                type="number"
+                min="0"
+                class="field__input"
+                data-testid="box-add-exp-remaining-input"
+                :placeholder="t('calc.row.expRemainingPh')"
+              />
+            </label>
             <label class="field" data-testid="box-add-nature-field">
               <span class="field__label">{{ t("box.add.nature") }}</span>
               <NatureSelect
@@ -79,6 +85,25 @@
                 :label-up="t('calc.row.natureUp')"
                 :label-down="t('calc.row.natureDown')"
               />
+            </label>
+            <label class="field">
+              <span class="field__label">{{ t("box.add.specialtyOpt") }}</span>
+              <select v-model="addSpecialty" class="field__input" data-testid="box-add-specialty-select" :disabled="!!addLookup" @change="box.onAddSpecialtyChanged">
+                <option value="">{{ t("box.add.specialtyUnknown") }}</option>
+                <option value="Berries">{{ gt("きのみ") }}</option>
+                <option value="Ingredients">{{ gt("食材") }}</option>
+                <option value="Skills">{{ gt("スキル") }}</option>
+                <option value="All">{{ gt("オール") }}</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field__label">{{ t("box.add.expType") }}</span>
+              <select v-model.number="addExpType" class="field__input" data-testid="box-add-exptype-select" :disabled="!!addLookup" @change="box.onAddExpTypeChanged">
+                <option :value="600">600{{ !addLookup ? t("box.add.expType600Hint") : '' }}</option>
+                <option :value="900">900</option>
+                <option :value="1080">1080</option>
+                <option :value="1320">1320</option>
+              </select>
             </label>
             <label class="field">
               <span class="field__label">{{ t("box.add.ingredientType") }}</span>
@@ -102,25 +127,6 @@
                   <option value="ABB">ABB</option>
                   <option value="ABC">ABC</option>
                 </template>
-              </select>
-            </label>
-            <label class="field">
-              <span class="field__label">{{ t("box.add.specialtyOpt") }}</span>
-              <select v-model="addSpecialty" class="field__input" data-testid="box-add-specialty-select" :disabled="!!addLookup" @change="box.onAddSpecialtyChanged">
-                <option value="">{{ t("box.add.specialtyUnknown") }}</option>
-                <option value="Berries">{{ gt("きのみ") }}</option>
-                <option value="Ingredients">{{ gt("食材") }}</option>
-                <option value="Skills">{{ gt("スキル") }}</option>
-                <option value="All">{{ gt("オール") }}</option>
-              </select>
-            </label>
-            <label class="field">
-              <span class="field__label">{{ t("box.add.expType") }}</span>
-              <select v-model.number="addExpType" class="field__input" data-testid="box-add-exptype-select" :disabled="!!addLookup" @change="box.onAddExpTypeChanged">
-                <option :value="600">600{{ !addLookup ? t("box.add.expType600Hint") : '' }}</option>
-                <option :value="900">900</option>
-                <option :value="1080">1080</option>
-                <option :value="1320">1320</option>
               </select>
             </label>
 
@@ -262,7 +268,7 @@
 
         <!-- 検索 -->
         <div class="boxSearchRow">
-          <input v-model="boxFilter" class="boxSearch" data-testid="box-search-input" :placeholder="t('box.list.searchPh')" />
+          <input v-model="boxFilter" class="boxSearch field__input" data-testid="box-search-input" :placeholder="t('box.list.searchPh')" />
           <button class="btn btn--ghost btn--sm" type="button" data-testid="box-search-clear" @click="boxFilter = ''" :disabled="!boxFilter.trim()">
             {{ t("box.list.clearSearch") }}
           </button>
@@ -349,16 +355,16 @@
                   <option value="or">{{ t("box.list.subskillJoinOr") }}</option>
                   <option value="and">{{ t("box.list.subskillJoinAnd") }}</option>
                 </select>
-                <button
-                  class="btn btn--ghost btn--sm"
-                  type="button"
-                  data-testid="box-subskill-clear"
-                  @click="selectedSubSkillEns = []"
-                  :disabled="!selectedSubSkillEns.length"
-                >
-                  {{ t("box.list.subskillClear") }}
-                </button>
               </div>
+              <button
+                class="btn btn--ghost btn--sm"
+                type="button"
+                data-testid="box-subskill-clear"
+                @click="selectedSubSkillEns = []"
+                :disabled="!selectedSubSkillEns.length"
+              >
+                {{ t("box.list.subskillClear") }}
+              </button>
               <div class="boxAdvanced__list" data-testid="box-subskill-filter-list">
                 <label v-for="s in availableSubSkills" :key="s.nameEn" class="boxAdvanced__item">
                   <input type="checkbox" class="boxAdvanced__check" :data-testid="'box-subskill-filter-' + s.nameEn" :value="s.nameEn" v-model="selectedSubSkillEns" />
@@ -370,15 +376,8 @@
         </details>
 
         <div class="boxSortRow">
-          <div class="boxSortRow__left">
-            <button class="btn btn--ghost" type="button" data-testid="box-undo" @click="box.onUndo" :disabled="!canUndo" :title="t('box.list.undoTitle')">
-              {{ t("common.undo") }}
-            </button>
-            <button class="btn btn--ghost" type="button" data-testid="box-redo" @click="box.onRedo" :disabled="!canRedo">
-              {{ t("common.redo") }}
-            </button>
-          </div>
           <div class="boxSort">
+            <span class="boxSort__label">{{ t("box.list.sortTitle") }}</span>
             <select v-model="boxSortKey" class="field__input boxSort__select" :aria-label="t('box.list.sortKeyAria')">
               <option value="labelFav">{{ t("box.list.sortLabelFav") }}</option>
               <option value="levelFav">{{ t("box.list.sortLevelFav") }}</option>
@@ -388,39 +387,51 @@
               <option value="dex">{{ t("box.list.sortDex") }}</option>
             </select>
             <button
-              class="btn btn--ghost"
-              :class="{ 'btn--primary': boxSortDir === 'asc' }"
+              class="btn"
+              :class="boxSortDir === 'asc' ? 'btn--primary' : 'btn--ghost'"
               type="button"
               @click="box.applySort('asc')"
             >
               {{ t("box.list.sortAsc") }}
             </button>
             <button
-              class="btn btn--ghost"
-              :class="{ 'btn--primary': boxSortDir === 'desc' }"
+              class="btn"
+              :class="boxSortDir === 'desc' ? 'btn--primary' : 'btn--ghost'"
               type="button"
               @click="box.applySort('desc')"
             >
               {{ t("box.list.sortDesc") }}
             </button>
           </div>
+          <div class="boxSortRow__undoRedo">
+            <button class="btn btn--ghost btn--sm" type="button" data-testid="box-clear-all" @click="box.onClearBox" :disabled="!boxEntries.length">
+              {{ t("box.clearAll") }}
+            </button>
+            <button class="btn" :class="canUndo ? 'btn--primary' : 'btn--ghost'" type="button" data-testid="box-undo" @click="box.onUndo" :disabled="!canUndo" :title="t('box.list.undoTitle')">
+              {{ t("common.undo") }}
+            </button>
+            <button class="btn" :class="canRedo ? 'btn--primary' : 'btn--ghost'" type="button" data-testid="box-redo" @click="box.onRedo" :disabled="!canRedo">
+              {{ t("common.redo") }}
+            </button>
+          </div>
         </div>
 
-        <div class="boxList" v-if="sortedBoxEntries.length">
+        <div class="boxList" ref="boxListRef" v-if="sortedBoxEntries.length">
           <template v-for="(e, idx) in sortedBoxEntries" :key="e.id">
             <button
               type="button"
               class="boxTile"
               data-testid="box-tile"
-              :class="[box.boxTileTypeClass(e), { 'boxTile--active': e.id === selectedBoxId }]"
+              :class="[box.boxTileTypeClass(e), { 'boxTile--active': e.id === selectedBoxId, 'boxTile--hover': hoveredTileId === e.id || e.id === selectedBoxId }]"
               :data-type="e.derived ? getPokemonType(e.derived.pokedexId, e.derived.form) : 'unknown'"
+              @mouseenter="onTileMouseEnter(e.id)"
+              @mouseleave="onTileMouseLeave"
+              @touchstart="onTileTouchStart"
               @click="box.onSelectBox(e.id)"
             >
               <div class="boxTile__name">{{ box.displayBoxTitle(e) }}</div>
-              <div class="boxTile__lv">
-                Lv{{ e.planner?.level ?? e.derived?.level ?? "-" }}
-                <span v-if="e.favorite" class="boxTile__fav" :aria-label="t('box.list.favorite')" :title="t('box.list.favorite')" v-html="iconStarSvg"></span>
-              </div>
+              <span v-if="e.favorite" class="boxTile__fav" :aria-label="t('box.list.favorite')" :title="t('box.list.favorite')" v-html="iconStarSvg"></span>
+              <span class="boxTile__lv">Lv{{ e.planner?.level ?? e.derived?.level ?? "-" }}</span>
             </button>
 
             <div v-if="idx === detailInsertAfterIndex && selectedBox && selectedDetail" class="boxDetail boxDetail--inline" data-testid="box-detail-panel">
@@ -438,7 +449,7 @@
 
               <div class="boxDetail__grid">
                 <div class="boxDetail__col">
-                  <div class="boxDetail__kv">
+                  <div class="boxDetail__kv boxDetail__kv--wide">
                     <div class="boxDetail__v">
                       <div>
                         <span class="boxDetail__strong">{{ box.displayPokemonName(selectedBox) ?? t("box.detail.unlinked") }}</span>
@@ -464,14 +475,14 @@
                         <div class="boxDetail__minor" v-if="relinkFound">
                           {{
                             t("box.detail.relinkCandidate", {
-                              name: getPokemonNameLocalized(relinkFound.pokedexId, relinkFound.form, locale as any),
+                              name: getPokemonNameLocalized(relinkFound.pokedexId, relinkFound.form, locale),
                               id: relinkFound.pokedexId,
                               expType: relinkFound.expType,
                             })
                           }}
                         </div>
                         <div class="boxDetail__minor" v-else-if="relinkName.trim()">{{ t("box.detail.relinkNoCandidate") }}</div>
-                        <div v-if="relinkOpen && relinkSuggestList.length" class="suggest__panel" data-testid="box-detail-relink-suggest-panel" role="listbox">
+                        <div v-if="showRelinkSuggest" class="suggest__panel" data-testid="box-detail-relink-suggest-panel" role="listbox">
                           <button
                             v-for="n in relinkSuggestList"
                             :key="n.nameJa"
@@ -489,7 +500,7 @@
                     </div>
                   </div>
 
-                  <div class="boxDetail__kv">
+                  <div class="boxDetail__kv boxDetail__kv--wide">
                     <div class="boxDetail__k">{{ t("box.detail.nickname") }}</div>
                     <div class="boxDetail__v">
                       <div class="boxDetail__nickRow">
@@ -518,20 +529,6 @@
                   </div>
 
                   <div class="boxDetail__specs">
-                  <div class="boxDetail__kv" v-if="selectedDetail?.pokedexId">
-                    <div class="boxDetail__k">{{ t("calc.row.speciesCandy") }}</div>
-                    <div class="boxDetail__v">
-                      <input
-                        type="number"
-                        min="0"
-                        class="field__input"
-                        data-testid="box-detail-candy-input"
-                        :value="candyStore.getSpeciesCandyFor(selectedDetail.pokedexId)"
-                        @input="candyStore.updateSpeciesCandy(selectedDetail!.pokedexId, parseInt(($event.target as HTMLInputElement).value) || 0)"
-                      />
-                    </div>
-                  </div>
-
                   <div class="boxDetail__kv">
                     <div class="boxDetail__k">{{ t("box.detail.level") }}</div>
                     <div class="boxDetail__v">
@@ -562,7 +559,15 @@
                   </div>
 
                   <div class="boxDetail__kv">
-                    <div class="boxDetail__k">{{ t("calc.row.nature") }}</div>
+                    <div class="boxDetail__k">
+                      {{ t("calc.row.nature") }}
+                      <button
+                        v-if="selectedDetail?.decoded?.natureName"
+                        type="button"
+                        class="hintIcon hintIcon--pill"
+                        @click.stop="showHint($event, localizeNature(selectedDetail.decoded.natureName, locale))"
+                      ><svg viewBox="0 0 24 24" width="12" height="12"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="currentColor" fill-opacity="0.16"/><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                    </div>
                     <div class="boxDetail__v">
                       <NatureSelect
                         v-model="selectedNature"
@@ -572,9 +577,6 @@
                         :label-up="t('calc.row.natureUp')"
                         :label-down="t('calc.row.natureDown')"
                       />
-                      <span class="boxDetail__minor" v-if="selectedDetail?.decoded?.natureName">
-                        （{{ localizeNature(selectedDetail.decoded.natureName, locale as any) }}）
-                      </span>
                     </div>
                   </div>
 
@@ -641,32 +643,35 @@
                       </span>
                     </div>
                   </div>
+
+                  <div class="boxDetail__kv">
+                    <div class="boxDetail__k">
+                      {{ t("box.detail.ingredients") }}
+                      <button
+                        v-if="selectedDetail.ingredientSlots"
+                        type="button"
+                        class="hintIcon hintIcon--pill"
+                        @click.stop="showHint($event, selectedDetail.ingredientSlots.map(box.toIngredientLabel).join(' / '))"
+                        v-html="iconIngredientsSvg"
+                      ></button>
+                    </div>
+                    <div class="boxDetail__v">
+                      <select
+                        class="field__input"
+                        data-testid="box-detail-ingredient-select"
+                        :value="selectedDetail.ingredientType ?? ''"
+                        @change="box.onEditSelectedIngredientType(($event.target as HTMLSelectElement).value)"
+                      >
+                        <option value="">{{ t("box.detail.unknownAuto") }}</option>
+                        <option v-for="tt in IngredientTypes" :key="tt" :value="tt">{{ tt }}</option>
+                      </select>
+                    </div>
+                  </div>
                   </div>
                 </div>
 
                 <div class="boxDetail__col">
-                  <div class="boxDetail__kv">
-                    <div class="boxDetail__k">{{ t("box.detail.ingredients") }}</div>
-                    <div class="boxDetail__v boxDetail__v--mono">
-                      <div class="boxDetail__editRow">
-                        <select
-                          class="field__input"
-                          data-testid="box-detail-ingredient-select"
-                          :value="selectedDetail.ingredientType ?? ''"
-                          @change="box.onEditSelectedIngredientType(($event.target as HTMLSelectElement).value)"
-                        >
-                          <option value="">{{ t("box.detail.unknownAuto") }}</option>
-                          <option v-for="tt in IngredientTypes" :key="tt" :value="tt">{{ tt }}</option>
-                        </select>
-                      </div>
-                      <div v-if="selectedDetail.ingredientSlots" class="boxDetail__ingredientsList">
-                        {{ selectedDetail.ingredientSlots.map(box.toIngredientLabel).join(" / ") }}
-                      </div>
-                      <div v-else class="boxDetail__ingredientsList">{{ t("box.detail.unknown") }}</div>
-                    </div>
-                  </div>
-
-                  <div class="boxDetail__kv">
+                  <div class="boxDetail__kv boxDetail__kv--wide">
                     <div class="boxDetail__k">{{ t("box.detail.subSkills") }}</div>
                     <div class="boxDetail__v">
                       <div class="boxDetail__subEdit" data-testid="box-detail-subskills">
@@ -696,6 +701,16 @@
         <p class="boxEmpty" v-else>{{ t("box.empty") }}</p>
       </div>
     </div>
+
+    <div v-if="hintState.visible" class="hintOverlay" @click.stop="closeHint"></div>
+    <div
+      v-if="hintState.visible"
+      ref="hintPopoverRef"
+      class="hintPopover"
+      :style="{ left: hintState.left + 'px', top: hintState.top + 'px' }"
+      @click.stop
+      v-text="hintState.message"
+    ></div>
   </section>
 </template>
 
@@ -705,7 +720,6 @@ import { localizeNature } from "../i18n/terms";
 import { IngredientTypes } from "../domain/box/nitoyon";
 import { getPokemonType } from "../domain/pokesleep/pokemon-names";
 import { getPokemonNameLocalized } from "../domain/pokesleep/pokemon-name-localize";
-import { useCandyStore } from "../composables/useCandyStore";
 import NatureSelect from "./NatureSelect.vue";
 
 import type { BoxStore } from "../composables/useBoxStore";
@@ -728,7 +742,6 @@ const emit = defineEmits<{
 const { t, locale } = useI18n();
 const box = props.box;
 const gt = props.gt;
-const candyStore = useCandyStore();
 
 // Aliases for v-model so the template compiler updates `.value` correctly.
 const boxEntries = box.boxEntries;
@@ -744,8 +757,6 @@ const detailInsertAfterIndex = box.detailInsertAfterIndex;
 const selectedBox = box.selectedBox;
 const selectedDetail = box.selectedDetail;
 const selectedSpecialtySelectValue = box.selectedSpecialtySelectValue;
-const openBoxLevelPick = box.openBoxLevelPick;
-const levelPresets = box.levelPresets;
 const availableSubSkills = box.availableSubSkills;
 const boxSortDir = box.boxSortDir;
 const selectedSpecialties = box.selectedSpecialties;
@@ -753,6 +764,7 @@ const canUndo = box.canUndo;
 const canRedo = box.canRedo;
 const relinkFound = box.relinkFound;
 const relinkSuggestList = box.relinkSuggestList;
+const showRelinkSuggest = box.showRelinkSuggest;
 const relinkStatus = box.relinkStatus;
 const boxEditSubInputs = box.boxEditSubInputs;
 const boxEditSubErrors = box.boxEditSubErrors;
@@ -769,6 +781,7 @@ const addName = box.addName;
 const isComposing = box.isComposing;
 const addLabel = box.addLabel;
 const addLevel = box.addLevel;
+const addExpRemaining = box.addExpRemaining;
 const addNature = box.addNature;
 const addSpecialty = box.addSpecialty;
 const addExpType = box.addExpType;
@@ -782,9 +795,29 @@ const relinkName = box.relinkName;
 const relinkOpen = box.relinkOpen;
 const selectedNature = box.selectedNature;
 
-import { ref } from "vue";
+import { ref, watch, nextTick } from "vue";
 import LevelPicker from "./LevelPicker.vue";
 const addToCalcChecked = ref(true);
+
+// hover class control (replaces CSS :hover to avoid iOS sticky hover)
+// On touch devices, iOS fires synthetic mouseenter after touchstart.
+// We suppress mouse hover entirely once a touch is detected.
+const hoveredTileId = ref<string | null>(null);
+let isTouchDevice = false;
+function onTileMouseEnter(id: string) {
+  if (!isTouchDevice) hoveredTileId.value = id;
+}
+function onTileMouseLeave() {
+  if (!isTouchDevice) hoveredTileId.value = null;
+}
+function onTileTouchStart() {
+  isTouchDevice = true;
+  hoveredTileId.value = null;
+}
+
+// .boxList の DOM 要素を composable の ResizeObserver に渡す
+const boxListRef = ref<HTMLElement | null>(null);
+watch(boxListRef, (el) => { box.boxListEl.value = el; }, { immediate: true });
 
 function onCreateToBox(ev: MouseEvent) {
   if (addToCalcChecked.value) {
@@ -834,10 +867,8 @@ function onPasteEvent(ev: ClipboardEvent) {
 
 async function onPasteImport() {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const nav: any = navigator as any;
-    if (nav?.clipboard?.readText) {
-      const t0 = await nav.clipboard.readText();
+    if (navigator.clipboard?.readText) {
+      const t0 = await navigator.clipboard.readText();
       if (typeof t0 === "string" && t0.length) {
         importText.value = t0;
         importStatus.value = t("status.pasted");
@@ -849,6 +880,39 @@ async function onPasteImport() {
     importStatus.value = t("status.pasteNotAvailable");
   }
 }
-</script>
 
-<style src="./BoxPanel.css"></style>
+/* ===== Hint tooltip ===== */
+const hintState = ref<{ visible: boolean; message: string; left: number; top: number }>({
+  visible: false, message: "", left: 0, top: 0,
+});
+const hintPopoverRef = ref<HTMLElement | null>(null);
+
+async function showHint(ev: MouseEvent, message: string) {
+  const target = ev.target as HTMLElement;
+  const rect = target.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const popoverWidth = 220;
+  const gap = 4;
+
+  let left = rect.left;
+  if (left + popoverWidth > viewportWidth) left = viewportWidth - popoverWidth - 8;
+  if (left < 8) left = 8;
+
+  // まず下に仮配置して描画
+  hintState.value = { visible: true, message, left, top: rect.bottom + gap };
+
+  // 描画後に実測して、下に収まらなければ上にフリップ
+  await nextTick();
+  if (hintPopoverRef.value) {
+    const popH = hintPopoverRef.value.offsetHeight;
+    const viewportHeight = window.innerHeight;
+    if (rect.bottom + gap + popH > viewportHeight && rect.top - gap - popH > 0) {
+      hintState.value.top = rect.top - gap - popH;
+    }
+  }
+}
+
+function closeHint() {
+  hintState.value.visible = false;
+}
+</script>

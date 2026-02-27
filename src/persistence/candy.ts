@@ -99,10 +99,11 @@ export function setUniversalCandy(inv: CandyInventoryV1, candy: UniversalCandyIn
 
 // --- 正規化 ---
 
-function normalizeInventory(x: any): CandyInventoryV1 {
-  const universal = normalizeUniversal(x.universal);
-  const typeCandy = normalizeTypeCandy(x.typeCandy);
-  const species = normalizeSpecies(x.species);
+function normalizeInventory(x: unknown): CandyInventoryV1 {
+  const r = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
+  const universal = normalizeUniversal(r.universal);
+  const typeCandy = normalizeTypeCandy(r.typeCandy);
+  const species = normalizeSpecies(r.species);
   return {
     schemaVersion: SCHEMA_VERSION,
     universal,
@@ -111,21 +112,22 @@ function normalizeInventory(x: any): CandyInventoryV1 {
   };
 }
 
-function normalizeUniversal(x: any): UniversalCandyInventory {
+function normalizeUniversal(x: unknown): UniversalCandyInventory {
   if (!x || typeof x !== "object") return { s: 0, m: 0, l: 0 };
+  const r = x as Record<string, unknown>;
   return {
-    s: toNonNegativeInt(x.s, 0),
-    m: toNonNegativeInt(x.m, 0),
-    l: toNonNegativeInt(x.l, 0),
+    s: toNonNegativeInt(r.s, 0),
+    m: toNonNegativeInt(r.m, 0),
+    l: toNonNegativeInt(r.l, 0),
   };
 }
 
-function normalizeTypeCandy(x: any): Record<string, TypeCandyInventory> {
+function normalizeTypeCandy(x: unknown): Record<string, TypeCandyInventory> {
   if (!x || typeof x !== "object") return {};
   const out: Record<string, TypeCandyInventory> = {};
-  for (const [key, val] of Object.entries(x)) {
+  for (const [key, val] of Object.entries(x as Record<string, unknown>)) {
     if (!val || typeof val !== "object") continue;
-    const v = val as any;
+    const v = val as Record<string, unknown>;
     out[key] = {
       s: toNonNegativeInt(v.s, 0),
       m: toNonNegativeInt(v.m, 0),
@@ -134,10 +136,10 @@ function normalizeTypeCandy(x: any): Record<string, TypeCandyInventory> {
   return out;
 }
 
-function normalizeSpecies(x: any): Record<string, number> {
+function normalizeSpecies(x: unknown): Record<string, number> {
   if (!x || typeof x !== "object") return {};
   const out: Record<string, number> = {};
-  for (const [key, val] of Object.entries(x)) {
+  for (const [key, val] of Object.entries(x as Record<string, unknown>)) {
     const n = toNonNegativeInt(val, 0);
     if (n > 0) out[key] = n;
   }

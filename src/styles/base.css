@@ -1,0 +1,73 @@
+/* Base Theme — gacha seed template for deriving new themes (internal only, not listed in theme picker) */
+@import "./core/reset.css";
+@import "./core/components.css";
+
+/*
+ * Section order follows DOM:
+ *   :root > body > .hero > .panel > .btn > .field__input
+ *   > Calc (.calcSticky, .slotTab) > Box (.boxTile, .chipBtn)
+ *   > .modal > .mobileNav > scrollbar
+ */
+
+/* ===== Variables ===== */
+:root {
+  /* Core Palette */
+  --bg-decor: #f0fdf4;
+  --paper: #ffffff;
+  --ink: #1e293b;
+  --muted: #64748b;
+  --accent: #10b981;
+  --accent-strong: #00a86e;
+  --danger: #ef4444;
+
+  /* Surfaces */
+  --surface: #f8fafc;
+  --surface-alt: #f1f5f9;
+  --border: #e2e8f0;
+
+  /* Overlay */
+  --overlay-bg: rgba(0, 0, 0, 0.5);
+  /* Interactive */
+  --btn-bg: var(--accent);
+  --btn-ink: #ffffff;
+  --input-bg: #ffffff;
+  --input-border: #e2e8f0;
+  --ring: var(--accent);
+
+  /* Data Visualization */
+  --bar-fill: #ec4899;
+  --bar-track: #e2e8f0;
+  --bar-over: var(--danger);
+  --export-divider: #a7f3d0;
+
+  /* Pie Chart Palette */
+  --pie-0: #10b981;
+  --pie-1: #6366f1;
+  --pie-2: #f59e0b;
+  --pie-3: #ec4899;
+  --pie-4: #06b6d4;
+  --pie-5: #8b5cf6;
+  --pie-6: #f97316;
+  --pie-7: #64748b;
+
+  /* Semantic Accents */
+  --star-color: #f59e0b;
+  --nature-up: hsl(140, 60%, 45%);
+  --nature-down: hsl(350, 60%, 50%);
+
+  /* Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 99px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+
+}
+
+
+
+

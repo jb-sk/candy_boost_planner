@@ -24,7 +24,7 @@ cd /workspaces/candy_boost_planner
 
 echo "Starting OpenClaw via PM2..."
 pm2 delete openclaw 2>/dev/null || true
-pm2 start openclaw --name openclaw -- gateway || echo "Failed to start openclaw via PM2"
+pm2 start openclaw --name openclaw -- gateway run || echo "Failed to start openclaw via PM2"
 pm2 save
 
 echo "Entrypoint logic finished."

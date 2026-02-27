@@ -1,0 +1,686 @@
+/* Modern: ExportOverlay — minimal flat design, mobile-first */
+
+/* ===== Overlay ===== */
+.exportOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--overlay-bg);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ===== Sheet ===== */
+.exportSheetWrap {
+  min-height: 100%;
+}
+
+.exportSheet {
+  position: relative;
+  width: 100%;
+  min-height: 100%;
+  background: var(--paper);
+  padding: 20px 16px;
+  font-family: var(--font-body);
+  color: var(--ink);
+  --export-accent: var(--accent);
+  --export-bar-fill: var(--bar-fill);
+  --export-bar-track: var(--bar-track);
+  --export-danger: var(--danger);
+  --export-divider: var(--border);
+  --export-section-bg: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+
+.exportSheet--capture .exportActions {
+  display: none;
+}
+
+/* ===== Header ===== */
+.exportHead {
+  border-bottom: 2px dashed var(--export-divider);
+  padding-bottom: 14px;
+  margin: 0 -16px 20px;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.exportHead__top {
+  display: flex;
+}
+
+.exportBrand {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 20px;
+}
+
+.exportMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.exportMonth {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* ===== Actions ===== */
+.exportActions {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+}
+
+/* linkBtn: defined in core/components.css */
+
+/* CSV dropdown */
+.exportCsvMenuTrigger {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.exportCsvMenu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 5;
+  min-width: 160px;
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  background: var(--paper);
+  box-shadow: var(--shadow-md);
+}
+
+.exportCsvMenu__item {
+  appearance: none;
+  border: 0;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 8px 10px;
+  color: var(--ink);
+  background: transparent;
+}
+
+.exportCsvMenu__item:hover {
+  background: var(--surface-alt);
+}
+
+/* ===== Status ===== */
+.exportStatus {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+}
+
+/* ===== Calc area ===== */
+.exportCalc {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ===== Section title (shared) ===== */
+.exportSectionTitle {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--accent);
+  margin: 20px 0 14px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.exportSectionTitle:first-child {
+  margin-top: 0;
+}
+
+/* No-stock warning link */
+.exportNoStock {
+  display: block;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 6px 0 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--export-danger);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ===== Summary section (stats + bars) ===== */
+.exportCalcTop {
+  padding: 0 0 8px;
+  margin: 0 -4px 0;
+}
+
+/* Hide emoji icon inside brand label (kept in markup for fallback) */
+.exportBrand__icon {
+  display: none;
+}
+
+/* ===== Stat cards ===== */
+.exportStats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.statCard {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  border: none;
+  border-radius: var(--radius-md);
+}
+
+.statCard--danger {
+  background: color-mix(in srgb, var(--export-danger) 8%, transparent);
+}
+
+.statCard__label {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.statCard__value {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 26px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.statCard__value--danger,
+.statCard--danger .statCard__value {
+  color: var(--export-danger);
+}
+
+/* ===== Progress bars ===== */
+.exportBars {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.exportBars--muted {
+  opacity: 0.8;
+}
+
+.exportBarHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.exportBarK {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.exportBarK--right {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.exportBar__track {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--export-bar-track);
+  overflow: hidden;
+}
+
+.exportBar__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  border-radius: 4px;
+  background: var(--export-bar-fill);
+}
+
+/* ===== Pokemon list ===== */
+.exportList {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  padding: 0 4px 8px;
+}
+
+.exportList__head {
+  display: none;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+
+.exportList__row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px 8px;
+  padding: 8px 0 8px 6px;
+  align-items: center;
+  border-bottom: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.exportList__nameCol {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Inline Lv shown only on mobile (before name) */
+.exportList__lvInline {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  min-width: 5.5em;
+  font-variant-numeric: tabular-nums;
+}
+
+.exportList__name {
+  font-weight: 700;
+  font-size: 15px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.exportList__badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  background: var(--surface-alt);
+  color: var(--muted);
+}
+
+.exportList__lvWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.exportList__arrow {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.exportList__col.u-align-right,
+.exportList__col.u-align-center {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  grid-column: span 1;
+}
+
+/* Lv column — hidden on mobile, shown at 680px+.
+   Placed AFTER .u-align-center so same-specificity cascade wins. */
+.exportList__col.exportList__lvCol {
+  display: none;
+}
+
+.u-mobile-label {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.exportList__numCol .exportList__num {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.exportList__num--danger {
+  color: var(--export-danger);
+  font-weight: 700;
+}
+
+/* Total row */
+.exportList__row--total {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  border-bottom: none;
+  font-weight: 700;
+  border-top: 2px solid var(--ink);
+  padding: 10px 0 10px 6px;
+}
+
+.exportList__row--total .exportList__nameCol,
+.exportList__row--total .exportList__lvCol {
+  display: none;
+}
+
+.exportList__row--total .exportList__numCol {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  grid-column: span 1;
+}
+
+.exportList__row--total .exportList__num {
+  color: var(--ink);
+}
+
+.exportList__row--total .exportList__num--danger {
+  color: var(--export-danger);
+}
+
+.exportList__row--total .u-mobile-label {
+  color: var(--ink);
+  opacity: 0.9;
+}
+
+/* ===== Ranking ===== */
+.exportRanking {
+  margin: 0 -4px 0;
+  padding: 0 16px 8px;
+}
+
+
+
+.exportRanking__total {
+  font-size: 13px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  flex-wrap: wrap;
+}
+
+.exportRanking__total span:first-child {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ===== Pie Chart ===== */
+.exportPie {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.exportPie__svg {
+  width: 120px;
+  height: 120px;
+  flex-shrink: 0;
+}
+
+.exportPie__slice { stroke: var(--paper); stroke-width: 1; }
+.exportPie__slice--0 { fill: var(--pie-0); }
+.exportPie__slice--1 { fill: var(--pie-1); }
+.exportPie__slice--2 { fill: var(--pie-2); }
+.exportPie__slice--3 { fill: var(--pie-3); }
+.exportPie__slice--4 { fill: var(--pie-4); }
+.exportPie__slice--5 { fill: var(--pie-5); }
+.exportPie__slice--6 { fill: var(--pie-6); }
+.exportPie__slice--7 { fill: var(--pie-7); }
+
+.exportPie__legend {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.exportPie__legendItem {
+  display: grid;
+  grid-template-columns: 12px 1fr auto;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 13px;
+}
+
+.exportPie__swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  align-self: center;
+}
+.exportPie__swatch--0 { background: var(--pie-0); }
+.exportPie__swatch--1 { background: var(--pie-1); }
+.exportPie__swatch--2 { background: var(--pie-2); }
+.exportPie__swatch--3 { background: var(--pie-3); }
+.exportPie__swatch--4 { background: var(--pie-4); }
+.exportPie__swatch--5 { background: var(--pie-5); }
+.exportPie__swatch--6 { background: var(--pie-6); }
+.exportPie__swatch--7 { background: var(--pie-7); }
+
+.exportPie__legendName {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.exportPie__legendPct {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 14px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.exportPie__legendDetail {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.exportRanking__itemGroup {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.exportRanking__itemLabel {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface-alt);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+
+/* ===== Tablet+ single-row list (≥ 680px) ===== */
+@media (min-width: 680px) {
+  .exportSheetWrap {
+    min-height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .exportSheet {
+    max-width: 790px;
+    margin: 0 auto;
+    min-height: auto;
+    padding: 28px 32px;
+  }
+
+  .exportHead {
+    margin-left: -32px;
+    margin-right: -32px;
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+
+  .exportMonth {
+    font-size: 18px;
+  }
+
+  .exportCalcTop {
+    padding: 0 24px 8px;
+    margin: 0 -8px 0;
+  }
+
+  .exportStats {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+
+  .exportList {
+    padding: 0 24px 8px;
+    margin: 0 -8px;
+  }
+
+  .exportRanking {
+    margin: 0 -8px 0;
+    padding: 0 24px;
+  }
+
+  /* Show table header */
+  .exportList__head {
+    display: grid;
+    grid-template-columns: 2fr 1fr repeat(4, 1fr);
+    gap: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    border-bottom: 2px solid var(--ink);
+    align-items: end;
+  }
+
+  /* Data rows — single line */
+  .exportList__row {
+    grid-template-columns: 2fr 1fr repeat(4, 1fr);
+    gap: 8px;
+    padding: 6px 12px;
+  }
+
+  /* Reset mobile overrides on name / lv columns */
+  .exportList__nameCol {
+    grid-column: span 1;
+  }
+
+  .exportList__lvInline {
+    display: none;
+  }
+
+  .exportList__col.exportList__lvCol {
+    display: flex;
+    grid-column: span 1;
+    justify-self: center;
+    font-size: 15px;
+  }
+
+  /* Number columns — single value, right-aligned */
+  .exportList__col.u-align-right {
+    flex-direction: row;
+    align-items: center;
+    text-align: right;
+    justify-content: flex-end;
+  }
+
+  .exportList__col.u-align-center {
+    flex-direction: row;
+    align-items: center;
+    text-align: center;
+    justify-content: center;
+  }
+
+  /* Hide per-cell labels (shown in header instead) */
+  .u-mobile-label {
+    display: none;
+  }
+
+  /* Total row — show as single line too */
+  .exportList__row--total {
+    padding: 8px 12px;
+  }
+
+  .exportList__row--total .exportList__nameCol,
+  .exportList__row--total .exportList__lvCol {
+    display: block;
+    visibility: hidden;
+  }
+
+  .exportList__row--total .exportList__numCol {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  /* Enlarge list labels & numbers */
+  .exportList__head {
+    font-size: 13px;
+  }
+
+  .exportList__row {
+    padding: 10px 12px;
+  }
+
+  .exportList__numCol .exportList__num {
+    font-size: 15px;
+  }
+
+  .exportList__lvCol {
+    font-size: 15px;
+  }
+
+  .exportList__row--total {
+    padding: 12px 12px;
+  }
+
+
+
+  .exportRanking__total {
+    font-size: 15px;
+  }
+
+  .exportRanking__total span:first-child {
+    font-size: 13px;
+  }
+
+  .exportPie__svg {
+    width: 160px;
+    height: 160px;
+  }
+
+  .exportPie__legendItem {
+    font-size: 15px;
+  }
+
+  .exportPie__legendPct {
+    font-size: 16px;
+  }
+
+  .exportRanking__itemGroup {
+    font-size: 15px;
+  }
+
+  .exportRanking__itemLabel {
+    font-size: 13px;
+  }
+}

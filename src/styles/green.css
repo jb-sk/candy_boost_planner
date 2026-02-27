@@ -1,0 +1,161 @@
+/* Green Theme — Forest */
+@import "./core/reset.css";
+@import "./core/components.css";
+
+/* ===== Variables ===== */
+:root {
+  /* Core Palette */
+  --bg-decor: #1a2f23;
+  --paper: #fdfcf5;
+  --ink: #3e2723;
+  --muted: #4e342e;
+  --accent: #689f38;
+  --accent-strong: #4da812;
+  --danger: #bf360c;
+
+  /* Surfaces */
+  --surface: #f1f8e9;
+  --surface-alt: #dcedc8;
+  --border: #8d6e63;
+
+  /* Overlay */
+  --overlay-bg: rgba(20, 30, 20, 0.85);
+  /* Interactive */
+  --btn-bg: #558b2f;
+  --btn-ink: #ffffff;
+  --input-bg: #fffbf0;
+  --input-border: #a1887f;
+  --ring: #cddc39;
+
+  /* Data Visualization */
+  --bar-fill: #ffa000;
+  --bar-track: #d7ccc8;
+  --bar-over: #e64a19;
+  --export-divider: #a5d6a7;
+
+  /* Pie Chart Palette */
+  --pie-0: #689f38;
+  --pie-1: #ffa000;
+  --pie-2: #8d6e63;
+  --pie-3: #43a047;
+  --pie-4: #e65100;
+  --pie-5: #5d4037;
+  --pie-6: #a5d6a7;
+  --pie-7: #bcaaa4;
+
+  /* Semantic Accents */
+  --star-color: #fbc02d;
+  --nature-up: #2e7d32;
+  --nature-down: #c62828;
+
+  /* Border Radius */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-pill: 99px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(46, 30, 20, 0.2);
+  --shadow-md: 0 4px 8px rgba(46, 30, 20, 0.25);
+  --shadow-lg: 0 10px 25px rgba(20, 35, 20, 0.4);
+
+}
+
+/* ===== Body ===== */
+body {
+  background-image:
+    radial-gradient(circle at 20% 30%, #2e4a36 0%, transparent 40%),
+    radial-gradient(circle at 80% 70%, #142118 0%, transparent 40%);
+}
+
+/* ===== Panel ===== */
+.panel {
+  border: 2px solid #8d6e63;
+  box-shadow: none;
+  margin-bottom: 0;
+  position: relative;
+  overflow: visible;
+}
+
+/* ===== Buttons ===== */
+.btn--primary {
+  border-radius: 20px 4px 20px 4px; /* Leaf shape */
+  border-bottom: 4px solid #33691e;
+  transition: transform 0.1s, border-bottom-width 0.1s;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+}
+
+.btn--primary:active {
+  transform: translateY(2px);
+  border-bottom-width: 2px;
+}
+
+/* ===== Field Input ===== */
+.field__input {
+  background-color: #fffbf0;
+  border: 2px solid #bcaaa4;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.field__input:focus {
+  border-color: var(--accent);
+  background-color: #ffffff;
+}
+
+/* ===== Calc — Sleep Chips ===== */
+.sleepChip,
+.hintIcon {
+  color: var(--ink);
+}
+
+/* ===== Box Tiles ===== */
+.boxTile {
+  background: #ffffff;
+  border: 1px solid #d7ccc8;
+  border-bottom: 3px solid #d7ccc8;
+}
+
+.boxTile.boxTile--hover {
+  border-color: var(--accent);
+  border-bottom-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+/* ===== Chip Buttons ===== */
+.chipBtn {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.chipBtn--on {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* ===== Modal ===== */
+.modal {
+  border: 4px solid #5d4037;
+  border-radius: var(--radius-lg);
+  box-shadow:
+    0 0 0 8px rgba(93, 64, 55, 0.3),
+    0 20px 50px rgba(0,0,0,0.6);
+}
+
+/* ===== Mobile Nav ===== */
+.mobileNav {
+  background: rgba(255, 255, 255, 0.95);
+  border-top: 4px solid var(--accent);
+  backdrop-filter: blur(8px);
+}
+
+/* ===== PC Desktop (≥ 1400px) ===== */
+@media (min-width: 1400px) {
+  body {
+    background-image: none;              /* remove radial-gradient overlays */
+  }
+}

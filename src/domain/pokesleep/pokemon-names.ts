@@ -2861,43 +2861,37 @@ export function toIdForm(pokedexId: number, form: number): number {
 
 export function getPokemonNameJa(pokedexId: number, form: number = 0): string | null {
   const k = String(toIdForm(pokedexId, form));
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const v = (pokemonNameJaByIdForm as any)[k];
+  const v = (pokemonNameJaByIdForm as Record<string, string>)[k];
   return typeof v === "string" ? v : null;
 }
 
 export function getPokemonExpType(pokedexId: number, form: number = 0): 600 | 900 | 1080 | 1320 {
   const k = String(toIdForm(pokedexId, form));
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const v = (pokemonExpTypeByIdForm as any)[k];
+  const v = (pokemonExpTypeByIdForm as Record<string, number>)[k];
   return v === 600 || v === 900 || v === 1080 || v === 1320 ? v : 600;
 }
 
 export function getPokemonSpecialty(pokedexId: number, form: number = 0): PokemonSpecialty {
   const k = String(toIdForm(pokedexId, form));
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const v = (pokemonSpecialtyByIdForm as any)[k];
+  const v = (pokemonSpecialtyByIdForm as Record<string, string>)[k];
   return v === "Berries" || v === "Ingredients" || v === "Skills" || v === "All" ? v : "unknown";
 }
 
 export function getPokemonType(pokedexId: number, form: number = 0): PokemonType {
   const k = String(toIdForm(pokedexId, form));
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const v = (pokemonTypeByIdForm as any)[k];
+  const v = (pokemonTypeByIdForm as Record<string, string>)[k];
   return typeof v === "string" ? (v as PokemonType) : "unknown";
 }
 
 export function getPokemonTypeJa(pokedexId: number, form: number = 0): string {
   const k = String(toIdForm(pokedexId, form));
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const v = (pokemonTypeJaByIdForm as any)[k];
+  const v = (pokemonTypeJaByIdForm as Record<string, string>)[k];
   return typeof v === "string" ? v : "不明";
 }
 
 export function getPokemonIngredients(pokedexId: number, form: number = 0): { a: string; b: string; c: string | null } | null {
   const k = String(toIdForm(pokedexId, form));
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const v = (pokemonIngredientsByIdForm as any)[k];
+  const v = (pokemonIngredientsByIdForm as Record<string, { a?: string; b?: string; c?: string | null }>)[k];
   if (!v || typeof v !== "object") return null;
   const a = typeof v.a === "string" ? v.a : null;
   const b = typeof v.b === "string" ? v.b : null;
@@ -2908,8 +2902,7 @@ export function getPokemonIngredients(pokedexId: number, form: number = 0): { a:
 export function findPokemonByNameJa(nameJa: string): { pokedexId: number; form: number; expType: 600 | 900 | 1080 | 1320 } | null {
   const key = String(nameJa ?? "").trim();
   if (!key) return null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const list = (pokemonIdFormsByNameJa as any)[key];
+  const list = (pokemonIdFormsByNameJa as Record<string, readonly number[]>)[key];
   if (!Array.isArray(list) || list.length === 0) return null;
   const sorted = [...list].sort((a: number, b: number) => a - b);
   const idForm = Number(sorted[0]);

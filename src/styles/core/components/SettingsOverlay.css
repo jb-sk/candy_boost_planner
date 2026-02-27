@@ -1,0 +1,142 @@
+/* Modern: SettingsOverlay — mobile-first, simple flat design */
+
+/* ===== Section groups ===== */
+.settings-overlay .section {
+  margin-bottom: 20px;
+}
+
+.settings-overlay .section h3 {
+  margin: 0 0 10px;
+  font-family: var(--font-heading);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+
+/* ===== Settings rows ===== */
+.settingsRow {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+/* ===== Settings field (label + input inline) ===== */
+.settingsField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settingsField--inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.settingsField--aligned .settingsField__label {
+  min-width: 150px;
+  flex-shrink: 0;
+}
+
+.settingsField--checkbox {
+  gap: 6px;
+}
+
+.settingsField__label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* ===== Compact input variants ===== */
+/* height & font-size inherited from core .field__input (34px / 16px) */
+.field__input--sm {
+  width: 120px;
+  padding: 0 10px;
+}
+
+.field__input--xs {
+  width: 72px;
+  padding: 0 8px;
+  text-align: center;
+}
+
+.field__input--compact {
+  width: 60px;
+  padding: 0 6px;
+}
+
+/* ===== Candy input group (S/M/L) ===== */
+.candyInputs {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.candyInput {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.candyInput__label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* ===== Type candy grid ===== */
+.typeCandyGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.typeRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+
+.typeRow:last-child {
+  border-bottom: none;
+}
+
+.typeRow__name {
+  min-width: 70px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* ===== Responsive: 680px+ ===== */
+@media (min-width: 680px) {
+  .settings-overlay .field__input--sm,
+  .settings-overlay .field__input--xs {
+    width: 130px;
+    height: 30px;
+    font-size: 14px;
+  }
+
+  .settings-overlay .field__input--compact {
+    width: 72px;
+    height: 30px;
+    font-size: 14px;
+  }
+
+  .typeCandyGrid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0 24px;
+  }
+
+  .typeRow:last-child {
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  }
+}

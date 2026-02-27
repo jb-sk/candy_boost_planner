@@ -1,6 +1,6 @@
 import { createApp } from "vue";
 import App from "./App.vue";
-import "./components/main.css";
+
 import { createAppI18n, normalizeLocale } from "./i18n";
 
 // Cloudflare Web Analytics (optional)
@@ -14,7 +14,27 @@ if (cfToken) {
   document.head.appendChild(s);
 }
 
-const saved = localStorage.getItem("candy-boost-planner:lang");
-const i18n = createAppI18n(normalizeLocale(saved));
+const savedLocale = localStorage.getItem("candy-boost-planner:lang");
+const i18n = createAppI18n(normalizeLocale(savedLocale));
 
-createApp(App).use(i18n).mount("#app");
+// Theme CSS loading
+// Production: loaded via blocking <link> in index.html (vite-plugin-theme-css)
+// Development: loaded via dynamic import below
+import { DEFAULT_THEME_ID, DESIGN_STORAGE_KEY } from "./config/themes";
+
+async function boot() {
+  if (import.meta.env.DEV) {
+    const design = localStorage.getItem(DESIGN_STORAGE_KEY) || DEFAULT_THEME_ID;
+    const themes: Record<string, () => Promise<unknown>> =
+      import.meta.glob("./styles/*.css");
+    const loader = themes[`./styles/${design}.css`];
+    if (loader) {
+      await loader();
+    } else {
+      await import("./styles/blue.css");
+    }
+  }
+  // In production, theme CSS is already loaded by the inline script in <head>
+  createApp(App).use(i18n).mount("#app");
+}
+boot();

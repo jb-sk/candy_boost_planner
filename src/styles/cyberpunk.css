@@ -1,0 +1,177 @@
+/* Cyberpunk Theme — Neon Cyan */
+@import "./core/reset.css";
+@import "./core/components.css";
+
+/* ===== Variables ===== */
+:root {
+  /* Core Palette */
+  --bg-decor: #020617;
+  --paper: #0f172a;
+  --ink: #e2e8f0;
+  --muted: #a8b5c7;
+  --accent: #06b6d4;
+  --accent-strong: #00b8e0;
+  --danger: #f43f5e;
+
+  /* Surfaces */
+  --surface: #1e293b;
+  --surface-alt: #334155;
+  --border: #1e293b;
+
+  /* Overlay */
+  --overlay-bg: rgba(2, 6, 23, 0.8);
+  /* Interactive */
+  --btn-bg: var(--accent);
+  --btn-ink: #0f172a;
+  --input-bg: #0f172a;
+  --input-border: #334155;
+  --ring: var(--accent);
+
+  /* Data Visualization */
+  --bar-fill: #d946ef;
+  --bar-track: #334155;
+  --bar-over: var(--danger);
+  --export-divider: #06b6d4;
+
+  /* Pie Chart Palette */
+  --pie-0: #06b6d4;
+  --pie-1: #d946ef;
+  --pie-2: #facc15;
+  --pie-3: #4ade80;
+  --pie-4: #fb7185;
+  --pie-5: #818cf8;
+  --pie-6: #f97316;
+  --pie-7: #94a3b8;
+
+  /* Semantic Accents */
+  --star-color: #facc15;
+  --nature-up: #4ade80;
+  --nature-down: #fb7185;
+
+  /* Border Radius */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+  --radius-pill: 2px;
+
+  /* Shadows */
+  --shadow-sm: 0 0 5px rgba(6, 182, 212, 0.2);
+  --shadow-md: 0 0 10px rgba(6, 182, 212, 0.3);
+  --shadow-lg: 0 0 20px rgba(6, 182, 212, 0.4);
+
+}
+
+/* ===== Body ===== */
+body {
+  background-image:
+    radial-gradient(circle at 50% 0%, #1e293b 0%, transparent 70%),
+    linear-gradient(180deg, rgba(6, 182, 212, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(6, 182, 212, 0.05) 1px, transparent 1px);
+  background-size: 100% 100%, 40px 40px, 40px 40px;
+}
+
+/* ===== Hero & Panel ===== */
+.hero, .panel {
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  box-shadow: 0 0 15px rgba(6, 182, 212, 0.1) inset;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(5px);
+}
+
+/* ===== Buttons ===== */
+.btn--primary {
+  background: linear-gradient(135deg, #06b6d4, #0891b2);
+  border: 1px solid #22d3ee;
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+  color: #000;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transition: all 0.2s ease;
+}
+
+.btn--primary:hover {
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.8);
+  transform: translateY(-1px);
+}
+
+/* ===== Field Input ===== */
+.field__input {
+  background: #020617;
+  border: 1px solid #334155;
+  color: var(--accent);
+}
+
+.field__input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
+}
+
+/* ===== Box Tiles ===== */
+.boxTile {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  transition: all 0.2s;
+}
+
+.boxTile.boxTile--hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.2) inset;
+  background: rgba(30, 41, 59, 0.9);
+}
+
+/* ===== Chip Buttons ===== */
+.chipBtn {
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #94a3b8;
+}
+
+.chipBtn--on {
+  background: rgba(6, 182, 212, 0.2);
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 8px rgba(6, 182, 212, 0.3);
+}
+
+/* ===== Modal ===== */
+.modal {
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 30px rgba(6, 182, 212, 0.2);
+}
+
+/* ===== Mobile Nav ===== */
+.mobileNav {
+  background: rgba(15, 23, 42, 0.95);
+  border-top: 1px solid rgba(6, 182, 212, 0.3);
+  backdrop-filter: blur(10px);
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #020617;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+/* ===== PC Desktop (≥ 1400px) ===== */
+@media (min-width: 1400px) {
+  body {
+    background: #0f172a;                 /* match hero (solid, no grid lines) */
+    background-image: none;
+  }
+  .hero {
+    border: none;
+    box-shadow: none;
+    background: #0f172a;                 /* solid, not semi-transparent */
+  }
+}

@@ -65,7 +65,6 @@ export class BoxPanelPage {
   readonly detailRelinkInput: Locator;
   readonly detailRelinkButton: Locator;
   readonly detailRelinkSuggestPanel: Locator;
-  readonly detailCandyInput: Locator;
   readonly detailLevelTrigger: Locator;
   readonly detailExpRemainingInput: Locator;
   readonly detailNatureTrigger: Locator;
@@ -153,7 +152,6 @@ export class BoxPanelPage {
     this.detailRelinkInput = page.getByTestId('box-detail-relink-input');
     this.detailRelinkButton = page.getByTestId('box-detail-relink-button');
     this.detailRelinkSuggestPanel = page.getByTestId('box-detail-relink-suggest-panel');
-    this.detailCandyInput = page.getByTestId('box-detail-candy-input');
     this.detailLevelTrigger = page.getByTestId('level-picker-trigger').nth(1);
     this.detailExpRemainingInput = page.getByTestId('box-detail-exp-remaining-input');
     this.detailNatureTrigger = page.getByTestId('nature-select-trigger').nth(1);
@@ -369,10 +367,6 @@ export class BoxPanelPage {
 
   async clickRelinkButton() {
     await this.detailRelinkButton.click();
-  }
-
-  async fillCandyStock(value: number) {
-    await this.detailCandyInput.fill(String(value));
   }
 
   async openDetailLevelPicker() {

@@ -377,14 +377,13 @@ test.describe('05-export E. リスト表示', () => {
     await expect(exportPanel.listHead).not.toContainText('アメブ');
   });
 
-  test('23. 不足がある場合は不足カラムが表示される', async ({ page }) => {
-    // 不足状態を作るにはアメ在庫を減らす必要がある
-    // この状態では不足が発生しない可能性があるため、カラムの存在確認のみ
+  test('23. 不足カラムが存在しないことを確認する', async ({ page }) => {
+    // 実使用化により不足列は廃止された
     const exportPanel = new ExportPanelPage(page);
 
-    // 不足カラムがある場合のみ表示される
-    // 現状では確認のみ
     await expect(exportPanel.listHead).toBeVisible();
+    await expect(exportPanel.listHead).not.toContainText('アメ不足');
+    await expect(exportPanel.listHead).not.toContainText('かけら不足');
   });
 });
 
