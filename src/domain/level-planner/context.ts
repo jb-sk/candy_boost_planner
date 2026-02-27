@@ -14,7 +14,6 @@ import type {
   PokemonWorkingState,
   ItemUsage,
 } from './types';
-import { CANDY_VALUES } from './constants';
 
 // ============================================================
 // コンテキスト生成

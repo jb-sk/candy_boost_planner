@@ -180,8 +180,6 @@ export function findBestUniversalAllocation(
     return { s: 0, m: 0, l: 0, supplied: 0 };
   }
 
-  const S_VALUE = CANDY_VALUES.universal.s;
-  const M_VALUE = CANDY_VALUES.universal.m;
   const L_VALUE = CANDY_VALUES.universal.l;
 
   let best: UniversalAllocationResult | null = null;

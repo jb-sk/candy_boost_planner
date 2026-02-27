@@ -1,0 +1,215 @@
+/* Vivid Theme — Splat/Ink Style */
+@import "./core/reset.css";
+@import "./core/components.css";
+
+/* ===== Variables ===== */
+:root {
+  /* Core Palette */
+  --bg-decor: #1F1F1F;
+  --paper: #1F1F1F;
+  --ink: #FFFFFF;
+  --muted: #B0B0B0;
+  --accent: #F02D7D;
+  --accent-strong: #ff1070;
+  --danger: #FF4500;
+
+  /* Surfaces */
+  --surface: #2D2D2D;
+  --surface-alt: #383838;
+  --border: #BDFF00;
+
+  /* Overlay */
+  --overlay-bg: rgba(0, 0, 0, 0.9);
+  /* Interactive */
+  --btn-bg: #BDFF00;
+  --btn-ink: #000000;
+  --input-bg: #000000;
+  --input-border: #F02D7D;
+  --ring: #19D2FF;
+
+  /* Data Visualization */
+  --bar-fill: #19D2FF;
+  --bar-track: #333333;
+  --bar-over: #FF4500;
+  --export-divider: #F02D7D;
+
+  /* Pie Chart Palette */
+  --pie-0: #F02D7D;
+  --pie-1: #BDFF00;
+  --pie-2: #19D2FF;
+  --pie-3: #FF6B35;
+  --pie-4: #C77DFF;
+  --pie-5: #00F5D4;
+  --pie-6: #FEE440;
+  --pie-7: #B0B0B0;
+
+  /* Semantic Accents */
+  --star-color: #FFD700;
+  --nature-up: #BDFF00;
+  --nature-down: #F02D7D;
+
+  /* Border Radius */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+
+  /* Shadows */
+  --shadow-sm: 2px 2px 0px rgba(255, 255, 255, 0.1);
+  --shadow-md: 4px 4px 0px var(--accent);
+  --shadow-lg: 6px 6px 0px var(--btn-bg);
+
+}
+
+
+
+/* ===== Global Elements ===== */
+/* Headings with attitude */
+h2, h3 {
+  font-family: var(--font-heading);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transform: rotate(-1deg);
+  margin-bottom: 0.5rem;
+}
+/* Panel h2 — no tilt (avoids visual overlap with sticky summary) */
+.panel__title {
+  transform: none;
+}
+/* h1 (.title) — rotate only; margin is controlled by core components.css */
+h1 {
+  font-family: var(--font-heading);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transform: rotate(-1deg);
+}
+
+/* Global high-contrast inputs */
+input, select, textarea {
+  background-color: var(--input-bg);
+  border: 2px solid var(--input-border);
+  color: var(--ink);
+  font-weight: bold;
+  box-shadow: inset 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--ring);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(25, 210, 255, 0.4);
+}
+
+/* ===== Hero ===== */
+.hero {
+  border-bottom: none;
+}
+
+/* ===== Panel ===== */
+.panel {
+  background-color: var(--paper);
+  border: 3px solid #333;
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+  overflow: visible;
+  position: relative;
+}
+
+/* Extra breathing room between panel heading and sticky summary.
+   The thick border makes the panel feel tighter than other themes. */
+.panel__head {
+  margin-bottom: 12px;
+}
+
+/* ===== Level Picker ===== */
+.levelPick__popover {
+  box-shadow: none;
+}
+
+/* ===== Buttons ===== */
+.btn--primary {
+  background-color: var(--btn-bg);
+  color: var(--btn-ink);
+  border: 3px solid #000;
+  font-weight: 900;
+  text-transform: uppercase;
+  transform: skew(-3deg);
+  transition: transform 0.1s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.btn--primary:hover {
+  transform: skew(-3deg) scale(1.05);
+}
+
+.btn--primary:active {
+  transform: skew(-3deg) translate(2px, 2px);
+}
+
+/* ===== Box Tiles ===== */
+.boxTile {
+  background-color: var(--surface);
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  transition: all 0.2s;
+}
+
+.boxTile.boxTile--hover {
+  background-color: var(--surface-alt);
+  border-color: var(--ring);
+  transform: scale(1.05) rotate(-2deg);
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+/* ===== Chip Buttons ===== */
+.chipBtn {
+  background-color: var(--surface);
+  border: 1px solid var(--muted);
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.chipBtn--on {
+  background-color: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* ===== Modal ===== */
+.modal {
+  background-color: var(--paper);
+  border: 4px solid var(--border);
+  box-shadow: 0 0 0 100vmax var(--overlay-bg), 15px 15px 0 var(--accent);
+  transform: rotate(1deg);
+}
+
+/* h3 global rule applies rotate(-1deg), which cancels the modal's
+   rotate(1deg) and makes h3 + its border-bottom look perfectly
+   horizontal while everything else is tilted. Reset to none so
+   h3 follows the modal's tilt like the other elements. */
+.modal h3 {
+  transform: none;
+}
+
+/* ===== Mobile Nav ===== */
+.mobileNav {
+  background-color: rgba(16, 16, 16, 0.95);
+  border-top: 4px solid var(--border);
+  backdrop-filter: blur(8px);
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-decor);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--bg-decor);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}

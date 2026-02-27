@@ -213,6 +213,6 @@ export const pokemonNameEnByDexNo: Record<number, string> = {
 };
 
 export function getPokemonNameEnByDexNo(dexNo: number): string | null {
-  const v = (pokemonNameEnByDexNo as any)[Number(dexNo)];
+  const v = pokemonNameEnByDexNo[Number(dexNo)];
   return typeof v === "string" ? v : null;
 }

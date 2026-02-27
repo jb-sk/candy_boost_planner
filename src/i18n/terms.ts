@@ -17,8 +17,7 @@ export function translateTermJaToEn(ja: string): string | null {
   const key = String(ja ?? "").trim();
   if (!key) return null;
   if (manualJaToEn[key]) return manualJaToEn[key];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const v = (termJaToEn as any)[key];
+  const v = (termJaToEn as Record<string, string>)[key];
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 

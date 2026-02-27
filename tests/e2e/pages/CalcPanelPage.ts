@@ -78,9 +78,9 @@ export class CalcPanelPage {
     this.stickySummary = page.getByTestId('calc-sticky-summary');
     this.boostCandyBar = page.getByTestId('calc-boost-candy-bar');
     this.shardsBar = page.getByTestId('calc-shards-bar');
-    this.totalBoostCandyText = this.stickySummary.locator('.calcSum--hi').first().locator('.calcSum__v');
-    this.totalShardsText = this.stickySummary.locator('.calcSum--hi').nth(1).locator('.calcSum__v');
-    this.universalCandyUsageText = this.stickySummary.locator('.calcSum--candy .calcSum__v');
+    this.totalBoostCandyText = this.stickySummary.locator('.calcSumInline').first().locator('.calcSumInline__v');
+    this.totalShardsText = this.stickySummary.locator('.calcSumInline:not(.calcSumInline--candy)').nth(1).locator('.calcSumInline__v');
+    this.universalCandyUsageText = this.stickySummary.locator('.calcSumInline--candy .calcSumInline__v');
 
     // ヒントポップオーバー
     this.hintPopover = page.getByTestId('calc-hint-popover');

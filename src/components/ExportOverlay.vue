@@ -1,6 +1,6 @@
 <template>
   <div class="exportOverlay" data-testid="export-overlay" @click.self="emit('close')" role="dialog" :aria-label="t('calc.export.open')">
-    <div class="exportSheetWrap">
+    <div class="exportSheetWrap" @click.self="emit('close')">
       <div
         ref="exportSheetEl"
         class="exportSheet"
@@ -11,7 +11,7 @@
       >
         <div class="exportHead">
           <div class="exportHead__top">
-            <div class="exportBrand" data-testid="brandLabel">🍬 {{ boostKind === 'full' ? t("calc.export.brandBoost") : boostKind === 'mini' ? t("calc.export.brandMini") : t("calc.export.brand") }}</div>
+            <div class="exportBrand" data-testid="brandLabel"><span class="exportBrand__icon">🍬 </span>{{ boostKind === 'full' ? t("calc.export.brandBoost") : boostKind === 'mini' ? t("calc.export.brandMini") : t("calc.export.brand") }}</div>
           </div>
 
           <div class="exportMeta">
@@ -50,8 +50,10 @@
         <div v-if="exportStatus" class="exportStatus" data-testid="export-status" role="status">{{ exportStatus }}</div>
 
         <div class="exportCalc">
+          <div class="exportSectionTitle">{{ t("calc.export.sectionResources") }}</div>
+          <button v-if="showNoStockWarning" type="button" class="exportNoStock" @click="emit('open-settings')">{{ t("calc.export.noStockWarning") }}</button>
           <div class="exportCalcTop">
-            <div class="exportStats" :class="{ 'exportStats--hasShortage': totals.shortage > 0, 'exportStats--normal': !isBoostMode }">
+            <div class="exportStats" :class="{ 'exportStats--normal': !isBoostMode }">
               <div
                 v-for="card in statCards"
                 :key="card.key"
@@ -62,23 +64,18 @@
                 }"
                 data-testid="statCard"
               >
-                <div class="statCard__icon">{{ card.icon }}</div>
-                <div class="statCard__content">
-                  <div class="statCard__label">{{ card.label }}</div>
-                  <div class="statCard__value" :class="{ 'statCard__value--danger': card.isDanger }">
-                    {{ fmtNum(card.value) }}
-                  </div>
+                <div class="statCard__label">{{ card.label }}</div>
+                <div class="statCard__value" :class="{ 'statCard__value--danger': card.isDanger }">
+                  {{ fmtNum(card.value) }}
                 </div>
               </div>
             </div>
 
-            <div class="exportBars" :class="{ 'exportBars--muted': shardsCap <= 0, 'exportBars--danger': shardsOver > 0 || boostOver > 0 }">
-              <div v-if="isBoostMode" class="exportBarBlock" :class="{ 'exportBarBlock--danger': boostOver > 0 }">
+            <div class="exportBars" :class="{ 'exportBars--muted': shardsCap <= 0 }">
+              <div v-if="isBoostMode" class="exportBarBlock">
                 <div class="exportBarHead">
                   <div class="exportBarK">
                     {{ t("calc.boostCandyUsage", { pct: boostUsagePct }) }}
-                    <span v-if="showBoostFire" aria-hidden="true"> 🔥</span>
-                    <span v-if="boostOver > 0" class="exportBarOverVal"> (+{{ fmtNum(boostOver) }})</span>
                   </div>
                   <div class="exportBarK exportBarK--right">{{ t("calc.cap", { cap: fmtNum(boostCap) }) }}</div>
                 </div>
@@ -93,7 +90,6 @@
                 >
                   <div class="exportBar__track">
                     <div class="exportBar__fill" :style="{ width: `${boostFillPct}%` }"></div>
-                    <div v-if="boostOver > 0 && boostCap > 0" class="exportBar__over" :style="{ width: `${boostOverPct}%` }"></div>
                   </div>
                 </div>
               </div>
@@ -102,8 +98,6 @@
                 <div class="exportBarHead">
                   <div class="exportBarK">
                     {{ shardsCap > 0 ? t("calc.shardsUsage", { pct: shardsUsagePct }) : t("calc.shardsUsageDash") }}
-                    <span v-if="showShardsFire" aria-hidden="true"> 🔥</span>
-                    <span v-if="shardsOver > 0" class="exportBarOverVal"> (+{{ fmtNum(shardsOver) }})</span>
                   </div>
                   <div class="exportBarK exportBarK--right">
                     {{ shardsCap > 0 ? t("calc.cap", { cap: fmtNum(shardsCap) }) : t("calc.capUnset") }}
@@ -124,26 +118,26 @@
                 >
                   <div class="exportBar__track">
                     <div class="exportBar__fill" :style="{ width: `${shardsFillPct}%` }"></div>
-                    <div v-if="shardsOver > 0 && shardsCap > 0" class="exportBar__over" :style="{ width: `${shardsOverPct}%` }"></div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div class="exportList" :class="{ 'exportList--normal': !isBoostMode, 'exportList--hasShortage': totals.shortage > 0 }">
+          <div class="exportSectionTitle">{{ t("calc.export.sectionList") }}</div>
+          <div class="exportList" :class="{ 'exportList--normal': !isBoostMode }">
             <div class="exportList__head" data-testid="listHead">
               <div class="exportList__col">{{ t("calc.export.colPokemon") }}</div>
-              <div class="exportList__col u-align-center">{{ t("calc.row.srcLevel") }} → {{ t("calc.row.dstLevel") }}</div>
+              <div class="exportList__col u-align-center">{{ t("calc.export.colLv") }}</div>
               <div v-if="isBoostMode" class="exportList__col u-align-right">{{ t("calc.export.colBoost") }}</div>
               <div v-if="isBoostMode" class="exportList__col u-align-right">{{ t("calc.export.colNormal") }}</div>
               <div class="exportList__col u-align-right">{{ t("calc.export.colTotal") }}</div>
               <div class="exportList__col u-align-right">{{ t("calc.export.colShards") }}</div>
-              <div v-if="totals.shortage > 0" class="exportList__col u-align-right">{{ t("calc.export.colShortage") }}</div>
             </div>
 
             <div v-for="row in rows" :key="row.id" class="exportList__row" data-testid="listRow">
               <div class="exportList__col exportList__nameCol">
+                <span class="exportList__lvInline">Lv{{ row.srcLevel }}→{{ row.dstLevel }}</span>
                 <span class="exportList__name">{{ row.title }}</span>
                 <span v-if="row.natureLabel" class="exportList__badge">{{ row.natureLabel }}</span>
               </div>
@@ -170,10 +164,6 @@
                 <span class="u-mobile-label">{{ t("calc.export.colShards") }}</span>
                 <span class="exportList__num">{{ fmtNum(row.shards) }}</span>
               </div>
-              <div v-if="totals.shortage > 0" class="exportList__col u-align-right exportList__numCol">
-                <span class="u-mobile-label">{{ t("calc.export.colShortage") }}</span>
-                <span class="exportList__num" :class="{ 'exportList__num--danger': (row.shortage ?? 0) > 0 }">{{ (row.shortage ?? 0) > 0 ? fmtNum(row.shortage ?? 0) : '-' }}</span>
-              </div>
             </div>
 
             <div class="exportList__row exportList__row--total" aria-label="total" data-testid="totalRow">
@@ -183,7 +173,7 @@
               <div class="exportList__col u-align-center exportList__lvCol"></div>
               <div v-if="isBoostMode" class="exportList__col u-align-right exportList__numCol">
                 <span class="u-mobile-label">{{ t("calc.export.colBoost") }}</span>
-                <span class="exportList__num" :class="{ 'exportList__num--danger': totals.boostCandy > boostCap }">{{ fmtNum(totals.boostCandy) }}</span>
+                <span class="exportList__num">{{ fmtNum(totals.boostCandy) }}</span>
               </div>
               <div v-if="isBoostMode" class="exportList__col u-align-right exportList__numCol">
                 <span class="u-mobile-label">{{ t("calc.export.colNormal") }}</span>
@@ -195,45 +185,56 @@
               </div>
               <div class="exportList__col u-align-right exportList__numCol">
                 <span class="u-mobile-label">{{ t("calc.export.colShards") }}</span>
-                <span class="exportList__num" :class="{ 'exportList__num--danger': shardsCap > 0 && shardsOver > 0 }">{{ fmtNum(totals.shards) }}</span>
-              </div>
-              <div v-if="totals.shortage > 0" class="exportList__col u-align-right exportList__numCol">
-                <span class="u-mobile-label">{{ t("calc.export.colShortage") }}</span>
-                <span class="exportList__num exportList__num--danger">{{ fmtNum(totals.shortage) }}</span>
+                <span class="exportList__num">{{ fmtNum(totals.shards) }}</span>
               </div>
             </div>
           </div>
 
-          <!-- 万能アメ使用ランキング -->
-          <div v-if="universalCandyRanking.length > 0" class="exportRanking" data-testid="rankingSection">
-            <div class="exportRanking__title" data-testid="export-ranking-title">{{ t("calc.export.universalRankingTitle") }}</div>
+          <!-- 万能アメ使用割合（円グラフ） -->
+          <div v-if="pieSlices.length > 0" class="exportSectionTitle" data-testid="export-ranking-title">{{ t("calc.export.universalRankingTitle") }}</div>
+          <div v-if="pieSlices.length > 0" class="exportRanking" data-testid="rankingSection">
             <div class="exportRanking__total" data-testid="export-ranking-total">
               <span>{{ t("calc.export.rankingTotal") }}</span>
               <span v-if="universalCandyUsedTotal.s > 0">{{ t("calc.export.totalUniversalS") }} {{ fmtNum(universalCandyUsedTotal.s) }}</span>
               <span v-if="universalCandyUsedTotal.m > 0">{{ t("calc.export.totalUniversalM") }} {{ fmtNum(universalCandyUsedTotal.m) }}</span>
               <span v-if="universalCandyUsedTotal.l > 0">{{ t("calc.export.totalUniversalL") }} {{ fmtNum(universalCandyUsedTotal.l) }}</span>
             </div>
-            <div class="exportRanking__list">
-              <div v-for="item in universalCandyRanking" :key="item.id" class="exportRanking__item" data-testid="rankingItem">
-                <div class="exportRanking__name">{{ item.pokemonName }}</div>
-                <div class="exportRanking__pct">{{ item.usagePct }}%</div>
-                <div class="exportRanking__barWrap">
-                  <div class="exportRanking__bar" :style="{ width: `${item.usagePct}%` }"></div>
-                </div>
-                <div class="exportRanking__items">
-                  <span v-if="item.uniSUsed > 0 || item.uniMUsed > 0 || item.uniLUsed > 0" class="exportRanking__itemGroup">
-                    <span class="exportRanking__itemLabel">{{ t("calc.export.labelUni") }}</span>
-                    <span v-if="item.uniSUsed > 0">S{{ item.uniSUsed }}</span>
-                    <span v-if="item.uniSUsed > 0 && (item.uniMUsed > 0 || item.uniLUsed > 0)"> / </span>
-                    <span v-if="item.uniMUsed > 0">M{{ item.uniMUsed }}</span>
-                    <span v-if="item.uniMUsed > 0 && item.uniLUsed > 0"> / </span>
-                    <span v-if="item.uniLUsed > 0">L{{ item.uniLUsed }}</span>
-                  </span>
-                  <span v-if="item.typeSUsed > 0 || item.typeMUsed > 0" class="exportRanking__itemGroup">
-                    <span class="exportRanking__itemLabel">{{ t("calc.export.labelType") }}</span>
-                    <span v-if="item.typeSUsed > 0">S{{ item.typeSUsed }}</span>
-                    <span v-if="item.typeSUsed > 0 && item.typeMUsed > 0"> / </span>
-                    <span v-if="item.typeMUsed > 0">M{{ item.typeMUsed }}</span>
+
+            <div class="exportPie">
+              <!-- SVG Pie Chart -->
+              <svg class="exportPie__svg" viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg">
+                <path
+                  v-for="slice in pieSlices"
+                  :key="slice.id"
+                  :d="slice.path"
+                  :fill="slice.fillColor"
+                  :stroke="slice.strokeColor"
+                  stroke-width="1"
+                  :class="`exportPie__slice exportPie__slice--${slice.colorIdx}`"
+                />
+              </svg>
+
+              <!-- Legend -->
+              <div class="exportPie__legend">
+                <div v-for="slice in pieSlices" :key="slice.id" class="exportPie__legendItem" data-testid="rankingItem">
+                  <span :class="`exportPie__swatch exportPie__swatch--${slice.colorIdx}`" :style="{ background: slice.fillColor }"></span>
+                  <span class="exportPie__legendName">{{ slice.pokemonName }}</span>
+                  <span class="exportPie__legendPct">{{ slice.pct }}%</span>
+                  <span class="exportPie__legendDetail">
+                    <span v-if="slice.uniSUsed > 0 || slice.uniMUsed > 0 || slice.uniLUsed > 0" class="exportRanking__itemGroup">
+                      <span class="exportRanking__itemLabel">{{ t("calc.export.labelUni") }}</span>
+                      <span v-if="slice.uniSUsed > 0">S{{ slice.uniSUsed }}</span>
+                      <span v-if="slice.uniSUsed > 0 && (slice.uniMUsed > 0 || slice.uniLUsed > 0)"> / </span>
+                      <span v-if="slice.uniMUsed > 0">M{{ slice.uniMUsed }}</span>
+                      <span v-if="slice.uniMUsed > 0 && slice.uniLUsed > 0"> / </span>
+                      <span v-if="slice.uniLUsed > 0">L{{ slice.uniLUsed }}</span>
+                    </span>
+                    <span v-if="slice.typeSUsed > 0 || slice.typeMUsed > 0" class="exportRanking__itemGroup">
+                      <span class="exportRanking__itemLabel">{{ t("calc.export.labelType") }}</span>
+                      <span v-if="slice.typeSUsed > 0">S{{ slice.typeSUsed }}</span>
+                      <span v-if="slice.typeSUsed > 0 && slice.typeMUsed > 0"> / </span>
+                      <span v-if="slice.typeMUsed > 0">M{{ slice.typeMUsed }}</span>
+                    </span>
                   </span>
                 </div>
               </div>
@@ -261,7 +262,6 @@ type ExportRow = {
   totalCandy: number;
   shards: number;
   candySupply?: string; // アメ補填
-  shortage?: number;
 };
 
 type ExportTotals = {
@@ -269,7 +269,6 @@ type ExportTotals = {
   normalCandy: number;
   totalCandy: number;
   shards: number;
-  shortage: number;
 };
 
 const props = defineProps<{
@@ -281,21 +280,14 @@ const props = defineProps<{
   boostUnused: number;
   shardsUsed: number;
 
-  boostOver: number;
-  shardsOver: number;
   shardsCap: number;
 
   boostUsagePct: number;
   boostCap: number;
   boostFillPct: number;
-  boostOverPct: number;
 
   shardsUsagePct: number;
   shardsFillPct: number;
-  shardsOverPct: number;
-
-  showBoostFire: boolean;
-  showShardsFire: boolean;
 
   universalCandyRanking: Array<{
     id: string;
@@ -312,7 +304,7 @@ const props = defineProps<{
   boostKind: "full" | "mini" | "none";
 }>();
 
-const emit = defineEmits<{ close: [] }>();
+const emit = defineEmits<{ close: []; "open-settings": [] }>();
 const { t, locale } = useI18n();
 
 const exportSheetEl = ref<HTMLElement | null>(null);
@@ -321,10 +313,16 @@ const exportStatus = ref("");
 const exportCsvMenuOpen = ref(false);
 
 function fmtNum(n: number): string {
-  return new Intl.NumberFormat(locale.value as any).format(n);
+  return new Intl.NumberFormat(locale.value).format(n);
 }
 
 const isBoostMode = computed(() => props.boostKind !== "none");
+
+/** 在庫未設定警告: 実使用のアメ・かけらが両方0 */
+const showNoStockWarning = computed(() => {
+  const t = props.totals;
+  return t.boostCandy + t.normalCandy === 0 && t.shards === 0;
+});
 
 type StatCardDef = {
   key: string;
@@ -346,10 +344,21 @@ const statCards = computed<StatCardDef[]>(() => {
       label: t("calc.export.sumBoostTotal"),
       value: props.totals.boostCandy,
       variant: "accent",
-      // 個数指定を反映した合計がキャップを超えているか判定
-      isDanger: props.totals.boostCandy > props.boostCap,
+      isDanger: false,
       show: true,
     });
+
+    if (props.boostUnused > 0) {
+      cards.push({
+        key: "unused",
+        icon: "⚠️",
+        label: t("calc.export.sumBoostUnused"),
+        value: props.boostUnused,
+        variant: "danger",
+        isDanger: props.boostUnused >= 1,
+        show: true,
+      });
+    }
   }
 
   cards.push({
@@ -360,48 +369,24 @@ const statCards = computed<StatCardDef[]>(() => {
     show: true,
   });
 
-  if (isBoostMode.value) {
-    cards.push({
-      key: "unused",
-      icon: "⚠️",
-      label: t("calc.export.sumBoostUnused"),
-      value: props.boostUnused,
-      isDanger: props.boostUnused >= 1,
-      show: true,
-    });
-  }
-
   cards.push({
     key: "shards",
     icon: "💎",
     label: t("calc.export.sumShardsTotal"),
     value: props.shardsUsed,
     variant: "primary",
-    isDanger: props.shardsCap > 0 && props.shardsOver > 0,
     show: true,
   });
-
-  if (props.totals.shortage > 0) {
-    cards.push({
-      key: "shortage",
-      icon: "🔥",
-      label: t("calc.export.sumShortage"),
-      value: props.totals.shortage,
-      variant: "danger",
-      isDanger: true,
-      show: true,
-    });
-  }
 
   return cards;
 });
 
 const exportMonthLabel = computed(() => {
   const d = new Date();
-  const y = d.getFullYear();
-  const m = d.getMonth() + 1;
-  // 日は不要。要望通り「YYYY年M月」で固定。
-  return `${y}年${m}月`;
+  if (locale.value === 'ja') {
+    return `${d.getFullYear()}年${d.getMonth() + 1}月`;
+  }
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
 });
 
 function csvCell(v: unknown): string {
@@ -477,11 +462,9 @@ async function copyCalcExportCsv() {
   exportCsvMenuOpen.value = false;
   exportStatus.value = "";
   const csv = buildCalcExportCsv();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const nav: any = navigator as any;
   try {
-    if (nav?.clipboard?.writeText) {
-      await nav.clipboard.writeText(csv);
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(csv);
       exportStatus.value = t("status.csvCopied");
       return;
     }
@@ -509,6 +492,99 @@ async function copyCalcExportCsv() {
   }
 }
 
+// ── Pie chart for universal candy ranking ──
+const PIE_R = 80;
+const PIE_CX = 90;
+const PIE_CY = 90;
+
+type PieSlice = {
+  id: string;
+  pokemonName: string;
+  pct: number;
+  path: string;
+  colorIdx: number;
+  fillColor: string;
+  strokeColor: string;
+  uniSUsed: number;
+  uniMUsed: number;
+  uniLUsed: number;
+  typeSUsed: number;
+  typeMUsed: number;
+};
+
+function describeArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number): string {
+  // Angles in radians, 0 = 12 o'clock, clockwise
+  const s = startAngle - Math.PI / 2;
+  const e = endAngle - Math.PI / 2;
+  const x1 = cx + r * Math.cos(s);
+  const y1 = cy + r * Math.sin(s);
+  const x2 = cx + r * Math.cos(e);
+  const y2 = cy + r * Math.sin(e);
+  const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
+  return `M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${largeArc} 1 ${x2},${y2} Z`;
+}
+
+/** Resolve --pie-N and --paper CSS custom properties from the current theme */
+function resolvePieColors(): { fills: string[]; stroke: string } {
+  const el = exportSheetEl.value ?? document.documentElement;
+  const cs = getComputedStyle(el);
+  const fills: string[] = [];
+  for (let i = 0; i < 8; i++) {
+    fills.push(cs.getPropertyValue(`--pie-${i}`).trim() || "#888");
+  }
+  const stroke = cs.getPropertyValue("--paper").trim() || "#ffffff";
+  return { fills, stroke };
+}
+
+const pieSlices = computed<PieSlice[]>(() => {
+  const items = props.universalCandyRanking;
+  if (items.length === 0) return [];
+
+  const total = items.reduce((s, i) => s + i.universalValue, 0);
+  if (total <= 0) return [];
+
+  const { fills: pieColors, stroke: pieStroke } = resolvePieColors();
+
+  // Single item → full circle
+  if (items.length === 1) {
+    const it = items[0];
+    return [{
+      id: it.id,
+      pokemonName: it.pokemonName,
+      pct: 100,
+      // Full circle: two semicircles to avoid SVG arc rendering issues
+      path: `M${PIE_CX},${PIE_CY - PIE_R} A${PIE_R},${PIE_R} 0 1 1 ${PIE_CX},${PIE_CY + PIE_R} A${PIE_R},${PIE_R} 0 1 1 ${PIE_CX},${PIE_CY - PIE_R} Z`,
+      colorIdx: 0,
+      fillColor: pieColors[0],
+      strokeColor: pieStroke,
+      uniSUsed: it.uniSUsed, uniMUsed: it.uniMUsed, uniLUsed: it.uniLUsed,
+      typeSUsed: it.typeSUsed, typeMUsed: it.typeMUsed,
+    }];
+  }
+
+  const slices: PieSlice[] = [];
+  let angle = 0;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    const pct = it.universalValue / total;
+    const sweep = pct * Math.PI * 2;
+    const idx = i % 8;
+    slices.push({
+      id: it.id,
+      pokemonName: it.pokemonName,
+      pct: Math.round(pct * 100),
+      path: describeArc(PIE_CX, PIE_CY, PIE_R, angle, angle + sweep),
+      colorIdx: idx,
+      fillColor: pieColors[idx],
+      strokeColor: pieStroke,
+      uniSUsed: it.uniSUsed, uniMUsed: it.uniMUsed, uniLUsed: it.uniLUsed,
+      typeSUsed: it.typeSUsed, typeMUsed: it.typeMUsed,
+    });
+    angle += sweep;
+  }
+  return slices;
+});
+
 async function downloadCalcExportPng() {
   const el = exportSheetEl.value;
   if (!el) return;
@@ -520,12 +596,10 @@ async function downloadCalcExportPng() {
     // iPadOS sometimes reports MacIntel; treat it as iOS if it has touch.
     const isLikelyIOS =
       /iPad|iPhone|iPod/i.test(ua) ||
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ((navigator as any).platform === "MacIntel" && (navigator as any).maxTouchPoints > 1);
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
     // Webフォントが読み込まれる前にキャプチャすると崩れるので待つ
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const fontsReady = (document as any)?.fonts?.ready;
+    const fontsReady = document.fonts?.ready;
     if (fontsReady && typeof fontsReady.then === "function") await fontsReady;
     await nextTick();
     // layout確定をもう1拍待つ（モバイルでの「引きずり」/崩れ対策）
@@ -547,15 +621,13 @@ async function downloadCalcExportPng() {
     const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
     const filename = `CandyBoost-Planner_${ts}.png`;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const nav: any = navigator as any;
-    if (isLikelyIOS && nav?.share) {
+    if (isLikelyIOS && navigator.share) {
       try {
         const blob = await (await fetch(dataUrl)).blob();
         const file = new File([blob], filename, { type: "image/png" });
-        const canShareFiles = typeof nav.canShare !== "function" || nav.canShare({ files: [file] });
+        const canShareFiles = typeof navigator.canShare !== "function" || navigator.canShare({ files: [file] });
         if (canShareFiles) {
-          await nav.share({ files: [file], title: t("app.title") });
+          await navigator.share({ files: [file], title: t("app.title") });
           exportStatus.value = "";
           return;
         }
@@ -583,5 +655,3 @@ async function downloadCalcExportPng() {
   }
 }
 </script>
-
-<style scoped src="./ExportOverlay.css"></style>

@@ -1,0 +1,156 @@
+/* Modern: HelpOverlay — mobile-first, simple flat design */
+
+/* ===== Section groups ===== */
+.help-overlay .section {
+  margin-bottom: 32px;
+}
+
+.help-overlay .section:last-child {
+  margin-bottom: 0;
+}
+
+.help-overlay .section h3 {
+  font-family: var(--font-heading);
+  font-size: 16px;
+  margin: 0 0 12px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid color-mix(in oklab, var(--accent) 20%, transparent);
+}
+
+.help-overlay .section ul {
+  margin: 0;
+  padding-left: 1.5em;
+}
+
+.help-overlay .section li {
+  margin-bottom: 8px;
+}
+
+.help-overlay strong,
+.help-overlay .helpDl dt {
+  color: var(--accent);
+  text-decoration: underline 2px;
+  text-decoration-color: color-mix(in oklab, var(--accent) 50%, transparent);
+  text-underline-offset: 2px;
+}
+
+/* ===== Definition list (stacked: label → body) ===== */
+.help-overlay .helpDl {
+  margin: 0 0 0 8px;
+}
+
+.help-overlay .helpDl dt {
+  font-weight: 700;
+  margin-top: 10px;
+}
+
+.help-overlay .helpDl dt:first-child {
+  margin-top: 0;
+}
+
+.help-overlay .helpDl dd {
+  margin: 2px 0 0 0;
+}
+
+/* ===== Basic section: side-by-side at 680px+ ===== */
+@media (min-width: 680px) {
+  .help-overlay .section--basic .helpDl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 0;
+  }
+
+  .help-overlay .section--basic .helpDl dt {
+    white-space: nowrap;
+    margin-top: 0;
+    padding-right: 12px;
+  }
+
+  .help-overlay .section--basic .helpDl dd {
+    margin: 0;
+  }
+
+  .help-overlay .section--basic .helpDl dt,
+  .help-overlay .section--basic .helpDl dd {
+    padding-bottom: 6px;
+    border-bottom: 1px solid color-mix(in oklab, var(--ink) 8%, transparent);
+  }
+
+  .help-overlay .section--purpose .helpDl dd {
+    margin-left: 1em;
+  }
+}
+
+/* ===== Credits ===== */
+.help-overlay .credits__list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+}
+
+.help-overlay .credits__list li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 12px;
+}
+
+.help-overlay .credits__list a {
+  font-weight: 700;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.help-overlay .credits__list a:hover {
+  text-decoration: underline;
+}
+
+.help-overlay .credits__note {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ===== Candy note ===== */
+.help-overlay .candy__note {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ===== Section body text indent ===== */
+.help-overlay .section__desc {
+  margin-left: 8px;
+}
+
+/* ===== Formula cards ===== */
+.help-overlay .formula__list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+}
+
+.help-overlay .formula__list li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  background: color-mix(in oklab, var(--ink) 4%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.help-overlay .formula__list strong {
+  margin-bottom: 2px;
+}
+
+.help-overlay .formula__list code {
+  font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  background: color-mix(in oklab, var(--ink) 8%, transparent);
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: var(--ink);
+}
+
+.help-overlay .formula__note {
+  font-size: 13px;
+  color: var(--muted);
+}

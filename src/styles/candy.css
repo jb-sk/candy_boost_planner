@@ -1,0 +1,216 @@
+/* Candy Theme — Pop City */
+@import "./core/reset.css";
+@import "./core/components.css";
+
+/* ===== Variables ===== */
+:root {
+  /* Core Palette */
+  --bg-decor: #fff1f1;
+  --paper: #ffffff;
+  --ink: #1e293b;
+  --muted: #475569;
+  --accent: #00b4d8;
+  --accent-strong: #00a0d0;
+  --danger: #ef4444;
+
+  /* Surfaces */
+  --surface: #f0f9ff;
+  --surface-alt: #e0f2fe;
+  --border: #fbd0d8;
+
+  /* Overlay */
+  --overlay-bg: rgba(255, 255, 255, 0.85);
+  /* Interactive */
+  --btn-bg: #ff6b81;
+  --btn-ink: #ffffff;
+  --input-bg: #ffffff;
+  --input-border: #f9abbe;
+  --ring: #00b4d8;
+
+  /* Data Visualization */
+  --bar-fill: #00b4d8;
+  --bar-track: #e0f2fe;
+  --bar-over: #ff6b81;
+  --export-divider: #f48ca0;
+
+  /* Pie Chart Palette */
+  --pie-0: #ff6b81;
+  --pie-1: #00b4d8;
+  --pie-2: #fbbf24;
+  --pie-3: #a78bfa;
+  --pie-4: #34d399;
+  --pie-5: #f472b6;
+  --pie-6: #fb923c;
+  --pie-7: #94a3b8;
+
+  /* Semantic Accents */
+  --star-color: #fbbf24;
+  --nature-up: #10b981;
+  --nature-down: #f43f5e;
+
+  /* Border Radius */
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-pill: 999px;
+
+  /* Shadows */
+  --shadow-sm: 2px 2px 0px rgba(240, 170, 170, 0.3);
+  --shadow-md: 4px 4px 0px rgba(240, 170, 170, 0.5);
+  --shadow-lg: 8px 8px 0px rgba(100, 149, 237, 0.2);
+
+}
+
+
+
+/* ===== Hero ===== */
+.hero {
+  background: #fff1f2;
+  color: #0f172a;
+  --muted: #475569;
+  box-shadow: 0 2px 8px rgba(240, 170, 170, 0.4);
+}
+
+/* Lang buttons (non-active) inside hero */
+.hero .lang__btn:not(.lang__btn--on):not(.lang__btn--help) {
+  background: rgba(255, 255, 255, 0.7);
+  border-color: var(--border);
+  color: var(--ink);
+}
+
+/* Support links inside hero */
+.hero .support__link {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+/* ===== Panel ===== */
+.panel {
+  border: 2px solid var(--border);
+  box-shadow: var(--shadow-md);
+}
+
+/* ===== Sleep Chips (1000h / 2000h) & Hint ===== */
+.sleepChip {
+  background: color-mix(in srgb, var(--accent) 6%, var(--paper));
+  color: #0891b2;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.hintIcon {
+  background: color-mix(in srgb, var(--accent) 6%, var(--paper));
+  color: #64748b;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* ===== Ghost Buttons (e.g. "+ ポケモンを追加") ===== */
+.btn--ghost {
+  background: var(--paper);
+  border-color: #f9abbe;
+}
+
+/* ===== Buttons ===== */
+.btn--primary {
+  border: none;
+  border-bottom: 4px solid #e11d48;
+  transition: transform 0.1s, border-bottom-width 0.1s, margin-top 0.1s;
+  font-weight: bold;
+}
+
+.btn--primary:active {
+  transform: translateY(2px);
+  border-bottom-width: 2px;
+  margin-top: 2px;
+}
+
+/* ===== Field Input ===== */
+.field__input {
+  border: 2px solid var(--input-border);
+  box-shadow: inset 2px 2px 4px rgba(0,0,0,0.03);
+  transition: all 0.2s;
+}
+
+.field__input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(0, 180, 216, 0.15);
+}
+
+/* ===== Box Disclosure (新規追加 / インポート) ===== */
+.boxDisclosure {
+  border: 2px solid var(--border);
+}
+
+.boxDisclosure__head {
+  color: var(--ink);
+}
+
+.boxDisclosure__note {
+  color: var(--ink);
+}
+
+.boxCard__status--hint {
+  color: var(--ink);
+}
+
+.boxImport__favCheck {
+  color: var(--ink);
+}
+
+.boxDisclosure__note,
+.boxAddFav,
+.boxAddCalcCheck {
+  font-size: 14px;
+}
+
+/* ===== Box Tiles ===== */
+.boxTile {
+  background: var(--paper);
+  border: 2px solid var(--surface-alt);
+  border-radius: var(--radius-md);
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+}
+
+.boxTile.boxTile--hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--accent);
+}
+
+/* ===== Chip Buttons ===== */
+.chipBtn {
+  background: color-mix(in srgb, var(--accent) 6%, var(--paper));
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--ink);
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.chipBtn--on {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+  box-shadow: 2px 2px 0 rgba(0,0,0,0.1);
+}
+
+/* ===== Modal ===== */
+.modal {
+  border: 4px solid var(--accent);
+  box-shadow: var(--shadow-lg);
+}
+
+/* ===== Mobile Nav ===== */
+.mobileNav {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border-top: 2px solid var(--border);
+  box-shadow: 0 -4px 10px rgba(0,0,0,0.05);
+}
+
+/* ===== PC Desktop (≥ 1400px) ===== */
+@media (min-width: 1400px) {
+  body {
+    background: #fff1f2;                 /* match hero */
+  }
+  .hero {
+    box-shadow: none;                    /* no card shadow when flush */
+  }
+}

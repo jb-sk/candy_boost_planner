@@ -248,4 +248,85 @@ describe('ユーザーケーステスト', () => {
       expect(p.reachableItems.normalCount).toBe(0);
     });
   });
+
+  // ========================================
+  // テスト57: アメブ増加時に万能S使用量が減少しないことを検証
+  // ========================================
+  // シナリオ:
+  // - 3匹: イワパレス(1番目), ダークライ(2番目), ピカチュウ(3番目)
+  // - ミニブ(globalBoostLimit=350), 万能S在庫=500
+  // - ダークライのアメブ個数を変えたときにピカチュウに万能Sが漏れないことを確認
+  //
+  // バグ: byInventory計算がtargetBoostベースでeffectiveNormalを算出しており、
+  // アメブクランプ後に通常アメ分の在庫再配分をしていなかったため、
+  // アメブ個数を増やすとcandyNeedForReachableが不正に縮小していた。
+  describe('Test57: アメブ増加時に万能S使用量が減少しないバグの検証', () => {
+    // ダークライのアメブ個数を段階的に増やした場合のテスト
+    const darkraiBoostCases = [100, 200, 350, 500, 1000];
+
+    for (const darkraiBoost of darkraiBoostCases) {
+      it(`ダークライのアメブ=${darkraiBoost}でピカチュウの万能Sが0`, () => {
+        const result = planLevelUp(
+          [
+            pokemon({
+              id: 'iwaparesu',
+              pokedexId: 558,
+              pokemonName: 'イワパレス',
+              type: 'rock',
+              srcLevel: 58,
+              dstLevel: 60,
+              expType: 600,
+              nature: 'normal',
+              expGot: 0,
+              candyNeed: 110,
+              boostOrExpAdjustment: 110,
+            }),
+            pokemon({
+              id: 'darkrai',
+              pokedexId: 491,
+              pokemonName: 'ダークライ',
+              type: 'dark',
+              srcLevel: 30,
+              dstLevel: 65,
+              expType: 1320,
+              nature: 'down',
+              expGot: 0,
+              candyNeed: 4435,
+              boostOrExpAdjustment: darkraiBoost,
+            }),
+            pokemon({
+              id: 'pikachu',
+              pokedexId: 25,
+              pokemonName: 'ピカチュウ',
+              type: 'electric',
+              srcLevel: 1,
+              dstLevel: 60,
+              expType: 600,
+              nature: 'normal',
+              expGot: 0,
+              candyNeed: 1939,
+              boostOrExpAdjustment: 0,
+            }),
+          ],
+          inventory({
+            universal: { s: 500, m: 0, l: 0 },
+          }),
+          config({ boostKind: 'mini', globalBoostLimit: 350, globalShardsLimit: Infinity })
+        );
+
+        const darkrai = getPokemon(result, 'darkrai');
+        const pikachu = getPokemon(result, 'pikachu');
+        const iwaparesu = getPokemon(result, 'iwaparesu');
+
+        // イワパレスが使った残りを全てダークライが使い切る
+        const totalUniversalS = iwaparesu.reachableItems.universalS
+          + darkrai.reachableItems.universalS
+          + pikachu.reachableItems.universalS;
+        expect(totalUniversalS).toBeLessThanOrEqual(500);
+
+        // ピカチュウに万能Sが漏れてはいけない（上位のダークライが在庫不足だから）
+        expect(pikachu.reachableItems.universalS).toBe(0);
+      });
+    }
+  });
 });

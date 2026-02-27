@@ -1,0 +1,90 @@
+/*
+ * Core Reset & Layout Shell
+ *
+ * Structural CSS shared by ALL themes. Theme files must NOT override these.
+ * Contains: box-sizing reset, html/body/shell scaffolding, height propagation.
+ */
+
+/* ===== Default Typography (all themes share these; override in theme :root if needed) ===== */
+:root {
+  --font-body: system-ui, -apple-system, sans-serif;
+  --font-heading: system-ui, -apple-system, sans-serif;
+}
+
+/* ===== Global Reset ===== */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  /* body does NOT scroll — .shell__scroll handles scrolling */
+  -webkit-text-size-adjust: 100%;
+  color: var(--ink);
+  font-family: var(--font-body);
+  line-height: 1.6;
+  background: var(--bg-decor);
+}
+
+/* #app wrapper created by Vue — must propagate height */
+#app {
+  height: 100%;
+}
+
+/* ===== Layout Shell ===== */
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  /* html → body → #app → .shell: all 100% */
+  overflow: hidden;
+}
+
+/* Scrollable content container — replaces body scroll.
+   Because body never scrolls, iOS Safari address bar stays stable
+   and fixed bottom nav never "drifts" on tap. */
+.shell__scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  /* allow flex child to shrink below content */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  /* prevent pull-to-refresh bounce */
+  padding-bottom: 34px;
+  /* clearance for fixed bottom nav */
+}
+
+/* ===== Dashboard (main content area) ===== */
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  /* panels sit edge-to-edge (flex gap defaults to 0) */
+}
+
+/* ===== PC 2-column layout (≥ 1400px) ===== */
+@media (min-width: 1400px) {
+  .shell__scroll {
+    padding: 24px;
+    /* side + top + bottom gutters; no MobileNav clearance needed */
+  }
+
+  .dashboard {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+    align-items: start;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+}

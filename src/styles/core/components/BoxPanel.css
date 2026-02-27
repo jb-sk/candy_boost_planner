@@ -1,0 +1,848 @@
+/* Modern: BoxPanel — fluid tile grid, ordered by DOM appearance */
+
+/* ===== Disclosure (Import / Add sections — appears first in DOM) ===== */
+.boxDisclosure {
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--paper) 97%, var(--ink) 3%);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  margin-top: 10px;
+}
+
+.boxDisclosure__head {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--muted);
+  width: 100%;
+  text-align: left;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.boxDisclosure__head::-webkit-details-marker {
+  display: none;
+}
+
+.boxDisclosure[open] .boxDisclosure__head,
+.boxDisclosure--open .boxDisclosure__head {
+  margin-bottom: 8px;
+}
+
+.boxDisclosure__title {
+  font-size: 15px;
+}
+
+.boxDisclosure__inner {
+  padding: 0;
+}
+
+.boxDisclosure__note {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* ===== Box Add Form Grid ===== */
+.boxAddGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 10px;
+  align-items: start;
+}
+
+/* Name & Label span full width */
+.boxAddGrid>.field--name {
+  grid-column: 1 / -1;
+}
+
+/* Sub-skills span full width */
+.boxAddGrid>.field--wide {
+  grid-column: 1 / -1;
+}
+
+/* Unified input height inside boxAddGrid */
+.boxAddGrid .field__label {
+  font-size: 12px;
+}
+
+.boxAddGrid .field {
+  gap: 3px;
+}
+
+.boxAddGrid .field__input,
+.boxAddGrid select.field__input,
+.boxAddGrid .field__input--button {
+  height: 34px;
+  min-height: 34px;
+  max-height: 34px;
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: normal;
+  display: flex;
+  align-items: center;
+  font-size: 16px;
+  /* iOS zoom prevention */
+}
+
+/* Sub Skills Grid (shared by Add + Detail) */
+.subGrid,
+.boxDetail__subEdit {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 10px;
+}
+
+@media (min-width: 680px) {
+
+  .subGrid,
+  .boxDetail__subEdit {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+.subField {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.subField__k {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* Favorite checkbox + actions: full width */
+.boxAddFav {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.boxAddActions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.boxAddCalcCheck {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+/* ===== Textarea ===== */
+.boxTextarea {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 16px;
+  /* iOS zoom prevention */
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--ink);
+  outline: none;
+  resize: vertical;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.boxTextarea:focus {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 20%, transparent);
+}
+
+.boxTextarea::placeholder {
+  color: var(--muted);
+  opacity: 0.85;
+}
+
+/* ===== Import Extras ===== */
+.boxImport__fileLabel {
+  position: relative;
+  cursor: pointer;
+}
+
+.boxImport__fileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.boxImport__favCheck {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  margin-top: 6px;
+}
+
+.boxImport__favCheck input {
+  margin: 0;
+}
+
+/* ===== Card Actions ===== */
+.boxCard__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.boxCard__actions--row {
+  justify-content: flex-start;
+}
+
+.boxCard__actions .btn {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.boxCard__hints {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.boxCard__status--hint {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ===== Box Card (List section — extra spacing from Import) ===== */
+.boxCard {
+  margin-top: 16px;
+}
+
+/* ===== Box Card Header ===== */
+.boxCard__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.boxCard__title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+/* ===== Search ===== */
+.boxSearchRow {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.boxSearchRow .btn {
+  flex-shrink: 0;
+}
+
+.boxSearch {
+  font: inherit;
+  outline: none;
+  min-width: 0;
+  flex: 1 1 auto;
+  width: auto;
+}
+
+/* ===== Filter Row ===== */
+.boxFilterRow {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* ===== Chip Buttons ===== */
+.chipBtn {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface-alt);
+  padding: 5px 8px;
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--ink);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.chipBtn--iconOnly {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  gap: 0;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.chipBtn:hover {
+  border-color: color-mix(in oklab, var(--ink) 26%, transparent);
+}
+
+.chipBtn--on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--paper));
+  color: var(--accent);
+}
+
+.chipBtn__icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.chipBtn--on .chipBtn__icon {
+  color: var(--accent);
+}
+
+/* Favorite star special color when active */
+.chipBtn--iconOnly.chipBtn--on {
+  background: color-mix(in srgb, var(--accent) 15%, var(--paper));
+  border-color: var(--accent);
+}
+
+.chipBtn--iconOnly.chipBtn--on .chipBtn__icon {
+  color: var(--star-color);
+}
+
+/* Force all SVGs inside chip icons to same size */
+.chipBtn__icon svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.chipBtn__text {
+  font-family: var(--font-body);
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* ===== Advanced Settings ===== */
+.boxAdvanced {
+  margin-top: 10px;
+}
+
+.boxAdvanced__summary {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.boxAdvanced__content {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.boxAdvanced__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.boxAdvanced__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 7.5em;
+}
+
+.boxAdvanced__select {
+  font-size: 13px;
+  height: 30px;
+  padding: 0 28px 0 8px;
+  width: 180px;
+}
+
+.boxAdvanced__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.boxAdvanced__section > .btn {
+  align-self: start;
+}
+
+.boxAdvanced__list {
+  margin-top: 6px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.boxAdvanced__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface-alt);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.boxAdvanced__item:hover {
+  background: color-mix(in oklab, var(--paper) 96%, var(--ink) 4%);
+}
+
+.boxAdvanced__check {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.boxAdvanced__itemLabel {
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+/* ===== Sort Row ===== */
+.boxSortRow {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.boxSort {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.boxSort .btn {
+  white-space: nowrap;
+  min-width: 44px;
+  height: 34px;
+  padding: 0 10px;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.boxSort__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.boxSort__select {
+  height: 30px;
+  padding: 0 28px 0 8px;
+  font-size: 13px;
+}
+
+.boxSortRow__undoRedo {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.boxSortRow__undoRedo .btn {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+/* ===== Tile Grid ===== */
+.boxList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+  overflow-anchor: none;
+}
+
+/* ===== Tile ===== */
+.boxTile {
+  position: relative;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: border-color 0.1s, box-shadow 0.1s;
+  text-align: left;
+  /* reset button styles */
+  appearance: none;
+  font: inherit;
+  color: var(--ink);
+  /* 2-col grid: name left (2 rows), fav top-right, lv bottom-right */
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  gap: 0 8px;
+  align-items: start;
+}
+
+.boxTile.boxTile--hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+
+.boxTile--active {
+  border-color: var(--accent);
+  border-width: 2px;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 25%, transparent), var(--shadow-md);
+  transform: scale(1.02);
+  z-index: 10;
+}
+
+.boxTile__name {
+  grid-row: 1 / -1;
+  grid-column: 1;
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.3;
+  min-width: 0;
+  /* Allow 2-line wrap, then ellipsis */
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  align-self: center;
+}
+
+.boxTile__fav {
+  grid-row: 1;
+  grid-column: 2;
+  display: inline-flex;
+  justify-self: end;
+  width: 16px;
+  height: 16px;
+  color: var(--star-color);
+}
+
+.boxTile__fav svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.boxTile__lv {
+  grid-row: 2;
+  grid-column: 2;
+  justify-self: end;
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: color-mix(in oklab, var(--ink) 72%, var(--muted));
+}
+
+/* No star → Lv spans both rows and centers vertically */
+.boxTile:not(:has(.boxTile__fav)) .boxTile__lv {
+  grid-row: 1 / -1;
+  align-self: center;
+}
+
+/* ===== Type colours (18 types) ===== */
+.boxTile[data-type="Normal"] {
+  border-left: 5px solid #a8a77a;
+}
+
+.boxTile[data-type="Fire"] {
+  border-left: 5px solid #ee8130;
+}
+
+.boxTile[data-type="Water"] {
+  border-left: 5px solid #6390f0;
+}
+
+.boxTile[data-type="Electric"] {
+  border-left: 5px solid #f7d02c;
+}
+
+.boxTile[data-type="Grass"] {
+  border-left: 5px solid #7ac74c;
+}
+
+.boxTile[data-type="Ice"] {
+  border-left: 5px solid #96d9d6;
+}
+
+.boxTile[data-type="Fighting"] {
+  border-left: 5px solid #c22e28;
+}
+
+.boxTile[data-type="Poison"] {
+  border-left: 5px solid #a33ea1;
+}
+
+.boxTile[data-type="Ground"] {
+  border-left: 5px solid #e2bf65;
+}
+
+.boxTile[data-type="Flying"] {
+  border-left: 5px solid #a98ff3;
+}
+
+.boxTile[data-type="Psychic"] {
+  border-left: 5px solid #f95587;
+}
+
+.boxTile[data-type="Bug"] {
+  border-left: 5px solid #a6b91a;
+}
+
+.boxTile[data-type="Rock"] {
+  border-left: 5px solid #b6a136;
+}
+
+.boxTile[data-type="Ghost"] {
+  border-left: 5px solid #735797;
+}
+
+.boxTile[data-type="Dragon"] {
+  border-left: 5px solid #6f35fc;
+}
+
+.boxTile[data-type="Dark"] {
+  border-left: 5px solid #705746;
+}
+
+.boxTile[data-type="Steel"] {
+  border-left: 5px solid #b7b7ce;
+}
+
+.boxTile[data-type="Fairy"] {
+  border-left: 5px solid #d685ad;
+}
+
+/* ===== Detail Panel (inline within grid) ===== */
+.boxDetail {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed color-mix(in oklab, var(--ink) 18%, transparent);
+  --boxFieldH: 30px;
+}
+
+.boxDetail--inline {
+  grid-column: 1 / -1;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+  border-radius: var(--radius-md);
+  padding: 10px;
+  border: 1px solid color-mix(in oklab, var(--ink) 12%, transparent);
+  background: color-mix(in oklab, var(--paper) 97%, var(--ink) 3%);
+  overflow-anchor: none;
+}
+
+/* --- Detail Header --- */
+.boxDetail__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.boxDetail__title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 14px;
+}
+
+.boxDetail__actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.boxDetail__actions .btn {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* --- Detail Grid --- */
+.boxDetail__grid {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 10px;
+  align-items: start;
+}
+
+@media (min-width: 680px) {
+
+  .boxDetail__grid,
+  .boxAddGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Flatten nested wrappers so children join parent grid */
+.boxDetail__col {
+  display: contents;
+}
+
+/* Full-width items */
+.boxDetail__kv--wide {
+  grid-column: 1 / -1;
+}
+
+/* --- Key/Value pairs --- */
+.boxDetail__k {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.boxDetail__v {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.boxDetail__v--mono {
+  font-weight: 500;
+}
+
+.boxDetail__strong {
+  font-weight: 700;
+}
+
+.boxDetail__minor {
+  margin-left: 6px;
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* --- Relink row --- */
+.relinkRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  align-items: stretch;
+  margin-top: 4px;
+}
+
+.relinkRow .suggest__panel {
+  top: 38px;
+}
+
+.relinkRow .field__input {
+  height: 34px;
+  min-height: 34px;
+  max-height: none;
+  padding: 4px 10px;
+}
+
+.relinkRow .btn {
+  height: 34px;
+  min-height: 34px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* --- Nickname row --- */
+.boxDetail__nickRow {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.boxDetail__nickInput {
+  flex: 1;
+  min-width: 0;
+}
+
+/* --- Specs: flatten into parent grid --- */
+.boxDetail__specs {
+  display: contents;
+}
+
+/* --- Unified input height inside detail --- */
+.boxDetail .field__input,
+.boxDetail select.field__input,
+.boxDetail .field__input--button {
+  height: 34px;
+  min-height: 34px;
+  max-height: 34px;
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: normal;
+  display: flex;
+  align-items: center;
+  font-size: 16px;
+  /* >= 16px prevents iOS auto-zoom */
+}
+
+/* --- Misc detail elements --- */
+.boxDetail__editRow {
+  margin-bottom: 4px;
+}
+
+.boxDetail__ingredientsList {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 12px;
+  line-height: 1.5;
+  color: color-mix(in oklab, var(--ink) 90%, transparent);
+}
+
+/* Static (read-only) field display */
+.boxDetail .field__input--static {
+  background: var(--surface-alt);
+  color: color-mix(in oklab, var(--ink) 70%, var(--muted));
+  cursor: default;
+  border-style: dashed;
+}

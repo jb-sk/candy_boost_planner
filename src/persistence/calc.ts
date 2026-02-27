@@ -61,10 +61,10 @@ export function loadCalcSlots(): Array<CalcSaveSlotV1 | null> {
     const raw = localStorage.getItem(SLOTS_KEY);
     if (!raw) return [null, null, null];
     const json = JSON.parse(raw);
-    const arr = Array.isArray(json)
+    const arr: unknown[] | null = Array.isArray(json)
       ? json
-      : json && typeof json === "object" && Array.isArray((json as any).slots)
-        ? (json as any).slots
+      : json && typeof json === "object" && Array.isArray((json as Record<string, unknown>).slots)
+        ? (json as Record<string, unknown>).slots as unknown[]
         : null;
     if (!arr) return [null, null, null];
     const out: Array<CalcSaveSlotV1 | null> = [];
@@ -166,19 +166,20 @@ export function saveSleepSettings(v: SleepSettings | undefined): void {
 }
 
 
-function normalizeSlot(x: any): CalcSaveSlotV1 | null {
+function normalizeSlot(x: unknown): CalcSaveSlotV1 | null {
   if (!x || typeof x !== "object") return null;
-  const savedAt = typeof x.savedAt === "string" ? x.savedAt : new Date().toISOString();
-  const rows = toRows(x.rows);
-  const activeRowId = typeof x.activeRowId === "string" ? x.activeRowId : null;
+  const r = x as Record<string, unknown>;
+  const savedAt = typeof r.savedAt === "string" ? r.savedAt : new Date().toISOString();
+  const rows = toRows(r.rows);
+  const activeRowId = typeof r.activeRowId === "string" ? r.activeRowId : null;
   if (!rows.length) return null;
   // boostKind: 旧データは defaultBoostKind を適用
-  const boostKind: BoostEvent = x.boostKind === "full" || x.boostKind === "mini" || x.boostKind === "none"
-    ? x.boostKind
+  const boostKind: BoostEvent = r.boostKind === "full" || r.boostKind === "mini" || r.boostKind === "none"
+    ? r.boostKind
     : defaultBoostKind;
   // boostCandyRemaining: 未設定の場合は undefined（UI側でデフォルト値を適用）
-  const boostCandyRemaining = typeof x.boostCandyRemaining === "number" && x.boostCandyRemaining >= 0
-    ? Math.floor(x.boostCandyRemaining)
+  const boostCandyRemaining = typeof r.boostCandyRemaining === "number" && r.boostCandyRemaining >= 0
+    ? Math.floor(r.boostCandyRemaining)
     : undefined;
   return { savedAt, rows, activeRowId, boostKind, boostCandyRemaining };
 }
@@ -189,21 +190,20 @@ function toRows(v: unknown): CalcRowV1[] {
   const out: CalcRowV1[] = [];
   for (const x of v) {
     if (!x || typeof x !== "object") continue;
-    const o: any = x;
+    const o = x as Record<string, unknown>;
     const id = String(o.id ?? "").trim();
     if (!id) continue;
     const title = typeof o.title === "string" ? o.title : "";
     const expType = toExpType(o.expType, 600);
     const srcLevel = clampInt(o.srcLevel, 1, MAX_LEVEL, 1);
     const dstLevel = clampInt(o.dstLevel, srcLevel, MAX_LEVEL, srcLevel);
-    const toNextFallback = 0; // App側で補正する
-    const expRemaining = clampInt(o.expRemaining, 0, 999999, toNextFallback);
+    // expRemaining: 0 は論理矛盾（次Lvまで0 = 既にレベルアップ済み）なので
+    // 0 は保存データ上もそのまま読み込み、calcRowExpGot 側で toNext に補正する。
+    // ただし undefined / null / NaN は安全なフォールバックとして 0 を設定（calcRowExpGot が toNext に補正）。
+    const expRemaining = clampInt(o.expRemaining, 0, 999999, 0);
     const nature = toNature(o.nature, "normal");
     const boostReachLevel = clampInt(o.boostReachLevel, srcLevel, dstLevel, dstLevel);
     const boostRatioPct = clampInt(o.boostRatioPct, 0, 100, 100);
-    // TODO: 2025-04 以降に削除予定
-    // マイグレーション: 旧モード（boostLevel, ratio, candy）→ 新モード（targetLevel, peak）
-    // 旧モードは全て targetLevel に変換、既に新モードなら維持
     const mode: CalcMode = o.mode === "peak" ? "peak" : "targetLevel";
     const boxId = typeof o.boxId === "string" && o.boxId.trim() ? o.boxId : undefined;
     const dstLevelText = typeof o.dstLevelText === "string" ? o.dstLevelText : undefined;
@@ -267,7 +267,7 @@ function toNature(v: unknown, fallback: ExpGainNature): ExpGainNature {
  */
 function normalizeSleepSettings(x: unknown): SleepSettings | undefined {
   if (!x || typeof x !== "object") return undefined;
-  const o = x as any;
+  const o = x as Record<string, unknown>;
 
   // 必須フィールドがすべて有効な場合のみ返す
   const dailySleepHours = typeof o.dailySleepHours === "number" && o.dailySleepHours >= 1 && o.dailySleepHours <= 13
