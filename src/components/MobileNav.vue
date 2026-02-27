@@ -1,5 +1,16 @@
 <template>
   <nav class="mobileNav">
+    <button
+      class="mobileNav__home"
+      type="button"
+      :aria-label="t('nav.top')"
+      @click="$emit('scroll-top')"
+    >
+      <!-- Home icon (SVG) -->
+      <svg class="mobileNav__homeIcon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <path d="M10 2.5 L2 9.5 L4 9.5 L4 16 L8 16 L8 11 L12 11 L12 16 L16 16 L16 9.5 L18 9.5 Z" />
+      </svg>
+    </button>
     <a href="#neo-calc" class="mobileNav__item" @click.prevent="scrollToPanel('neo-calc')">
       {{ t("nav.calc") }}
     </a>
@@ -21,41 +32,8 @@ defineProps<{
 
 defineEmits<{
   (e: "open-settings"): void;
+  (e: "scroll-top"): void;
 }>();
 
 const { t } = useI18n();
 </script>
-
-<style scoped>
-.mobileNav {
-  display: none;
-}
-@media (max-width: 1023px) {
-  .mobileNav {
-    display: flex;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    background: color-mix(in oklab, var(--paper) 95%, var(--ink) 5%);
-    backdrop-filter: blur(8px);
-    border-bottom: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
-    margin: 0 -18px 16px; /* Negate shell padding */
-    padding: 0 18px;
-  }
-  .mobileNav__item {
-    flex: 1;
-    text-align: center;
-    padding: 6px 0;
-    font-weight: 700;
-    font-size: 14px;
-    color: color-mix(in oklab, var(--ink) 75%, transparent);
-    border-bottom: 3px solid transparent;
-    cursor: pointer;
-    text-decoration: none;
-  }
-  .mobileNav__item:hover {
-    background: rgba(0,0,0,0.02);
-    color: var(--ink);
-  }
-}
-</style>

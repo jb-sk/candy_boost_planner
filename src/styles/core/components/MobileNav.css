@@ -1,0 +1,73 @@
+/* Modern: MobileNav — bottom fixed tab bar */
+
+.mobileNav {
+  display: flex;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 900;
+  min-height: 32px;
+  background: var(--paper);
+  border-top: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Home (scroll-to-top) button — absolute left, outside flex flow */
+.mobileNav__home {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s;
+  z-index: 1;
+}
+
+.mobileNav__home:hover,
+.mobileNav__home:active {
+  color: var(--accent);
+}
+
+.mobileNav__homeIcon {
+  width: 16px;
+  height: 16px;
+}
+
+.mobileNav__item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobileNav__item:hover,
+.mobileNav__item:active {
+  color: var(--accent);
+}
+
+/* Hide bottom nav on desktop 2-column layout */
+@media (min-width: 1400px) {
+  .mobileNav {
+    display: none;
+  }
+}

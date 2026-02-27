@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -p tsconfig.json --noEmit && vite build",
+    "lint": "eslint src/",
+    "build": "eslint src/ && vue-tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
     "generate:terms": "node scripts/generate-terms.mjs",
     "generate:tables": "node scripts/generate-pokesleep-tables.mjs",
@@ -26,11 +27,18 @@
     "vue-i18n": "^11.2.2"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.57.0",
     "@types/node": "^25.0.10",
+    "@typescript-eslint/eslint-plugin": "^8.56.1",
+    "@typescript-eslint/parser": "^8.56.1",
     "@vitejs/plugin-vue": "^5.2.0",
     "cheerio": "^1.0.0-rc.12",
+    "eslint": "^10.0.2",
+    "eslint-plugin-vue": "^10.8.0",
+    "globals": "^17.3.0",
     "typescript": "^5.6.0",
+    "typescript-eslint": "^8.56.1",
     "vite": "^5.4.0",
     "vitest": "^4.0.16",
     "vue-tsc": "^2.1.0"

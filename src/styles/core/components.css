@@ -1,0 +1,425 @@
+/*
+ * Core Components
+ *
+ * Imports all component CSS and defines structural base styles for
+ * common elements (hero, panel, form, buttons, links).
+ *
+ * These provide layout structure; themes override colours, backgrounds,
+ * borders, shadows, and decorative properties freely.
+ *
+ * CSS variables referenced here (--ink, --muted, --accent, etc.)
+ * are expected to be defined by each theme's :root block, which
+ * is loaded BEFORE this file.
+ */
+
+/* ===== Component Imports ===== */
+@import "./components/BoxPanel.css";
+@import "./components/CalcPanel.css";
+@import "./components/Modal.css";
+@import "./components/MobileNav.css";
+@import "./components/ExportOverlay.css";
+@import "./components/SettingsOverlay.css";
+@import "./components/HelpOverlay.css";
+@import "./components/LevelPicker.css";
+@import "./components/NatureSelect.css";
+@import "../../components/DesignSwitcher.css";
+
+/* ===== Hero Header ===== */
+.hero {
+  position: relative;
+  padding: 16px 16px 12px;
+  background: var(--paper);
+  border-bottom: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+/* Panel head — title + design switcher */
+.panel__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kicker {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.lede {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.lang {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.lang__btn {
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+  border-radius: 99px;
+  background: transparent;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.lang__btn:hover:not(.lang__btn--on) {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.lang__btn--on {
+  background: var(--btn-bg);
+  color: var(--btn-ink);
+  border-color: var(--btn-bg);
+}
+
+.lang__btn--help {
+  margin-left: 16px;
+  background: var(--accent);
+  color: var(--paper);
+  border-color: var(--accent);
+}
+
+.lang__btn--help:hover {
+  background: transparent;
+  color: var(--accent);
+}
+
+/* Hero meta row: support + theme picker side by side */
+.heroMeta {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+  align-items: flex-start;
+}
+
+/* Support links */
+.support {
+  /* no margin-top — heroMeta handles it */
+}
+
+.support__label {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.support__links {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.support__link {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent);
+  text-decoration: none;
+  padding: 4px 10px;
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius-pill);
+  transition: background 0.15s, color 0.15s;
+}
+
+.support__link:hover {
+  background: var(--accent);
+  color: var(--paper);
+  text-decoration: none;
+}
+
+/* Theme picker */
+.themePicker {
+}
+
+.themePicker__label {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.themePicker .design-switch-select {
+  margin-top: 4px;
+}
+
+/* ===== Panel (card base) ===== */
+.panel {
+  position: relative;
+  background: var(--paper);
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ===== Form Elements ===== */
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field--sm {
+  gap: 3px;
+}
+
+.field--row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  line-height: 1.4;
+}
+
+.field__input {
+  width: 100%;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  /* >= 16px prevents iOS auto-zoom on focus */
+  line-height: normal;
+  transition: border-color 0.15s;
+}
+
+.field__input:focus {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 20%, transparent);
+}
+
+.field__input::placeholder {
+  color: var(--muted);
+  opacity: 0.85;
+}
+
+.field__sub {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+select.field__input {
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 16px;
+  padding-right: 32px;
+}
+
+/* ===== Buttons ===== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn--primary {
+  background: var(--btn-bg);
+  color: var(--btn-ink);
+  border-color: var(--btn-bg);
+}
+
+.btn--primary:hover {
+  filter: brightness(1.08);
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--accent);
+  border-color: var(--border);
+}
+
+.btn--ghost:hover {
+  background: var(--surface-alt);
+}
+
+.btn--danger {
+  background: var(--danger);
+  color: var(--btn-ink);
+  border-color: var(--danger);
+}
+
+.btn--sm {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.btn--xs {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.btn--icon {
+  padding: 6px;
+  line-height: 0;
+}
+
+.btn__icon {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+}
+
+.btn__icon > svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* ===== Link Buttons ===== */
+.linkBtn {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: underline dotted;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 2px 4px;
+}
+
+.linkBtn:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.linkBtn:disabled {
+  opacity: 0.3;
+  cursor: default;
+  text-decoration: none;
+}
+
+.linkBtn--danger {
+  color: var(--danger);
+  opacity: 0.8;
+}
+
+.linkBtn--danger:hover:not(:disabled) {
+  color: color-mix(in srgb, var(--danger) 70%, var(--ink));
+  opacity: 1;
+}
+
+.linkBtn--basic {
+  text-decoration: underline dotted;
+  color: var(--ink);
+  opacity: 0.7;
+}
+
+.linkBtn--basic:hover {
+  color: var(--accent);
+  opacity: 1;
+}
+
+/* ===== Button-style Field Input ===== */
+.field__input--button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+/* ===== PC desktop card treatment (≥ 1400px) ===== */
+@media (min-width: 1400px) {
+  /* Body bg matches hero (--paper) so hero sits flush.
+     Themes with custom PC backgrounds (candy, cyberpunk) override this. */
+  body {
+    background: var(--paper);
+  }
+
+  /* Hero sits flush with page background.
+     Constrain content width to align with the dashboard grid. */
+  .hero {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 16px 0 20px;
+    border-bottom: none;
+  }
+
+  .kicker {
+    font-size: 0.8rem;
+  }
+
+  .title {
+    font-size: 1.8rem;
+    margin-top: 6px;
+  }
+
+  .lede {
+    font-size: 0.875rem;
+    margin-top: 6px;
+  }
+
+  .lang {
+    margin-top: 12px;
+  }
+
+  .panel {
+    border-radius: var(--radius-lg);
+    border-bottom: none;
+    box-shadow: var(--shadow-md);
+    /* NOTE: do NOT set overflow:hidden — it breaks position:sticky
+       inside CalcPanel. Rounded corners clip via border-radius alone
+       (children with negative margins may bleed, but that is acceptable). */
+  }
+
+  /* Constrain Help / Export modals to 890px centered */
+  .modal {
+    max-width: 890px;
+    margin: 0 auto;
+    inset: 0;
+  }
+
+  /* Keep Add-Pokémon modal compact (same as 680px) */
+  .addModal {
+    max-width: 420px;
+  }
+
+  .exportSheet {
+    max-width: 790px;
+    margin: 0 auto;
+  }
+}

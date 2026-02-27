@@ -9,13 +9,6 @@ import { dreamShardsPerCandy, totalExpToTheLevel, totalExpToTheLevel900, totalEx
  * - https://github.com/nitoyon/pokesleep-tool
  */
 
-const expTypeRate: Record<ExpType, number> = {
-  600: 1,
-  900: 1.5,
-  1080: 1.8,
-  1320: 2.2,
-};
-
 export type CalcExpAndCandyResult = {
   exp: number;
   candy: number;
@@ -428,7 +421,7 @@ export function calcLevelByCandy(params: {
   let shards = 0;
   let carry = expGot;
   let candyLeft = Math.max(0, Math.floor(params.candy));
-  let level = srcLevel;
+  let level: number;
 
   // srcLevel → dstLevel までのレベルアップ
   for (level = srcLevel; level < dstLevel; level++) {
@@ -518,7 +511,7 @@ export function calcLevelByCandyAndShards(params: {
   let shards = 0;
   let carry = expGot;
   let candyLeft = Math.max(0, Math.floor(params.candy));
-  let level = srcLevel;
+  let level: number;
 
   // srcLevel → dstLevel までのレベルアップ
   for (level = srcLevel; level < dstLevel; level++) {
@@ -720,7 +713,6 @@ export function calcCandyAndShardsForLevelMixed(params: {
 
       shardsBoost += shardBase * useBoost * boostShardRate;
       boostCandyUsed += useBoost;
-      boostLeft -= useBoost;
       carry += boostExp;
     }
 
@@ -732,7 +724,6 @@ export function calcCandyAndShardsForLevelMixed(params: {
 
       shardsNormal += shardBase * useNormal;
       normalCandy += useNormal;
-      carry += expPerNormal * useNormal;
     }
   }
 

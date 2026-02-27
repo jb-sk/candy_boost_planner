@@ -10,8 +10,8 @@
     >
       <span class="natureSelect__symbol" v-html="symbolSvg(modelValue)" aria-hidden="true"></span>
       <span class="natureSelect__sr">{{ currentLabel }}</span>
-      <svg class="natureSelect__chevron" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <svg class="natureSelect__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none">
+        <polyline points="6 9 12 15 18 9" stroke="currentColor" stroke-width="2" fill="none"/>
       </svg>
     </button>
     <div v-if="isOpen" class="natureSelect__dropdown" data-testid="nature-select-dropdown">
@@ -97,95 +97,3 @@ function select(value: 'normal' | 'up' | 'down') {
   isOpen.value = false;
 }
 </script>
-
-<style scoped>
-.natureSelect {
-  position: relative;
-  width: 100%;
-}
-
-.natureSelect__trigger {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  cursor: pointer;
-  text-align: left;
-  padding-right: 8px;
-}
-
-.natureSelect__symbol {
-  width: 16px;
-  height: 16px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-}
-
-.natureSelect__sr {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.natureSelect__chevron {
-  flex-shrink: 0;
-  transition: transform 0.2s;
-  opacity: 0.5;
-}
-
-.natureSelect--open .natureSelect__chevron {
-  transform: rotate(180deg);
-}
-
-.natureSelect__dropdown {
-  position: absolute;
-  top: calc(100% + 2px);
-  left: 0;
-  right: 0;
-  /* Opaque background: avoid seeing text behind the dropdown */
-  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
-  border: 1px solid color-mix(in oklab, var(--ink) 20%, transparent);
-  border-radius: 12px;
-  box-shadow: 0 4px 12px color-mix(in oklab, var(--ink) 10%, transparent);
-  z-index: 1000;
-  overflow: hidden;
-}
-
-.natureSelect__option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 12px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  font-family: var(--font-body);
-  font-size: 14px;
-  color: var(--ink);
-  text-align: left;
-  transition: background-color 0.15s;
-}
-
-.natureSelect__option:hover {
-  background: color-mix(in oklab, var(--accent) 10%, var(--paper));
-}
-
-.natureSelect__option--selected {
-  background: color-mix(in oklab, var(--ink) 8%, var(--paper));
-  font-weight: 600;
-}
-
-.natureSelect__option:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-</style>

@@ -5,10 +5,6 @@ FROM mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm
 # - openclaw: The agent (Stable version)
 RUN npm install -g pm2 openclaw@latest
 
-# [PATCH] Fix "Antigravity version not supported" error
-# Force update client version from 1.11.5 to 1.15.8 in internal library
-RUN find /usr/local/share/npm-global -name "google-gemini-cli.js" -exec sed -i 's/antigravity\/1.11.5/antigravity\/1.15.8/g' {} +
-
 # Install Playwright dependencies globally (so they are baked in)
 RUN npx playwright install --with-deps
 

@@ -240,9 +240,9 @@ export class ExportPanelPage {
     pct: string;
     items: string;
   }> {
-    const name = await item.locator('.exportRanking__name').textContent() ?? '';
-    const pct = await item.locator('.exportRanking__pct').textContent() ?? '';
-    const items = await item.locator('.exportRanking__items').textContent() ?? '';
+    const name = await item.locator('.exportPie__legendName').textContent() ?? '';
+    const pct = await item.locator('.exportPie__legendPct').textContent() ?? '';
+    const items = await item.locator('.exportPie__legendDetail').textContent() ?? '';
     return {
       name: name.trim(),
       pct: pct.trim(),

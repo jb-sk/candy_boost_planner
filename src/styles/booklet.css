@@ -1,0 +1,270 @@
+/* Booklet Theme — Document/Folder Archive */
+@import "./core/reset.css";
+@import "./core/components.css";
+
+/* ===== Variables ===== */
+:root {
+  /* Core Palette */
+  --bg-decor: #d0d4d8;
+  --paper: #fdf6ed;
+  --ink: #1f2122;
+  --muted: #5a5f63;
+  --accent: #2a7c6f;
+  --accent-strong: #0e8a72;
+  --danger: #c03a28;
+
+  /* Surfaces */
+  --surface: #ffffff;
+  --surface-alt: #9ab9d5;
+  --border: #1f2122;
+
+  /* Overlay */
+  --overlay-bg: rgba(31, 33, 34, 0.6);
+  /* Interactive */
+  --btn-bg: #9ab9d5;
+  --btn-ink: #1f2122;
+  --input-bg: #fdf6ed;
+  --input-border: #1f2122;
+  --ring: #2a7c6f;
+
+  /* Data Visualization */
+  --bar-fill: #2a7c6f;
+  --bar-track: rgba(31, 33, 34, 0.1);
+  --bar-over: #1f2122;
+  --export-divider: #2a7c6f;
+
+  /* Pie Chart Palette */
+  --pie-0: #2a7c6f;
+  --pie-1: #d68758;
+  --pie-2: #6b8caf;
+  --pie-3: #8b6f4e;
+  --pie-4: #4a8c7d;
+  --pie-5: #c4956a;
+  --pie-6: #5a7f9b;
+  --pie-7: #9a9a9a;
+
+  /* Semantic Accents */
+  --star-color: #d68758;
+  --nature-up: #2a7c6f;
+  --nature-down: #6b8caf;
+
+  /* Border Radius */
+  --radius-sm: 0px;
+  --radius-md: 2px;
+  --radius-lg: 4px;
+  --radius-pill: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 1px 1px 0px var(--ink);
+  --shadow-md: 3px 3px 0px var(--ink);
+  --shadow-lg: 6px 6px 0px var(--ink);
+
+}
+
+
+
+/* ===== Hero ===== */
+.hero {
+  background: var(--paper);
+  border-bottom: none;
+  position: relative;
+  background-image: repeating-linear-gradient(transparent, transparent 31px, rgba(31, 33, 34, 0.05) 31px, rgba(31, 33, 34, 0.05) 32px);
+}
+
+/* Red tab attached to hero bottom */
+.hero::before {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  right: 10%;
+  width: 60px;
+  height: 8px;
+  background: var(--accent);
+  border: 2px solid var(--ink);
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  z-index: 10;
+}
+
+/* Lang buttons — cream fill for contrast on both hero lines and blue panel */
+.lang__btn {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.lang__btn--on {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+
+.lang__btn--help {
+  background: var(--accent);
+  color: var(--paper);
+  border-color: var(--accent);
+}
+
+/* Hero support / theme-picker — opaque fill to prevent ruled-line bleed-through */
+.hero .support__link {
+  background: var(--paper);
+}
+
+/* ===== Panel — Blue Folder ===== */
+.panel {
+  background: var(--surface-alt);
+  border: 3px solid var(--ink);
+  box-shadow: 4px 4px 0px var(--ink);
+  border-radius: 4px;
+  position: relative;
+}
+
+/* ===== Buttons ===== */
+.btn--primary {
+  background: var(--accent);
+  color: #fff;
+  border: 2px solid var(--ink);
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 2px;
+  box-shadow: 3px 3px 0px var(--ink);
+}
+
+.btn--primary:hover {
+  transform: translate(1px, 1px);
+  box-shadow: 2px 2px 0px var(--ink);
+}
+
+.btn--primary:active {
+  transform: translate(3px, 3px);
+  box-shadow: 0px 0px 0px var(--ink);
+}
+
+.btn--ghost {
+  background: var(--paper);
+  color: #1a5148;
+}
+
+/* ===== Field Input ===== */
+.field__input {
+  border: 2px solid var(--ink);
+  background: var(--surface);
+  border-radius: 2px;
+  padding: 0 12px;
+  height: 38px;
+  box-shadow: inset 2px 2px 0px rgba(0,0,0,0.05);
+}
+
+.field__input:focus {
+  border-color: var(--accent);
+  box-shadow: 2px 2px 0px var(--accent);
+}
+
+/* ===== Calc — Sticky Summary ===== */
+.calcSticky {
+  background: var(--surface-alt);
+}
+
+.calcSticky__toggle {
+  color: #2c5a82;
+}
+
+
+.calcSticky .calcBar__fill--active {
+  background: #2c5a82;
+}
+
+.calcSticky .calcBar__fill--others {
+  background: color-mix(in srgb, #2c5a82 40%, var(--bar-track));
+}
+
+/* Sleep growth chips — tinted card on blue panel */
+.sleepChip {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.hintIcon {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+/* ===== Box Disclosure (Add / Import) ===== */
+.boxTextarea {
+  background: color-mix(in srgb, var(--input-bg) 50%, var(--surface));
+}
+
+.boxDisclosure__head {
+  color: var(--ink);
+}
+
+.boxDisclosure__note {
+  color: color-mix(in oklab, var(--ink) 75%, transparent);
+}
+
+/* ===== Box Tiles ===== */
+.boxTile {
+  background: var(--surface);
+  border: 1px solid var(--ink);
+  border-radius: 2px;
+  box-shadow: 2px 2px 0px var(--ink);
+  transition: transform 0.1s, box-shadow 0.1s;
+  position: relative;
+}
+
+.boxTile::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: rgba(31, 33, 34, 0.05);
+  border-bottom: 1px solid rgba(31, 33, 34, 0.1);
+}
+
+.boxTile.boxTile--hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0px var(--ink);
+}
+
+/* ===== Chip Buttons ===== */
+.chipBtn {
+  border: 1px solid var(--ink);
+  border-radius: 9999px;
+  background: var(--surface);
+  font-weight: 500;
+  box-shadow: 1px 1px 0px var(--ink);
+}
+
+.chipBtn--on {
+  background: var(--ink);
+  color: var(--surface);
+  box-shadow: none;
+  transform: translate(1px, 1px);
+}
+
+/* ===== Modal ===== */
+.modal {
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  box-shadow: 8px 8px 0px var(--ink);
+  border-radius: 4px;
+}
+
+/* ===== Export — Ranking Item Label ===== */
+.exportRanking__itemLabel {
+  color: var(--ink);
+}
+
+/* ===== Mobile Nav ===== */
+.mobileNav {
+  background: var(--paper);
+  border-top: 2px solid var(--ink);
+  box-shadow: 0 -4px 0px rgba(31, 33, 34, 0.1);
+}
+
+

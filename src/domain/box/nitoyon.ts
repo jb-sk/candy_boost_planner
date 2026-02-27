@@ -175,8 +175,8 @@ const ExpGainsUp = new Set(["Timid", "Hasty", "Jolly", "Naive"] as const);
 const ExpGainsDown = new Set(["Relaxed", "Brave", "Sassy", "Quiet"] as const);
 
 export function expGainNatureFromNatureName(name: string): ExpGainNature {
-  if (ExpGainsUp.has(name as any)) return "up";
-  if (ExpGainsDown.has(name as any)) return "down";
+  if ((ExpGainsUp as ReadonlySet<string>).has(name)) return "up";
+  if ((ExpGainsDown as ReadonlySet<string>).has(name)) return "down";
   return "normal";
 }
 

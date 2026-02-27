@@ -3,8 +3,9 @@
 # ------------------------------
 _local/
 .agent/*
-!.agent/workflows/
 .sub-agent/
+.gemini/
+.geminiignore
 
 
 # ------------------------------
@@ -41,6 +42,9 @@ nul
 # VS Code workspace noise (keep shareable configs)
 .vscode/*
 
+# Python
+.ruff_cache/
+
 # JetBrains / others
 .idea/
 
@@ -54,6 +58,11 @@ nul
 # ------------------------------
 .claude/
 .mcp.json
+
+# ------------------------------
+# Codex local instruction file
+# ------------------------------
+AGENTS.md
 
 # ------------------------------
 # Test outputs
@@ -84,3 +93,9 @@ video/
 !.devcontainer/entrypoint.sh
 # Secrets and large backups inside .devcontainer are ignored
 .devcontainer/openclaw-config/
+
+# ------------------------------
+# Gacha themes (temporary / experimental)
+# ------------------------------
+src/styles/themes/gacha*.css
+src/styles/themes/vars/gacha*-vars.css

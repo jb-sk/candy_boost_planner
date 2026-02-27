@@ -1,0 +1,92 @@
+/* Modern: NatureSelect — custom dropdown for EXP nature */
+
+.natureSelect {
+  position: relative;
+  width: 100%;
+}
+
+.natureSelect__trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+  padding-right: 8px;
+}
+
+.natureSelect__symbol {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Screen-reader only label — visually hidden to avoid duplicate symbols */
+.natureSelect__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.natureSelect__chevron {
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: transform 0.2s;
+  color: var(--muted);
+}
+
+.natureSelect--open .natureSelect__chevron {
+  transform: rotate(180deg);
+}
+
+.natureSelect__dropdown {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
+  border: 1px solid color-mix(in oklab, var(--ink) 20%, transparent);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.natureSelect__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 16px;
+  color: var(--ink);
+  text-align: left;
+  transition: background-color 0.15s;
+}
+
+.natureSelect__option:hover {
+  background: color-mix(in oklab, var(--accent) 10%, var(--paper));
+}
+
+.natureSelect__option--selected {
+  background: color-mix(in oklab, var(--ink) 8%, var(--paper));
+  font-weight: 600;
+}
+
+.natureSelect__option:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}

@@ -50,7 +50,7 @@ import {
 // 定数
 // ============================================================
 
-import { maxLevel as MAX_LEVEL } from '../../pokesleep/tables';
+
 
 // ============================================================
 // 型定義
@@ -528,7 +528,7 @@ function calcItemsFromInventory(
   const speciesKey = String(pokemon.pokedexId);
   const speciesAvailable = inventory.species[speciesKey] ?? 0;
   const speciesUsed = Math.min(speciesAvailable, targetValue);
-  let remaining = targetValue - speciesUsed * CANDY_VALUES.species;
+  const remaining = targetValue - speciesUsed * CANDY_VALUES.species;
 
   // タイプアメ + 万能アメ（実在庫から）
   const typeStock = inventory.typeCandy[pokemon.type] ?? { s: 0, m: 0 };
@@ -997,12 +997,59 @@ function calcReachableItems(
   // ─────────────────────────────────────────
   // グローバルアメブ上限でクランプ
   // ─────────────────────────────────────────
-  // かけら制限と同様に、グローバル残数を守る
-  // limitingFactor === 'boost' の場合は既にクランプ済み
+  // boostCount が availableBoost を超える場合、アメブをクランプして再計算する。
+  // limitingFactor === 'boost' の場合は byBoostLimit が既にクランプ済み。
+  //
+  // limitingFactor === 'candy' の場合は在庫制限(byInventory)がアメブ上限を
+  // 考慮していないため、boostCandyUsed が availableBoost を超えうる。
+  //
+  // 在庫制限の effectiveNormal は targetBoost をベースに shortage を計算しており、
+  // アメブをクランプすると通常アメに回せる在庫価値が増える。したがって、
+  // アメブクランプ後に在庫価値を再配分し、到達レベルを再計算する必要がある。
   if (boostCount > resourceSnapshot.availableBoost) {
-    const boostDiff = boostCount - resourceSnapshot.availableBoost;
-    candyNeedForReachable = Math.max(0, candyNeedForReachable - boostDiff);
-    boostCount = resourceSnapshot.availableBoost;
+    const clampedBoost = resourceSnapshot.availableBoost;
+
+    // 在庫価値からアメブ分を除いた残りを通常アメに配分
+    // (byInventory は在庫価値ベースで effectiveBoost + effectiveNormal を計算したが、
+    //  アメブがクランプされたことで余剰分を通常アメに回せる)
+    const invValue = resourceSnapshot.availableInventoryValue;
+    const effectiveNormal = Math.min(
+      targetForConstraint.normalValue,
+      Math.max(0, invValue - clampedBoost)
+    );
+
+    // アメブ部分をクランプして再計算
+    const boostResult = clampedBoost > 0 && boostKind !== 'none'
+      ? calcLevelByCandy({
+        srcLevel: pokemon.srcLevel,
+        dstLevel: pokemon.dstLevel,
+        dstExpInLevel: pokemon.dstExpInLevel ?? 0,
+        expType: pokemon.expType,
+        nature: pokemon.nature,
+        boost: boostKind,
+        candy: clampedBoost,
+        expGot: pokemon.expGot,
+      })
+      : { level: pokemon.srcLevel, expGot: pokemon.expGot, shards: 0, candyUsed: 0 };
+
+    // 通常アメ部分: 在庫価値で供給可能な範囲
+    const normalResult = effectiveNormal > 0
+      ? calcLevelByCandy({
+        srcLevel: boostResult.level,
+        dstLevel: pokemon.dstLevel,
+        dstExpInLevel: pokemon.dstExpInLevel ?? 0,
+        expType: pokemon.expType,
+        nature: pokemon.nature,
+        boost: 'none',
+        candy: effectiveNormal,
+        expGot: boostResult.expGot,
+      })
+      : { level: boostResult.level, expGot: boostResult.expGot, shards: 0, candyUsed: 0 };
+
+    boostCount = boostResult.candyUsed ?? clampedBoost;
+    normalCount = normalResult.candyUsed ?? normalCount;
+    candyNeedForReachable = boostCount + normalCount;
+    shardsCount = (boostResult.shards ?? 0) + (normalResult.shards ?? 0);
   }
 
   if (candyNeedForReachable <= 0) {
@@ -1015,7 +1062,7 @@ function calcReachableItems(
   const speciesKey = String(pokemon.pokedexId);
   const speciesAvailable = inventory.species[speciesKey] ?? 0;
   const speciesUsed = Math.min(speciesAvailable, candyNeedForReachable);
-  let remaining = candyNeedForReachable - speciesUsed * CANDY_VALUES.species;
+  const remaining = candyNeedForReachable - speciesUsed * CANDY_VALUES.species;
 
   const typeStock = inventory.typeCandy[pokemon.type] ?? { s: 0, m: 0 };
   const universalStock = inventory.universal;

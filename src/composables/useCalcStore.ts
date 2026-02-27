@@ -1,5 +1,6 @@
 import { computed, nextTick, ref, toRaw, watch, type Ref } from "vue";
 import type { Composer } from "vue-i18n";
+import type { AppLocale } from "../i18n";
 import type { BoostEvent, ExpGainNature, ExpType, SleepSettings } from "../domain/types";
 import { calcExp, calcExpAndCandy, calcExpAndCandyMixed, calcLevelByCandy } from "../domain/pokesleep";
 import { boostRules, defaultBoostKind } from "../domain/pokesleep/boost-config";
@@ -38,10 +39,9 @@ export type CalcExportRow = {
   normalCandy: number;
   totalCandy: number;
   shards: number;
-  shortage: number;
 };
 
-export type CalcExportTotals = { boostCandy: number; normalCandy: number; totalCandy: number; shards: number; shortage: number };
+export type CalcExportTotals = { boostCandy: number; normalCandy: number; totalCandy: number; shards: number };
 
 export type CalcBoxPlannerPatch = {
   boxId: string;
@@ -75,8 +75,6 @@ export type CalcStore = {
 
   // UI state
   exportOpen: Ref<boolean>;
-  openLevelPickRowId: Ref<string | null>;
-  openLevelPickKind: Ref<"src" | "dst" | "boost">;
   dragRowId: Ref<string | null>;
   dragOverRowId: Ref<string | null>;
 
@@ -88,7 +86,7 @@ export type CalcStore = {
   rowsView: Readonly<Ref<CalcRowView[]>>;
 
   exportRows: Readonly<Ref<CalcExportRow[]>>;
-  exportTotals: Readonly<Ref<CalcExportTotals>>;
+  exportActualTotals: Readonly<Ref<CalcExportTotals>>;
   exportScale: Readonly<Ref<number>>;
 
   totalShardsUsed: Readonly<Ref<number>>;
@@ -159,12 +157,9 @@ export type CalcStore = {
   removeRowById: (id: string) => void;
 
   switchToSlot: (slotIndex: number) => void;
+  swapSlots: (fromIndex: number, toIndex: number) => void;
 
-  // row UI: level picker / drag reorder
-  openDstLevelPick: (id: string) => void;
-  openSrcLevelPick: (id: string) => void;
-  openBoostLevelPick: (id: string) => void;
-  closeLevelPick: () => void;
+  // row UI: level / drag reorder
   nudgeDstLevel: (id: string, delta: number) => void;
   nudgeSrcLevel: (id: string, delta: number) => void;
   nudgeBoostLevel: (id: string, delta: number) => void;
@@ -178,17 +173,13 @@ export type CalcStore = {
   onRowBoostLevel: (id: string, v: string) => void;
   onRowBoostRatio: (id: string, v: string) => void;
   onRowBoostCandy: (id: string, v: string) => void;
+  resetRowBoostCandy: (id: string) => void;
 
+  moveRow: (fromId: string, toIndex: number) => void;
   moveRowUp: (id: string) => void;
   moveRowDown: (id: string) => void;
   canMoveRowUp: (id: string) => boolean;
   canMoveRowDown: (id: string) => boolean;
-  onRowDragStart: (id: string, ev: DragEvent) => void;
-  onRowDragEnd: () => void;
-  onRowDragOver: (overId: string) => void;
-  onRowDragLeave: (overId: string) => void;
-  onRowDrop: (overId: string) => void;
-
   // box bridge helpers (pure-ish)
   upsertFromBox: (opts: {
     boxId: string;
@@ -206,7 +197,7 @@ export type CalcStore = {
 };
 
 export function useCalcStore(opts: {
-  locale: Ref<string>;
+  locale: Ref<AppLocale>;
   t: Composer["t"];
   resolveTitleByBoxId?: (boxId: string) => string | null;
   resolvePokedexIdByBoxId?: (boxId: string) => number | undefined;
@@ -214,7 +205,7 @@ export function useCalcStore(opts: {
   const { locale, t, resolveTitleByBoxId, resolvePokedexIdByBoxId } = opts;
 
   function fmtNum(n: number): string {
-    return new Intl.NumberFormat(locale.value as any).format(n);
+    return new Intl.NumberFormat(locale.value).format(n);
   }
 
 
@@ -239,22 +230,7 @@ export function useCalcStore(opts: {
 
   const activeSlotTab = ref(loadActiveSlot());
 
-  // 現在のスロットからデータを読み込み
-  function getSlotData(slotIndex: number) {
-    const slot = slots.value[slotIndex];
-    if (slot) {
-      return {
-        rows: cloneCalcRows(slot.rows),
-        activeRowId: slot.activeRowId ?? slot.rows[0]?.id ?? null,
-      };
-    }
-    // 空のスロットは空の状態で開始
-    return { rows: [], activeRowId: null };
-  }
-
-  // 初期データは現在のスロットから
-  const initialData = getSlotData(activeSlotTab.value);
-  // ただし、まだcloneCalcRowsが定義されていないのでlegacyの方法で
+  // 現在のスロットからデータを読み込む（cloneCalcRowsがまだ定義されていないのでlegacyの方法で）
   const slot0 = slots.value[activeSlotTab.value];
 
   // boostKind: スロットから取得（読み取り専用computed）
@@ -407,12 +383,12 @@ export function useCalcStore(opts: {
   );
 
   function cloneCalcRows(entries: CalcRow[]): CalcRow[] {
-    const raw = toRaw(entries) as any;
-    return JSON.parse(JSON.stringify(raw));
+    const raw = toRaw(entries);
+    return JSON.parse(JSON.stringify(raw)) as CalcRow[];
   }
   function cloneCalcSlots(v: Array<CalcSaveSlotV1 | null>): Array<CalcSaveSlotV1 | null> {
-    const raw = toRaw(v) as any;
-    return JSON.parse(JSON.stringify(raw));
+    const raw = toRaw(v);
+    return JSON.parse(JSON.stringify(raw)) as Array<CalcSaveSlotV1 | null>;
   }
 
   // 現在のスロットにデータを保存
@@ -454,11 +430,35 @@ export function useCalcStore(opts: {
       // 空スロットは null（デフォルト値を使用）
       boostCandyRemaining.value = null;
     }
-    openLevelPickRowId.value = null;
 
     // undo/redoスタックをクリア
     undoStack.value = [];
     redoStack.value = [];
+  }
+
+  // スロットの位置を入れ替え（タブドラッグ用）
+  function swapSlots(fromIndex: number, toIndex: number) {
+    if (fromIndex === toIndex) return;
+    if (fromIndex < 0 || fromIndex > 2 || toIndex < 0 || toIndex > 2) return;
+
+    // 現在のスロットに保存
+    saveToCurrentSlot();
+
+    // slots配列を入れ替え
+    const newSlots = [...slots.value];
+    const tmp = newSlots[fromIndex];
+    newSlots[fromIndex] = newSlots[toIndex];
+    newSlots[toIndex] = tmp;
+    slots.value = newSlots;
+
+    // activeSlotTab を追従（アクティブなスロットが移動した場合）
+    if (activeSlotTab.value === fromIndex) {
+      activeSlotTab.value = toIndex;
+      saveActiveSlot(toIndex);
+    } else if (activeSlotTab.value === toIndex) {
+      activeSlotTab.value = fromIndex;
+      saveActiveSlot(fromIndex);
+    }
   }
 
 
@@ -504,7 +504,6 @@ export function useCalcStore(opts: {
     rows.value = s.rows;
     activeRowId.value = s.activeRowId;
     slots.value = s.slots;
-    openLevelPickRowId.value = null;
   }
 
   function beginUndo() {
@@ -529,7 +528,6 @@ export function useCalcStore(opts: {
     beginUndo();
     rows.value = [];
     activeRowId.value = null;
-    openLevelPickRowId.value = null;
   }
 
   function removeRowById(id: string) {
@@ -538,7 +536,6 @@ export function useCalcStore(opts: {
     beginUndo();
     rows.value = rows.value.filter((x) => x.id !== id);
     if (activeRowId.value === id) activeRowId.value = rows.value[0]?.id ?? null;
-    openLevelPickRowId.value = null;
   }
 
 
@@ -557,8 +554,6 @@ export function useCalcStore(opts: {
     });
   }
 
-  const openLevelPickRowId = ref<string | null>(null);
-  const openLevelPickKind = ref<"src" | "dst" | "boost">("dst");
   const dragRowId = ref<string | null>(null);
   const dragOverRowId = ref<string | null>(null);
 
@@ -566,22 +561,6 @@ export function useCalcStore(opts: {
     const n = typeof v === "number" ? v : Number(v);
     if (!Number.isFinite(n)) return fallback;
     return Math.max(min, Math.min(max, Math.floor(n)));
-  }
-
-  function openDstLevelPick(id: string) {
-    openLevelPickKind.value = "dst";
-    openLevelPickRowId.value = openLevelPickRowId.value === id ? null : id;
-  }
-  function openSrcLevelPick(id: string) {
-    openLevelPickKind.value = "src";
-    openLevelPickRowId.value = openLevelPickRowId.value === id ? null : id;
-  }
-  function openBoostLevelPick(id: string) {
-    openLevelPickKind.value = "boost";
-    openLevelPickRowId.value = openLevelPickRowId.value === id ? null : id;
-  }
-  function closeLevelPick() {
-    openLevelPickRowId.value = null;
   }
 
   function updateRow(id: string, patch: Partial<CalcRow>) {
@@ -611,9 +590,9 @@ export function useCalcStore(opts: {
     }
 
     // expRemaining から expGot を計算
-    // expRemaining が未指定（undefined）の場合は expGot = 0（あとEXP = 次Lvの全EXP として計算）
+    // expRemaining が未指定（undefined）または 0 の場合は expGot = 0（あとEXP = 次Lvの全EXP として計算）
     const toNextLevel = calcExp(srcLevel, srcLevel + 1, expType);
-    const expGot = expRemaining !== undefined ? Math.max(0, toNextLevel - expRemaining) : 0;
+    const expGot = (expRemaining !== undefined && expRemaining > 0) ? Math.max(0, toNextLevel - expRemaining) : 0;
 
     // 目標Lvモード: dstExpInLevel = 0（目標Lvにちょうど到達）
     const dstExpInLevel = 0;
@@ -667,10 +646,18 @@ export function useCalcStore(opts: {
 
 
   function setDstLevel(id: string, v: unknown) {
+    activeRowId.value = id;
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
     const dst = clampInt(v, r.srcLevel, MAX_LEVEL, r.dstLevel);
     updateRow(id, { dstLevel: dst, ...calcCandyPatch({ srcLevel: r.srcLevel, dstLevel: dst, expType: r.expType, nature: r.nature, expRemaining: r.expRemaining, excludeRowId: id }) });
+  }
+  /** アメブ個数を現在の目標Lvのまま再計算（リセット） */
+  function resetRowBoostCandy(id: string) {
+    activeRowId.value = id;
+    const r = rows.value.find((x) => x.id === id);
+    if (!r) return;
+    updateRow(id, calcCandyPatch({ srcLevel: r.srcLevel, dstLevel: r.dstLevel, expType: r.expType, nature: r.nature, expRemaining: r.expRemaining, excludeRowId: id }));
   }
   function nudgeDstLevel(id: string, delta: number) {
     const r = rows.value.find((x) => x.id === id);
@@ -678,6 +665,7 @@ export function useCalcStore(opts: {
     setDstLevel(id, r.dstLevel + delta);
   }
   function setSrcLevel(id: string, v: unknown) {
+    activeRowId.value = id;
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
     const src = clampInt(v, 1, r.dstLevel, r.srcLevel);
@@ -691,13 +679,14 @@ export function useCalcStore(opts: {
     setSrcLevel(id, r.srcLevel + delta);
   }
   function setBoostLevel(id: string, v: unknown) {
+    activeRowId.value = id;
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
     const mid = clampInt(v, r.srcLevel, r.dstLevel, r.srcLevel);
 
-    // expGot を計算
+    // expGot を計算（expRemaining が undefined または 0 なら expGot = 0）
     const toNextLevel = calcExp(r.srcLevel, r.srcLevel + 1, r.expType);
-    const expGot = r.expRemaining !== undefined ? Math.max(0, toNextLevel - r.expRemaining) : 0;
+    const expGot = (r.expRemaining !== undefined && r.expRemaining > 0) ? Math.max(0, toNextLevel - r.expRemaining) : 0;
 
     // 目標Lvモード: dstExpInLevel = 0（目標Lvにちょうど到達）
     const dstExpInLevel = 0;
@@ -730,10 +719,13 @@ export function useCalcStore(opts: {
   }
 
   function onRowExpRemaining(id: string, v: string) {
+    activeRowId.value = id;
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
     const toNext = Math.max(0, calcExp(r.srcLevel, r.srcLevel + 1, r.expType));
-    const rem = clampInt(v, 0, toNext, toNext);
+    // 空文字 or 0 → toNext（レベルアップ直後扱い）
+    const parsed = v.trim() === "" ? toNext : clampInt(v, 1, toNext, toNext);
+    const rem = parsed === 0 ? toNext : parsed;
 
     // candyPeak/boostOrExpAdjustment を再計算（expRemaining を渡して内部で expGot を計算）
     const candyPatch = calcCandyPatch({
@@ -748,29 +740,33 @@ export function useCalcStore(opts: {
     updateRow(id, { expRemaining: rem, ...candyPatch });
   }
   function onRowNature(id: string, v: string) {
-    const nat: ExpGainNature = v === "up" || v === "down" || v === "normal" ? (v as any) : "normal";
+    activeRowId.value = id;
+    const nat: ExpGainNature = v === "up" || v === "down" || v === "normal" ? v : "normal";
     updateRow(id, { nature: nat });
   }
   function onRowCandyTarget(id: string, v: string) {
+    activeRowId.value = id;
     // 空欄 = undefined (制限なし)、0以上 = 有効な目標値
     const n = v.trim() === "" ? undefined : Math.max(0, Math.floor(Number(v) || 0));
     updateRow(id, { candyTarget: n });
   }
   function onRowBoostLevel(id: string, v: string) {
+    activeRowId.value = id;
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
     const mid = clampInt(v, r.srcLevel, r.dstLevel, r.srcLevel);
     updateRow(id, { boostReachLevel: mid, mode: "targetLevel" });
   }
   function onRowBoostRatio(id: string, v: string) {
+    activeRowId.value = id;
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
 
     const pct = clampInt(v, 0, 100, 0);
 
-    // ピークを計算
+    // ピークを計算（expRemaining が undefined または 0 なら expGot = 0）
     const toNext = Math.max(0, calcExp(r.srcLevel, r.srcLevel + 1, r.expType));
-    const expGot = r.expRemaining !== undefined ? Math.max(0, toNext - r.expRemaining) : 0;
+    const expGot = (r.expRemaining !== undefined && r.expRemaining > 0) ? Math.max(0, toNext - r.expRemaining) : 0;
 
     let computedPeak: number;
     if (r.srcLevel === r.dstLevel) {
@@ -838,11 +834,12 @@ export function useCalcStore(opts: {
    * ※ MAX_LEVEL到達に必要なアメ数を上限としてクランプ
    */
   function onRowBoostCandy(id: string, v: string) {
+    activeRowId.value = id;
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
 
     const toNext = Math.max(0, calcExp(r.srcLevel, r.srcLevel + 1, r.expType));
-    const expGot = r.expRemaining !== undefined ? Math.max(0, toNext - r.expRemaining) : 0;
+    const expGot = (r.expRemaining !== undefined && r.expRemaining > 0) ? Math.max(0, toNext - r.expRemaining) : 0;
 
     // MAX_LEVEL到達に必要なアメ数を計算（クランプ用上限）
     let maxCandyForMaxLevel: number;
@@ -1025,41 +1022,12 @@ export function useCalcStore(opts: {
     moveRow(id, i + 1);
   }
 
-  function onRowDragStart(id: string, ev: DragEvent) {
-    dragRowId.value = id;
-    dragOverRowId.value = null;
-    try {
-      ev.dataTransfer?.setData("text/plain", id);
-      ev.dataTransfer?.setDragImage?.((ev.target as HTMLElement) ?? new Image(), 0, 0);
-    } catch {
-      // ignore
-    }
-  }
-  function onRowDragEnd() {
-    dragRowId.value = null;
-    dragOverRowId.value = null;
-  }
-  function onRowDragOver(overId: string) {
-    if (!dragRowId.value) return;
-    if (overId === dragOverRowId.value) return;
-    dragOverRowId.value = overId;
-  }
-  function onRowDragLeave(overId: string) {
-    if (dragOverRowId.value === overId) dragOverRowId.value = null;
-  }
-  function onRowDrop(overId: string) {
-    const fromId = dragRowId.value;
-    if (!fromId) return;
-    if (fromId === overId) return onRowDragEnd();
-    const to = indexOfRow(overId);
-    if (to < 0) return onRowDragEnd();
-    moveRow(fromId, to);
-    onRowDragEnd();
-  }
-
   function calcRowExpGot(r: CalcRow): { toNext: number; expGot: number; expRemaining: number } {
     const toNext = Math.max(0, calcExp(r.srcLevel, r.srcLevel + 1, r.expType));
-    const remaining = clampInt(r.expRemaining, 0, toNext, toNext);
+    // expRemaining === 0 は「次Lvまで残り0 = 既にレベルアップ済み」で論理矛盾。
+    // 0 および undefined は toNext（そのLvの最大値 = レベルアップ直後）として扱う。
+    const raw = r.expRemaining;
+    const remaining = (raw === undefined || raw === 0) ? toNext : clampInt(raw, 1, toNext, toNext);
     if (toNext <= 0) return { toNext: 0, expGot: 0, expRemaining: remaining };
     const got = toNext - remaining;
     return { toNext, expGot: Math.max(0, Math.min(got, toNext)), expRemaining: remaining };
@@ -1207,14 +1175,10 @@ export function useCalcStore(opts: {
       const p = getPokemonResult(r.id);
       if (!p) return null;
 
-      // 個数指定がある場合は candyTarget 行の値を使用
-      const hasCandyTarget = r.candyTarget != null && r.candyTarget >= 0;
-      const boostCandy = hasCandyTarget ? (p.candyTargetBoost ?? 0) : p.targetBoost;
-      const normalCandy = hasCandyTarget ? (p.candyTargetNormal ?? 0) : p.targetNormal;
-      const shards = hasCandyTarget ? (p.candyTargetShards ?? 0) : p.targetShards;
-      const displayDstLevel = hasCandyTarget && p.candyTarget !== undefined
-        ? p.reachedLevel  // 個数指定時は到達Lvを表示
-        : r.dstLevel;
+      // 実使用（reachableItems）ベースの値を使用
+      const boostCandy = p.reachableItems.boostCount;
+      const normalCandy = p.reachableItems.normalCount;
+      const shards = p.reachableItems.shardsCount;
 
       // アメ補填情報
       const parts: string[] = [];
@@ -1223,7 +1187,6 @@ export function useCalcStore(opts: {
       if (p.reachableItems.universalL > 0) parts.push(`${t("calc.candy.uniAbbr")}L${p.reachableItems.universalL}`);
       if (p.reachableItems.universalM > 0) parts.push(`${t("calc.candy.uniAbbr")}M${p.reachableItems.universalM}`);
       if (p.reachableItems.universalS > 0) parts.push(`${t("calc.candy.uniAbbr")}S${p.reachableItems.universalS}`);
-      if (p.shortage.candy > 0) parts.push(`${t("calc.candy.shortage")}${p.shortage.candy}`);
       const candySupply = parts.join(" ");
 
       return {
@@ -1231,28 +1194,22 @@ export function useCalcStore(opts: {
         title: String(r.title ?? "").trim() || "(no name)",
         natureLabel: natureLabel(r.nature),
         srcLevel: r.srcLevel,
-        dstLevel: displayDstLevel,
+        dstLevel: p.reachedLevel,
         boostCandy,
         normalCandy,
         totalCandy: boostCandy + normalCandy,
         shards,
         candySupply,
-        shortage: p.shortage.candy,
       };
     }).filter((x): x is NonNullable<typeof x> => x !== null);
   });
 
-  const exportTotals = computed(() => {
-    let boostCandy = 0;
-    let normalCandy = 0;
-    let shards = 0;
-    for (const r of exportRows.value) {
-      boostCandy += r.boostCandy;
-      normalCandy += r.normalCandy;
-      shards += r.shards;
-    }
-    const shortage = exportRows.value.reduce((sum, r) => sum + r.shortage, 0);
-    return { boostCandy, normalCandy, totalCandy: boostCandy + normalCandy, shards, shortage };
+  const exportActualTotals = computed(() => {
+    if (!planResult.value) return { boostCandy: 0, normalCandy: 0, totalCandy: 0, shards: 0 };
+    const boostCandy = planResult.value.actualBoostTotal;
+    const normalCandy = planResult.value.actualNormalTotal;
+    const shards = planResult.value.actualShardsTotal;
+    return { boostCandy, normalCandy, totalCandy: boostCandy + normalCandy, shards };
   });
 
   const exportScale = computed(() => {
@@ -1264,8 +1221,8 @@ export function useCalcStore(opts: {
     return 0.76;
   });
 
-  // 理論値ベースのかけら合計 (planResult から取得)
-  const totalShardsUsed = computed(() => planResult.value?.theoreticalShardsTotal ?? 0);
+  // 実使用ベースのかけら合計 (planResult から取得)
+  const totalShardsUsed = computed(() => planResult.value?.actualShardsTotal ?? 0);
   const shardsCap = computed(() => Math.max(0, Math.floor(Number(totalShards.value) || 0)));
   const shardsOver = computed(() => totalShardsUsed.value - shardsCap.value);
   const shardsUsedPct = computed(() => (shardsCap.value > 0 ? (totalShardsUsed.value / shardsCap.value) * 100 : 0));
@@ -1285,8 +1242,8 @@ export function useCalcStore(opts: {
     return Math.min(100, Math.max(0, 100 - shardsFillPctForBar.value));
   });
 
-  // 理論値ベースのアメブ合計 (planResult から取得)
-  const totalBoostCandyUsed = computed(() => planResult.value?.theoreticalBoostTotal ?? 0);
+  // 実使用ベースのアメブ合計 (planResult から取得)
+  const totalBoostCandyUsed = computed(() => planResult.value?.actualBoostTotal ?? 0);
   // アメブ種別による上限（デフォルト値）
   const boostCandyDefaultCap = computed(() => {
     if (boostKind.value === "mini") return 350;
@@ -1320,13 +1277,13 @@ export function useCalcStore(opts: {
     const activeId = activeRowId.value;
     if (!activeId || !planResult.value) return 0;
     const p = planResult.value.pokemons.find(p => p.id === activeId);
-    return p?.targetShards ?? 0;
+    return p?.reachableItems.shardsCount ?? 0;
   });
   const activeRowBoostCandyUsed = computed(() => {
     const activeId = activeRowId.value;
     if (!activeId || !planResult.value) return 0;
     const p = planResult.value.pokemons.find(p => p.id === activeId);
-    return p?.targetBoost ?? 0;
+    return p?.reachableItems.boostCount ?? 0;
   });
 
   // バー用: 選択中ポケモン分のかけら%（超過がない場合のみ正しく表示）
@@ -1423,7 +1380,7 @@ export function useCalcStore(opts: {
 
       const pokemonType = r.pokemonType || getPokemonType(pokedexId);
       const toNextLevel = calcExp(r.srcLevel, r.srcLevel + 1, r.expType);
-      const expGot = Math.max(0, toNextLevel - r.expRemaining);
+      const expGot = (r.expRemaining > 0) ? Math.max(0, toNextLevel - r.expRemaining) : 0;
 
       // ピークと入力値からアメ数を計算
       const peak = r.candyPeak || r.ui.boostCandyInput;
@@ -1621,7 +1578,7 @@ export function useCalcStore(opts: {
     return planResult.value.universalUsed;
   });
 
-  // 万能アメの必要数（サマリー用、理論値ベース）
+  // 万能アメの必要数（サマリー用、実使用ベース）
   const universalCandyNeeded = computed(() => {
     if (!planResult.value) return { s: 0, m: 0, l: 0, total: 0 };
 
@@ -1630,8 +1587,8 @@ export function useCalcStore(opts: {
     let totalL = 0;
 
     for (const p of planResult.value.pokemons) {
-      // 理論値行（個数指定があれば candyTargetItems、なければ targetItems）を使用
-      const items = getTheoreticalRow(p);
+      // 実使用（reachableItems）を使用
+      const items = p.reachableItems;
       totalS += items.universalS;
       totalM += items.universalM;
       totalL += items.universalL;
@@ -1703,7 +1660,14 @@ export function useCalcStore(opts: {
           if (!anchorEl.isConnected) return;
           const nextTop = anchorEl.getBoundingClientRect().top;
           const dy = nextTop - prevTop;
-          if (Math.abs(dy) > 1) window.scrollBy(0, dy);
+          if (Math.abs(dy) > 1) {
+            const scrollEl = document.querySelector('.shell__scroll');
+            if (scrollEl) {
+              scrollEl.scrollBy(0, dy);
+            } else {
+              window.scrollBy(0, dy);
+            }
+          }
         });
       });
     });
@@ -1736,8 +1700,6 @@ export function useCalcStore(opts: {
     updateSleepSettings,
 
     exportOpen,
-    openLevelPickRowId,
-    openLevelPickKind,
     dragRowId,
     dragOverRowId,
 
@@ -1748,7 +1710,7 @@ export function useCalcStore(opts: {
     rowsView,
 
     exportRows,
-    exportTotals,
+    exportActualTotals,
     exportScale,
 
     totalShardsUsed,
@@ -1805,11 +1767,8 @@ export function useCalcStore(opts: {
     removeRowById,
 
     switchToSlot,
+    swapSlots,
 
-    openDstLevelPick,
-    openSrcLevelPick,
-    openBoostLevelPick,
-    closeLevelPick,
     nudgeDstLevel,
     nudgeSrcLevel,
     nudgeBoostLevel,
@@ -1823,16 +1782,13 @@ export function useCalcStore(opts: {
     onRowBoostLevel,
     onRowBoostRatio,
     onRowBoostCandy,
+    resetRowBoostCandy,
 
+    moveRow,
     moveRowUp,
     moveRowDown,
     canMoveRowUp,
     canMoveRowDown,
-    onRowDragStart,
-    onRowDragEnd,
-    onRowDragOver,
-    onRowDragLeave,
-    onRowDrop,
 
     upsertFromBox,
     buildPlannerPatchFromRow,

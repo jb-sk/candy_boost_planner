@@ -294,11 +294,7 @@ export function calcCandyTargetFromSleepExp(params: {
     return 0;
   }
 
-  // 不足EXP = expNeed - sleepExp
-  // この分をアメでカバーする必要がある
-  const expShortage = expNeed - sleepExp;
-
-  // 二分探索で「expShortage以上のEXPを稼げる最小のcandyTarget」を求める
+  // 二分探索で「(expNeed - sleepExp)以上のEXPを稼げる最小のcandyTarget」を求める
   // candyTarget が小さいほど残EXPが大きい
   // candyTarget=0 → 残EXP=expNeed
   // candyTarget=maxCandy → 残EXP=0
@@ -426,7 +422,6 @@ function calcExpFromCandyTarget(
         carry = expPerCandy * toUse - requiredExp;
         level++;
       } else {
-        carry += expPerCandy * toUse;
         break;
       }
     }
