@@ -2,7 +2,7 @@
 # Local-only (do not commit)
 # ------------------------------
 _local/
-.agent/*
+.agent/
 .sub-agent/
 .gemini/
 .geminiignore

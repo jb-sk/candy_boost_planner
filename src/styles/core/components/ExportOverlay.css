@@ -35,6 +35,188 @@
   display: none;
 }
 
+/* During capture: neutralise flex/margin centering so html2canvas
+   renders the sheet at (0,0) instead of offset by the parent layout.
+   Also force the sheet to expand to its full natural height —
+   old iOS Safari clips the canvas to the viewport unless overflow is
+   visible and the element is fully expanded. */
+.exportSheet--capture {
+  margin: 0 !important;
+  position: relative !important;
+  left: 0 !important;
+  top: 0 !important;
+  overflow: visible !important;
+  max-height: none !important;
+  transform: none !important;
+  min-height: auto !important;
+  /* width は JS のラッパー要素で制御する（el 自体には触れない）。
+     padding はデスクトップ用を無条件適用。 */
+  padding: 28px 32px !important;
+}
+
+/* --- Desktop layout forced during capture (viewport-independent) ---
+   モバイルでも @media (min-width:680px) と同等のレイアウトで画像保存する。
+   幅は JS のラッパーで最低 790px を保証するため、ここでは子要素のみ定義。 */
+
+.exportSheet--capture .exportHead {
+  margin-left: -32px;
+  margin-right: -32px;
+  padding-left: 32px;
+  padding-right: 32px;
+}
+
+.exportSheet--capture .exportMonth {
+  font-size: 18px;
+}
+
+.exportSheet--capture .exportCalcTop {
+  padding: 0 24px 8px;
+  margin: 0 -8px 0;
+}
+
+.exportSheet--capture .exportStats {
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+}
+
+.exportSheet--capture .exportList {
+  padding: 0 24px 8px;
+  margin: 0 -8px;
+}
+
+.exportSheet--capture .exportRanking {
+  margin: 0 -8px 0;
+  padding: 0 24px;
+}
+
+.exportSheet--capture .exportList__head {
+  display: grid;
+  grid-template-columns: 2fr 1fr repeat(4, 1fr);
+  gap: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  border-bottom: 2px solid var(--ink);
+  align-items: end;
+}
+
+.exportSheet--capture .exportList__row {
+  grid-template-columns: 2fr 1fr repeat(4, 1fr);
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.exportSheet--capture .exportList__nameCol {
+  grid-column: span 1;
+}
+
+.exportSheet--capture .exportList__lvInline {
+  display: none;
+}
+
+.exportSheet--capture .exportList__col.exportList__lvCol {
+  display: flex;
+  grid-column: span 1;
+  justify-self: center;
+  font-size: 15px;
+}
+
+.exportSheet--capture .exportList__col.u-align-right {
+  flex-direction: row;
+  align-items: center;
+  text-align: right;
+  justify-content: flex-end;
+}
+
+.exportSheet--capture .exportList__col.u-align-center {
+  flex-direction: row;
+  align-items: center;
+  text-align: center;
+  justify-content: center;
+}
+
+.exportSheet--capture .u-mobile-label {
+  display: none;
+}
+
+.exportSheet--capture .exportList__row--total {
+  padding: 12px 12px;
+}
+
+.exportSheet--capture .exportList__row--total .exportList__nameCol,
+.exportSheet--capture .exportList__row--total .exportList__lvCol {
+  display: block;
+  visibility: hidden;
+}
+
+.exportSheet--capture .exportList__row--total .exportList__numCol {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.exportSheet--capture .exportList__numCol .exportList__num {
+  font-size: 15px;
+}
+
+.exportSheet--capture .exportList__lvCol {
+  font-size: 15px;
+}
+
+.exportSheet--capture .exportRanking__total {
+  font-size: 15px;
+}
+
+.exportSheet--capture .exportRanking__total span:first-child {
+  font-size: 13px;
+}
+
+.exportSheet--capture .exportPie {
+  gap: 24px;
+}
+
+.exportSheet--capture .exportPie__svg {
+  width: 160px;
+  height: 160px;
+}
+
+.exportSheet--capture .exportPie__legend {
+  grid-template-columns: 14px auto auto;
+  column-gap: 10px;
+}
+
+.exportSheet--capture .exportPie__legendItem {
+  font-size: 15px;
+}
+
+.exportSheet--capture .exportPie__legendPct {
+  font-size: 16px;
+}
+
+.exportSheet--capture .exportPie__legendDetail {
+  padding-left: 24px;
+}
+
+.exportSheet--capture .exportRanking__itemGroup {
+  font-size: 15px;
+}
+
+.exportSheet--capture .exportRanking__itemLabel {
+  font-size: 13px;
+}
+
+/* During capture: prevent scroll-container clipping on old iOS Safari.
+   html2canvas clones the DOM into an iframe, but the cloned overlay may
+   still have overflow:auto which clips the canvas output. */
+.exportOverlay--capture {
+  overflow: visible !important;
+}
+
+.exportOverlay--capture .exportSheetWrap {
+  overflow: visible !important;
+  min-height: auto !important;
+}
+
 /* ===== Header ===== */
 .exportHead {
   border-bottom: 2px dashed var(--export-divider);
@@ -420,8 +602,8 @@
 /* ===== Pie Chart ===== */
 .exportPie {
   display: flex;
-  align-items: flex-start;
-  gap: 16px;
+  align-items: center;
+  gap: 20px;
 }
 
 .exportPie__svg {
@@ -443,25 +625,24 @@
 .exportPie__legend {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: 14px auto auto;
+  column-gap: 8px;
+  row-gap: 0;
+  align-items: center;
+  font-size: 13px;
+  justify-content: start;
 }
 
 .exportPie__legendItem {
-  display: grid;
-  grid-template-columns: 12px 1fr auto;
-  gap: 6px;
-  align-items: baseline;
-  font-size: 13px;
+  display: contents;
 }
 
 .exportPie__swatch {
-  width: 12px;
-  height: 12px;
-  border-radius: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
   flex-shrink: 0;
-  align-self: center;
 }
 .exportPie__swatch--0 { background: var(--pie-0); }
 .exportPie__swatch--1 { background: var(--pie-1); }
@@ -492,6 +673,8 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  padding: 2px 0 6px 22px;
+  font-size: 13px;
 }
 
 .exportRanking__itemGroup {
@@ -663,9 +846,17 @@
     font-size: 13px;
   }
 
+  .exportPie {
+    gap: 24px;
+  }
+
   .exportPie__svg {
     width: 160px;
     height: 160px;
+  }
+
+  .exportPie__legend {
+    column-gap: 10px;
   }
 
   .exportPie__legendItem {
@@ -674,6 +865,10 @@
 
   .exportPie__legendPct {
     font-size: 16px;
+  }
+
+  .exportPie__legendDetail {
+    padding-left: 24px;
   }
 
   .exportRanking__itemGroup {
