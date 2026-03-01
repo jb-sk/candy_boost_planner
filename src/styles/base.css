@@ -15,10 +15,13 @@
   --bg-decor: #f0fdf4;
   --paper: #ffffff;
   --ink: #1e293b;
+  --ink-rgb: 30, 41, 59;
   --muted: #64748b;
   --accent: #10b981;
+  --accent-rgb: 16, 185, 129;
   --accent-strong: #00a86e;
   --danger: #ef4444;
+  --danger-rgb: 239, 68, 68;
 
   /* Surfaces */
   --surface: #f8fafc;

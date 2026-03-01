@@ -8,10 +8,13 @@
   --bg-decor: #fff1f1;
   --paper: #ffffff;
   --ink: #1e293b;
+  --ink-rgb: 30, 41, 59;
   --muted: #475569;
   --accent: #00b4d8;
+  --accent-rgb: 0, 180, 216;
   --accent-strong: #00a0d0;
   --danger: #ef4444;
+  --danger-rgb: 239, 68, 68;
 
   /* Surfaces */
   --surface: #f0f9ff;

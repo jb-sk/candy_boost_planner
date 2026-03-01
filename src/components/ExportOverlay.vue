@@ -215,7 +215,7 @@
               </svg>
 
               <!-- Legend -->
-              <div :class="['exportPie__legend', pieSlices.length >= 4 && 'exportPie__legend--compact']">
+              <div :class="['exportPie__legend', pieSlices.length >= 3 && 'exportPie__legend--compact']">
                 <div v-for="slice in pieSlices" :key="slice.id" class="exportPie__legendItem" data-testid="rankingItem">
                   <span :class="`exportPie__swatch exportPie__swatch--${slice.colorIdx}`" :style="{ background: slice.fillColor }"></span>
                   <span class="exportPie__legendName">{{ slice.pokemonName }}</span>

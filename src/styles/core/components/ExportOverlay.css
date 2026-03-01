@@ -3,7 +3,10 @@
 /* ===== Overlay ===== */
 .exportOverlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 1000;
   background: var(--overlay-bg);
   overflow-y: auto;
@@ -28,7 +31,7 @@
   --export-bar-track: var(--bar-track);
   --export-danger: var(--danger);
   --export-divider: var(--border);
-  --export-section-bg: color-mix(in srgb, var(--ink) 5%, transparent);
+  --export-section-bg: rgba(var(--ink-rgb), 0.05);
 }
 
 .exportSheet--capture .exportActions {
@@ -74,7 +77,7 @@
 .exportSheet--capture .exportMonth {
   position: absolute;
   top: 14px;
-  right: 32px;
+  right: 48px;
   font-size: 22px;
 }
 
@@ -83,7 +86,7 @@
 }
 
 .exportSheet--capture .statCard__label {
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .exportSheet--capture .exportBarK {
@@ -91,11 +94,13 @@
 }
 
 .exportSheet--capture .exportBarK--right {
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .exportSheet--capture .exportList__name {
   font-size: 17px;
+  flex: 1;
+  min-width: 5em;
 }
 
 .exportSheet--capture .exportList__badge {
@@ -103,7 +108,7 @@
 }
 
 .exportSheet--capture .exportList__arrow {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .exportSheet--capture .exportCalcTop {
@@ -154,6 +159,9 @@
 
 .exportSheet--capture .exportList__nameCol {
   grid-column: span 1;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .exportSheet--capture .exportList__lvInline {
@@ -269,6 +277,7 @@
 
 .exportSheet--capture .exportPie__legend--compact .exportRanking__itemLabel {
   font-size: 14px;
+  margin-right: 3px;
 }
 
 /* During capture: prevent scroll-container clipping on old iOS Safari.
@@ -347,6 +356,7 @@
 }
 
 .exportCsvMenu__item {
+  -webkit-appearance: none;
   appearance: none;
   border: 0;
   width: 100%;
@@ -384,7 +394,7 @@
   color: var(--accent);
   margin: 20px 0 14px;
   padding-bottom: 6px;
-  border-bottom: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-bottom: 2px solid rgba(var(--accent-rgb), 0.25);
 }
 
 .exportSectionTitle:first-child {
@@ -431,13 +441,13 @@
   flex-direction: column;
   gap: 4px;
   padding: 10px 12px;
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  background: rgba(var(--ink-rgb), 0.04);
   border: none;
   border-radius: var(--radius-md);
 }
 
 .statCard--danger {
-  background: color-mix(in srgb, var(--export-danger) 8%, transparent);
+  background: rgba(var(--danger-rgb), 0.08);
 }
 
 .statCard__label {
@@ -501,7 +511,10 @@
 
 .exportBar__fill {
   position: absolute;
-  inset: 0 auto 0 0;
+  top: 0;
+  right: auto;
+  bottom: 0;
+  left: 0;
   width: 0%;
   border-radius: 4px;
   background: var(--export-bar-fill);
@@ -517,7 +530,7 @@
 
 .exportList__head {
   display: none;
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  background: rgba(var(--ink-rgb), 0.04);
 }
 
 .exportList__row {
@@ -526,7 +539,7 @@
   gap: 4px 8px;
   padding: 8px 0 8px 6px;
   align-items: center;
-  border-bottom: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+  border-bottom: 1px solid rgba(var(--ink-rgb), 0.08);
 }
 
 .exportList__nameCol {
@@ -550,10 +563,10 @@
 .exportList__name {
   font-weight: 700;
   font-size: 15px;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
   overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .exportList__badge {
@@ -562,6 +575,8 @@
   padding: 1px 5px;
   background: var(--surface-alt);
   color: var(--muted);
+  border-radius: 3px;
+  align-self: center;
 }
 
 .exportList__lvWrap {
@@ -573,7 +588,7 @@
 
 .exportList__arrow {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .exportList__col.u-align-right,
@@ -613,7 +628,7 @@
 
 /* Total row */
 .exportList__row--total {
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  background: rgba(var(--ink-rgb), 0.04);
   border-bottom: none;
   font-weight: 700;
   border-top: 2px solid var(--ink);
@@ -765,34 +780,9 @@
   border-radius: var(--radius-sm);
 }
 
-/* --- Compact legend (4+ Pokemon) --- */
-.exportPie__legend--compact {
-  grid-template-columns: 14px auto 1fr auto;
-}
-
-.exportPie__legend--compact .exportPie__legendDetail {
-  grid-column: auto;
-  padding: 0;
-  justify-content: flex-start;
-  font-size: 12px;
-}
-
-.exportPie__legend--compact .exportPie__legendName {
-  padding-top: 4px;
-}
-
-.exportPie__legend--compact .exportPie__legendPct {
-  padding-top: 4px;
-}
-
-.exportPie__legend--compact .exportRanking__itemGroup {
-  font-size: 12px;
-}
-
-.exportPie__legend--compact .exportRanking__itemLabel {
-  font-size: 11px;
-  padding: 0 4px;
-}
+/* --- Compact legend (3+ Pokemon): PC / capture only --- */
+/* Base (mobile) intentionally has no compact overrides so the legend
+   stays in the normal 2-line layout regardless of the class. */
 
 /* ===== Tablet+ single-row list (≥ 680px) ===== */
 @media (min-width: 680px) {
@@ -821,12 +811,13 @@
 
   .exportMeta {
     justify-content: flex-end;
+    padding-right: 16px;
   }
 
   .exportMonth {
     position: absolute;
     top: 14px;
-    right: 32px;
+    right: 48px;
     font-size: 22px;
   }
 
@@ -835,7 +826,7 @@
   }
 
   .statCard__label {
-    font-size: 14px;
+    font-size: 15px;
   }
 
   .exportBarK {
@@ -843,7 +834,7 @@
   }
 
   .exportBarK--right {
-    font-size: 14px;
+    font-size: 15px;
   }
 
   .exportCalcTop {
@@ -897,6 +888,9 @@
   /* Reset mobile overrides on name / lv columns */
   .exportList__nameCol {
     grid-column: span 1;
+    flex-wrap: nowrap;
+    overflow: hidden;
+    min-width: 0;
   }
 
   .exportList__lvInline {
@@ -958,6 +952,8 @@
 
   .exportList__name {
     font-size: 17px;
+    flex: 1;
+    min-width: 5em;
   }
 
   .exportList__badge {
@@ -965,7 +961,7 @@
   }
 
   .exportList__arrow {
-    font-size: 12px;
+    font-size: 13px;
   }
 
   .exportList__numCol .exportList__num {
@@ -1041,5 +1037,6 @@
 
   .exportPie__legend--compact .exportRanking__itemLabel {
     font-size: 14px;
+    margin-right: 3px;
   }
 }
