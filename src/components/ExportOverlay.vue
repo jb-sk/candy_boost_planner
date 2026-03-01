@@ -60,6 +60,7 @@
                 :class="{
                   [`statCard--${card.variant}`]: card.variant,
                   'statCard--danger': card.variant === 'danger',
+                  'statCard--wide': card.key === 'shards',
                 }"
                 data-testid="statCard"
               >
@@ -127,7 +128,7 @@
           <div class="exportList" :class="{ 'exportList--normal': !isBoostMode }">
             <div class="exportList__head" data-testid="listHead">
               <div class="exportList__col">{{ t("calc.export.colPokemon") }}</div>
-              <div class="exportList__col u-align-center">{{ t("calc.export.colLv") }}</div>
+              <div class="exportList__col exportList__lvHead">{{ t("calc.export.colLv") }}</div>
               <div v-if="isBoostMode" class="exportList__col u-align-right">{{ t("calc.export.colBoost") }}</div>
               <div v-if="isBoostMode" class="exportList__col u-align-right">{{ t("calc.export.colNormal") }}</div>
               <div class="exportList__col u-align-right">{{ t("calc.export.colTotal") }}</div>
