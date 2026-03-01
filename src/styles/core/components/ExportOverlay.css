@@ -65,28 +65,40 @@
   padding-right: 32px;
 }
 
+.exportSheet--capture .exportBrand {
+  font-size: 22px;
+}
+
 .exportSheet--capture .exportMonth {
-  font-size: 20px;
+  font-size: 22px;
 }
 
 .exportSheet--capture .exportSectionTitle {
-  font-size: 19px;
+  font-size: 21px;
 }
 
 .exportSheet--capture .statCard__label {
-  font-size: 13px;
+  font-size: 14px;
+}
+
+.exportSheet--capture .exportBarK {
+  font-size: 15px;
+}
+
+.exportSheet--capture .exportBarK--right {
+  font-size: 14px;
 }
 
 .exportSheet--capture .exportList__name {
-  font-size: 16px;
+  font-size: 17px;
 }
 
 .exportSheet--capture .exportList__badge {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .exportSheet--capture .exportList__arrow {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .exportSheet--capture .exportCalcTop {
@@ -113,7 +125,7 @@
   grid-template-columns: 2fr 1fr repeat(4, 1fr);
   gap: 8px;
   padding: 10px 12px;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--muted);
   border-bottom: 2px solid var(--ink);
@@ -138,7 +150,7 @@
   display: flex;
   grid-column: span 1;
   justify-self: center;
-  font-size: 15px;
+  font-size: 17px;
 }
 
 .exportSheet--capture .exportList__col.u-align-right {
@@ -176,19 +188,19 @@
 }
 
 .exportSheet--capture .exportList__numCol .exportList__num {
-  font-size: 15px;
+  font-size: 17px;
 }
 
 .exportSheet--capture .exportList__lvCol {
-  font-size: 15px;
+  font-size: 17px;
 }
 
 .exportSheet--capture .exportRanking__total {
-  font-size: 15px;
+  font-size: 17px;
 }
 
 .exportSheet--capture .exportRanking__total span:first-child {
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .exportSheet--capture .exportPie {
@@ -206,11 +218,11 @@
 }
 
 .exportSheet--capture .exportPie__legendItem {
-  font-size: 16px;
+  font-size: 17px;
 }
 
 .exportSheet--capture .exportPie__legendPct {
-  font-size: 16px;
+  font-size: 18px;
 }
 
 .exportSheet--capture .exportPie__legendDetail {
@@ -218,11 +230,11 @@
 }
 
 .exportSheet--capture .exportRanking__itemGroup {
-  font-size: 15px;
+  font-size: 17px;
 }
 
 .exportSheet--capture .exportRanking__itemLabel {
-  font-size: 14px;
+  font-size: 15px;
 }
 
 /* Compact legend overrides for capture */
@@ -234,15 +246,15 @@
   grid-column: auto;
   padding: 0;
   justify-content: flex-start;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .exportSheet--capture .exportPie__legend--compact .exportRanking__itemGroup {
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .exportSheet--capture .exportPie__legend--compact .exportRanking__itemLabel {
-  font-size: 13px;
+  font-size: 14px;
 }
 
 /* During capture: prevent scroll-container clipping on old iOS Safari.
@@ -788,16 +800,28 @@
     padding-right: 32px;
   }
 
+  .exportBrand {
+    font-size: 22px;
+  }
+
   .exportMonth {
-    font-size: 20px;
+    font-size: 22px;
   }
 
   .exportSectionTitle {
-    font-size: 19px;
+    font-size: 21px;
   }
 
   .statCard__label {
-    font-size: 13px;
+    font-size: 14px;
+  }
+
+  .exportBarK {
+    font-size: 15px;
+  }
+
+  .exportBarK--right {
+    font-size: 14px;
   }
 
   .exportCalcTop {
@@ -825,7 +849,7 @@
     grid-template-columns: 2fr 1fr repeat(4, 1fr);
     gap: 8px;
     padding: 10px 12px;
-    font-size: 12px;
+    font-size: 15px;
     font-weight: 700;
     color: var(--muted);
     border-bottom: 2px solid var(--ink);
@@ -852,7 +876,7 @@
     display: flex;
     grid-column: span 1;
     justify-self: center;
-    font-size: 15px;
+    font-size: 17px;
   }
 
   /* Number columns — single value, right-aligned */
@@ -894,7 +918,7 @@
 
   /* Enlarge list labels & numbers */
   .exportList__head {
-    font-size: 14px;
+    font-size: 15px;
   }
 
   .exportList__row {
@@ -902,23 +926,23 @@
   }
 
   .exportList__name {
-    font-size: 16px;
+    font-size: 17px;
   }
 
   .exportList__badge {
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .exportList__arrow {
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .exportList__numCol .exportList__num {
-    font-size: 15px;
+    font-size: 17px;
   }
 
   .exportList__lvCol {
-    font-size: 15px;
+    font-size: 17px;
   }
 
   .exportList__row--total {
@@ -928,11 +952,11 @@
 
 
   .exportRanking__total {
-    font-size: 15px;
+    font-size: 17px;
   }
 
   .exportRanking__total span:first-child {
-    font-size: 14px;
+    font-size: 15px;
   }
 
   .exportPie {
@@ -949,11 +973,11 @@
   }
 
   .exportPie__legendItem {
-    font-size: 16px;
+    font-size: 17px;
   }
 
   .exportPie__legendPct {
-    font-size: 16px;
+    font-size: 18px;
   }
 
   .exportPie__legendDetail {
@@ -961,11 +985,11 @@
   }
 
   .exportRanking__itemGroup {
-    font-size: 15px;
+    font-size: 17px;
   }
 
   .exportRanking__itemLabel {
-    font-size: 14px;
+    font-size: 15px;
   }
 
   /* Compact legend overrides for desktop */
@@ -977,14 +1001,14 @@
     grid-column: auto;
     padding: 0;
     justify-content: flex-start;
-    font-size: 14px;
+    font-size: 15px;
   }
 
   .exportPie__legend--compact .exportRanking__itemGroup {
-    font-size: 14px;
+    font-size: 15px;
   }
 
   .exportPie__legend--compact .exportRanking__itemLabel {
-    font-size: 13px;
+    font-size: 14px;
   }
 }
