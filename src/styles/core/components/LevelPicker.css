@@ -34,7 +34,7 @@
 .levelPick__button:focus-visible {
   outline: none;
   border-color: var(--ring);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 20%, transparent);
+  box-shadow: 0 0 0 3px rgba(var(--ring-rgb), 0.2);
 }
 
 /* ===== Popover ===== */
@@ -111,12 +111,12 @@
 }
 
 .levelChip:hover {
-  border-color: color-mix(in srgb, var(--ink) 28%, transparent);
+  border-color: rgba(var(--ink-rgb), 0.28);
 }
 
 .levelChip--on {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, var(--paper));
+  background: rgba(var(--accent-rgb), 0.12);
   color: var(--accent);
 }
 

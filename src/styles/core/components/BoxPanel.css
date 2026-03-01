@@ -3,7 +3,7 @@
 /* ===== Disclosure (Import / Add sections — appears first in DOM) ===== */
 .boxDisclosure {
   border: 1px solid var(--border);
-  background: color-mix(in oklab, var(--paper) 97%, var(--ink) 3%);
+  background: rgba(var(--ink-rgb), 0.03);
   border-radius: var(--radius-md);
   padding: 10px 12px;
   margin-top: 10px;
@@ -22,6 +22,7 @@
   color: var(--muted);
   width: 100%;
   text-align: left;
+  -webkit-appearance: none;
   appearance: none;
   background: transparent;
   border: 0;
@@ -168,7 +169,7 @@
 
 .boxTextarea:focus {
   border-color: var(--ring);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 20%, transparent);
+  box-shadow: 0 0 0 3px rgba(var(--ring-rgb), 0.2);
 }
 
 .boxTextarea::placeholder {
@@ -310,12 +311,12 @@
 }
 
 .chipBtn:hover {
-  border-color: color-mix(in oklab, var(--ink) 26%, transparent);
+  border-color: rgba(var(--ink-rgb), 0.26);
 }
 
 .chipBtn--on {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, var(--paper));
+  background: rgba(var(--accent-rgb), 0.12);
   color: var(--accent);
 }
 
@@ -335,7 +336,7 @@
 
 /* Favorite star special color when active */
 .chipBtn--iconOnly.chipBtn--on {
-  background: color-mix(in srgb, var(--accent) 15%, var(--paper));
+  background: rgba(var(--accent-rgb), 0.15);
   border-color: var(--accent);
 }
 
@@ -362,11 +363,17 @@
 }
 
 .boxAdvanced__summary {
+  display: block;
+  list-style: none;
   font-size: 13px;
   font-weight: 600;
   color: var(--muted);
   cursor: pointer;
   padding: 4px 0;
+}
+
+.boxAdvanced__summary::-webkit-details-marker {
+  display: none;
 }
 
 .boxAdvanced__content {
@@ -431,7 +438,7 @@
 }
 
 .boxAdvanced__item:hover {
-  background: color-mix(in oklab, var(--paper) 96%, var(--ink) 4%);
+  background: rgba(var(--ink-rgb), 0.04);
 }
 
 .boxAdvanced__check {
@@ -516,6 +523,7 @@
   transition: border-color 0.1s, box-shadow 0.1s;
   text-align: left;
   /* reset button styles */
+  -webkit-appearance: none;
   appearance: none;
   font: inherit;
   color: var(--ink);
@@ -528,13 +536,13 @@
 }
 
 .boxTile.boxTile--hover {
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  border-color: rgba(var(--accent-rgb), 0.4);
 }
 
 .boxTile--active {
   border-color: var(--accent);
   border-width: 2px;
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 25%, transparent), var(--shadow-md);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.25), var(--shadow-md);
   transform: scale(1.02);
   z-index: 10;
 }
@@ -579,7 +587,7 @@
   white-space: nowrap;
   font-family: var(--font-body);
   font-size: 12px;
-  color: color-mix(in oklab, var(--ink) 72%, var(--muted));
+  color: rgba(var(--ink-rgb), 0.72);
 }
 
 /* No star → Lv spans both rows and centers vertically */
@@ -665,7 +673,7 @@
 .boxDetail {
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px dashed color-mix(in oklab, var(--ink) 18%, transparent);
+  border-top: 1px dashed rgba(var(--ink-rgb), 0.18);
   --boxFieldH: 30px;
 }
 
@@ -676,8 +684,8 @@
   border-top: none;
   border-radius: var(--radius-md);
   padding: 10px;
-  border: 1px solid color-mix(in oklab, var(--ink) 12%, transparent);
-  background: color-mix(in oklab, var(--paper) 97%, var(--ink) 3%);
+  border: 1px solid rgba(var(--ink-rgb), 0.12);
+  background: rgba(var(--ink-rgb), 0.03);
   overflow-anchor: none;
 }
 
@@ -836,13 +844,13 @@
   font-weight: 500;
   font-size: 12px;
   line-height: 1.5;
-  color: color-mix(in oklab, var(--ink) 90%, transparent);
+  color: rgba(var(--ink-rgb), 0.9);
 }
 
 /* Static (read-only) field display */
 .boxDetail .field__input--static {
   background: var(--surface-alt);
-  color: color-mix(in oklab, var(--ink) 70%, var(--muted));
+  color: rgba(var(--ink-rgb), 0.7);
   cursor: default;
   border-style: dashed;
 }

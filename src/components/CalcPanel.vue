@@ -13,6 +13,10 @@
             <span class="calcSumInline__k">{{ t("calc.export.sumBoostTotal") }}</span>
             <span class="calcSumInline__v">{{ calc.fmtNum(calc.totalBoostCandyUsed.value) }}</span>
           </span>
+          <span class="calcSumInline calcSumInline--danger" v-if="calc.boostKind.value !== 'none' && calc.boostCandyUnused.value > 0 && calc.rowsView.value.length > 0">
+            <span class="calcSumInline__k">{{ t("calc.export.sumBoostUnused") }}</span>
+            <span class="calcSumInline__v">{{ calc.fmtNum(calc.boostCandyUnused.value) }}</span>
+          </span>
           <span class="calcSumInline" :class="{ 'calcSumInline--danger': calc.shardsOver.value > 0 }">
             <span class="calcSumInline__k">{{ t("calc.shardsTotal") }}</span>
             <span class="calcSumInline__v">{{ calc.fmtNum(calc.totalShardsUsed.value) }}</span>
@@ -229,11 +233,12 @@
               v-if="r.boxId"
               data-testid="applyToBoxBtn"
               class="linkBtn"
+              :class="{ 'linkBtn--done': applyFlashMap.has(r.id) }"
               type="button"
-              @click.stop="$emit('apply-to-box', r.id)"
+              @click.stop="onApplyToBoxWithFlash(r.id)"
               :title="t('calc.applyToBoxTitle')"
             >
-              {{ t("calc.applyToBox") }}
+              {{ applyFlashMap.has(r.id) ? `✓ ${t("status.reflected")}` : t("calc.applyToBox") }}
             </button>
             <button data-testid="deleteBtn" class="linkBtn linkBtn--danger" type="button" @click.stop="calc.removeRowById(r.id)">{{ t("common.delete") }}</button>
           </div>
@@ -566,7 +571,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, nextTick, onUnmounted } from "vue";
+import { computed, ref, reactive, nextTick, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import LevelPicker from "./LevelPicker.vue";
 import type { CalcStore, CalcRowView } from "../composables/useCalcStore";
@@ -598,6 +603,15 @@ const candyStore = useCandyStore();
 
 /** Sticky summary bar expand/collapse */
 const stickyExpanded = ref(false);
+
+/* ===== Button flash feedback ===== */
+const applyFlashMap = reactive(new Map<string, boolean>());
+
+function onApplyToBoxWithFlash(rowId: string) {
+  emit("apply-to-box", rowId);
+  applyFlashMap.set(rowId, true);
+  setTimeout(() => { applyFlashMap.delete(rowId); }, 1500);
+}
 
 /** 在庫未設定警告: ポケモン登録済みだが実使用のアメ・かけらが両方0 */
 const showNoStockWarning = computed(() => {

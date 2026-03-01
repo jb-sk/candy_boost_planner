@@ -29,7 +29,7 @@
   position: relative;
   padding: 16px 16px 12px;
   background: var(--paper);
-  border-bottom: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+  border-bottom: 1px solid rgba(var(--ink-rgb), 0.08);
 }
 
 /* Panel head — title + design switcher */
@@ -70,7 +70,7 @@
 
 .lang__btn {
   padding: 4px 10px;
-  border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+  border: 1px solid rgba(var(--ink-rgb), 0.12);
   border-radius: 99px;
   background: transparent;
   font-size: 0.75rem;
@@ -81,7 +81,7 @@
 }
 
 .lang__btn:hover:not(.lang__btn--on) {
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  background: rgba(var(--accent-rgb), 0.08);
 }
 
 .lang__btn--on {
@@ -214,7 +214,7 @@
 .field__input:focus {
   outline: none;
   border-color: var(--ring);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 20%, transparent);
+  box-shadow: 0 0 0 3px rgba(var(--ring-rgb), 0.2);
 }
 
 .field__input::placeholder {
@@ -266,6 +266,14 @@ select.field__input {
   filter: brightness(1.08);
 }
 
+/* ===== Success flash (temporary after action) ===== */
+.btn--done {
+  background: #16a34a;
+  color: #fff;
+  border-color: #16a34a;
+  pointer-events: none;
+}
+
 .btn--ghost {
   background: transparent;
   color: var(--accent);
@@ -310,6 +318,7 @@ select.field__input {
 
 /* ===== Link Buttons ===== */
 .linkBtn {
+  -webkit-appearance: none;
   appearance: none;
   background: transparent;
   border: 0;
@@ -327,6 +336,11 @@ select.field__input {
   color: var(--accent);
 }
 
+.linkBtn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
 .linkBtn:disabled {
   opacity: 0.3;
   cursor: default;
@@ -339,8 +353,15 @@ select.field__input {
 }
 
 .linkBtn--danger:hover:not(:disabled) {
-  color: color-mix(in srgb, var(--danger) 70%, var(--ink));
+  color: rgba(var(--danger-rgb), 0.7);
   opacity: 1;
+}
+
+.linkBtn--done {
+  color: #16a34a;
+  opacity: 1;
+  pointer-events: none;
+  text-decoration: none;
 }
 
 .linkBtn--basic {
@@ -410,7 +431,10 @@ select.field__input {
   .modal {
     max-width: 890px;
     margin: 0 auto;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
   }
 
   /* Keep Add-Pokémon modal compact (same as 680px) */

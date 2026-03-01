@@ -1188,7 +1188,8 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     addSubErrors.value = { "10": null, "25": null, "50": null, "75": null, "100": null };
   }
 
-  function onImport(opts?: { markFavorite?: boolean }) {
+  /** @returns number of entries actually added (0 = nothing imported) */
+  function onImport(opts?: { markFavorite?: boolean }): number {
     const markFav = opts?.markFavorite ?? false;
     const text = importText.value;
     const lines = text
@@ -1197,7 +1198,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
       .filter(Boolean);
     if (!lines.length) {
       importStatus.value = t("status.inputEmpty");
-      return;
+      return 0;
     }
     const undoSelectedId = selectedBoxId.value;
 
@@ -1250,6 +1251,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     boxEntries.value = next;
     if (addedIds.length) pushUndoAction({ kind: "import", addedIds, selectedId: undoSelectedId });
     importStatus.value = t("status.importResult", { added, skipped });
+    return added;
   }
 
   function onDeleteSelected() {

@@ -3387,43 +3387,7 @@ export const pokemonMaster: PokemonMasterEntry[] = [
   {
     "dexNo": 710,
     "pokedexId": 710,
-    "form": 0,
-    "formLabelJa": "おおだま",
-    "nameJa": "バケッチャ(おおだま)",
-    "baseNameJa": "バケッチャ",
-    "specialty": "Ingredients",
-    "type": "Ghost",
-    "typeJa": "ゴースト",
-    "expType": 600,
-    "ingredients": {
-      "a": "pumpkin",
-      "b": "soy",
-      "c": "potato"
-    },
-    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%90%E3%82%B1%E3%83%83%E3%83%81%E3%83%A3"
-  },
-  {
-    "dexNo": 710,
-    "pokedexId": 710,
-    "form": 0,
-    "formLabelJa": "ギガだま",
-    "nameJa": "バケッチャ(ギガだま)",
-    "baseNameJa": "バケッチャ",
-    "specialty": "Ingredients",
-    "type": "Ghost",
-    "typeJa": "ゴースト",
-    "expType": 600,
-    "ingredients": {
-      "a": "pumpkin",
-      "b": "soy",
-      "c": "potato"
-    },
-    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%90%E3%82%B1%E3%83%83%E3%83%81%E3%83%A3"
-  },
-  {
-    "dexNo": 710,
-    "pokedexId": 710,
-    "form": 0,
+    "form": 7,
     "formLabelJa": "こだま",
     "nameJa": "バケッチャ(こだま)",
     "baseNameJa": "バケッチャ",
@@ -3441,7 +3405,7 @@ export const pokemonMaster: PokemonMasterEntry[] = [
   {
     "dexNo": 710,
     "pokedexId": 710,
-    "form": 0,
+    "form": 8,
     "formLabelJa": "ちゅうだま",
     "nameJa": "バケッチャ(ちゅうだま)",
     "baseNameJa": "バケッチャ",
@@ -3457,12 +3421,12 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%90%E3%82%B1%E3%83%83%E3%83%81%E3%83%A3"
   },
   {
-    "dexNo": 711,
-    "pokedexId": 711,
-    "form": 0,
+    "dexNo": 710,
+    "pokedexId": 710,
+    "form": 9,
     "formLabelJa": "おおだま",
-    "nameJa": "パンプジン(おおだま)",
-    "baseNameJa": "パンプジン",
+    "nameJa": "バケッチャ(おおだま)",
+    "baseNameJa": "バケッチャ",
     "specialty": "Ingredients",
     "type": "Ghost",
     "typeJa": "ゴースト",
@@ -3472,15 +3436,15 @@ export const pokemonMaster: PokemonMasterEntry[] = [
       "b": "soy",
       "c": "potato"
     },
-    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%91%E3%83%B3%E3%83%97%E3%82%B8%E3%83%B3"
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%90%E3%82%B1%E3%83%83%E3%83%81%E3%83%A3"
   },
   {
-    "dexNo": 711,
-    "pokedexId": 711,
-    "form": 0,
+    "dexNo": 710,
+    "pokedexId": 710,
+    "form": 10,
     "formLabelJa": "ギガだま",
-    "nameJa": "パンプジン(ギガだま)",
-    "baseNameJa": "パンプジン",
+    "nameJa": "バケッチャ(ギガだま)",
+    "baseNameJa": "バケッチャ",
     "specialty": "Ingredients",
     "type": "Ghost",
     "typeJa": "ゴースト",
@@ -3490,12 +3454,12 @@ export const pokemonMaster: PokemonMasterEntry[] = [
       "b": "soy",
       "c": "potato"
     },
-    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%91%E3%83%B3%E3%83%97%E3%82%B8%E3%83%B3"
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%90%E3%82%B1%E3%83%83%E3%83%81%E3%83%A3"
   },
   {
     "dexNo": 711,
     "pokedexId": 711,
-    "form": 0,
+    "form": 7,
     "formLabelJa": "こだま",
     "nameJa": "パンプジン(こだま)",
     "baseNameJa": "パンプジン",
@@ -3513,9 +3477,45 @@ export const pokemonMaster: PokemonMasterEntry[] = [
   {
     "dexNo": 711,
     "pokedexId": 711,
-    "form": 0,
+    "form": 8,
     "formLabelJa": "ちゅうだま",
     "nameJa": "パンプジン(ちゅうだま)",
+    "baseNameJa": "パンプジン",
+    "specialty": "Ingredients",
+    "type": "Ghost",
+    "typeJa": "ゴースト",
+    "expType": 600,
+    "ingredients": {
+      "a": "pumpkin",
+      "b": "soy",
+      "c": "potato"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%91%E3%83%B3%E3%83%97%E3%82%B8%E3%83%B3"
+  },
+  {
+    "dexNo": 711,
+    "pokedexId": 711,
+    "form": 9,
+    "formLabelJa": "おおだま",
+    "nameJa": "パンプジン(おおだま)",
+    "baseNameJa": "パンプジン",
+    "specialty": "Ingredients",
+    "type": "Ghost",
+    "typeJa": "ゴースト",
+    "expType": 600,
+    "ingredients": {
+      "a": "pumpkin",
+      "b": "soy",
+      "c": "potato"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%91%E3%83%B3%E3%83%97%E3%82%B8%E3%83%B3"
+  },
+  {
+    "dexNo": 711,
+    "pokedexId": 711,
+    "form": 10,
+    "formLabelJa": "ギガだま",
+    "nameJa": "パンプジン(ギガだま)",
     "baseNameJa": "パンプジン",
     "specialty": "Ingredients",
     "type": "Ghost",
@@ -3747,7 +3747,7 @@ export const pokemonMaster: PokemonMasterEntry[] = [
   {
     "dexNo": 849,
     "pokedexId": 849,
-    "form": 0,
+    "form": 5,
     "formLabelJa": "ハイ",
     "nameJa": "ストリンダー(ハイ)",
     "baseNameJa": "ストリンダー",
@@ -3765,7 +3765,7 @@ export const pokemonMaster: PokemonMasterEntry[] = [
   {
     "dexNo": 849,
     "pokedexId": 849,
-    "form": 0,
+    "form": 6,
     "formLabelJa": "ロー",
     "nameJa": "ストリンダー(ロー)",
     "baseNameJa": "ストリンダー",

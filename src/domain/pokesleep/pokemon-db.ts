@@ -1376,7 +1376,7 @@ export const pokemonDb: PokemonDbEntry[] = [
     "ingCJa": [
       "マメミート"
     ],
-    "mainSkillJa": "エナジーチャージS",
+    "mainSkillJa": "エナジーチャージM",
     "fp": 16,
     "helpSeconds": 2400,
     "link": "https://wikiwiki.jp/poke_sleep/%E3%82%AB%E3%82%A4%E3%83%AD%E3%82%B9"
@@ -2278,7 +2278,7 @@ export const pokemonDb: PokemonDbEntry[] = [
     "ingCJa": [
       "マメミート"
     ],
-    "mainSkillJa": "食材ゲットS",
+    "mainSkillJa": "ビルドアップ(料理アシストS)",
     "fp": 16,
     "helpSeconds": 2300,
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%98%E3%83%A9%E3%82%AF%E3%83%AD%E3%82%B9"

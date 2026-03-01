@@ -37,7 +37,7 @@
 }
 
 .settingsField--aligned .settingsField__label {
-  min-width: 150px;
+  min-width: 120px;
   flex-shrink: 0;
 }
 
@@ -62,7 +62,7 @@
 .field__input--xs {
   width: 72px;
   padding: 0 8px;
-  text-align: center;
+  text-align: left;
 }
 
 .field__input--compact {
@@ -101,7 +101,7 @@
   align-items: center;
   gap: 8px;
   padding: 4px 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  border-bottom: 1px solid rgba(var(--border-rgb), 0.5);
 }
 
 .typeRow:last-child {
@@ -137,6 +137,6 @@
   }
 
   .typeRow:last-child {
-    border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+    border-bottom: 1px solid rgba(var(--border-rgb), 0.5);
   }
 }

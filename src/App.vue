@@ -43,7 +43,7 @@
     <div class="dashboard">
       <CalcPanel ref="calcPanelRef" :calc="calc" :resolve-pokedex-id-by-box-id="resolvePokedexIdByBoxId" @apply-to-box="applyCalculatorToBox($event)" @open-help="showHelp = true" @open-settings="openSettings" @open-add-modal="showAddModal = true" />
 
-    <BoxPanel :box="box" :gt="gt" @apply-to-calc="applyBoxToCalculator($event)" />
+    <BoxPanel :box="box" :gt="gt" @apply-to-calc="applyBoxToCalculator()" />
     </div>
     </div>
 
@@ -74,7 +74,7 @@
 
     <SettingsOverlay v-if="showSettings" :calc="calc" @close="showSettings = false" />
 
-    <AddPokemonModal v-if="showAddModal" :box="box" @close="showAddModal = false" @added="onAddModalAdded($event)" />
+    <AddPokemonModal v-if="showAddModal" :box="box" @close="showAddModal = false" @added="onAddModalAdded()" />
   </main>
 </template>
 
@@ -118,9 +118,9 @@ function openSettings() {
   showSettings.value = true;
 }
 
-function onAddModalAdded(ev?: MouseEvent) {
+function onAddModalAdded() {
   // AddPokemonModal → Box追加済み → selectedBox が新エントリを指している
-  applyBoxToCalculator(ev);
+  applyBoxToCalculator();
   // モーダルは閉じない（連続追加を可能にする）
 }
 
@@ -177,7 +177,7 @@ const calc = useCalcStore({
   resolvePokedexIdByBoxId,
 });
 
-function applyBoxToCalculator(ev?: MouseEvent) {
+function applyBoxToCalculator() {
   const e = box.selectedBox.value;
   if (!e) return;
   const lvl = e.planner?.level ?? e.derived?.level ?? 10;
@@ -195,7 +195,6 @@ function applyBoxToCalculator(ev?: MouseEvent) {
     expRemaining: e.planner?.expRemaining,
     pokedexId,
     pokemonType,
-    ev,
   });
 }
 

@@ -63,7 +63,7 @@
             </label>
             <div class="field" data-testid="box-add-level-field">
               <span class="field__label">{{ t("box.detail.level") }}</span>
-              <LevelPicker v-model="addLevel" :label="t('box.detail.level')" :max="MAX_LEVEL" />
+              <LevelPicker v-model="addLevel" :label="`${t('box.add.level')}: Lv${addLevel}`" :max="MAX_LEVEL" />
             </div>
             <label class="field">
               <span class="field__label">{{ t("calc.row.expRemaining") }}</span>
@@ -204,7 +204,7 @@
                 <input type="checkbox" v-model="addToCalcChecked" data-testid="box-add-to-calc-checkbox" />
                 {{ t("box.add.addToCalc") }}
               </label>
-              <button class="btn btn--primary" type="button" data-testid="box-add-submit" @click="onCreateToBox($event)">
+              <button class="btn btn--primary" type="button" data-testid="box-add-submit" @click="onCreateToBox()">
                 {{ t("box.add.toBox") }}
               </button>
             </div>
@@ -235,8 +235,14 @@
             {{ t("box.import.addAllFavorite") }}
           </label>
           <div class="boxCard__actions boxCard__actions--row">
-            <button class="btn btn--primary" type="button" data-testid="box-import-submit" @click="box.onImport({ markFavorite: importFavorite })">
-              {{ t("box.import.run") }}
+            <button
+              class="btn btn--primary"
+              :class="{ 'btn--done': importBtnFlash }"
+              type="button"
+              data-testid="box-import-submit"
+              @click="onImportWithFlash"
+            >
+              {{ importBtnFlash ? importBtnLabel : t("box.import.run") }}
             </button>
             <button class="btn btn--ghost" type="button" data-testid="box-import-paste" @click="onPasteImport">
               {{ t("box.import.paste") }}
@@ -438,8 +444,14 @@
               <div class="boxDetail__head">
                 <h4 class="boxDetail__title">{{ t("box.list.selected", { name: box.displayBoxTitle(selectedBox) }) }}</h4>
                 <div class="boxDetail__actions">
-                  <button class="btn btn--primary" type="button" data-testid="box-detail-calc" @click="$emit('apply-to-calc', $event)">
-                    {{ t("box.add.toCalc") }}
+                  <button
+                    class="btn btn--primary"
+                    :class="{ 'btn--done': calcBtnFlash }"
+                    type="button"
+                    data-testid="box-detail-calc"
+                    @click="onApplyToCalcWithFlash()"
+                  >
+                    {{ calcBtnFlash ? calcBtnLabel : t("box.add.toCalc") }}
                   </button>
                   <button class="btn btn--danger" type="button" data-testid="box-detail-delete" @click="box.onDeleteSelected">
                     {{ t("box.deleteFromBox") }}
@@ -536,7 +548,7 @@
                         <LevelPicker
                           :model-value="selectedDetail?.level ?? 1"
                           @update:model-value="box.setBoxLevel($event)"
-                          :label="t('box.detail.level')"
+                          :label="`${t('box.add.level')}: Lv${selectedDetail?.level ?? 1}`"
                           :max="MAX_LEVEL"
                         />
                       </div>
@@ -736,7 +748,7 @@ const props = defineProps<{
   gt: (s: string) => string;
 }>();
 const emit = defineEmits<{
-  (e: "apply-to-calc", ev?: MouseEvent): void;
+  (e: "apply-to-calc"): void;
 }>();
 
 const { t, locale } = useI18n();
@@ -799,6 +811,18 @@ import { ref, watch, nextTick } from "vue";
 import LevelPicker from "./LevelPicker.vue";
 const addToCalcChecked = ref(true);
 
+/* ===== Button flash feedback helper ===== */
+const importBtnFlash = ref(false);
+const importBtnLabel = ref("");
+const calcBtnFlash = ref(false);
+const calcBtnLabel = ref("");
+
+function flashBtn(flashRef: { value: boolean }, labelRef: { value: string }, msg: string, ms = 1500) {
+  flashRef.value = true;
+  labelRef.value = msg;
+  setTimeout(() => { flashRef.value = false; labelRef.value = ""; }, ms);
+}
+
 // hover class control (replaces CSS :hover to avoid iOS sticky hover)
 // On touch devices, iOS fires synthetic mouseenter after touchstart.
 // We suppress mouse hover entirely once a touch is detected.
@@ -819,11 +843,23 @@ function onTileTouchStart() {
 const boxListRef = ref<HTMLElement | null>(null);
 watch(boxListRef, (el) => { box.boxListEl.value = el; }, { immediate: true });
 
-function onCreateToBox(ev: MouseEvent) {
+function onApplyToCalcWithFlash() {
+  emit("apply-to-calc");
+  flashBtn(calcBtnFlash, calcBtnLabel, `✓ ${t("status.reflected")}`, 1500);
+}
+
+function onImportWithFlash() {
+  const added = box.onImport({ markFavorite: importFavorite.value });
+  if (added > 0) {
+    flashBtn(importBtnFlash, importBtnLabel, `✓ ${added}${t("box.import.addedUnit")}`, 1500);
+  }
+}
+
+function onCreateToBox() {
   if (addToCalcChecked.value) {
     // ボックスに追加して計算機にも反映
     box.onCreateManual({ mode: "toCalc" });
-    emit("apply-to-calc", ev);
+    emit("apply-to-calc");
   } else {
     // ボックスにのみ追加
     box.onCreateManual({ mode: "toBox" });
