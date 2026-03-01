@@ -205,6 +205,26 @@
   font-size: 13px;
 }
 
+/* Compact legend overrides for capture */
+.exportSheet--capture .exportPie__legend--compact {
+  grid-template-columns: 14px auto 1fr auto;
+}
+
+.exportSheet--capture .exportPie__legend--compact .exportPie__legendDetail {
+  grid-column: auto;
+  padding: 0;
+  justify-content: flex-start;
+  font-size: 13px;
+}
+
+.exportSheet--capture .exportPie__legend--compact .exportRanking__itemGroup {
+  font-size: 13px;
+}
+
+.exportSheet--capture .exportPie__legend--compact .exportRanking__itemLabel {
+  font-size: 12px;
+}
+
 /* During capture: prevent scroll-container clipping on old iOS Safari.
    html2canvas clones the DOM into an iframe, but the cloned overlay may
    still have overflow:auto which clips the canvas output. */
@@ -696,6 +716,35 @@
   border-radius: var(--radius-sm);
 }
 
+/* --- Compact legend (4+ Pokemon) --- */
+.exportPie__legend--compact {
+  grid-template-columns: 14px auto 1fr auto;
+}
+
+.exportPie__legend--compact .exportPie__legendDetail {
+  grid-column: auto;
+  padding: 0;
+  justify-content: flex-start;
+  font-size: 12px;
+}
+
+.exportPie__legend--compact .exportPie__legendName {
+  padding-top: 4px;
+}
+
+.exportPie__legend--compact .exportPie__legendPct {
+  padding-top: 4px;
+}
+
+.exportPie__legend--compact .exportRanking__itemGroup {
+  font-size: 12px;
+}
+
+.exportPie__legend--compact .exportRanking__itemLabel {
+  font-size: 11px;
+  padding: 0 4px;
+}
+
 /* ===== Tablet+ single-row list (≥ 680px) ===== */
 @media (min-width: 680px) {
   .exportSheetWrap {
@@ -877,5 +926,25 @@
 
   .exportRanking__itemLabel {
     font-size: 13px;
+  }
+
+  /* Compact legend overrides for desktop */
+  .exportPie__legend--compact {
+    grid-template-columns: 14px auto 1fr auto;
+  }
+
+  .exportPie__legend--compact .exportPie__legendDetail {
+    grid-column: auto;
+    padding: 0;
+    justify-content: flex-start;
+    font-size: 13px;
+  }
+
+  .exportPie__legend--compact .exportRanking__itemGroup {
+    font-size: 13px;
+  }
+
+  .exportPie__legend--compact .exportRanking__itemLabel {
+    font-size: 12px;
   }
 }

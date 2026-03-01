@@ -214,7 +214,7 @@
               </svg>
 
               <!-- Legend -->
-              <div class="exportPie__legend">
+              <div :class="['exportPie__legend', pieSlices.length >= 4 && 'exportPie__legend--compact']">
                 <div v-for="slice in pieSlices" :key="slice.id" class="exportPie__legendItem" data-testid="rankingItem">
                   <span :class="`exportPie__swatch exportPie__swatch--${slice.colorIdx}`" :style="{ background: slice.fillColor }"></span>
                   <span class="exportPie__legendName">{{ slice.pokemonName }}</span>
@@ -765,12 +765,12 @@ async function downloadCalcExportPng() {
     savedScroll = overlay ? overlay.scrollTop : 0;
     if (overlay) overlay.scrollTop = 0;
 
-    // 移動前に元の幅を取得し、最低 790px（デスクトップ幅）を保証する。
-    // モバイルでもデスクトップレイアウトで画像保存するため。
-    // el 自体の width は変更しない（iOS 15 のスタイル解決を壊すため）。
-    // ラッパーの幅で制御し、CSS の .exportSheet--capture で子要素を
-    // デスクトップレイアウトに切り替える。
-    const DESKTOP_MIN_WIDTH = 790;
+     // 移動前に元の幅を取得し、最低 760px（デスクトップ幅）を保証する。
+     // モバイルでもデスクトップレイアウトで画像保存するため。
+     // el 自体の width は変更しない（iOS 15 のスタイル解決を壊すため）。
+     // ラッパーの幅で制御し、CSS の .exportSheet--capture で子要素を
+     // デスクトップレイアウトに切り替える。
+     const DESKTOP_MIN_WIDTH = 760;
     const originalWidth = Math.max(el.offsetWidth, DESKTOP_MIN_WIDTH);
 
     // 2. ダミークローンを作成して元位置に配置
