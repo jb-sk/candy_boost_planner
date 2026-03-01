@@ -14,7 +14,7 @@
   font-size: 16px;
   margin: 0 0 12px;
   padding-bottom: 6px;
-  border-bottom: 2px solid color-mix(in oklab, var(--accent) 20%, transparent);
+  border-bottom: 2px solid rgba(var(--accent-rgb), 0.2);
 }
 
 .help-overlay .section ul {
@@ -30,7 +30,7 @@
 .help-overlay .helpDl dt {
   color: var(--accent);
   text-decoration: underline 2px;
-  text-decoration-color: color-mix(in oklab, var(--accent) 50%, transparent);
+  text-decoration-color: rgba(var(--accent-rgb), 0.5);
   text-underline-offset: 2px;
 }
 
@@ -73,7 +73,7 @@
   .help-overlay .section--basic .helpDl dt,
   .help-overlay .section--basic .helpDl dd {
     padding-bottom: 6px;
-    border-bottom: 1px solid color-mix(in oklab, var(--ink) 8%, transparent);
+    border-bottom: 1px solid rgba(var(--ink-rgb), 0.08);
   }
 
   .help-overlay .section--purpose .helpDl dd {
@@ -134,7 +134,7 @@
   gap: 4px;
   margin-bottom: 16px;
   padding: 10px 12px;
-  background: color-mix(in oklab, var(--ink) 4%, transparent);
+  background: rgba(var(--ink-rgb), 0.04);
   border-radius: var(--radius-sm);
 }
 
@@ -144,7 +144,7 @@
 
 .help-overlay .formula__list code {
   font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
-  background: color-mix(in oklab, var(--ink) 8%, transparent);
+  background: rgba(var(--ink-rgb), 0.08);
   padding: 4px 8px;
   border-radius: 4px;
   color: var(--ink);

@@ -2,7 +2,10 @@
 
 .modal-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 1000;
   background: var(--overlay-bg);
   overflow: hidden;
@@ -11,7 +14,10 @@
 
 .modal {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   /* full-screen, no gap */
   display: flex;
   flex-direction: column;
@@ -42,6 +48,7 @@
 }
 
 .modal__close {
+  -webkit-appearance: none;
   appearance: none;
   border: none;
   background: transparent;
@@ -193,7 +200,7 @@
 
 .suggest__item:hover {
   border-color: var(--border);
-  background: color-mix(in srgb, var(--accent) 8%, var(--paper));
+  background: rgba(var(--accent-rgb), 0.08);
 }
 
 /* .field__sub is defined in core/components.css */
@@ -210,7 +217,10 @@
 
   .addModal {
     position: relative;
-    inset: auto;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
     max-width: 420px;
     width: 100%;
     border-radius: var(--radius-lg);

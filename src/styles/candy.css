@@ -8,15 +8,21 @@
   --bg-decor: #fff1f1;
   --paper: #ffffff;
   --ink: #1e293b;
+  --ink-rgb: 30, 41, 59;
   --muted: #475569;
   --accent: #00b4d8;
+  --accent-rgb: 0, 180, 216;
   --accent-strong: #00a0d0;
   --danger: #ef4444;
+  --danger-rgb: 239, 68, 68;
+  --paper-rgb: 255, 255, 255;
+  --muted-rgb: 71, 85, 105;
 
   /* Surfaces */
   --surface: #f0f9ff;
   --surface-alt: #e0f2fe;
   --border: #fbd0d8;
+  --border-rgb: 251, 208, 216;
 
   /* Overlay */
   --overlay-bg: rgba(255, 255, 255, 0.85);
@@ -26,11 +32,15 @@
   --input-bg: #ffffff;
   --input-border: #f9abbe;
   --ring: #00b4d8;
+  --ring-rgb: 0, 180, 216;
 
   /* Data Visualization */
   --bar-fill: #00b4d8;
+  --bar-fill-rgb: 0, 180, 216;
   --bar-track: #e0f2fe;
+  --bar-track-rgb: 224, 242, 254;
   --bar-over: #ff6b81;
+  --bar-over-rgb: 255, 107, 129;
   --export-divider: #f48ca0;
 
   /* Pie Chart Palette */
@@ -91,15 +101,15 @@
 
 /* ===== Sleep Chips (1000h / 2000h) & Hint ===== */
 .sleepChip {
-  background: color-mix(in srgb, var(--accent) 6%, var(--paper));
+  background: rgba(var(--accent-rgb), 0.06);
   color: #0891b2;
-  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border: 2px solid rgba(var(--accent-rgb), 0.3);
 }
 
 .hintIcon {
-  background: color-mix(in srgb, var(--accent) 6%, var(--paper));
+  background: rgba(var(--accent-rgb), 0.06);
   color: #64748b;
-  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border: 2px solid rgba(var(--accent-rgb), 0.3);
 }
 
 /* ===== Ghost Buttons (e.g. "+ ポケモンを追加") ===== */
@@ -177,8 +187,8 @@
 
 /* ===== Chip Buttons ===== */
 .chipBtn {
-  background: color-mix(in srgb, var(--accent) 6%, var(--paper));
-  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  background: rgba(var(--accent-rgb), 0.06);
+  border: 2px solid rgba(var(--accent-rgb), 0.3);
   color: var(--ink);
   font-weight: 700;
   box-shadow: none;

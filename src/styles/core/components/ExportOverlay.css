@@ -3,7 +3,10 @@
 /* ===== Overlay ===== */
 .exportOverlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 1000;
   background: var(--overlay-bg);
   overflow-y: auto;
@@ -28,7 +31,7 @@
   --export-bar-track: var(--bar-track);
   --export-danger: var(--danger);
   --export-divider: var(--border);
-  --export-section-bg: color-mix(in srgb, var(--ink) 5%, transparent);
+  --export-section-bg: rgba(var(--ink-rgb), 0.05);
 }
 
 .exportSheet--capture .exportActions {
@@ -56,17 +59,58 @@
 
 /* --- Desktop layout forced during capture (viewport-independent) ---
    モバイルでも @media (min-width:680px) と同等のレイアウトで画像保存する。
-   幅は JS のラッパーで最低 790px を保証するため、ここでは子要素のみ定義。 */
+   幅は JS のラッパーで最低 760px を保証するため、ここでは子要素のみ定義。
+   ⚠ このブロックと下の @media (min-width: 680px) は同じスタイルを持つ。
+     片方を変更したらもう片方も同期すること。 */
 
 .exportSheet--capture .exportHead {
-  margin-left: -32px;
-  margin-right: -32px;
-  padding-left: 32px;
-  padding-right: 32px;
+  margin: -28px -32px 20px;
+  padding: 14px 32px;
+}
+
+.exportSheet--capture .exportBrand {
+  font-size: 26px;
+}
+
+.exportSheet--capture .exportMeta {
+  margin-top: 0;
 }
 
 .exportSheet--capture .exportMonth {
-  font-size: 18px;
+  position: absolute;
+  top: 14px;
+  right: 48px;
+  font-size: 22px;
+}
+
+.exportSheet--capture .exportSectionTitle {
+  font-size: 21px;
+}
+
+.exportSheet--capture .statCard__label {
+  font-size: 15px;
+}
+
+.exportSheet--capture .exportBarK {
+  font-size: 15px;
+}
+
+.exportSheet--capture .exportBarK--right {
+  font-size: 15px;
+}
+
+.exportSheet--capture .exportList__name {
+  font-size: 17px;
+  flex: 1;
+  min-width: 5em;
+}
+
+.exportSheet--capture .exportList__badge {
+  font-size: 12px;
+}
+
+.exportSheet--capture .exportList__arrow {
+  font-size: 13px;
 }
 
 .exportSheet--capture .exportCalcTop {
@@ -75,7 +119,18 @@
 }
 
 .exportSheet--capture .exportStats {
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+}
+
+.exportSheet--capture .statCard {
+  flex: 1;
+  min-width: 0;
+}
+
+.exportSheet--capture .statCard--wide {
+  flex: 1.3;
 }
 
 .exportSheet--capture .exportList {
@@ -90,10 +145,10 @@
 
 .exportSheet--capture .exportList__head {
   display: grid;
-  grid-template-columns: 2fr 1fr repeat(4, 1fr);
+  grid-template-columns: 2.5fr 1fr repeat(3, 1fr) 1.3fr;
   gap: 8px;
   padding: 10px 12px;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--muted);
   border-bottom: 2px solid var(--ink);
@@ -101,13 +156,16 @@
 }
 
 .exportSheet--capture .exportList__row {
-  grid-template-columns: 2fr 1fr repeat(4, 1fr);
+  grid-template-columns: 2.5fr 1fr repeat(3, 1fr) 1.3fr;
   gap: 8px;
   padding: 10px 12px;
 }
 
 .exportSheet--capture .exportList__nameCol {
   grid-column: span 1;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .exportSheet--capture .exportList__lvInline {
@@ -117,8 +175,8 @@
 .exportSheet--capture .exportList__col.exportList__lvCol {
   display: flex;
   grid-column: span 1;
-  justify-self: center;
-  font-size: 15px;
+  justify-self: end;
+  font-size: 17px;
 }
 
 .exportSheet--capture .exportList__col.u-align-right {
@@ -140,7 +198,7 @@
 }
 
 .exportSheet--capture .exportList__row--total {
-  padding: 12px 12px;
+  padding: 12px;
 }
 
 .exportSheet--capture .exportList__row--total .exportList__nameCol,
@@ -156,19 +214,19 @@
 }
 
 .exportSheet--capture .exportList__numCol .exportList__num {
-  font-size: 15px;
+  font-size: 17px;
 }
 
 .exportSheet--capture .exportList__lvCol {
-  font-size: 15px;
+  font-size: 17px;
 }
 
 .exportSheet--capture .exportRanking__total {
-  font-size: 15px;
+  font-size: 17px;
 }
 
 .exportSheet--capture .exportRanking__total span:first-child {
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .exportSheet--capture .exportPie {
@@ -186,11 +244,11 @@
 }
 
 .exportSheet--capture .exportPie__legendItem {
-  font-size: 15px;
+  font-size: 17px;
 }
 
 .exportSheet--capture .exportPie__legendPct {
-  font-size: 16px;
+  font-size: 18px;
 }
 
 .exportSheet--capture .exportPie__legendDetail {
@@ -198,32 +256,40 @@
 }
 
 .exportSheet--capture .exportRanking__itemGroup {
-  font-size: 15px;
+  font-size: 17px;
 }
 
 .exportSheet--capture .exportRanking__itemLabel {
-  font-size: 13px;
+  font-size: 15px;
 }
 
-/* During capture: prevent scroll-container clipping on old iOS Safari.
-   html2canvas clones the DOM into an iframe, but the cloned overlay may
-   still have overflow:auto which clips the canvas output. */
-.exportOverlay--capture {
-  overflow: visible !important;
+/* Compact legend overrides for capture */
+.exportSheet--capture .exportPie__legend--compact {
+  grid-template-columns: 14px auto 1fr auto;
 }
 
-.exportOverlay--capture .exportSheetWrap {
-  overflow: visible !important;
-  min-height: auto !important;
+.exportSheet--capture .exportPie__legend--compact .exportPie__legendDetail {
+  grid-column: auto;
+  padding: 0;
+  justify-content: flex-start;
+  font-size: 15px;
+}
+
+.exportSheet--capture .exportPie__legend--compact .exportRanking__itemGroup {
+  font-size: 15px;
+}
+
+.exportSheet--capture .exportPie__legend--compact .exportRanking__itemLabel {
+  font-size: 14px;
+  margin-right: 3px;
 }
 
 /* ===== Header ===== */
 .exportHead {
-  border-bottom: 2px dashed var(--export-divider);
-  padding-bottom: 14px;
-  margin: 0 -16px 20px;
-  padding-left: 16px;
-  padding-right: 16px;
+  position: relative;
+  padding: 14px 16px;
+  margin: -20px -16px 20px;
+  background: var(--export-section-bg);
 }
 
 .exportHead__top {
@@ -279,9 +345,11 @@
   border: 1px solid var(--border);
   background: var(--paper);
   box-shadow: var(--shadow-md);
+  border-radius: var(--radius-md);
 }
 
 .exportCsvMenu__item {
+  -webkit-appearance: none;
   appearance: none;
   border: 0;
   width: 100%;
@@ -319,7 +387,7 @@
   color: var(--accent);
   margin: 20px 0 14px;
   padding-bottom: 6px;
-  border-bottom: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-bottom: 2px solid rgba(var(--accent-rgb), 0.25);
 }
 
 .exportSectionTitle:first-child {
@@ -341,6 +409,11 @@
   text-underline-offset: 3px;
 }
 
+.exportNoStock:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
 /* ===== Summary section (stats + bars) ===== */
 .exportCalcTop {
   padding: 0 0 8px;
@@ -354,25 +427,28 @@
 
 /* ===== Stat cards ===== */
 .exportStats {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 20px;
 }
 
 .statCard {
-  min-width: 0;
+  /* Half-row basis: 2 cards per line, 3rd+ wraps at same width */
+  width: calc(50% - 5px);
+  flex: 0 0 calc(50% - 5px);
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 10px 12px;
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  background: rgba(var(--ink-rgb), 0.04);
   border: none;
   border-radius: var(--radius-md);
+  box-sizing: border-box;
 }
 
 .statCard--danger {
-  background: color-mix(in srgb, var(--export-danger) 8%, transparent);
+  background: rgba(var(--danger-rgb), 0.08);
 }
 
 .statCard__label {
@@ -436,7 +512,10 @@
 
 .exportBar__fill {
   position: absolute;
-  inset: 0 auto 0 0;
+  top: 0;
+  right: auto;
+  bottom: 0;
+  left: 0;
   width: 0%;
   border-radius: 4px;
   background: var(--export-bar-fill);
@@ -452,7 +531,7 @@
 
 .exportList__head {
   display: none;
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  background: rgba(var(--ink-rgb), 0.04);
 }
 
 .exportList__row {
@@ -461,7 +540,7 @@
   gap: 4px 8px;
   padding: 8px 0 8px 6px;
   align-items: center;
-  border-bottom: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+  border-bottom: 1px solid rgba(var(--ink-rgb), 0.08);
 }
 
 .exportList__nameCol {
@@ -485,10 +564,10 @@
 .exportList__name {
   font-weight: 700;
   font-size: 15px;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
   overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .exportList__badge {
@@ -497,6 +576,8 @@
   padding: 1px 5px;
   background: var(--surface-alt);
   color: var(--muted);
+  border-radius: 3px;
+  align-self: center;
 }
 
 .exportList__lvWrap {
@@ -508,7 +589,7 @@
 
 .exportList__arrow {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .exportList__col.u-align-right,
@@ -526,6 +607,10 @@
   display: none;
 }
 
+.exportList__lvHead {
+  text-align: right;
+}
+
 .u-mobile-label {
   display: block;
   font-size: 11px;
@@ -537,6 +622,7 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Currently unused in template — kept for future extension */
 .exportList__num--danger {
   color: var(--export-danger);
   font-weight: 700;
@@ -544,7 +630,7 @@
 
 /* Total row */
 .exportList__row--total {
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  background: rgba(var(--ink-rgb), 0.04);
   border-bottom: none;
   font-weight: 700;
   border-top: 2px solid var(--ink);
@@ -581,8 +667,6 @@
   margin: 0 -4px 0;
   padding: 0 16px 8px;
 }
-
-
 
 .exportRanking__total {
   font-size: 13px;
@@ -696,7 +780,13 @@
   border-radius: var(--radius-sm);
 }
 
+/* --- Compact legend (3+ Pokemon): PC / capture only --- */
+/* Base (mobile) intentionally has no compact overrides so the legend
+   stays in the normal 2-line layout regardless of the class. */
+
 /* ===== Tablet+ single-row list (≥ 680px) ===== */
+/* ⚠ このブロックと上の .exportSheet--capture は同じスタイルを持つ。
+     片方を変更したらもう片方も同期すること。 */
 @media (min-width: 680px) {
   .exportSheetWrap {
     min-height: 100%;
@@ -713,14 +803,40 @@
   }
 
   .exportHead {
-    margin-left: -32px;
-    margin-right: -32px;
-    padding-left: 32px;
-    padding-right: 32px;
+    margin: -28px -32px 20px;
+    padding: 14px 32px;
+  }
+
+  .exportBrand {
+    font-size: 26px;
+  }
+
+  .exportMeta {
+    justify-content: flex-end;
+    padding-right: 16px;
   }
 
   .exportMonth {
-    font-size: 18px;
+    position: absolute;
+    top: 14px;
+    right: 48px;
+    font-size: 22px;
+  }
+
+  .exportSectionTitle {
+    font-size: 21px;
+  }
+
+  .statCard__label {
+    font-size: 15px;
+  }
+
+  .exportBarK {
+    font-size: 15px;
+  }
+
+  .exportBarK--right {
+    font-size: 15px;
   }
 
   .exportCalcTop {
@@ -729,7 +845,18 @@
   }
 
   .exportStats {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 10px;
+  }
+
+  .statCard {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .statCard--wide {
+    flex: 1.3;
   }
 
   .exportList {
@@ -745,10 +872,10 @@
   /* Show table header */
   .exportList__head {
     display: grid;
-    grid-template-columns: 2fr 1fr repeat(4, 1fr);
+    grid-template-columns: 2.5fr 1fr repeat(3, 1fr) 1.3fr;
     gap: 8px;
     padding: 10px 12px;
-    font-size: 12px;
+    font-size: 15px;
     font-weight: 700;
     color: var(--muted);
     border-bottom: 2px solid var(--ink);
@@ -757,14 +884,17 @@
 
   /* Data rows — single line */
   .exportList__row {
-    grid-template-columns: 2fr 1fr repeat(4, 1fr);
+    grid-template-columns: 2.5fr 1fr repeat(3, 1fr) 1.3fr;
     gap: 8px;
-    padding: 6px 12px;
+    padding: 10px 12px;
   }
 
   /* Reset mobile overrides on name / lv columns */
   .exportList__nameCol {
     grid-column: span 1;
+    flex-wrap: nowrap;
+    overflow: hidden;
+    min-width: 0;
   }
 
   .exportList__lvInline {
@@ -774,8 +904,8 @@
   .exportList__col.exportList__lvCol {
     display: flex;
     grid-column: span 1;
-    justify-self: center;
-    font-size: 15px;
+    justify-self: end;
+    font-size: 17px;
   }
 
   /* Number columns — single value, right-aligned */
@@ -800,7 +930,7 @@
 
   /* Total row — show as single line too */
   .exportList__row--total {
-    padding: 8px 12px;
+    padding: 12px;
   }
 
   .exportList__row--total .exportList__nameCol,
@@ -816,34 +946,34 @@
   }
 
   /* Enlarge list labels & numbers */
-  .exportList__head {
-    font-size: 13px;
+  .exportList__name {
+    font-size: 17px;
+    flex: 1;
+    min-width: 5em;
   }
 
-  .exportList__row {
-    padding: 10px 12px;
+  .exportList__badge {
+    font-size: 12px;
+  }
+
+  .exportList__arrow {
+    font-size: 13px;
   }
 
   .exportList__numCol .exportList__num {
-    font-size: 15px;
+    font-size: 17px;
   }
 
   .exportList__lvCol {
-    font-size: 15px;
+    font-size: 17px;
   }
-
-  .exportList__row--total {
-    padding: 12px 12px;
-  }
-
-
 
   .exportRanking__total {
-    font-size: 15px;
+    font-size: 17px;
   }
 
   .exportRanking__total span:first-child {
-    font-size: 13px;
+    font-size: 15px;
   }
 
   .exportPie {
@@ -860,11 +990,11 @@
   }
 
   .exportPie__legendItem {
-    font-size: 15px;
+    font-size: 17px;
   }
 
   .exportPie__legendPct {
-    font-size: 16px;
+    font-size: 18px;
   }
 
   .exportPie__legendDetail {
@@ -872,10 +1002,31 @@
   }
 
   .exportRanking__itemGroup {
-    font-size: 15px;
+    font-size: 17px;
   }
 
   .exportRanking__itemLabel {
-    font-size: 13px;
+    font-size: 15px;
+  }
+
+  /* Compact legend overrides for desktop */
+  .exportPie__legend--compact {
+    grid-template-columns: 14px auto 1fr auto;
+  }
+
+  .exportPie__legend--compact .exportPie__legendDetail {
+    grid-column: auto;
+    padding: 0;
+    justify-content: flex-start;
+    font-size: 15px;
+  }
+
+  .exportPie__legend--compact .exportRanking__itemGroup {
+    font-size: 15px;
+  }
+
+  .exportPie__legend--compact .exportRanking__itemLabel {
+    font-size: 14px;
+    margin-right: 3px;
   }
 }

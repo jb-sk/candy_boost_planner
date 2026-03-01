@@ -233,6 +233,7 @@ export const ja = {
       fileSelect: "ファイルから読込",
       pasteHelp: "iOSでペーストできない場合: テキストエリアをタップ後、画面下部のキーボード上でペーストするか、ファイルで読み込んでください",
       run: "取り込み",
+      addedUnit: "件",
       addAllFavorite: "すべてお気に入りに追加",
     },
     list: {
@@ -298,6 +299,7 @@ export const ja = {
     subSkillUnknown: "未知のサブスキルです（補完から選ぶと確実です）",
     subSkillUnknownIgnored: "未知のサブスキルです（保存時は無視されます）",
     nameEmpty: "名前が空です",
+    reflected: "反映しました",
     applyCalcToBox: "計算機の値をボックスへ保存しました",
     boxCleared: "ボックスを全消去しました",
     specialtyUpdated: "とくいを更新しました",

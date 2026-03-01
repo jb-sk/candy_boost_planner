@@ -8,15 +8,21 @@
   --bg-decor: #0d1117;
   --paper: #161b27;
   --ink: #e8dcc8;
+  --ink-rgb: 232, 220, 200;
   --muted: #a89e91;
   --accent: #c9a84c;
+  --accent-rgb: 201, 168, 76;
   --accent-strong: #d4a020;
   --danger: #e05c5c;
+  --danger-rgb: 224, 92, 92;
+  --paper-rgb: 22, 27, 39;
+  --muted-rgb: 168, 158, 145;
 
   /* Surfaces */
   --surface: #1a2035;
   --surface-alt: #1f2a40;
   --border: #2e3a52;
+  --border-rgb: 46, 58, 82;
 
   /* Overlay */
   --overlay-bg: rgba(5, 8, 18, 0.75);
@@ -26,11 +32,15 @@
   --input-bg: #111827;
   --input-border: #2e3a52;
   --ring: #c9a84c;
+  --ring-rgb: 201, 168, 76;
 
   /* Data Visualization */
   --bar-fill: #c9a84c;
+  --bar-fill-rgb: 201, 168, 76;
   --bar-track: #2e3a52;
+  --bar-track-rgb: 46, 58, 82;
   --bar-over: #e05c5c;
+  --bar-over-rgb: 224, 92, 92;
   --export-divider: #c9a84c;
 
   /* Pie Chart Palette */
@@ -121,7 +131,7 @@
 .boxAddCalcCheck,
 .boxImport__favCheck,
 .boxCard__status--hint {
-  color: color-mix(in srgb, var(--ink) 75%, transparent);
+  color: rgba(var(--ink-rgb), 0.75);
 }
 
 /* ===== Box Tiles ===== */

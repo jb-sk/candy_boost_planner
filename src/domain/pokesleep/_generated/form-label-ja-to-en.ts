@@ -6,12 +6,14 @@ export const formLabelJaToEn: Record<string, string> = {
   "ハロウィン": "Halloween",
   "アローラ": "Alola",
   "パルデア": "Paldea",
+  "ハイ": "Amped",
   "アンプ": "Amped",
   "アンプド": "Amped",
+  "ロー": "Low Key",
   "ローキー": "Low Key",
   "ロウキー": "Low Key",
-  "スモール": "Small",
-  "ミディアム": "Average",
-  "ラージ": "Large",
-  "ジャンボ": "Super"
+  "こだま": "Small",
+  "ちゅうだま": "Medium",
+  "おおだま": "Large",
+  "ギガだま": "Jumbo"
 };

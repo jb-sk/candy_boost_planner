@@ -191,7 +191,6 @@ export type CalcStore = {
     dstLevelDefault?: number;
     pokedexId?: number;
     pokemonType?: string;
-    ev?: MouseEvent;
   }) => void;
   buildPlannerPatchFromRow: (rowId?: string) => CalcBoxPlannerPatch | null;
 };
@@ -1612,11 +1611,7 @@ export function useCalcStore(opts: {
     dstLevelDefault?: number;
     pokedexId?: number;
     pokemonType?: string;
-    ev?: MouseEvent;
   }) {
-    const anchorEl = (p.ev?.currentTarget as HTMLElement | null) ?? null;
-    const prevTop = anchorEl ? anchorEl.getBoundingClientRect().top : null;
-
     const srcLevel = clampInt(p.srcLevel, 1, MAX_LEVEL, 10);
     // デフォルト目標Lv: 現在Lv < 60 なら 60、現在Lv >= 60 ならシステム上限
     const defaultDstLevel = srcLevel < 60 ? 60 : MAX_LEVEL;
@@ -1653,24 +1648,9 @@ export function useCalcStore(opts: {
       activeRowId.value = row.id;
     }
 
-    nextTick(() => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (!anchorEl || prevTop == null) return;
-          if (!anchorEl.isConnected) return;
-          const nextTop = anchorEl.getBoundingClientRect().top;
-          const dy = nextTop - prevTop;
-          if (Math.abs(dy) > 1) {
-            const scrollEl = document.querySelector('.shell__scroll');
-            if (scrollEl) {
-              scrollEl.scrollBy(0, dy);
-            } else {
-              window.scrollBy(0, dy);
-            }
-          }
-        });
-      });
-    });
+    // スクロール位置の補正はブラウザの CSS Scroll Anchoring に委ねる。
+    // 以前は nextTick + rAF x 2 で手動 scrollBy していたが、
+    // iOS 17+ Safari でブラウザ補正と二重になりボックスが上に飛ぶ問題があったため削除。
   }
 
   function buildPlannerPatchFromRow(rowId?: string): CalcBoxPlannerPatch | null {

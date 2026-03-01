@@ -39,7 +39,7 @@ export default function themeCSS(): Plugin {
       for (const [fileName, chunk] of Object.entries(bundle)) {
         if (chunk.type !== "asset" || !fileName.endsWith(".css")) continue;
         // fileName looks like "assets/blue-DrMzsgg2.css"
-        const match = fileName.match(/\/([a-z][\w-]*)-\w+\.css$/);
+        const match = fileName.match(/\/([a-z]\w*)-[\w-]+\.css$/);
         if (match) {
           const id = match[1];
           if (!EXCLUDED.has(id)) {

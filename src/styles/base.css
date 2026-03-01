@@ -15,15 +15,21 @@
   --bg-decor: #f0fdf4;
   --paper: #ffffff;
   --ink: #1e293b;
+  --ink-rgb: 30, 41, 59;
   --muted: #64748b;
   --accent: #10b981;
+  --accent-rgb: 16, 185, 129;
   --accent-strong: #00a86e;
   --danger: #ef4444;
+  --danger-rgb: 239, 68, 68;
+  --paper-rgb: 255, 255, 255;
+  --muted-rgb: 100, 116, 139;
 
   /* Surfaces */
   --surface: #f8fafc;
   --surface-alt: #f1f5f9;
   --border: #e2e8f0;
+  --border-rgb: 226, 232, 240;
 
   /* Overlay */
   --overlay-bg: rgba(0, 0, 0, 0.5);
@@ -33,11 +39,15 @@
   --input-bg: #ffffff;
   --input-border: #e2e8f0;
   --ring: var(--accent);
+  --ring-rgb: 16, 185, 129;
 
   /* Data Visualization */
   --bar-fill: #ec4899;
+  --bar-fill-rgb: 236, 72, 153;
   --bar-track: #e2e8f0;
+  --bar-track-rgb: 226, 232, 240;
   --bar-over: var(--danger);
+  --bar-over-rgb: 239, 68, 68;
   --export-divider: #a7f3d0;
 
   /* Pie Chart Palette */

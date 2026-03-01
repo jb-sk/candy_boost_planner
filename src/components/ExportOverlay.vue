@@ -60,6 +60,7 @@
                 :class="{
                   [`statCard--${card.variant}`]: card.variant,
                   'statCard--danger': card.variant === 'danger',
+                  'statCard--wide': card.key === 'shards',
                 }"
                 data-testid="statCard"
               >
@@ -127,7 +128,7 @@
           <div class="exportList" :class="{ 'exportList--normal': !isBoostMode }">
             <div class="exportList__head" data-testid="listHead">
               <div class="exportList__col">{{ t("calc.export.colPokemon") }}</div>
-              <div class="exportList__col u-align-center">{{ t("calc.export.colLv") }}</div>
+              <div class="exportList__col exportList__lvHead">{{ t("calc.export.colLv") }}</div>
               <div v-if="isBoostMode" class="exportList__col u-align-right">{{ t("calc.export.colBoost") }}</div>
               <div v-if="isBoostMode" class="exportList__col u-align-right">{{ t("calc.export.colNormal") }}</div>
               <div class="exportList__col u-align-right">{{ t("calc.export.colTotal") }}</div>
@@ -214,7 +215,7 @@
               </svg>
 
               <!-- Legend -->
-              <div class="exportPie__legend">
+              <div :class="['exportPie__legend', pieSlices.length >= 3 && 'exportPie__legend--compact']">
                 <div v-for="slice in pieSlices" :key="slice.id" class="exportPie__legendItem" data-testid="rankingItem">
                   <span :class="`exportPie__swatch exportPie__swatch--${slice.colorIdx}`" :style="{ background: slice.fillColor }"></span>
                   <span class="exportPie__legendName">{{ slice.pokemonName }}</span>
@@ -608,7 +609,7 @@ function html2canvasWithTimeout(
  * CSS 未適用のテキスト画像は背景色（白）がほぼ全面を占めるため、
  * サンプリングで非白ピクセルの比率が極端に低ければ無効と判断する。
  */
-function looksLikeValidCapture(canvas: HTMLCanvasElement): boolean {
+function looksLikeValidCapture(canvas: HTMLCanvasElement, bgHex: string): boolean {
   try {
     const w = canvas.width;
     const h = canvas.height;
@@ -621,8 +622,19 @@ function looksLikeValidCapture(canvas: HTMLCanvasElement): boolean {
     // 円グラフ等）が含まれる。CSS 未適用の画像は黒テキスト＋白背景のみで
     // 彩度のあるピクセルがほぼゼロになる。
     //
-    // 中央と上部の2箇所をサンプリングする。セクションタイトル（--accent色）や
-    // statCard の背景は上部に集中しているため。
+    // 判定方法:
+    // 1. 彩度検出 — R,G,B の max-min 差が閾値以上なら「色付き」
+    // 2. テーマ背景色検出 — テーマの --paper 色に近いピクセルの存在
+    //    CSS 未適用画像は backgroundColor (#ffffff 固定) のまま描画されるが、
+    //    正常画像はテーマの paper 色で描画される。paper が白でないテーマ
+    //    (booklet: #fdf6ed 等) では paper 色ピクセルの存在が CSS 適用の証拠になる。
+
+    // bgHex から背景色 RGB を抽出
+    const bgR = parseInt(bgHex.slice(1, 3), 16);
+    const bgG = parseInt(bgHex.slice(3, 5), 16);
+    const bgB = parseInt(bgHex.slice(5, 7), 16);
+    // paper 色が白でないテーマかどうか判定（白: #ffffff との差が10以上）
+    const paperIsNonWhite = Math.abs(bgR - 255) + Math.abs(bgG - 255) + Math.abs(bgB - 255) > 10;
 
     // サンプリング領域: 上部 (y=5%付近) と中央
     const sampleW = Math.min(200, w);
@@ -634,9 +646,9 @@ function looksLikeValidCapture(canvas: HTMLCanvasElement): boolean {
 
     let totalPixels = 0;
     let chromatic = 0; // 彩度のあるピクセル（黒/白/灰色でないもの）
+    let paperLike = 0; // テーマ背景色に近いピクセル
 
     for (const { x, y } of regions) {
-      // canvas 範囲外にならないようクランプ
       const sx = Math.max(0, Math.min(x, w - sampleW));
       const sy = Math.max(0, Math.min(y, h - sampleH));
       const data = ctx.getImageData(sx, sy, sampleW, sampleH).data;
@@ -646,20 +658,26 @@ function looksLikeValidCapture(canvas: HTMLCanvasElement): boolean {
       for (let i = 0; i < data.length; i += 4) {
         const r = data[i], g = data[i + 1], b = data[i + 2];
         // 彩度判定: R,G,B の最大値と最小値の差が閾値以上なら「色付き」
-        // 黒(0,0,0), 白(255,255,255), 灰色(n,n,n) は差がほぼ0
-        // アクセントカラー/バー色/円グラフ色は差が大きい
         const maxC = Math.max(r, g, b);
         const minC = Math.min(r, g, b);
         if (maxC - minC > 20) {
           chromatic++;
         }
+        // テーマ背景色判定: paper 色と各チャンネルの差が5以内
+        if (paperIsNonWhite &&
+            Math.abs(r - bgR) <= 5 && Math.abs(g - bgG) <= 5 && Math.abs(b - bgB) <= 5) {
+          paperLike++;
+        }
       }
     }
 
-    // 正常なキャプチャなら色付きピクセルが少なくとも 0.5% はあるはず
-    // （セクションタイトルのアクセント色、プログレスバー、テーブルボーダー等）
-    // CSS 未適用画像は 0% 付近になる
-    return chromatic / totalPixels >= 0.005;
+    // 判定: 以下のいずれかを満たせば有効
+    // 1. 彩度のあるピクセルが 0.5% 以上（アクセント色・バー・グラフ等が描画されている）
+    // 2. テーマ背景色（非白）のピクセルが 10% 以上（CSS で背景色が適用されている）
+    if (chromatic / totalPixels >= 0.005) return true;
+    if (paperIsNonWhite && paperLike / totalPixels >= 0.10) return true;
+
+    return false;
   } catch {
     return true; // セキュリティ制限等で getImageData に失敗した場合は検証スキップ
   }
@@ -765,12 +783,12 @@ async function downloadCalcExportPng() {
     savedScroll = overlay ? overlay.scrollTop : 0;
     if (overlay) overlay.scrollTop = 0;
 
-    // 移動前に元の幅を取得し、最低 790px（デスクトップ幅）を保証する。
-    // モバイルでもデスクトップレイアウトで画像保存するため。
-    // el 自体の width は変更しない（iOS 15 のスタイル解決を壊すため）。
-    // ラッパーの幅で制御し、CSS の .exportSheet--capture で子要素を
-    // デスクトップレイアウトに切り替える。
-    const DESKTOP_MIN_WIDTH = 790;
+     // 移動前に元の幅を取得し、最低 760px（デスクトップ幅）を保証する。
+     // モバイルでもデスクトップレイアウトで画像保存するため。
+     // el 自体の width は変更しない（iOS 15 のスタイル解決を壊すため）。
+     // ラッパーの幅で制御し、CSS の .exportSheet--capture で子要素を
+     // デスクトップレイアウトに切り替える。
+     const DESKTOP_MIN_WIDTH = 760;
     const originalWidth = Math.max(el.offsetWidth, DESKTOP_MIN_WIDTH);
 
     // 2. ダミークローンを作成して元位置に配置
@@ -793,7 +811,7 @@ async function downloadCalcExportPng() {
     await nextTick();
 
     // 4. el を body 直下のラッパーに移動
-    //    ラッパーに最低 790px の幅を指定し、モバイルでもデスクトップレイアウトを維持する
+    //    ラッパーに最低 760px の幅を指定し、モバイルでもデスクトップレイアウトを維持する
     captureWrapper = document.createElement("div");
     captureWrapper.style.cssText =
       `position:fixed;left:-9999px;top:0;width:${originalWidth}px;overflow:visible;pointer-events:none;`;
@@ -816,9 +834,22 @@ async function downloadCalcExportPng() {
       ? clampScaleForCanvas(elWidth, elHeight, 2)
       : 2;
 
+    // テーマの --paper 色を canvas 背景に使用する。
+    // CSS 未適用時（html2canvas の iframe 内でスタイル欠落）は白になるため、
+    // looksLikeValidCapture でテーマ背景色の有無を CSS 適用の証拠として使える。
+    const paperColor = getComputedStyle(el).getPropertyValue("--paper").trim() || "#ffffff";
+    // CSS変数は "#fdf6ed" 等の hex か "rgb(...)" のどちらかで返る。
+    // html2canvas の backgroundColor は hex/rgb 両対応なのでそのまま渡す。
+    const bgHex = paperColor.startsWith("#") ? paperColor
+      : (() => {
+          const m = paperColor.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+          if (!m) return "#ffffff";
+          return `#${[m[1], m[2], m[3]].map((v) => Number(v).toString(16).padStart(2, "0")).join("")}`;
+        })();
+
     const h2cOpts = {
       scale,
-      backgroundColor: "#ffffff",
+      backgroundColor: bgHex,
       useCORS: true,
       logging: false,
       width: elWidth,
@@ -843,7 +874,7 @@ async function downloadCalcExportPng() {
         await new Promise<void>((r) => requestAnimationFrame(() => r()));
       }
       canvas = await html2canvasWithTimeout(el, h2cOpts, 15000);
-      if (looksLikeValidCapture(canvas)) break;
+      if (looksLikeValidCapture(canvas, bgHex)) break;
       // 最終試行でも失敗した場合はそのまま使う（白画像でも保存は可能）
     }
 

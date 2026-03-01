@@ -237,6 +237,7 @@ export const en = {
       fileSelect: "Load from File",
       pasteHelp: "On iOS: Tap the textarea, then paste from the keyboard above, or use file upload",
       run: "Import",
+      addedUnit: " added",
       addAllFavorite: "Add all to favorites",
     },
     list: {
@@ -302,6 +303,7 @@ export const en = {
     subSkillUnknown: "Unknown Sub Skill (pick from suggestions to be safe)",
     subSkillUnknownIgnored: "Unknown Sub Skill (it will be ignored on save)",
     nameEmpty: "Name is empty",
+    reflected: "Applied",
     applyCalcToBox: "Saved calculator values to Pokémon Box",
     boxCleared: "Cleared the Pokémon Box",
     specialtyUpdated: "Updated specialty",

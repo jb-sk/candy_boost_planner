@@ -18,7 +18,9 @@
   position: sticky;
   top: 0;
   z-index: 20;
-  background: color-mix(in srgb, var(--accent) 4%, var(--paper));
+  /* Opaque base so scrolled content never bleeds through */
+  background: var(--paper);
+  box-shadow: inset 0 0 0 9999px rgba(var(--accent-rgb), 0.04);
   padding: 8px 10px 8px 14px;
   /* Full-bleed: break out of .panel padding */
   margin-left: -16px;
@@ -179,7 +181,7 @@
 }
 
 .calcBarBlock--danger .calcBar__fill--candy {
-  background: linear-gradient(90deg, var(--danger) 0%, color-mix(in srgb, var(--danger) 60%, var(--paper)) 100%);
+  background: linear-gradient(90deg, var(--danger) 0%, rgba(var(--danger-rgb), 0.6) 100%);
 }
 
 .calcBar__track {
@@ -203,7 +205,7 @@
 }
 
 .calcBar__fill--others {
-  background: color-mix(in srgb, var(--accent) 40%, var(--bar-track));
+  background: rgba(var(--accent-rgb), 0.4);
 }
 
 .calcBar__fill--candy,
@@ -212,18 +214,21 @@
 }
 
 .calcBar__fill--candy.calcBar__fill--others {
-  background: color-mix(in srgb, var(--bar-fill) 40%, var(--bar-track));
+  background: rgba(var(--bar-fill-rgb), 0.4);
 }
 
 .calcBar__over {
   position: absolute;
-  inset: 0 0 0 auto;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: auto;
   height: 100%;
   background: repeating-linear-gradient(-45deg,
-      color-mix(in srgb, var(--bar-over) 15%, transparent) 0,
-      color-mix(in srgb, var(--bar-over) 15%, transparent) 6px,
-      color-mix(in srgb, var(--paper) 50%, transparent) 6px,
-      color-mix(in srgb, var(--paper) 50%, transparent) 12px);
+      rgba(var(--bar-over-rgb), 0.15) 0,
+      rgba(var(--bar-over-rgb), 0.15) 6px,
+      rgba(var(--paper-rgb), 0.5) 6px,
+      rgba(var(--paper-rgb), 0.5) 12px);
 }
 
 /* ===== Calc Actions ===== */
@@ -263,13 +268,14 @@
 }
 
 .slotTab {
+  -webkit-appearance: none;
   appearance: none;
   font: inherit;
-  border: 2px solid color-mix(in oklab, var(--ink) 14%, transparent);
+  border: 2px solid rgba(var(--ink-rgb), 0.14);
   border-bottom: none;
   border-radius: 8px 8px 0 0;
-  background: color-mix(in oklab, var(--paper) 92%, var(--ink) 8%);
-  color: color-mix(in oklab, var(--ink) 72%, transparent);
+  background: rgba(var(--ink-rgb), 0.08);
+  color: rgba(var(--ink-rgb), 0.72);
   padding: 6px 8px;
   cursor: pointer;
   margin-right: -1px;
@@ -299,7 +305,7 @@
 
 @media (hover: hover) {
   .slotTab:hover {
-    background: color-mix(in oklab, var(--paper) 88%, var(--ink) 12%);
+    background: rgba(var(--ink-rgb), 0.12);
   }
 }
 
@@ -314,6 +320,7 @@
 
 /* Select dropdown inside active tab */
 .slotTab__select {
+  -webkit-appearance: none;
   appearance: none;
   width: 100%;
   padding: 2px 20px 2px 4px;
@@ -338,12 +345,12 @@
 }
 
 .slotTab--dragOver {
-  background: color-mix(in oklab, var(--accent) 18%, var(--paper) 82%);
+  background: rgba(var(--accent-rgb), 0.18);
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
 .slotTab--active.slotTab--dragOver {
-  background: color-mix(in oklab, var(--accent) 18%, var(--paper) 82%);
+  background: rgba(var(--accent-rgb), 0.18);
 }
 
 /* ===== Slot Content Container ===== */
@@ -390,7 +397,7 @@
 }
 
 .calcRow--active {
-  background: color-mix(in oklab, var(--accent) 6%, var(--paper) 94%);
+  background: rgba(var(--accent-rgb), 0.06);
 }
 
 .calcRow--dragOver {
@@ -438,11 +445,12 @@
 }
 
 button.calcRow__dragHandle {
+  -webkit-appearance: none;
   appearance: none;
   background: transparent;
   border: none;
   box-shadow: none;
-  color: color-mix(in oklab, var(--ink) 72%, transparent);
+  color: rgba(var(--ink-rgb), 0.72);
   padding: 8px 10px;
   margin: -8px -4px;
   font-size: 15px;
@@ -541,7 +549,7 @@ button.calcRow__dragHandle:active {
 
 .field__range {
   width: 100%;
-  accent-color: color-mix(in oklab, var(--accent) 72%, var(--ink) 20%);
+  accent-color: rgba(var(--accent-rgb), 0.85);
 }
 
 .field--sm .field__range {
@@ -555,6 +563,7 @@ button.calcRow__dragHandle:active {
 
 /* Hint icon */
 .hintIcon {
+  -webkit-appearance: none;
   appearance: none;
   border: 1px solid var(--border);
   background: var(--surface-alt);
@@ -616,6 +625,7 @@ button.calcRow__dragHandle:active {
 }
 
 .sleepChip {
+  -webkit-appearance: none;
   appearance: none;
   font: inherit;
   font-size: 11px;
@@ -635,7 +645,7 @@ button.calcRow__dragHandle:active {
 }
 
 .sleepChip:active {
-  background: color-mix(in srgb, var(--accent) 12%, var(--paper));
+  background: rgba(var(--accent-rgb), 0.12);
 }
 
 /* ===== Result Rows ===== */
@@ -656,19 +666,19 @@ button.calcRow__dragHandle:active {
 }
 
 .calcRow__resultRow--required {
-  background: color-mix(in srgb, var(--accent) 10%, var(--paper));
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 .calcRow__resultRow--required:hover {
-  background: color-mix(in srgb, var(--accent) 16%, var(--paper));
+  background: rgba(var(--accent-rgb), 0.16);
 }
 
 .calcRow__resultRow--required.is-expanded {
-  background: color-mix(in srgb, var(--accent) 16%, var(--paper));
+  background: rgba(var(--accent-rgb), 0.16);
 }
 
 .calcRow__resultRow--used {
-  background: color-mix(in srgb, var(--accent) 6%, var(--paper));
+  background: rgba(var(--accent-rgb), 0.06);
   cursor: default;
 }
 
@@ -680,9 +690,9 @@ button.calcRow__dragHandle:active {
   width: 16px;
   height: 16px;
   border-radius: 3px;
-  background: color-mix(in srgb, var(--accent) 15%, var(--paper));
+  background: rgba(var(--accent-rgb), 0.15);
   color: var(--accent);
-  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border: 1px solid rgba(var(--accent-rgb), 0.25);
   vertical-align: middle;
   margin-right: 4px;
 }
@@ -730,15 +740,15 @@ button.calcRow__dragHandle:active {
 }
 
 .calcRow__resultItems .calcRow__k--danger {
-  color: color-mix(in srgb, var(--danger) 80%, var(--muted));
+  color: rgba(var(--danger-rgb), 0.8);
 }
 
 .calcRow__resultItems .calcRow__num--info {
-  color: color-mix(in srgb, var(--accent) 80%, var(--ink));
+  color: rgba(var(--accent-rgb), 0.8);
 }
 
 .calcRow__resultItems .calcRow__k--info {
-  color: color-mix(in srgb, var(--accent) 60%, var(--muted));
+  color: rgba(var(--accent-rgb), 0.6);
 }
 
 .calcRow__resultItems .calcRow__num--text {
@@ -751,7 +761,7 @@ button.calcRow__dragHandle:active {
 .calcRow__sleepTime {
   font-size: 14px;
   font-weight: 700;
-  color: color-mix(in srgb, var(--accent) 90%, var(--ink));
+  color: rgba(var(--accent-rgb), 0.9);
   margin-left: 6px;
 }
 

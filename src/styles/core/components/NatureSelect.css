@@ -53,8 +53,8 @@
   top: calc(100% + 2px);
   left: 0;
   right: 0;
-  background: color-mix(in oklab, var(--paper) 98%, var(--ink) 2%);
-  border: 1px solid color-mix(in oklab, var(--ink) 20%, transparent);
+  background: rgba(var(--ink-rgb), 0.02);
+  border: 1px solid rgba(var(--ink-rgb), 0.2);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-md);
   z-index: 1000;
@@ -78,11 +78,11 @@
 }
 
 .natureSelect__option:hover {
-  background: color-mix(in oklab, var(--accent) 10%, var(--paper));
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 .natureSelect__option--selected {
-  background: color-mix(in oklab, var(--ink) 8%, var(--paper));
+  background: rgba(var(--ink-rgb), 0.08);
   font-weight: 600;
 }
 
