@@ -35,6 +35,7 @@ const args = parseArgs(process.argv);
 function normText(s) {
   return String(s ?? "")
     .replace(/\u00a0/g, " ")
+    .replace(/\*\d+/g, "") // WikiWiki脚注マーカー除去 (*1, *3, etc.)
     .replace(/[ \t\r\n]+/g, " ")
     .trim();
 }
@@ -55,48 +56,94 @@ function closestSectionTitle($, tableEl) {
   return "";
 }
 
-function pickHeaderRow($, tableEl) {
-  const rows = $(tableEl).find("tr").toArray();
-  const headerRow = rows.find((tr) => $(tr).find("th").length > 0) ?? rows[0];
-  return headerRow ?? null;
-}
-
 function findLangCols(headers) {
   const ja = headers.findIndex((h) => /日本語|Japanese/i.test(h));
   const en = headers.findIndex((h) => /英語|English/i.test(h));
   return { ja: ja >= 0 ? ja : null, en: en >= 0 ? en : null };
 }
 
+/**
+ * rowspan/colspan を考慮してテーブルを仮想グリッドに展開し、
+ * 正確な列インデックスでセルを取得する。
+ */
+function buildGrid($, tableEl) {
+  const rows = $(tableEl).find("tr").toArray();
+  const grid = []; // grid[row][col] = element
+  for (let r = 0; r < rows.length; r++) {
+    if (!grid[r]) grid[r] = [];
+    const cells = $(rows[r]).find("th,td").toArray();
+    let cellIdx = 0;
+    for (const cell of cells) {
+      // 既に rowspan で埋まっている列をスキップ
+      while (grid[r][cellIdx] !== undefined) cellIdx++;
+      const rs = parseInt($(cell).attr("rowspan") || "1", 10);
+      const cs = parseInt($(cell).attr("colspan") || "1", 10);
+      for (let dr = 0; dr < rs; dr++) {
+        for (let dc = 0; dc < cs; dc++) {
+          if (!grid[r + dr]) grid[r + dr] = [];
+          grid[r + dr][cellIdx + dc] = cell;
+        }
+      }
+      cellIdx += cs;
+    }
+  }
+  return grid;
+}
+
 function extractPairsFromTable($, tableEl) {
-  const headerRow = pickHeaderRow($, tableEl);
-  if (!headerRow) return null;
-  const headers = $(headerRow)
-    .find("th,td")
-    .map((_, el) => normText($(el).text()))
-    .get();
+  const grid = buildGrid($, tableEl);
+  if (grid.length === 0) return null;
+
+  // ヘッダー行を探す（thを含む最初の行）
+  const rows = $(tableEl).find("tr").toArray();
+  let headerRowIdx = rows.findIndex((tr) => $(tr).find("th").length > 0);
+  if (headerRowIdx < 0) headerRowIdx = 0;
+
+  const headerGridRow = grid[headerRowIdx];
+  if (!headerGridRow) return null;
+  const headers = headerGridRow.map((el) => normText($(el).text()));
   const { ja: jaCol, en: enCol } = findLangCols(headers);
   if (jaCol === null || enCol === null) return null;
 
   const out = [];
-  const rows = $(tableEl).find("tr").toArray();
-  for (const tr of rows) {
-    const cells = $(tr).find("th,td").toArray();
-    if (!cells.length) continue;
-    const ja = normText($(cells[jaCol] ?? "").text());
-    const en = normText($(cells[enCol] ?? "").text());
+  for (let r = 0; r < grid.length; r++) {
+    if (r === headerRowIdx) continue;
+    const row = grid[r];
+    if (!row) continue;
+    const jaEl = row[jaCol];
+    const enEl = row[enCol];
+    if (!jaEl || !enEl) continue;
+    const ja = normText($(jaEl).text());
+    const en = normText($(enEl).text());
     if (!ja || !en) continue;
     // header行っぽいものは除外
     if (ja === "日本語" && en === "英語") continue;
     out.push([ja, en]);
   }
-  return { headers, pairs: out };
+  // 重複除去（rowspanで同じセルが複数行に展開されるため）
+  const seen = new Set();
+  const unique = [];
+  for (const [ja, en] of out) {
+    const key = `${ja}\t${en}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push([ja, en]);
+    }
+  }
+  return { headers, pairs: unique };
 }
+
+// WikiWikiのスクレイピング結果に含まれる既知のエラーを修正
+const ERRATA = new Map([
+  ["Send for Professer", "Send to Professor"],
+  ["Sleep Datas", "Sleep Data"],
+]);
 
 function toObj(pairs) {
   const obj = {};
   for (const [ja, en] of pairs) {
     // 重複は先勝ち（後勝ちだと表の順序に左右されやすい）
-    if (!obj[ja]) obj[ja] = en;
+    if (!obj[ja]) obj[ja] = ERRATA.get(en) ?? en;
   }
   return obj;
 }

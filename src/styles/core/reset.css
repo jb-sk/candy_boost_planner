@@ -34,6 +34,10 @@ body {
   font-family: var(--font-body);
   line-height: 1.6;
   background: var(--bg-decor);
+  /* FOUC prevention: index.html sets visibility:hidden as an inline style
+     on <body>. !important is needed to override the inline style specificity.
+     When this stylesheet loads (via theme CSS → reset.css), we reveal. */
+  visibility: visible !important;
 }
 
 /* #app wrapper created by Vue — must propagate height */

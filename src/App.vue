@@ -11,7 +11,7 @@
         <div class="lang">
           <button class="lang__btn" type="button" :class="{ 'lang__btn--on': uiLocale === 'ja' }" @click="setLocale('ja')">JP</button>
           <button class="lang__btn" type="button" :class="{ 'lang__btn--on': uiLocale === 'en' }" @click="setLocale('en')">EN</button>
-          <button class="lang__btn lang__btn--help" type="button" @click="showHelp = true">{{ uiLocale === 'ja' ? '使い方' : 'Help' }}</button>
+          <button class="lang__btn lang__btn--help" type="button" @click="showHelp = true">{{ t("common.help") }}</button>
         </div>
       </div>
       <div class="heroMeta">
@@ -145,7 +145,7 @@ const supportLinks = computed<SupportLink[]>(() => {
       id: "ofuse",
       label: "OFUSE",
       href: OFUSE_URL,
-      ariaLabel: locale.value === "en" ? "Open OFUSE in a new tab" : "OFUSEを新しいタブで開く",
+      ariaLabel: t("common.ariaOfuse"),
     });
   }
   if (BMAC_URL) {
@@ -153,7 +153,7 @@ const supportLinks = computed<SupportLink[]>(() => {
       id: "bmac",
       label: "Buy Me a Coffee",
       href: BMAC_URL,
-      ariaLabel: locale.value === "en" ? "Open Buy Me a Coffee in a new tab" : "Buy Me a Coffeeを新しいタブで開く",
+      ariaLabel: t("common.ariaBmac"),
     });
   }
   return out;

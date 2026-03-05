@@ -4,10 +4,13 @@
  * In production builds:
  *  1. Each src/styles/<id>.css is emitted as a standalone CSS asset.
  *  2. A tiny inline script is injected into index.html <head> that reads
- *     the user's theme from localStorage and inserts a blocking <link>.
+ *     the user's theme from localStorage and uses document.write to inject
+ *     a render-blocking <link> into the parser stream.
  *
- * This eliminates FOUC because the browser loads the CSS synchronously
- * before any JS executes or DOM is painted.
+ * This eliminates FOUC because the browser treats the written <link> as
+ * a static stylesheet and blocks rendering until it is loaded.
+ * As a fallback, index.html also sets body { visibility: hidden } which
+ * is revealed by reset.css (body { visibility: visible }).
  *
  * In dev mode this plugin is a no-op; main.ts uses dynamic import instead.
  */
@@ -61,7 +64,18 @@ export default function themeCSS(): Plugin {
       const mapJson = JSON.stringify(themeMap);
 
       // This script runs synchronously in <head>, before any deferred
-      // module script. It inserts a <link> for the chosen theme CSS.
+      // module script. It uses document.write to inject a <link> directly
+      // into the parser stream, which the browser treats as render-blocking
+      // (just like a static <link> written in the HTML source).
+      //
+      // document.write is intentional here: createElement+appendChild
+      // inserts the <link> *after* the parser has already seen it, so some
+      // browsers (Chrome, Safari) treat it as non-blocking and may paint
+      // unstyled content (FOUC). document.write feeds the tag into the
+      // parser *during* parsing, guaranteeing render-blocking behavior.
+      //
+      // As an extra safety net, index.html sets body { visibility: hidden }
+      // and reset.css (loaded by every theme) sets body { visibility: visible }.
       const inlineScript = `
 (function(){
   var K="${STORAGE_KEY}",D="${DEFAULT_THEME}",B="${base}";
@@ -69,9 +83,7 @@ export default function themeCSS(): Plugin {
   var s=localStorage.getItem(K)||D;
   var f=T[s]||T[D];
   if(f){
-    var l=document.createElement("link");
-    l.rel="stylesheet";l.id="theme-css";l.href=B+f;
-    document.head.appendChild(l);
+    document.write('<link rel="stylesheet" id="theme-css" href="'+B+f+'">');
   }
 })();`.trim();
 

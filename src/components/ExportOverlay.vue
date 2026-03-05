@@ -382,11 +382,7 @@ const statCards = computed<StatCardDef[]>(() => {
 });
 
 const exportMonthLabel = computed(() => {
-  const d = new Date();
-  if (locale.value === 'ja') {
-    return `${d.getFullYear()}年${d.getMonth() + 1}月`;
-  }
-  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
+  return new Intl.DateTimeFormat(locale.value, { year: "numeric", month: "short" }).format(new Date());
 });
 
 function csvCell(v: unknown): string {

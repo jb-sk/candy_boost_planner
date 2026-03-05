@@ -17,6 +17,9 @@ export const en = {
     required: " (required)",
     settings: "Stock & Sleep",
     settingsShort: "Settings",
+    help: "Help",
+    ariaOfuse: "Open OFUSE in a new tab",
+    ariaBmac: "Open Buy Me a Coffee in a new tab",
   },
   settings: {
     globalTitle: "Basic Settings",
@@ -128,6 +131,7 @@ export const en = {
     },
     candy: {
       universalLabel: "Handy Candy Stock",
+      universalSummaryS: "Handy S",
       universalS: "S",
       universalM: "M",
       universalL: "L",
@@ -143,7 +147,7 @@ export const en = {
       surplus: "Surplus",
     },
     sleep: {
-      sectionToggle: "Sleep Time, Sleep EXP Bonus, Type Candy Settings",
+      sectionToggle: "Sleep Time, Sleep EXP Bonus, GSD, Type Candy Settings",
       dailySleepLabel: "Sleep Time",
       dailySleepUnit: "h",
       sleepExpBonusLabel: "EXP Bonus",
@@ -166,13 +170,8 @@ export const en = {
       csvDownload: "Download CSV",
       csvCopy: "Copy CSV",
       close: "Close",
+      title: "Share as One Image",
       sheetTitle: "Holiday Candy Boost Plan",
-      sum: {
-        boostTotal: "Boost Total",
-        shardsTotal: "Shards Total",
-        candyUsage: "Handy Candy",
-        dailyShards: "(Ref: {shards}/day x {days} days = {total})",
-      },
       sumShardsTotal: "Shards total",
       sumBoostTotal: "Boost total",
       sumNormalTotal: "Normal total",
