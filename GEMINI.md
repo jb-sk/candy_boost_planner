@@ -79,3 +79,16 @@ mcp_image-saver_list_saved_images
 3.  **長時間実行コマンド禁止** — 完了まで数十秒以上かかるコマンドは避けること。
 4.  **`[System.IO.File]::ReadAllBytes()` 禁止** — ファイルロックによるハングの原因となる。
 5.  **`.ps1` スクリプトの実行禁止** — `run_shell_command` で `.ps1` を実行してもハングする。
+
+## 🐧 bash コマンドの注意事項
+
+この環境では `bash` が **WSL の bash**（`C:\Windows\System32\bash.exe`）を指す。
+Git Bash（`D:\Dev\Tools\Git\bin\bash.exe`）は PATH 上でより後ろにあるため、`bash` と指定すると WSL が起動する。
+
+### ルール
+- **`bash` を直接使わないこと** — 必ず Git Bash のフルパスを明示指定する
+- シェルスクリプト（`.sh`）を実行する場合：
+  ```powershell
+  & "D:\Dev\Tools\Git\bin\bash.exe" path/to/script.sh
+  ```
+- WSL を意図的に使う場合のみ `bash` または `wsl` を使用可

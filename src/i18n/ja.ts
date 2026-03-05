@@ -17,6 +17,9 @@ export const ja = {
     required: "（必須）",
     settings: "在庫・睡眠設定",
     settingsShort: "設定",
+    help: "使い方",
+    ariaOfuse: "OFUSEを新しいタブで開く",
+    ariaBmac: "Buy Me a Coffeeを新しいタブで開く",
   },
   settings: {
     globalTitle: "基本設定",
@@ -128,6 +131,7 @@ export const ja = {
     },
     candy: {
       universalLabel: "万能アメ在庫",
+      universalSummaryS: "万能S",
       universalS: "S",
       universalM: "M",
       universalL: "L",

@@ -23,7 +23,7 @@
           </span>
           <template v-if="calc.planResult.value">
             <span class="calcSumInline calcSumInline--candy" :class="{ 'calcSumInline--danger': calc.universalCandyNeeded.value.s > candyStore.universalCandy.value.s }">
-              <span class="calcSumInline__k">万能S</span>
+              <span class="calcSumInline__k">{{ t("calc.candy.universalSummaryS") }}</span>
               <span class="calcSumInline__v">{{ calc.universalCandyNeeded.value.s }}/{{ candyStore.universalCandy.value.s }}</span>
             </span>
             <span class="calcSumInline calcSumInline--candy" :class="{ 'calcSumInline--danger': calc.universalCandyNeeded.value.m > candyStore.universalCandy.value.m }">
@@ -286,7 +286,7 @@
               >
                 <template #title>
                   Lv{{ r.srcLevel }} → Lv{{ r.dstLevel }}
-                  <span v-if="isCandyShort(r)" title="アメ不足" style="font-size: 1.2em; vertical-align: middle; margin-left: 4px;">🍬</span>
+                  <span v-if="isCandyShort(r)" :title="t('calc.row.candyShortage')" style="font-size: 1.2em; vertical-align: middle; margin-left: 4px;">🍬</span>
                 </template>
               </LevelPicker>
             </div>
@@ -314,7 +314,7 @@
               >
                 <template #title>
                   Lv{{ r.srcLevel }} → Lv{{ r.ui.boostReachLevel }}
-                  <span v-if="isCandyShort(r)" title="アメ不足" style="font-size: 1.2em; vertical-align: middle; margin-left: 4px;">🍬</span>
+                  <span v-if="isCandyShort(r)" :title="t('calc.row.candyShortage')" style="font-size: 1.2em; vertical-align: middle; margin-left: 4px;">🍬</span>
                 </template>
               </LevelPicker>
             </div>
