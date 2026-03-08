@@ -413,6 +413,33 @@
   line-height: 1.8;
 }
 
+/* Onboarding demo result row preview */
+.calcEmpty__demo {
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.calcEmpty__demoTitle {
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+
+/* Inline tooltip for onboarding step 3 — rendered in normal DOM flow */
+.calcEmpty__demoTip {
+  margin-top: 12px;
+  padding: 20px 22px;
+  background: var(--paper, #fff);
+  color: var(--ink, #1e293b);
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.1);
+  font-family: var(--font-body, sans-serif);
+  animation: onboarding-fadeIn 0.25s ease;
+  position: relative;
+  z-index: 1;
+}
+
 /* --- Row Header --- */
 .calcRow__head {
   display: flex;

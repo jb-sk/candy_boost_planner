@@ -15,7 +15,8 @@ if (cfToken) {
 }
 
 const savedLocale = localStorage.getItem("candy-boost-planner:lang");
-const i18n = createAppI18n(normalizeLocale(savedLocale));
+const detectedLocale = savedLocale ?? (navigator.language.startsWith("en") ? "en" : "ja");
+const i18n = createAppI18n(normalizeLocale(detectedLocale));
 
 // Theme CSS loading
 // Production: loaded via blocking <link> in index.html (vite-plugin-theme-css)

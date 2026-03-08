@@ -405,6 +405,17 @@ export const en = {
       pokemonData: "Pokémon data & import format",
     },
   },
+  onboarding: {
+    step1Desc: "Let's start here.",
+    step2Desc: "Set your items and sleep time.",
+    step3Desc: "{action} a result to see the reachable Lv and remaining sleep time.",
+    actionClick: "Click",
+    actionTap: "Tap",
+    demoTitle: "Pikachu Lv.1 → Lv.10",
+    next: "Next",
+    done: "Got it",
+    skip: "Skip",
+  },
   addModal: {
     title: "Add Pokémon",
     submit: "Add",
