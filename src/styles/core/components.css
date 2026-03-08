@@ -22,6 +22,7 @@
 @import "./components/HelpOverlay.css";
 @import "./components/LevelPicker.css";
 @import "./components/NatureSelect.css";
+@import "./components/OnboardingTour.css";
 @import "../../components/DesignSwitcher.css";
 
 /* ===== Hero Header ===== */

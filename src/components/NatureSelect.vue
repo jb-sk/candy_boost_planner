@@ -1,6 +1,7 @@
 <template>
   <div class="natureSelect" :class="{ 'natureSelect--open': isOpen }">
     <button
+      ref="triggerRef"
       type="button"
       class="natureSelect__trigger field__input"
       data-testid="nature-select-trigger"
@@ -14,20 +15,27 @@
         <polyline points="6 9 12 15 18 9" stroke="currentColor" stroke-width="2" fill="none"/>
       </svg>
     </button>
-    <div v-if="isOpen" class="natureSelect__dropdown" data-testid="nature-select-dropdown">
-      <button
-        type="button"
-        v-for="option in options"
-        :key="option.value"
-        class="natureSelect__option"
-        data-testid="nature-select-option"
-        :class="{ 'natureSelect__option--selected': option.value === modelValue }"
-        @mousedown.prevent="select(option.value)"
+    <Teleport to="body">
+      <div
+        v-if="isOpen"
+        class="natureSelect__dropdown"
+        data-testid="nature-select-dropdown"
+        :style="dropdownStyle"
       >
-        <span class="natureSelect__symbol" v-html="symbolSvg(option.value)" aria-hidden="true"></span>
-        <span class="natureSelect__sr">{{ option.label }}</span>
-      </button>
-    </div>
+        <button
+          type="button"
+          v-for="option in options"
+          :key="option.value"
+          class="natureSelect__option"
+          data-testid="nature-select-option"
+          :class="{ 'natureSelect__option--selected': option.value === modelValue }"
+          @mousedown.prevent="select(option.value)"
+        >
+          <span class="natureSelect__symbol" v-html="symbolSvg(option.value)" aria-hidden="true"></span>
+          <span class="natureSelect__sr">{{ option.label }}</span>
+        </button>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -46,7 +54,26 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: 'normal' | 'up' | 'down'): void;
 }>();
 
+const triggerRef = ref<HTMLButtonElement | null>(null);
 const isOpen = ref(false);
+const dropdownPos = ref({ top: 0, left: 0, width: 0 });
+
+const dropdownStyle = computed(() => ({
+  position: 'fixed' as const,
+  top: `${dropdownPos.value.top}px`,
+  left: `${dropdownPos.value.left}px`,
+  width: `${dropdownPos.value.width}px`,
+}));
+
+function updateDropdownPos() {
+  if (!triggerRef.value) return;
+  const rect = triggerRef.value.getBoundingClientRect();
+  dropdownPos.value = {
+    top: rect.bottom + 2,
+    left: rect.left,
+    width: rect.width,
+  };
+}
 
 const options = computed(() => [
   { value: 'normal' as const, label: props.labelNormal },
@@ -83,6 +110,9 @@ function symbolSvg(value: 'normal' | 'up' | 'down'): string {
 }
 
 function toggle() {
+  if (!isOpen.value) {
+    updateDropdownPos();
+  }
   isOpen.value = !isOpen.value;
 }
 

@@ -406,6 +406,17 @@ export const ja = {
       pokemonData: "ポケモンデータ・インポート形式",
     },
   },
+  onboarding: {
+    step1Desc: "ここから始めましょう。",
+    step2Desc: "アイテムと睡眠時間を設定しましょう。",
+    step3Desc: "結果を{action}すると、到達可能Lvと残りの睡眠時間が表示されます。",
+    actionClick: "クリック",
+    actionTap: "タップ",
+    demoTitle: "ピカチュウ Lv.1 → Lv.10",
+    next: "次へ",
+    done: "はじめる",
+    skip: "スキップ",
+  },
   addModal: {
     title: "ポケモンを追加",
     submit: "追加",

@@ -151,6 +151,12 @@
   cursor: pointer;
 }
 
+.addModal__favCheck--inline {
+  grid-column: auto;
+  align-self: end;
+  padding-bottom: 6px;
+}
+
 .addModal__footer {
   padding: 10px 16px;
   padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
