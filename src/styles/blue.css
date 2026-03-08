@@ -76,7 +76,7 @@
 /* ===== Global Elements ===== */
 input, select, textarea {
   border: 2px solid var(--input-border);
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
 }
 
 button {
@@ -110,6 +110,24 @@ button:active {
 }
 
 .slotTab__select {
+  box-shadow: none;
+}
+
+/* ===== Input-like buttons — remove button shadow ===== */
+.levelPick__button,
+.natureSelect__trigger {
+  box-shadow: none;
+}
+
+/* ===== NatureSelect dropdown — remove shadow ===== */
+.natureSelect__dropdown,
+.natureSelect__option {
+  box-shadow: none;
+}
+
+/* ===== Suggest (autocomplete) — remove shadow ===== */
+.suggest__panel,
+.suggest__item {
   box-shadow: none;
 }
 

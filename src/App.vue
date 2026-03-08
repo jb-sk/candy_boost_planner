@@ -75,11 +75,13 @@
     <SettingsOverlay v-if="showSettings" :calc="calc" @close="showSettings = false" />
 
     <AddPokemonModal v-if="showAddModal" :box="box" @close="showAddModal = false" @added="onAddModalAdded()" />
+
+    <OnboardingTour v-if="onboarding.isActive.value" :onboarding="onboarding" />
   </main>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, provide } from "vue";
+import { computed, ref, provide, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { localizeGameTerm } from "./i18n/terms";
 import type { ExpGainNature, ExpType } from "./domain/types";
@@ -92,8 +94,10 @@ import CalcPanel from "./components/CalcPanel.vue";
 import BoxPanel from "./components/BoxPanel.vue";
 import MobileNav from "./components/MobileNav.vue";
 import AddPokemonModal from "./components/AddPokemonModal.vue";
+import OnboardingTour from "./components/OnboardingTour.vue";
 import { useBoxStore } from "./composables/useBoxStore";
 import { useCalcStore } from "./composables/useCalcStore";
+import { useOnboarding } from "./composables/useOnboarding";
 import { buildThemeList, DEFAULT_THEME_ID, DESIGN_STORAGE_KEY } from "./config/themes";
 
 const { t, locale } = useI18n();
@@ -108,10 +112,22 @@ type SupportLink = { id: "ofuse" | "bmac"; label: string; href: string; ariaLabe
 const showHelp = ref(false);
 const showSettings = ref(false);
 const showAddModal = ref(false);
+
+const onboarding = useOnboarding();
+
+// Start onboarding tour on first visit after a short delay
+onMounted(() => {
+  if (!onboarding.isDone.value) {
+    setTimeout(() => onboarding.start(), 600);
+  }
+});
 const scrollContainerRef = ref<HTMLElement | null>(null);
 
 // provide scroll container for child components that need programmatic scrolling
 provide('scrollContainer', scrollContainerRef);
+// provide onboarding state for CalcPanel (dummy result row + inline tooltip for step 3)
+provide('onboardingActive', onboarding.isActive);
+provide('onboarding', onboarding);
 const calcPanelRef = ref<InstanceType<typeof CalcPanel> | null>(null);
 
 function openSettings() {

@@ -203,6 +203,10 @@
 }
 
 /* ===== Box Disclosure (Add / Import) ===== */
+.boxDisclosure {
+  background: var(--paper);
+}
+
 .boxTextarea {
   background: var(--surface);
 }

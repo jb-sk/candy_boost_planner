@@ -28,8 +28,25 @@ export default defineConfig({
     /* Base URL to use in actions like `await page.goto('/')`. */
     baseURL: 'http://localhost:5173',
 
+    /* Force Japanese locale so E2E assertions match Japanese UI text */
+    locale: 'ja-JP',
+
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
+
+    /* Skip onboarding tour and set language for all tests */
+    storageState: {
+      cookies: [],
+      origins: [
+        {
+          origin: 'http://localhost:5173',
+          localStorage: [
+            { name: 'candy-boost-planner:onboarding-done', value: '1' },
+            { name: 'candy-boost-planner:lang', value: 'ja' },
+          ],
+        },
+      ],
+    },
   },
 
   /* Configure projects for major browsers */

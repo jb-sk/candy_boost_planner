@@ -140,7 +140,7 @@
           <span class="btn__icon" v-html="iconRedoSvg" aria-hidden="true"></span>
         </button>
       </div>
-      <button class="btn btn--primary calcActions__settings" data-testid="settings-open-button-desktop" type="button" @click="$emit('open-settings')" :title="t('common.settings')">
+      <button class="btn btn--primary calcActions__settings" data-testid="settings-open-button-desktop" data-onboarding="settings" type="button" @click="$emit('open-settings')" :title="t('common.settings')">
         {{ t("common.settingsShort") }}
       </button>
       <button class="btn btn--primary" data-testid="calc-export-button" type="button" @click="calc.openExport()" :disabled="!calc.rowsView.value.length" :title="t('calc.export.open')">
@@ -402,6 +402,7 @@
           <!-- 必要行（クリックで展開） -->
           <div
             data-testid="resultRowRequired"
+            :data-onboarding="calc.rowsView.value.indexOf(r) === 0 ? 'result-row' : undefined"
             class="calcRow__resultRow calcRow__resultRow--required"
             :class="{ 'is-expanded': isExpanded(r.id) }"
             @click="toggleExpand(r.id)"
@@ -529,17 +530,92 @@
           </div>
         </div>
       </div>
-      <button class="btn btn--primary calcRows__addBtn" type="button" data-testid="calc-add-pokemon-btn" @click="$emit('open-add-modal')">
+      <button class="btn btn--primary calcRows__addBtn" type="button" data-testid="calc-add-pokemon-btn" data-onboarding="add-pokemon" @click="$emit('open-add-modal')">
         + {{ t("addModal.title") }}
       </button>
     </div>
     <div class="calcEmpty" data-testid="calc-empty" v-else>
       <div class="calcEmpty__content">
         <div class="calcEmpty__title">{{ t("addModal.emptyState") }}</div>
-        <button class="btn btn--primary btn--lg" type="button" data-testid="calc-empty-add-btn" @click="$emit('open-add-modal')">
+        <button class="btn btn--primary btn--lg" type="button" data-testid="calc-empty-add-btn" data-onboarding="add-pokemon" @click="$emit('open-add-modal')">
           {{ t("addModal.emptyAdd") }}
         </button>
-        <div class="calcEmpty__list">
+
+        <!-- Onboarding tour: show dummy result row preview so step 3 has a real target -->
+        <!-- Values approximate Pikachu Lv.1→Lv.10 (mini boost, 0% ratio, no stock) -->
+        <div v-if="onboardingActive" class="calcEmpty__demo" data-onboarding="result-row">
+          <div class="calcRow__title calcEmpty__demoTitle">{{ t("onboarding.demoTitle") }}</div>
+          <div class="calcRow__resultCollapse">
+            <div class="calcRow__resultRow calcRow__resultRow--required is-expanded">
+              <span class="calcRow__expandIcon">▼</span>
+              <span class="calcRow__resultLabel">{{ t("calc.row.required") }}</span>
+              <span class="calcRow__resultItems">{{ ' ' }}<span class="calcRow__res">
+                  <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
+                  <span class="calcRow__num">0</span>
+                </span>{{ ' ' }}<span class="calcRow__res">
+                  <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
+                  <span class="calcRow__num">45</span>
+                </span>{{ ' ' }}<span class="calcRow__res">
+                  <span class="calcRow__k">{{ t("calc.row.candyTotal") }}</span>
+                  <span class="calcRow__num">45</span>
+                </span>{{ ' ' }}<span class="calcRow__res">
+                  <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
+                  <span class="calcRow__num">1,619</span>
+                </span>
+              </span>
+            </div>
+            <div class="calcRow__resultRow calcRow__resultRow--used">
+              <span class="calcRow__expandIcon" style="visibility: hidden"></span>
+              <span class="calcRow__resultLabel">{{ t("calc.row.used") }}</span>
+              <span class="calcRow__resultItems">{{ ' ' }}<span class="calcRow__res">
+                  <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
+                  <span class="calcRow__num">0</span>
+                </span>{{ ' ' }}<span class="calcRow__res">
+                  <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
+                  <span class="calcRow__num">31</span>
+                </span>{{ ' ' }}<span class="calcRow__res">
+                  <span class="calcRow__k">{{ t("calc.row.candyTotal") }}</span>
+                  <span class="calcRow__num">31</span>
+                </span>{{ ' ' }}<span class="calcRow__res">
+                  <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
+                  <span class="calcRow__num">967</span>
+                </span>{{ ' ' }}<span class="calcRow__res">
+                  <span class="calcRow__k calcRow__k--danger">{{ t("calc.row.shardsShortage") }}</span>
+                  <span class="calcRow__num calcRow__num--danger">619</span>
+                </span>{{ ' ' }}<span class="calcRow__res">
+                   <span class="calcRow__k calcRow__k--info">{{ t("calc.row.reachedLv") }}</span>
+                   <span class="calcRow__num calcRow__num--info">8</span>
+                   <span class="calcRow__k calcRow__k--info" style="margin-left: 4px;">({{ t("calc.row.expRemaining") }}</span>
+                   <span class="calcRow__num calcRow__num--info">160</span><span class="calcRow__k calcRow__k--info">)</span>
+                </span>{{ ' ' }}<span class="calcRow__res">
+                   <span class="calcRow__k calcRow__k--info">{{ t("calc.row.remainingExp") }}</span>
+                   <span class="calcRow__num calcRow__num--info">475</span>
+                   <span class="calcRow__sleepTime">{{ t("calc.sleep.remainingDays", { days: 5, hours: 42.5 }) }}</span>
+                </span>
+              </span>
+            </div>
+          </div>
+          <!-- Inline tooltip for step 3: rendered in normal DOM flow, no fixed positioning -->
+          <div v-if="onboardingStep3Active" class="calcEmpty__demoTip">
+            <div class="onboarding-tooltip__header">
+              <span class="onboarding-tooltip__step">3 / {{ onboardingRef?.totalSteps }}</span>
+            </div>
+            <h3 v-if="onboardingRef?.step.value?.titleKey" class="onboarding-tooltip__title">{{ t(onboardingRef.step.value.titleKey) }}</h3>
+            <p class="onboarding-tooltip__desc">{{ t("onboarding.step3Desc", { action: onboardingActionLabel }) }}</p>
+            <div class="onboarding-tooltip__footer">
+              <button
+                class="btn btn--primary onboarding-tooltip__next"
+                type="button"
+                @click="onboardingRef?.next()"
+              >
+                {{ t("onboarding.done") }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Normal empty state steps (hidden during onboarding) -->
+        <div v-else class="calcEmpty__list">
           <div>{{ t("calc.emptySteps.step1") }}</div>
           <div>{{ t("calc.emptySteps.step2") }}</div>
           <i18n-t keypath="calc.emptySteps.step3" tag="div">
@@ -571,7 +647,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, reactive, nextTick, onUnmounted } from "vue";
+import { computed, ref, reactive, nextTick, onUnmounted, inject } from "vue";
 import { useI18n } from "vue-i18n";
 import LevelPicker from "./LevelPicker.vue";
 import type { CalcStore, CalcRowView } from "../composables/useCalcStore";
@@ -600,6 +676,20 @@ const props = defineProps<{
 const calc = props.calc;
 const { t, locale } = useI18n();
 const candyStore = useCandyStore();
+
+/** Onboarding tour state (injected from App.vue) */
+const _onboardingActive = inject<import("vue").Ref<boolean>>("onboardingActive");
+const onboardingActive = computed(() => _onboardingActive?.value ?? false);
+
+type OnboardingReturn = ReturnType<typeof import("../composables/useOnboarding").useOnboarding>;
+const onboardingRef = inject<OnboardingReturn | null>("onboarding", null);
+const onboardingStep3Active = computed(() =>
+  onboardingRef?.isActive.value && onboardingRef?.currentStep.value === 2,
+);
+// Action label ("tap" / "click") — sourced from composable to avoid duplication
+const onboardingActionLabel = computed(() =>
+  t(onboardingRef?.actionI18nKey ?? "onboarding.actionClick"),
+);
 
 /** Sticky summary bar expand/collapse */
 const stickyExpanded = ref(false);

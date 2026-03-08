@@ -49,15 +49,12 @@
 }
 
 .natureSelect__dropdown {
-  position: absolute;
-  top: calc(100% + 2px);
-  left: 0;
-  right: 0;
-  background: rgba(var(--ink-rgb), 0.02);
+  /* position/top/left/width are set inline via Teleport */
+  background: var(--paper, #fff);
   border: 1px solid rgba(var(--ink-rgb), 0.2);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-md);
-  z-index: 1000;
+  z-index: 10000;
   overflow: hidden;
 }
 

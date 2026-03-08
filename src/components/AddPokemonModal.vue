@@ -93,8 +93,20 @@
           />
         </label>
 
+        <!-- アメ在庫 -->
+        <label class="field field--sm">
+          <span class="field__label">{{ t("calc.row.speciesCandy") }}</span>
+          <input
+            v-model="speciesCandyInput"
+            type="number"
+            min="0"
+            class="field__input"
+            data-testid="add-modal-species-candy"
+          />
+        </label>
+
         <!-- お気に入り -->
-        <label class="addModal__favCheck">
+        <label class="addModal__favCheck addModal__favCheck--inline">
           <input type="checkbox" v-model="addFavorite" />
           {{ t("box.add.addFavorite") }}
         </label>
@@ -123,6 +135,7 @@ import NatureSelect from "./NatureSelect.vue";
 import { getPokemonNameLocalized } from "../domain/pokesleep/pokemon-name-localize";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import type { useBoxStore } from "../composables/useBoxStore";
+import { useCandyStore } from "../composables/useCandyStore";
 
 const emit = defineEmits<{
   (e: "close"): void;
@@ -135,6 +148,7 @@ const props = defineProps<{
 
 const box = props.box;
 const { t, locale } = useI18n();
+const candyStore = useCandyStore();
 
 // ── Refs bridging to useBoxStore ──
 const addName = box.addName;
@@ -150,6 +164,7 @@ const isComposing = box.isComposing;
 const srcLevel = ref(1);
 const dstLevel = ref(60);
 const expRemainingInput = ref<string>("");
+const speciesCandyInput = ref<string>("");
 
 const nameInputRef = ref<HTMLInputElement | null>(null);
 
@@ -166,6 +181,16 @@ watch(srcLevel, (src) => {
   if (src < 60) dstLevel.value = 60;
   else dstLevel.value = MAX_LEVEL;
 }, { immediate: true });
+
+// Pre-fill species candy stock when a Pokémon is identified
+watch(addLookup, (lu) => {
+  if (lu) {
+    const current = candyStore.getSpeciesCandyFor(lu.pokedexId);
+    speciesCandyInput.value = current > 0 ? String(current) : "";
+  } else {
+    speciesCandyInput.value = "";
+  }
+});
 
 // ── Validation ──
 const canSubmit = computed(() => {
@@ -202,6 +227,15 @@ function onSubmit(ev?: MouseEvent) {
     }
   }
 
+  // Save species candy stock if a value was entered and species is known
+  if (addLookup.value) {
+    const rawCandy = String(speciesCandyInput.value).trim();
+    const parsedCandy = rawCandy === "" ? undefined : Math.max(0, Math.floor(Number(rawCandy) || 0));
+    if (parsedCandy !== undefined) {
+      candyStore.updateSpeciesCandy(addLookup.value.pokedexId, parsedCandy);
+    }
+  }
+
   // Emit to parent so it can bridge to CalcStore (with expRemaining)
   emit("added", ev);
 
@@ -215,6 +249,7 @@ function resetForm() {
   srcLevel.value = 1;
   dstLevel.value = 60;
   expRemainingInput.value = "";
+  speciesCandyInput.value = "";
   addNature.value = "normal";
   addFavorite.value = true;
 

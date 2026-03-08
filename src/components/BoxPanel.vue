@@ -87,6 +87,16 @@
               />
             </label>
             <label class="field">
+              <span class="field__label">{{ t("calc.row.speciesCandy") }}</span>
+              <input
+                v-model="addSpeciesCandy"
+                type="number"
+                min="0"
+                class="field__input"
+                data-testid="box-add-species-candy"
+              />
+            </label>
+            <label class="field">
               <span class="field__label">{{ t("box.add.specialtyOpt") }}</span>
               <select v-model="addSpecialty" class="field__input" data-testid="box-add-specialty-select" :disabled="!!addLookup" @change="box.onAddSpecialtyChanged">
                 <option value="">{{ t("box.add.specialtyUnknown") }}</option>
@@ -735,6 +745,7 @@ import { getPokemonNameLocalized } from "../domain/pokesleep/pokemon-name-locali
 import NatureSelect from "./NatureSelect.vue";
 
 import type { BoxStore } from "../composables/useBoxStore";
+import { useCandyStore } from "../composables/useCandyStore";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 
 import iconBerrySvg from "../assets/icons/berry.svg?raw";
@@ -809,7 +820,19 @@ const selectedNature = box.selectedNature;
 
 import { ref, watch, nextTick } from "vue";
 import LevelPicker from "./LevelPicker.vue";
+const candyStore = useCandyStore();
+const addSpeciesCandy = ref<string>("");
 const addToCalcChecked = ref(true);
+
+// Pre-fill species candy stock when a Pokémon is identified
+watch(addLookup, (lu) => {
+  if (lu) {
+    const current = candyStore.getSpeciesCandyFor(lu.pokedexId);
+    addSpeciesCandy.value = current > 0 ? String(current) : "";
+  } else {
+    addSpeciesCandy.value = "";
+  }
+});
 
 /* ===== Button flash feedback helper ===== */
 const importBtnFlash = ref(false);
@@ -856,6 +879,15 @@ function onImportWithFlash() {
 }
 
 function onCreateToBox() {
+  // Save species candy stock if a value was entered and species is known
+  if (addLookup.value) {
+    const rawCandy = String(addSpeciesCandy.value).trim();
+    const parsedCandy = rawCandy === "" ? undefined : Math.max(0, Math.floor(Number(rawCandy) || 0));
+    if (parsedCandy !== undefined) {
+      candyStore.updateSpeciesCandy(addLookup.value.pokedexId, parsedCandy);
+    }
+  }
+
   if (addToCalcChecked.value) {
     // ボックスに追加して計算機にも反映
     box.onCreateManual({ mode: "toCalc" });
@@ -864,6 +896,9 @@ function onCreateToBox() {
     // ボックスにのみ追加
     box.onCreateManual({ mode: "toBox" });
   }
+
+  // Reset candy input for next add
+  addSpeciesCandy.value = "";
 }
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
