@@ -1600,6 +1600,28 @@
       "link": "https://wikiwiki.jp/poke_sleep/%E3%82%AB%E3%82%A4%E3%83%AA%E3%83%A5%E3%83%BC"
     },
     {
+      "dexNo": 151,
+      "nameJa": "ミュウ",
+      "specialtyJa": "オール",
+      "sleepTypeJa": "すやすや",
+      "berryJa": [
+        "マゴのみ"
+      ],
+      "ingAJa": [
+        "とくせんエッグ"
+      ],
+      "ingBJa": [
+        "げきからハーブ"
+      ],
+      "ingCJa": [
+        "ひらめきのたね.png"
+      ],
+      "mainSkillJa": "オールマイティー",
+      "fp": 25,
+      "helpSeconds": 2900,
+      "link": "https://wikiwiki.jp/poke_sleep/%E3%83%9F%E3%83%A5%E3%82%A6"
+    },
+    {
       "dexNo": 152,
       "nameJa": "チコリータ",
       "specialtyJa": "きのみ",
