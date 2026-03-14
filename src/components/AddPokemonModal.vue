@@ -139,7 +139,7 @@ import { useCandyStore } from "../composables/useCandyStore";
 
 const emit = defineEmits<{
   (e: "close"): void;
-  (e: "added", ev?: MouseEvent): void;
+  (e: "added", dstLevel: number, ev?: MouseEvent): void;
 }>();
 
 const props = defineProps<{
@@ -176,11 +176,6 @@ watch(srcLevel, (src) => {
   if (dstLevel.value < src) dstLevel.value = src;
 });
 
-// Auto-set default dstLevel when srcLevel changes
-watch(srcLevel, (src) => {
-  if (src < 60) dstLevel.value = 60;
-  else dstLevel.value = MAX_LEVEL;
-}, { immediate: true });
 
 // Pre-fill species candy stock when a Pokémon is identified
 watch(addLookup, (lu) => {
@@ -201,43 +196,26 @@ const canSubmit = computed(() => {
 function onSubmit(ev?: MouseEvent) {
   if (!canSubmit.value) return;
 
-  // Sync level to box store before creating
+  // Sync srcLevel and expRemaining to box store before creating
   box.addLevel.value = srcLevel.value;
-
-  // Parse expRemaining: empty or 0 → undefined
-  const rawExp = expRemainingInput.value.trim();
+  const rawExp = String(expRemainingInput.value ?? '').trim();
   const parsedExp = rawExp === "" ? undefined : Math.max(0, Math.floor(Number(rawExp) || 0));
-  const expRemaining = (parsedExp === 0) ? undefined : parsedExp;
+  box.addExpRemaining.value = (parsedExp === undefined || parsedExp === 0) ? "" : String(parsedExp);
 
-  // Create box entry via store
+  // Create box entry via store (expRemaining is now embedded in the entry)
   box.onCreateManual({ mode: "toCalc" });
-
-  // If expRemaining was set, patch the planner on the newly created entry
-  if (expRemaining !== undefined) {
-    const entry = box.selectedBox.value;
-    if (entry) {
-      box.boxEntries.value = box.boxEntries.value.map((x) => {
-        if (x.id !== entry.id) return x;
-        return {
-          ...x,
-          planner: { ...(x.planner ?? {}), expRemaining },
-          updatedAt: new Date().toISOString(),
-        };
-      });
-    }
-  }
 
   // Save species candy stock if a value was entered and species is known
   if (addLookup.value) {
-    const rawCandy = String(speciesCandyInput.value).trim();
+    const rawCandy = String(speciesCandyInput.value ?? '').trim();
     const parsedCandy = rawCandy === "" ? undefined : Math.max(0, Math.floor(Number(rawCandy) || 0));
     if (parsedCandy !== undefined) {
       candyStore.updateSpeciesCandy(addLookup.value.pokedexId, parsedCandy);
     }
   }
 
-  // Emit to parent so it can bridge to CalcStore (with expRemaining)
-  emit("added", ev);
+  // Emit to parent so it can bridge to CalcStore
+  emit("added", dstLevel.value, ev);
 
   // Reset local form for next add
   resetForm();
@@ -264,7 +242,5 @@ onMounted(() => {
   nextTick(() => {
     nameInputRef.value?.focus();
   });
-  // Reset form fields on open
-  resetForm();
 });
 </script>
