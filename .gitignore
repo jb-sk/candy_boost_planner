@@ -45,23 +45,12 @@ nul
 # Python
 .ruff_cache/
 
-# JetBrains / others
-.idea/
-
 # ------------------------------
-# Cursor (keep rules/commands if you add them)
+# AI Agents
 # ------------------------------
 .cursor/*
-
-# ------------------------------
-# Claude Code
-# ------------------------------
 .claude/
 .mcp.json
-
-# ------------------------------
-# Codex local instruction file
-# ------------------------------
 AGENTS.md
 
 # ------------------------------
@@ -86,16 +75,4 @@ video/
 # ------------------------------
 # Dev Container
 # ------------------------------
-.devcontainer/*
-!.devcontainer/devcontainer.json
-!.devcontainer/Dockerfile
-!.devcontainer/docker-compose.yml
-!.devcontainer/entrypoint.sh
-# Secrets and large backups inside .devcontainer are ignored
-.devcontainer/openclaw-config/
-
-# ------------------------------
-# Gacha themes (temporary / experimental)
-# ------------------------------
-src/styles/themes/gacha*.css
-src/styles/themes/vars/gacha*-vars.css
+.devcontainer/
