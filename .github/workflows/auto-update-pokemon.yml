@@ -36,11 +36,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Clone pokesleep-tool (nitoyon) for form verification
-        run: |
-          git clone --depth 1 https://github.com/nitoyon/pokesleep-tool.git /tmp/pokesleep-tool
-          echo "pokesleep-tool cloned to /tmp/pokesleep-tool"
-
       - name: Check for master data changes
         id: master_check
         run: |
@@ -62,7 +57,14 @@ jobs:
           echo "$OUTPUT" | grep -E "^(\[追加される|\[削除される|  [+-] #)" | head -50 >> $GITHUB_OUTPUT
           echo 'EOF' >> $GITHUB_OUTPUT
 
+      - name: Clone pokesleep-tool for form verification
+        if: steps.master_check.outputs.has_master_changes == 'true'
+        run: |
+          git clone --depth 1 https://github.com/nitoyon/pokesleep-tool.git /tmp/pokesleep-tool
+          echo "pokesleep-tool cloned to /tmp/pokesleep-tool"
+
       - name: Verify and auto-fix form mapping
+        if: steps.master_check.outputs.has_master_changes == 'true'
         id: form_verify
         run: |
           echo "=== フォーム番号突合 & 自動修正 ==="
@@ -72,9 +74,11 @@ jobs:
           # 自動修正件数を取得
           FIXES=$(echo "$VERIFY_OUTPUT" | grep -oP '(?<=fixes=)\d+' || echo "0")
           UNFIXABLE=$(echo "$VERIFY_OUTPUT" | grep -oP '(?<=unfixable=)\d+' || echo "0")
+          SKIPPED=$(echo "$VERIFY_OUTPUT" | grep -q 'skipped=true' && echo "true" || echo "false")
 
           echo "form_fixes=$FIXES" >> $GITHUB_OUTPUT
           echo "form_unfixable=$UNFIXABLE" >> $GITHUB_OUTPUT
+          echo "form_skipped=$SKIPPED" >> $GITHUB_OUTPUT
 
           if [ "$UNFIXABLE" != "0" ]; then
             echo "form_errors=true" >> $GITHUB_OUTPUT
@@ -82,10 +86,29 @@ jobs:
             echo "form_errors=false" >> $GITHUB_OUTPUT
           fi
 
-          # サマリーを保存
-          echo 'form_summary<<EOF' >> $GITHUB_OUTPUT
-          echo "$VERIFY_OUTPUT" | grep -E "^\s*\[(AUTO-FIX|UNFIXABLE|ALIAS|OK|SUMMARY)" | head -30 >> $GITHUB_OUTPUT
-          echo 'EOF' >> $GITHUB_OUTPUT
+          # PRセクションを動的構築（スキップ時は空）
+          if [ "$SKIPPED" = "true" ]; then
+            echo 'form_pr_section=' >> $GITHUB_OUTPUT
+          else
+            echo 'form_pr_section<<FORMSECTION' >> $GITHUB_OUTPUT
+            echo '### フォーム番号突合' >> $GITHUB_OUTPUT
+            if [ "$FIXES" != "0" ]; then
+              echo "🔧 **${FIXES} 件のフォームマッピングを自動修正しました。**" >> $GITHUB_OUTPUT
+            else
+              echo '✅ フォーム番号突合OK（修正なし）' >> $GITHUB_OUTPUT
+            fi
+            if [ "$UNFIXABLE" != "0" ]; then
+              echo '⚠️ **自動修正できない不整合があります。** ローカルで `npm run verify:forms` を実行して確認してください。' >> $GITHUB_OUTPUT
+            fi
+            # 差分のみ表示（AUTO-FIX / UNFIXABLE）
+            DIFF_LINES=$(echo "$VERIFY_OUTPUT" | grep -E "^\s*\[(AUTO-FIX|UNFIXABLE)" | head -30)
+            if [ -n "$DIFF_LINES" ]; then
+              echo '```' >> $GITHUB_OUTPUT
+              echo "$DIFF_LINES" >> $GITHUB_OUTPUT
+              echo '```' >> $GITHUB_OUTPUT
+            fi
+            echo 'FORMSECTION' >> $GITHUB_OUTPUT
+          fi
 
       - name: Update master data
         if: steps.master_check.outputs.has_master_changes == 'true'
@@ -184,12 +207,7 @@ jobs:
             ${{ steps.en_names.outputs.en_summary }}
             ```
 
-            ### フォーム番号突合
-            ${{ steps.form_verify.outputs.form_fixes != '0' && format('🔧 **{0} 件のフォームマッピングを自動修正しました。**', steps.form_verify.outputs.form_fixes) || '✅ フォーム番号突合OK（修正なし）' }}
-            ${{ steps.form_verify.outputs.form_errors == 'true' && '⚠️ **自動修正できない不整合があります。** ローカルで `npm run verify:forms` を実行して確認してください。' || '' }}
-            ```
-            ${{ steps.form_verify.outputs.form_summary }}
-            ```
+            ${{ steps.form_verify.outputs.form_pr_section }}
 
             ### ⚠️ 確認事項
             - 600族・準伝・幻 (900/1080/1320) は手動で修正してください
