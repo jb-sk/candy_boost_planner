@@ -74,7 +74,7 @@
 
     <SettingsOverlay v-if="showSettings" :calc="calc" @close="showSettings = false" />
 
-    <AddPokemonModal v-if="showAddModal" :box="box" @close="showAddModal = false" @added="onAddModalAdded()" />
+    <AddPokemonModal v-if="showAddModal" :box="box" @close="showAddModal = false" @added="onAddModalAdded($event)" />
 
     <OnboardingTour v-if="onboarding.isActive.value" :onboarding="onboarding" />
   </main>
@@ -134,9 +134,9 @@ function openSettings() {
   showSettings.value = true;
 }
 
-function onAddModalAdded() {
+function onAddModalAdded(dstLevel: number) {
   // AddPokemonModal → Box追加済み → selectedBox が新エントリを指している
-  applyBoxToCalculator();
+  applyBoxToCalculator(dstLevel);
   // モーダルは閉じない（連続追加を可能にする）
 }
 
@@ -193,7 +193,7 @@ const calc = useCalcStore({
   resolvePokedexIdByBoxId,
 });
 
-function applyBoxToCalculator() {
+function applyBoxToCalculator(dstLevelDefault?: number) {
   const e = box.selectedBox.value;
   if (!e) return;
   const lvl = e.planner?.level ?? e.derived?.level ?? 10;
@@ -209,6 +209,7 @@ function applyBoxToCalculator() {
     expType: expT,
     nature: nat,
     expRemaining: e.planner?.expRemaining,
+    dstLevelDefault,
     pokedexId,
     pokemonType,
   });

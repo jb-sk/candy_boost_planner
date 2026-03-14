@@ -658,26 +658,27 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     const filteredIds = new Set(filtered.map(e => e.id));
 
     // キャッシュの順序を維持しつつ、フィルタ結果に含まれるもののみ返す
-    // また、フィルタ結果にあってキャッシュにないものは末尾に追加
-    const result: PokemonBoxEntryV1[] = [];
+    // また、フィルタ結果にあってキャッシュにないものは先頭に追加（新規追加エントリを先頭表示するため）
+    const newEntries: PokemonBoxEntryV1[] = [];
+    const cachedEntries: PokemonBoxEntryV1[] = [];
 
     // キャッシュの順序に従ってフィルタ結果を並べる
     for (const e of cached) {
       if (filteredIds.has(e.id)) {
         // フィルタ結果から最新データを取得
         const latest = filtered.find(f => f.id === e.id);
-        if (latest) result.push(latest);
+        if (latest) cachedEntries.push(latest);
       }
     }
 
-    // フィルタ結果にあってキャッシュにないものを末尾に追加
+    // フィルタ結果にあってキャッシュにないものを先頭に追加（filtered の順序 = boxEntries の順序を維持）
     for (const e of filtered) {
       if (!cachedIds.has(e.id)) {
-        result.push(e);
+        newEntries.push(e);
       }
     }
 
-    return result;
+    return [...newEntries, ...cachedEntries];
   });
 
   // .boxList コンテナの実幅から列数を算出（CSS auto-fill と同期）
