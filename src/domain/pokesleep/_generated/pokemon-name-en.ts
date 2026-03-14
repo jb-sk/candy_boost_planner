@@ -68,6 +68,7 @@ export const pokemonNameEnByDexNo: Record<number, string> = {
   147: "Dratini",
   148: "Dragonair",
   149: "Dragonite",
+  151: "Mew",
   152: "Chikorita",
   153: "Bayleef",
   154: "Meganium",
