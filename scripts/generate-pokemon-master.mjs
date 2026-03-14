@@ -391,15 +391,16 @@ for (const it of items) {
   const type = berryJa0 ? (berryJaToType[berryJa0] ?? "unknown") : "unknown";
   const typeJa = typeToJa[type] ?? "不明";
 
-  // Darkrai (491): 食材が確定しない特殊仕様。Aは保持できるが、B/Cは「未確定」扱いに寄せる。
-  // （現状の型では Aのみ保持ができないため、ingredients自体はnullにする）
-  const isDarkrai = dexNo === 491 && form === 0;
-  if (isDarkrai) {
+  // 食材A/B/Cの割り当てをユーザーが自由に変更できる特殊仕様のポケモン（Darkrai, Mew等）
+  // 人によってA/B/Cが異なるため、Wikiに食材データがあっても ingredients=null に固定する
+  const isIngredientsNull = (dexNo === 491 && form === 0) || (dexNo === 151 && form === 0);
+  if (isIngredientsNull) {
+    ingAKey = null;
     ingBKey = null;
     ingCKey = null;
   }
 
-  if (!isDarkrai && (!ingAKey || !ingBKey || (ingCJa0 && !ingCKey))) {
+  if (!isIngredientsNull && (!ingAKey || !ingBKey || (ingCJa0 && !ingCKey))) {
     ingredientIssues.push({
       dexNo,
       nameJa,
@@ -546,8 +547,8 @@ details += `- Wikiエントリ: ${master.length} (うち重複: ${duplicateCount
 details += `- ユニーク種類: ${newIdForms.size} (既存: ${existingIdForms.size})\n`;
 details += `- 追加: ${addedEntries.length}\n`;
 details += `- 削除: ${removedIdForms.length}\n`;
-details += `- ingredients:null (既知): ${ingredientsNullKnown.length}\n`;
-details += `- ingredients:null (新規): ${ingredientsNullNew.length}\n`;
+details += `- ingredients:null (既知): ${ingredientsNullKnown.length}${ingredientsNullKnown.length ? " (" + ingredientsNullKnown.map(x => `#${x.dexNo} ${x.nameJa}`).join(", ") + ")" : ""}\n`;
+details += `- ingredients:null (新規): ${ingredientsNullNew.length}${ingredientsNullNew.length ? " (" + ingredientsNullNew.map(x => `#${x.dexNo} ${x.nameJa}`).join(", ") + ")" : ""}\n`;
 details += `- ingredients.c:null (既知): ${ingredientCNullKnown.length}\n`;
 details += `- ingredients.c:null (新規): ${ingredientCNullNew.length}\n`;
 details += `- link:null: ${linkNullCount}\n`;
@@ -598,11 +599,22 @@ if (issuesC.length) {
   if (issuesC.length > 8) details += `... +${issuesC.length - 8} more\n`;
 }
 
-await confirmOrAbort({
-  interactive: args.interactive,
-  title: "generate-pokemon-master",
-  details,
-});
+// 変更・警告がすべてゼロなら確認をスキップ
+const hasChanges = addedEntries.length > 0 || removedIdForms.length > 0 ||
+  ingredientsNullNew.length > 0 || ingredientCNullNew.length > 0 ||
+  issuesAB.length > 0 || issuesC.length > 0 || unknownFormLabels.size > 0;
+
+if (hasChanges) {
+  await confirmOrAbort({
+    interactive: args.interactive,
+    title: "generate-pokemon-master",
+    details,
+  });
+} else if (args.interactive && process.stdin.isTTY) {
+  // 変更なし: サマリーだけ表示してスキップ
+  console.log(`\n[confirm] generate-pokemon-master\n${details}`);
+  console.log("変更なし: 確認をスキップして終了します。");
+}
 
 // 新規の食材C未実装を既知リストに追加するか確認
 let ingCNullKnownChanged = false;
