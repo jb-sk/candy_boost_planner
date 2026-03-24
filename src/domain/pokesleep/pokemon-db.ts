@@ -4308,6 +4308,50 @@ export const pokemonDb: PokemonDbEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%91%E3%83%B3%E3%83%97%E3%82%B8%E3%83%B3"
   },
   {
+    "dexNo": 714,
+    "nameJa": "オンバット",
+    "specialtyJa": "スキル",
+    "sleepTypeJa": "うとうと",
+    "berryJa": [
+      "ヤチェのみ"
+    ],
+    "ingAJa": [
+      "とくせんリンゴ"
+    ],
+    "ingBJa": [
+      "ふといながねぎ"
+    ],
+    "ingCJa": [
+      "マメミート"
+    ],
+    "mainSkillJa": "エナジーチャージM",
+    "fp": 5,
+    "helpSeconds": 5100,
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%AA%E3%83%B3%E3%83%90%E3%83%83%E3%83%88"
+  },
+  {
+    "dexNo": 715,
+    "nameJa": "オンバーン",
+    "specialtyJa": "スキル",
+    "sleepTypeJa": "うとうと",
+    "berryJa": [
+      "ヤチェのみ"
+    ],
+    "ingAJa": [
+      "とくせんリンゴ"
+    ],
+    "ingBJa": [
+      "ふといながねぎ"
+    ],
+    "ingCJa": [
+      "マメミート"
+    ],
+    "mainSkillJa": "エナジーチャージM",
+    "fp": 12,
+    "helpSeconds": 2700,
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%AA%E3%83%B3%E3%83%90%E3%83%BC%E3%83%B3"
+  },
+  {
     "dexNo": 736,
     "nameJa": "アゴジムシ",
     "specialtyJa": "食材",

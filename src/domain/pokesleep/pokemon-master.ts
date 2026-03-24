@@ -3543,6 +3543,42 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%91%E3%83%B3%E3%83%97%E3%82%B8%E3%83%B3"
   },
   {
+    "dexNo": 714,
+    "pokedexId": 714,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "オンバット",
+    "baseNameJa": "オンバット",
+    "specialty": "Skills",
+    "type": "Dragon",
+    "typeJa": "ドラゴン",
+    "expType": 600,
+    "ingredients": {
+      "a": "apple",
+      "b": "leek",
+      "c": "sausage"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%AA%E3%83%B3%E3%83%90%E3%83%83%E3%83%88"
+  },
+  {
+    "dexNo": 715,
+    "pokedexId": 715,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "オンバーン",
+    "baseNameJa": "オンバーン",
+    "specialty": "Skills",
+    "type": "Dragon",
+    "typeJa": "ドラゴン",
+    "expType": 600,
+    "ingredients": {
+      "a": "apple",
+      "b": "leek",
+      "c": "sausage"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%AA%E3%83%B3%E3%83%90%E3%83%BC%E3%83%B3"
+  },
+  {
     "dexNo": 736,
     "pokedexId": 736,
     "form": 0,
