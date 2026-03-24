@@ -182,6 +182,8 @@ export const pokemonNameEnByDexNo: Record<number, string> = {
   702: "Dedenne",
   710: "Pumpkaboo",
   711: "Gourgeist",
+  714: "Noibat",
+  715: "Noivern",
   736: "Grubbin",
   737: "Charjabug",
   738: "Vikavolt",
