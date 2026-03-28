@@ -362,13 +362,26 @@ export class CalcPanelPage {
     return text?.trim() ?? '';
   }
 
+  /**
+   * 上限ラベル付きプログレスバーは折りたたみ内（stickyExpanded）のため、非表示ならサマリーを開く
+   */
+  async expandStickyBarsIfCollapsed(): Promise<void> {
+    const shardsBlock = this.page.getByTestId('calc-shards-block');
+    if (!(await shardsBlock.isVisible().catch(() => false))) {
+      await this.stickySummary.click();
+      await shardsBlock.waitFor({ state: 'visible', timeout: 5000 });
+    }
+  }
+
   async getBoostCandyCap(): Promise<string> {
+    await this.expandStickyBarsIfCollapsed();
     const capText = this.page.getByTestId('calc-boost-candy-block').locator('.calcSum__k--right');
     const text = await capText.textContent();
     return text?.trim() ?? '';
   }
 
   async getShardsCap(): Promise<string> {
+    await this.expandStickyBarsIfCollapsed();
     const capText = this.page.getByTestId('calc-shards-block').locator('.calcSum__k--right');
     const text = await capText.textContent();
     return text?.trim() ?? '';

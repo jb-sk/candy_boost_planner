@@ -9,9 +9,10 @@
           {{ t("app.lede") }}
         </p>
         <div class="lang">
-          <button class="lang__btn" type="button" :class="{ 'lang__btn--on': uiLocale === 'ja' }" @click="setLocale('ja')">JP</button>
-          <button class="lang__btn" type="button" :class="{ 'lang__btn--on': uiLocale === 'en' }" @click="setLocale('en')">EN</button>
+          <button class="lang__btn" type="button" :class="{ 'lang__btn--on': uiLocale === 'ja' }" :disabled="localeSwitching" @click="setLocale('ja')">JP</button>
+          <button class="lang__btn" type="button" :class="{ 'lang__btn--on': uiLocale === 'en' }" :disabled="localeSwitching" @click="setLocale('en')">EN</button>
           <button class="lang__btn lang__btn--help" type="button" @click="showHelp = true">{{ t("common.help") }}</button>
+          <span v-if="localeSwitching" class="lang__loading" role="status">{{ t("common.loadingLocale") }}</span>
         </div>
       </div>
       <div class="heroMeta">
@@ -33,7 +34,7 @@
         </div>
         <div class="themePicker" v-if="availableThemes.length">
           <p class="themePicker__label">{{ t("common.theme") }}</p>
-          <select class="design-switch-select" :value="currentDesign" @change="onDesignChange($event)">
+          <select class="design-switch-select" :value="currentDesign" :disabled="themeSwitching" @change="onDesignChange($event)">
             <option v-for="th in availableThemes" :key="th.id" :value="th.id">{{ th.label }}</option>
           </select>
         </div>
@@ -43,7 +44,13 @@
     <div class="dashboard">
       <CalcPanel ref="calcPanelRef" :calc="calc" :resolve-pokedex-id-by-box-id="resolvePokedexIdByBoxId" @apply-to-box="applyCalculatorToBox($event)" @open-help="showHelp = true" @open-settings="openSettings" @open-add-modal="showAddModal = true" />
 
-    <BoxPanel :box="box" :gt="gt" @apply-to-calc="applyBoxToCalculator()" />
+      <BoxPanel v-if="mountBoxPanel" :box="box" :gt="gt" @apply-to-calc="applyBoxToCalculator()" />
+      <div v-else class="panel panel--box boxPanelDefer" aria-busy="true" aria-live="polite">
+        <div class="panel__head">
+          <h2 class="panel__title">{{ t("box.title") }}</h2>
+        </div>
+        <div class="boxPanelDefer__body" />
+      </div>
     </div>
     </div>
 
@@ -81,37 +88,73 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, provide, onMounted } from "vue";
+import { computed, defineAsyncComponent, defineComponent, h, nextTick, onMounted, provide, ref } from "vue";
+import type { Component } from "vue";
 import { useI18n } from "vue-i18n";
+import AsyncOverlayLoading from "./components/AsyncOverlayLoading.vue";
+import { ensureLocaleMessagesLoaded } from "./i18n";
 import { localizeGameTerm } from "./i18n/terms";
-import type { ExpGainNature, ExpType } from "./domain/types";
+import type { ExpGainNature, ExpType, PokemonBoxEntryV1 } from "./domain/types";
 import { getPokemonType } from "./domain/pokesleep/pokemon-names";
 
-import ExportOverlay from "./components/ExportOverlay.vue";
-import HelpOverlay from "./components/HelpOverlay.vue";
-import SettingsOverlay from "./components/SettingsOverlay.vue";
 import CalcPanel from "./components/CalcPanel.vue";
 import BoxPanel from "./components/BoxPanel.vue";
 import MobileNav from "./components/MobileNav.vue";
-import AddPokemonModal from "./components/AddPokemonModal.vue";
-import OnboardingTour from "./components/OnboardingTour.vue";
 import { useBoxStore } from "./composables/useBoxStore";
 import { useCalcStore } from "./composables/useCalcStore";
 import { useOnboarding } from "./composables/useOnboarding";
 import { buildThemeList, DEFAULT_THEME_ID, DESIGN_STORAGE_KEY } from "./config/themes";
 
-const { t, locale } = useI18n();
+const i18n = useI18n();
+const { t, locale } = i18n;
 const uiLocale = computed<"ja" | "en">(() => (locale.value === "en" ? "en" : "ja"));
-function setLocale(next: "ja" | "en") {
-  locale.value = next;
-  localStorage.setItem("candy-boost-planner:lang", next);
+const localeSwitching = ref(false);
+let localeRequestId = 0;
+
+async function setLocale(next: "ja" | "en") {
+  if (next === uiLocale.value) return;
+
+  const requestId = ++localeRequestId;
+  localeSwitching.value = true;
+
+  try {
+    await ensureLocaleMessagesLoaded(i18n, next);
+    if (requestId !== localeRequestId) return;
+    locale.value = next;
+    localStorage.setItem("candy-boost-planner:lang", next);
+  } finally {
+    if (requestId === localeRequestId) {
+      localeSwitching.value = false;
+    }
+  }
 }
+
+function createAsyncOverlayComponent(loader: () => Promise<{ default: Component }>, dialog = true) {
+  return defineAsyncComponent({
+    loader,
+    delay: 120,
+    suspensible: false,
+    loadingComponent: defineComponent(() => () => h(AsyncOverlayLoading, {
+      label: t("common.loading"),
+      dialog,
+    })),
+  });
+}
+
+const ExportOverlay = createAsyncOverlayComponent(() => import("./components/ExportOverlay.vue"));
+const HelpOverlay = createAsyncOverlayComponent(() => import("./components/HelpOverlay.vue"));
+const SettingsOverlay = createAsyncOverlayComponent(() => import("./components/SettingsOverlay.vue"));
+const AddPokemonModal = createAsyncOverlayComponent(() => import("./components/AddPokemonModal.vue"));
+const OnboardingTour = createAsyncOverlayComponent(() => import("./components/OnboardingTour.vue"), false);
 
 type SupportLink = { id: "ofuse" | "bmac"; label: string; href: string; ariaLabel: string };
 
 const showHelp = ref(false);
 const showSettings = ref(false);
 const showAddModal = ref(false);
+/** 初回ペイント負荷分散: 計算機の直後に Box をマウントするとフレームが重いため、初回フレーム後にマウント */
+const mountBoxPanel = ref(false);
+const themeSwitching = ref(false);
 
 const onboarding = useOnboarding();
 
@@ -177,17 +220,27 @@ const supportLinks = computed<SupportLink[]>(() => {
 
 const box = useBoxStore({ locale, t });
 
-// boxId から pokedexId を解決する関数
+/**
+ * ボックスが数百〜最大1000体のとき、計算機の rowsView / plan が毎回 boxId を線形探索すると重くなるため Map で O(1) 解決する。
+ * boxEntries が変わったときだけ再構築（計算のみのフレームでは触れない）。
+ */
+const boxEntryById = computed(() => {
+  const m = new Map<string, PokemonBoxEntryV1>();
+  for (const e of box.boxEntries.value) {
+    m.set(e.id, e);
+  }
+  return m;
+});
+
 function resolvePokedexIdByBoxId(boxId: string): number | undefined {
-  const e = box.boxEntries.value.find((x) => x.id === boxId) ?? null;
-  return e?.derived?.pokedexId;
+  return boxEntryById.value.get(boxId)?.derived?.pokedexId;
 }
 
 const calc = useCalcStore({
   locale,
   t,
   resolveTitleByBoxId: (boxId) => {
-    const e = box.boxEntries.value.find((x) => x.id === boxId) ?? null;
+    const e = boxEntryById.value.get(boxId);
     return e ? box.displayBoxTitle(e) : null;
   },
   resolvePokedexIdByBoxId,
@@ -275,11 +328,55 @@ function scrollToTop() {
 const availableThemes = buildThemeList(
   import.meta.glob("./styles/*.css", { eager: true, query: "?url" }) as Record<string, () => Promise<unknown>>,
 );
+const themeStyleUrls = Object.fromEntries(
+  Object.entries(import.meta.glob("./styles/*.css", { eager: true, query: "?url", import: "default" }) as Record<string, string>)
+    .map(([path, href]) => [path.match(/\/([^/]+)\.css$/)?.[1] ?? "", href])
+    .filter(([id]) => id && id !== "base"),
+) as Record<string, string>;
 const currentDesign = ref(localStorage.getItem(DESIGN_STORAGE_KEY) || DEFAULT_THEME_ID);
-function onDesignChange(ev: Event) {
+async function onDesignChange(ev: Event) {
   const next = (ev.target as HTMLSelectElement).value;
+  if (next === currentDesign.value || themeSwitching.value) return;
+
   localStorage.setItem(DESIGN_STORAGE_KEY, next);
-  currentDesign.value = next;
-  window.location.reload();
+
+  const currentLink = document.getElementById("theme-css") as HTMLLinkElement | null;
+  const nextHref = themeStyleUrls[next];
+
+  if (!currentLink || !nextHref) {
+    currentDesign.value = next;
+    window.location.reload();
+    return;
+  }
+
+  themeSwitching.value = true;
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const nextLink = currentLink.cloneNode() as HTMLLinkElement;
+      nextLink.id = "theme-css-next";
+      nextLink.href = nextHref;
+      nextLink.addEventListener("load", () => {
+        currentLink.remove();
+        nextLink.id = "theme-css";
+        resolve();
+      }, { once: true });
+      nextLink.addEventListener("error", () => reject(new Error(`Failed to load theme: ${next}`)), { once: true });
+      currentLink.insertAdjacentElement("afterend", nextLink);
+    });
+
+    currentDesign.value = next;
+  } catch {
+    currentDesign.value = next;
+    window.location.reload();
+  } finally {
+    themeSwitching.value = false;
+  }
 }
+
+onMounted(async () => {
+  await nextTick();
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  mountBoxPanel.value = true;
+});
 </script>

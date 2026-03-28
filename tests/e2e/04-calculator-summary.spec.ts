@@ -1,6 +1,6 @@
 /**
  * E2E Test: 04-calculator
- * 計算機パネルのテスト（61件）
+ * 計算機パネルのテスト（62件）
  */
 import { test, expect } from '@playwright/test';
 import * as fs from 'fs';
@@ -1235,5 +1235,45 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     const sleepTime = await calc.getRowSleepTime(row);
     expect(sleepTime).toContain('326日');
     expect(sleepTime).toContain('4238時間');
+  });
+
+  test('62. ドオーのラスイチ交換が自動最適化される', async ({ page }) => {
+    await page.goto('/');
+    const box = new BoxPanelPage(page);
+    const calc = new CalcPanelPage(page);
+
+    await calc.setBoostKind('full');
+
+    await box.openAddNewPanel();
+    await box.fillPokemonName('ドオー');
+    await box.confirmPokemonName();
+    await box.clickAddToBox();
+
+    const row = calc.getRow(0);
+
+    const srcLevelBtn = calc.getRowSrcLevelButton(row);
+    await srcLevelBtn.click();
+    await page.locator('.levelPick__range').first().fill('30');
+    await page.locator('.levelPick__popover button').filter({ hasText: '閉じる' }).click();
+
+    await calc.getRowExpRemainingInput(row).fill('729');
+
+    const dstLevelBtn = calc.getRowDstLevelButton(row);
+    await dstLevelBtn.click();
+    await page.locator('.levelPick__popover .levelChip').filter({ hasText: '60' }).click();
+    await page.locator('.levelPick__popover button').filter({ hasText: '閉じる' }).click();
+
+    await page.waitForTimeout(200);
+    await calc.expandRow(row);
+
+    const reqBoost = await calc.getRowResultValue(row, 'required', 'boost');
+    const reqNormal = await calc.getRowResultValue(row, 'required', 'normal');
+    const reqCandy = await calc.getRowResultValue(row, 'required', 'candy');
+    const ratioText = await calc.getRowBoostRatioText(row).textContent();
+
+    expect(reqBoost).toBe('790');
+    expect(reqNormal).toBe('1');
+    expect(reqCandy).toBe('791');
+    expect(ratioText).toContain('100%');
   });
 });

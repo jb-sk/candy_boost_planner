@@ -4,6 +4,7 @@
  */
 import { test, expect } from '@playwright/test';
 import { SettingsModalPage } from './pages/SettingsModalPage';
+import { CalcPanelPage } from './pages/CalcPanelPage';
 
 // ============================================================
 // デスクトップ版テスト
@@ -74,11 +75,13 @@ test.describe('03-settings デスクトップ', () => {
 
   test('7. ブースト上限が反映され、計算機パネルに反映される', async ({ page }) => {
     const settings = new SettingsModalPage(page);
+    const calc = new CalcPanelPage(page);
 
     await settings.openSettingsFromDesktop();
     await settings.setBoostCandyRemaining('8000');
     await settings.closeByButton();
 
+    await calc.expandStickyBarsIfCollapsed();
     // 計算機パネルで上限が反映されていることを確認
     const capText = page.locator('.calcSum__k--right').filter({ hasText: '上限' }).first();
     await expect(capText).toContainText('8,000');
@@ -97,11 +100,13 @@ test.describe('03-settings デスクトップ', () => {
 
   test('9. かけらの上限が反映され、計算機パネルに反映される', async ({ page }) => {
     const settings = new SettingsModalPage(page);
+    const calc = new CalcPanelPage(page);
 
     await settings.openSettingsFromDesktop();
     await settings.setTotalShards('200000');
     await settings.closeByButton();
 
+    await calc.expandStickyBarsIfCollapsed();
     // 計算機パネルでかけら上限が反映されていることを確認
     const capText = page.locator('.calcSum__k--right').filter({ hasText: '上限' }).last();
     await expect(capText).toContainText('200,000');

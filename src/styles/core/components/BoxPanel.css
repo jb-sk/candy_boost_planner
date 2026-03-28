@@ -533,6 +533,9 @@
   grid-template-rows: auto auto;
   gap: 0 8px;
   align-items: start;
+  /* 数百〜1000体時: 画面外タイルのレイアウト/描画をブラウザが省略しやすくする（高さは概算） */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 64px;
 }
 
 .boxTile.boxTile--hover {

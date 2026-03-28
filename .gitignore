@@ -51,7 +51,9 @@ nul
 .cursor/*
 .claude/
 .mcp.json
+CLAUDE.md
 AGENTS.md
+GEMINI.md
 
 # ------------------------------
 # Test outputs

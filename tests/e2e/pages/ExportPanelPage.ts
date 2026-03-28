@@ -198,19 +198,19 @@ export class ExportPanelPage {
     const colCount = await cols.count();
     let boostCandy = '';
     let normalCandy = '';
-    let totalCandy = '';
-    let shards = '';
+    let totalCandy =
+      (await this.totalRow.getByTestId('export-total-row-total-candy').textContent().catch(() => null)) ?? '';
+    let shards =
+      (await this.totalRow.getByTestId('export-total-row-shards').textContent().catch(() => null)) ?? '';
 
     if (colCount >= 6) {
       // ブーストモード（6列: 空, 空, boost, normal, total, shards）
       boostCandy = await cols.nth(2).locator('.exportList__num').textContent() ?? '';
       normalCandy = await cols.nth(3).locator('.exportList__num').textContent() ?? '';
-      totalCandy = await cols.nth(4).locator('.exportList__num').textContent() ?? '';
-      shards = await cols.nth(5).locator('.exportList__num').textContent() ?? '';
     } else {
-      // 通常モード
-      totalCandy = await cols.nth(2).locator('.exportList__num').textContent() ?? '';
-      shards = await cols.nth(3).locator('.exportList__num').textContent() ?? '';
+      // 通常モード（data-testid が無い場合のフォールバック）
+      if (!totalCandy) totalCandy = await cols.nth(2).locator('.exportList__num').textContent() ?? '';
+      if (!shards) shards = await cols.nth(3).locator('.exportList__num').textContent() ?? '';
     }
 
     return {

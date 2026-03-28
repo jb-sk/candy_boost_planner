@@ -181,11 +181,11 @@
               </div>
               <div class="exportList__col u-align-right exportList__numCol">
                 <span class="u-mobile-label">{{ t("calc.export.colTotal") }}</span>
-                <span class="exportList__num">{{ fmtNum(totals.totalCandy) }}</span>
+                <span class="exportList__num" data-testid="export-total-row-total-candy">{{ fmtNum(totals.totalCandy) }}</span>
               </div>
               <div class="exportList__col u-align-right exportList__numCol">
                 <span class="u-mobile-label">{{ t("calc.export.colShards") }}</span>
-                <span class="exportList__num">{{ fmtNum(totals.shards) }}</span>
+                <span class="exportList__num" data-testid="export-total-row-shards">{{ fmtNum(totals.shards) }}</span>
               </div>
             </div>
           </div>
@@ -248,8 +248,10 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref } from "vue";
-import html2canvas from "html2canvas-pro";
+import type html2canvasType from "html2canvas-pro";
 import { useI18n } from "vue-i18n";
+
+type Html2CanvasOptions = Parameters<typeof html2canvasType>[1];
 
 type ExportRow = {
   id: string;
@@ -311,6 +313,7 @@ const exportSheetEl = ref<HTMLElement | null>(null);
 const exportBusy = ref(false);
 const exportStatus = ref("");
 const exportCsvMenuOpen = ref(false);
+let html2canvasPromise: Promise<typeof html2canvasType> | null = null;
 
 function fmtNum(n: number): string {
   return new Intl.NumberFormat(locale.value).format(n);
@@ -586,11 +589,20 @@ const pieSlices = computed<PieSlice[]>(() => {
  * 古い iOS Safari では html2canvas が resolve も reject もせずハングすることが
  * あるため、指定時間で reject して exportBusy を確実に解除する。
  */
-function html2canvasWithTimeout(
+async function loadHtml2canvas() {
+  if (!html2canvasPromise) {
+    html2canvasPromise = import("html2canvas-pro").then((mod) => mod.default);
+  }
+  return html2canvasPromise;
+}
+
+async function html2canvasWithTimeout(
   el: HTMLElement,
-  opts: Parameters<typeof html2canvas>[1],
+  opts: Html2CanvasOptions,
   timeoutMs: number,
 ): Promise<HTMLCanvasElement> {
+  const html2canvas = await loadHtml2canvas();
+
   return new Promise<HTMLCanvasElement>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("html2canvas timeout")), timeoutMs);
     html2canvas(el, opts).then(
@@ -762,7 +774,9 @@ async function downloadCalcExportPng() {
     // Webフォントが読み込まれる前にキャプチャすると崩れるので待つ
     const fontsReady = document.fonts?.ready;
     if (fontsReady && typeof fontsReady.then === "function") await fontsReady;
+    await loadHtml2canvas();
     await nextTick();
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
 
     // --- ダミークローン + DOM 移動方式（全環境共通） ---
@@ -868,7 +882,7 @@ async function downloadCalcExportPng() {
         await new Promise<void>((r) => setTimeout(r, 300));
         await new Promise<void>((r) => requestAnimationFrame(() => r()));
         await new Promise<void>((r) => requestAnimationFrame(() => r()));
-      }
+     }
       canvas = await html2canvasWithTimeout(el, h2cOpts, 15000);
       if (looksLikeValidCapture(canvas, bgHex)) break;
       // 最終試行でも失敗した場合はそのまま使う（白画像でも保存は可能）
