@@ -23,7 +23,7 @@
     "verify:forms": "node scripts/verify-form-mapping.mjs"
   },
   "dependencies": {
-    "html2canvas-pro": "^2.0.2",
+    "html2canvas-pro": "2.0.2",
     "vue": "^3.5.0",
     "vue-i18n": "^11.2.2"
   },

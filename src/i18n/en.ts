@@ -18,6 +18,8 @@ export const en = {
     settings: "Stock & Sleep",
     settingsShort: "Settings",
     help: "Help",
+    loading: "Loading...",
+    loadingLocale: "Switching language...",
     ariaOfuse: "Open OFUSE in a new tab",
     ariaBmac: "Open Buy Me a Coffee in a new tab",
   },
@@ -29,7 +31,7 @@ export const en = {
   app: {
     title: "CandyBoost Planner",
     kicker: "Candy Boost Event Planner",
-    lede: "Pokémon Sleep leveling simulator / Auto-calculates Candy, Dream Shards & Sleep EXP",
+    lede: "Pokémon Sleep leveling simulator / Auto-calculates Candy, Dream Shards & Sleep EXP / Auto-distributes items in list order & minimizes leftovers",
   },
   nav: {
     top: "Top",

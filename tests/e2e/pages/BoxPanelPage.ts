@@ -152,9 +152,10 @@ export class BoxPanelPage {
     this.detailRelinkInput = page.getByTestId('box-detail-relink-input');
     this.detailRelinkButton = page.getByTestId('box-detail-relink-button');
     this.detailRelinkSuggestPanel = page.getByTestId('box-detail-relink-suggest-panel');
-    this.detailLevelTrigger = page.getByTestId('level-picker-trigger').nth(1);
+    // 新規追加パネルが lazy mount のとき level-picker が1つだけのため、詳細は box-detail-panel 内に限定する
+    this.detailLevelTrigger = this.detailPanel.getByTestId('level-picker-trigger');
     this.detailExpRemainingInput = page.getByTestId('box-detail-exp-remaining-input');
-    this.detailNatureTrigger = page.getByTestId('nature-select-trigger').nth(1);
+    this.detailNatureTrigger = this.detailPanel.getByTestId('nature-select-trigger');
     this.detailSpecialtyDisplay = page.getByTestId('box-detail-specialty-display');
     this.detailExpTypeDisplay = page.getByTestId('box-detail-exptype-display');
     this.detailIngredientSelect = page.getByTestId('box-detail-ingredient-select');

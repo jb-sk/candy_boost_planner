@@ -18,7 +18,6 @@ import type { ExpGainNature, ExpType } from "../domain";
 import type { BoxSubSkillSlotV1, IngredientType, PokemonBoxEntryV1, PokemonSpecialty } from "../domain/types";
 import { cryptoRandomId, loadBox, saveBox } from "../persistence/box";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
-
 type FilterJoinMode = "and" | "or";
 
 export type BoxUndoAction =
@@ -662,11 +661,16 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     const newEntries: PokemonBoxEntryV1[] = [];
     const cachedEntries: PokemonBoxEntryV1[] = [];
 
+    // フィルタ結果を id→行 にしておき、キャッシュ走査を O(1) 参照に（ボックスが大きいと find が二乗に近づくのを防ぐ）
+    const filteredById = new Map<string, PokemonBoxEntryV1>();
+    for (const f of filtered) {
+      filteredById.set(f.id, f);
+    }
+
     // キャッシュの順序に従ってフィルタ結果を並べる
     for (const e of cached) {
       if (filteredIds.has(e.id)) {
-        // フィルタ結果から最新データを取得
-        const latest = filtered.find(f => f.id === e.id);
+        const latest = filteredById.get(e.id);
         if (latest) cachedEntries.push(latest);
       }
     }
@@ -706,10 +710,20 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     return Math.max(1, Math.floor((w + gap) / (TILE_MIN_WIDTH + gap)));
   });
 
+  /** 一覧が長いとき findIndex を毎回かけない */
+  const sortedEntryIndexById = computed(() => {
+    const m = new Map<string, number>();
+    const list = sortedBoxEntries.value;
+    for (let i = 0; i < list.length; i++) {
+      m.set(list[i]!.id, i);
+    }
+    return m;
+  });
+
   const selectedIndex = computed(() => {
     const id = selectedBoxId.value;
     if (!id) return -1;
-    return sortedBoxEntries.value.findIndex((x) => x.id === id);
+    return sortedEntryIndexById.value.get(id) ?? -1;
   });
 
   const detailInsertAfterIndex = computed(() => {

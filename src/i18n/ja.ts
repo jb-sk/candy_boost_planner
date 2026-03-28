@@ -18,6 +18,8 @@ export const ja = {
     settings: "在庫・睡眠設定",
     settingsShort: "設定",
     help: "使い方",
+    loading: "読み込み中...",
+    loadingLocale: "言語を切り替えています...",
     ariaOfuse: "OFUSEを新しいタブで開く",
     ariaBmac: "Buy Me a Coffeeを新しいタブで開く",
   },
@@ -29,7 +31,7 @@ export const ja = {
   app: {
     title: "アメブプランナー",
     kicker: "Candy Boost Event Planner",
-    lede: "ポケモンスリープ育成シミュレーション / アメ・ゆめのかけら・睡眠EXPを自動で計算",
+    lede: "ポケモンスリープ育成シミュレーション / アメ・ゆめのかけら・睡眠EXPを自動で計算 / リスト順にアイテム自動配分＆余り最小化",
   },
   nav: {
     top: "トップへ",

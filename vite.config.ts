@@ -6,15 +6,35 @@ export default defineConfig(() => {
   // 独自ドメイン (candy.jb-sk.com) 移行に伴いルートパスに固定
   const base = "/";
 
-  return {
+    return {
     // GitHub Pagesのサブパス配下でも動きやすいように調整します（Cloudflare Pagesは / 配信）
     // ルーティング方式（history/hash）を入れる場合は別途調整します。
     base,
     plugins: [vue(), themeCSS()],
-    server: {
-      host: true,
-      port: 5173,
-      strictPort: true,
-    },
-  };
+      server: {
+        host: true,
+        port: 5173,
+        strictPort: true,
+      },
+      build: {
+        rollupOptions: {
+          output: {
+            manualChunks(id) {
+              if (!id.includes("node_modules")) return;
+
+              const vendorPackages = [
+                "/node_modules/vue/",
+                "/node_modules/@vue/",
+                "/node_modules/vue-i18n/",
+                "/node_modules/@intlify/",
+              ];
+
+              if (vendorPackages.some((pkg) => id.includes(pkg))) {
+                return "vendor";
+              }
+            },
+          },
+        },
+      },
+    };
 });

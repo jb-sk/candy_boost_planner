@@ -5,11 +5,11 @@
     </div>
 
     <div class="boxGrid">
-      <details class="boxDisclosure" data-testid="box-add-panel">
+      <details class="boxDisclosure" data-testid="box-add-panel" @toggle="onBoxAddToggle">
         <summary class="boxDisclosure__head" data-testid="box-add-summary">
           <span class="boxDisclosure__title">{{ t("box.addNew") }}</span>
         </summary>
-        <div class="boxCard boxDisclosure__inner">
+        <div v-if="boxAddMounted" class="boxCard boxDisclosure__inner">
           <p class="boxDisclosure__note">
             {{ t("box.addNewDesc") }}
           </p>
@@ -222,11 +222,11 @@
         </div>
       </details>
 
-      <details class="boxDisclosure" data-testid="box-import-panel">
+      <details class="boxDisclosure" data-testid="box-import-panel" @toggle="onBoxImportToggle">
         <summary class="boxDisclosure__head" data-testid="box-import-summary">
           <span class="boxDisclosure__title">{{ t("box.import.title") }}</span>
         </summary>
-        <div class="boxCard boxDisclosure__inner">
+        <div v-if="boxImportMounted" class="boxCard boxDisclosure__inner">
           <p class="boxDisclosure__note">
             {{ t("box.import.desc") }}
           </p>
@@ -351,11 +351,11 @@
         </div>
 
         <!-- 詳細設定 -->
-        <details class="boxAdvanced" data-testid="box-advanced-panel">
+        <details class="boxAdvanced" data-testid="box-advanced-panel" @toggle="onBoxAdvancedToggle">
           <summary class="boxAdvanced__summary" data-testid="box-advanced-summary">
             <span>{{ t("box.list.advancedSettings") }}</span>
           </summary>
-          <div class="boxAdvanced__content">
+          <div v-if="boxAdvancedMounted" class="boxAdvanced__content">
             <div class="boxAdvanced__row">
               <span class="boxAdvanced__label">{{ t("box.list.join") }}</span>
               <select v-model="filterJoinMode" class="field__input boxAdvanced__select" data-testid="box-filter-join-select" :aria-label="t('box.list.join')">
@@ -438,21 +438,21 @@
               type="button"
               class="boxTile"
               data-testid="box-tile"
-              :class="[box.boxTileTypeClass(e), { 'boxTile--active': e.id === selectedBoxId, 'boxTile--hover': hoveredTileId === e.id || e.id === selectedBoxId }]"
+              :class="[boxTileClassById.get(e.id) ?? 'boxTile--type-unknown', { 'boxTile--active': e.id === selectedBoxId, 'boxTile--hover': hoveredTileId === e.id || e.id === selectedBoxId }]"
               :data-type="e.derived ? getPokemonType(e.derived.pokedexId, e.derived.form) : 'unknown'"
               @mouseenter="onTileMouseEnter(e.id)"
               @mouseleave="onTileMouseLeave"
               @touchstart="onTileTouchStart"
               @click="box.onSelectBox(e.id)"
             >
-              <div class="boxTile__name">{{ box.displayBoxTitle(e) }}</div>
+              <div class="boxTile__name">{{ boxDisplayTitleById.get(e.id) ?? box.displayBoxTitle(e) }}</div>
               <span v-if="e.favorite" class="boxTile__fav" :aria-label="t('box.list.favorite')" :title="t('box.list.favorite')" v-html="iconStarSvg"></span>
               <span class="boxTile__lv">Lv{{ e.planner?.level ?? e.derived?.level ?? "-" }}</span>
             </button>
 
             <div v-if="idx === detailInsertAfterIndex && selectedBox && selectedDetail" class="boxDetail boxDetail--inline" data-testid="box-detail-panel">
               <div class="boxDetail__head">
-                <h4 class="boxDetail__title">{{ t("box.list.selected", { name: box.displayBoxTitle(selectedBox) }) }}</h4>
+                <h4 class="boxDetail__title">{{ t("box.list.selected", { name: boxDisplayTitleById.get(selectedBox.id) ?? box.displayBoxTitle(selectedBox) }) }}</h4>
                 <div class="boxDetail__actions">
                   <button
                     class="btn btn--primary"
@@ -737,6 +737,7 @@
 </template>
 
 <script setup lang="ts">
+import { ref, watch, nextTick, computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { localizeNature } from "../i18n/terms";
 import { IngredientTypes } from "../domain/box/nitoyon";
@@ -792,6 +793,22 @@ const relinkStatus = box.relinkStatus;
 const boxEditSubInputs = box.boxEditSubInputs;
 const boxEditSubErrors = box.boxEditSubErrors;
 
+/** タイル行ごとに1回だけ displayBoxTitle / boxTileTypeClass を評価（ソート済み一覧の再描画コスト削減） */
+const boxTileClassById = computed(() => {
+  const m = new Map<string, string>();
+  for (const e of sortedBoxEntries.value) {
+    m.set(e.id, box.boxTileTypeClass(e));
+  }
+  return m;
+});
+const boxDisplayTitleById = computed(() => {
+  const m = new Map<string, string>();
+  for (const e of sortedBoxEntries.value) {
+    m.set(e.id, box.displayBoxTitle(e));
+  }
+  return m;
+});
+
 const importText = box.importText;
 const importStatus = box.importStatus;
 const boxFilter = box.boxFilter;
@@ -817,12 +834,32 @@ const addSubLv100 = box.addSubLv100;
 const relinkName = box.relinkName;
 const relinkOpen = box.relinkOpen;
 const selectedNature = box.selectedNature;
-
-import { ref, watch, nextTick } from "vue";
 import LevelPicker from "./LevelPicker.vue";
 const candyStore = useCandyStore();
 const addSpeciesCandy = ref<string>("");
 const addToCalcChecked = ref(true);
+const boxAddMounted = ref(false);
+const boxImportMounted = ref(false);
+const boxAdvancedMounted = ref(false);
+
+function mountDisclosureContent(event: Event, mounted: { value: boolean }) {
+  const details = event.target as HTMLDetailsElement | null;
+  if (details?.open) {
+    mounted.value = true;
+  }
+}
+
+function onBoxAddToggle(event: Event) {
+  mountDisclosureContent(event, boxAddMounted);
+}
+
+function onBoxImportToggle(event: Event) {
+  mountDisclosureContent(event, boxImportMounted);
+}
+
+function onBoxAdvancedToggle(event: Event) {
+  mountDisclosureContent(event, boxAdvancedMounted);
+}
 
 // Pre-fill species candy stock when a Pokémon is identified
 watch(addLookup, (lu) => {
@@ -986,4 +1023,5 @@ async function showHint(ev: MouseEvent, message: string) {
 function closeHint() {
   hintState.value.visible = false;
 }
+
 </script>

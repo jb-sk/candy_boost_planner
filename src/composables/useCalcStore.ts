@@ -13,7 +13,6 @@ import { CANDY_VALUES } from "../persistence/candy";
 import { planLevelUp } from "../domain/level-planner/core/plan";
 import type { LevelUpPlanResult, PokemonLevelUpResult, ItemUsage } from "../domain/level-planner/types";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
-
 export type CalcRow = CalcRowV1;
 
 export type CalcRowView = CalcRow & {
@@ -118,6 +117,8 @@ export type CalcStore = {
 
   // candy allocation (new phase-based)
   planResult: Readonly<Ref<LevelUpPlanResult | null>>;
+  /** rowId → 計画結果（テンプレートや一覧での O(1) 参照用） */
+  pokemonResultByRowId: Readonly<Ref<Map<string, PokemonLevelUpResult>>>;
   getPokemonResult: (id: string) => PokemonLevelUpResult | null;
   getTheoreticalRow: (p: PokemonLevelUpResult) => ItemUsage;
   universalCandyUsagePct: Readonly<Ref<number>>;
@@ -625,8 +626,28 @@ export function useCalcStore(opts: {
     // リセット値 = min(必要数, グローバル残数)
     const resetValue = Math.min(candy, globalRemaining);
 
+    let optimizedValue = resetValue;
+
+    if (resetValue > 0 && resetValue === candy) {
+      const tryValue = resetValue - 1;
+      const mixed = calcExpAndCandyMixed({
+        srcLevel,
+        dstLevel,
+        dstExpInLevel,
+        expType,
+        nature,
+        boost: boostKind.value,
+        boostCandy: tryValue,
+        expGot,
+      });
+
+      if (mixed.normalCandy <= 1) {
+        optimizedValue = tryValue;
+      }
+    }
+
     // 割合を計算
-    const ratio = candy > 0 ? Math.round((resetValue / candy) * 100) : 100;
+    const ratio = candy > 0 ? Math.round((optimizedValue / candy) * 100) : 100;
 
     // アメブ個数から到達可能レベルを計算
     const reachSim = calcLevelByCandy({
@@ -635,12 +656,12 @@ export function useCalcStore(opts: {
       expType,
       nature,
       boost: boostKind.value,
-      candy: resetValue,
+      candy: optimizedValue,
       expGot,
     });
     const reachLevel = Math.max(srcLevel, reachSim.level);
 
-    return { boostOrExpAdjustment: resetValue, candyPeak: candy, boostRatioPct: ratio, boostReachLevel: reachLevel, mode: "targetLevel" };
+    return { boostOrExpAdjustment: optimizedValue, candyPeak: candy, boostRatioPct: ratio, boostReachLevel: reachLevel, mode: "targetLevel" };
   }
 
 
@@ -1505,11 +1526,18 @@ export function useCalcStore(opts: {
     return planLevelUp(requests, inventory, config);
   });
 
+  /** 同一 planResult に対する find をテンプレート内で繰り返さないよう Map 化 */
+  const pokemonResultByRowId = computed(() => {
+    const pr = planResult.value;
+    if (!pr) return new Map<string, PokemonLevelUpResult>();
+    return new Map(pr.pokemons.map((p) => [p.id, p] as const));
+  });
+
   /**
    * ポケモンの計画結果を取得
    */
   function getPokemonResult(id: string): PokemonLevelUpResult | null {
-    return planResult.value?.pokemons.find(p => p.id === id) ?? null;
+    return pokemonResultByRowId.value.get(id) ?? null;
   }
 
   /**
@@ -1720,6 +1748,7 @@ export function useCalcStore(opts: {
     activeRowBoostCandyUsagePct,
 
     planResult,
+    pokemonResultByRowId,
     getPokemonResult,
     getTheoreticalRow,
     universalCandyUsagePct,

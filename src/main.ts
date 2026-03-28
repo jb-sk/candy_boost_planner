@@ -1,7 +1,7 @@
 import { createApp } from "vue";
 import App from "./App.vue";
 
-import { createAppI18n, normalizeLocale } from "./i18n";
+import { createAppI18n, ensureLocaleMessagesLoaded, normalizeLocale } from "./i18n";
 
 // Cloudflare Web Analytics (optional)
 // Set VITE_CF_WEB_ANALYTICS_TOKEN in your environment to enable.
@@ -16,7 +16,8 @@ if (cfToken) {
 
 const savedLocale = localStorage.getItem("candy-boost-planner:lang");
 const detectedLocale = savedLocale ?? (navigator.language.startsWith("en") ? "en" : "ja");
-const i18n = createAppI18n(normalizeLocale(detectedLocale));
+const initialLocale = normalizeLocale(detectedLocale);
+const i18n = createAppI18n(initialLocale);
 
 // Theme CSS loading
 // Production: loaded via blocking <link> in index.html (vite-plugin-theme-css)
@@ -24,6 +25,8 @@ const i18n = createAppI18n(normalizeLocale(detectedLocale));
 import { DEFAULT_THEME_ID, DESIGN_STORAGE_KEY } from "./config/themes";
 
 async function boot() {
+  await ensureLocaleMessagesLoaded(i18n, initialLocale);
+
   if (import.meta.env.DEV) {
     const design = localStorage.getItem(DESIGN_STORAGE_KEY) || DEFAULT_THEME_ID;
     const themes: Record<string, () => Promise<unknown>> =
@@ -38,4 +41,5 @@ async function boot() {
   // In production, theme CSS is already loaded by the inline script in <head>
   createApp(App).use(i18n).mount("#app");
 }
+
 boot();

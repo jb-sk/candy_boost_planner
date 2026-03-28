@@ -15,6 +15,7 @@
 /* ===== Component Imports ===== */
 @import "./components/BoxPanel.css";
 @import "./components/CalcPanel.css";
+@import "./components/AsyncOverlayLoading.css";
 @import "./components/Modal.css";
 @import "./components/MobileNav.css";
 @import "./components/ExportOverlay.css";
@@ -103,6 +104,17 @@
   color: var(--accent);
 }
 
+.lang__loading {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 99px;
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 /* Hero meta row: support + theme picker side by side */
 .heroMeta {
   display: flex;
@@ -167,6 +179,15 @@
   background: var(--paper);
   padding: 16px;
   border-bottom: 1px solid var(--border);
+}
+
+/* BoxPanel 遅延マウント時のプレースホルダー（CLS 抑制） */
+.boxPanelDefer {
+  min-height: min(60vh, 720px);
+  box-sizing: border-box;
+}
+.boxPanelDefer__body {
+  min-height: 40vh;
 }
 
 /* ===== Form Elements ===== */
