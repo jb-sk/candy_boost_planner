@@ -261,12 +261,15 @@
             <span class="field__label">{{ t("calc.row.expRemaining") }}</span>
             <input
               data-testid="expRemaining"
-              :value="displayExpRemaining(r)"
+              :value="expRemainingInputValue(r)"
               type="number"
               min="1"
               class="field__input"
               :placeholder="t('calc.row.expRemainingPh')"
-              @input="calc.onRowExpRemaining(r.id, ($event.target as HTMLInputElement).value)"
+              @focus="onExpRemainingFocus(r)"
+              @blur="onExpRemainingBlur(r)"
+              @input="onExpRemainingDraftInput(r.id, ($event.target as HTMLInputElement).value)"
+              @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
             />
           </label>
 
@@ -722,6 +725,30 @@ function displayExpRemaining(r: CalcRowView): string {
   const toNext = Math.max(0, calcExp(r.srcLevel, r.srcLevel + 1, r.expType));
   if (r.expRemaining >= toNext || r.expRemaining <= 0) return String(toNext);
   return String(r.expRemaining);
+}
+
+/** あとEXP: フォーカス中のみ編集中の文字列（空欄・途中入力を許し、blur でストアへ確定） */
+const expRemainingDraftByRowId = reactive<Record<string, string>>({});
+
+function expRemainingInputValue(r: CalcRowView): string {
+  const d = expRemainingDraftByRowId[r.id];
+  if (d !== undefined) return d;
+  return displayExpRemaining(r);
+}
+
+function onExpRemainingFocus(r: CalcRowView) {
+  expRemainingDraftByRowId[r.id] = displayExpRemaining(r);
+}
+
+function onExpRemainingDraftInput(rowId: string, v: string) {
+  expRemainingDraftByRowId[rowId] = v;
+}
+
+function onExpRemainingBlur(r: CalcRowView) {
+  const draft = expRemainingDraftByRowId[r.id];
+  if (draft === undefined) return;
+  delete expRemainingDraftByRowId[r.id];
+  calc.onRowExpRemaining(r.id, draft);
 }
 
 // 折りたたみ状態を管理（rowId => expanded）
