@@ -1,6 +1,6 @@
 /**
  * E2E Test: 04-calculator
- * 計算機パネルのテスト（62件）
+ * 計算機パネルのテスト（63件）
  */
 import { test, expect } from '@playwright/test';
 import * as fs from 'fs';
@@ -313,6 +313,23 @@ test.describe('04-calculator E. 行の入力操作', () => {
     await expInput.fill('500');
     const value = await expInput.inputValue();
     expect(value).toBe('500');
+  });
+
+  test('21b. あとEXPを全削除してから入力し直せる（確定はblur）', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+    const expInput = calc.getRowExpRemainingInput(row);
+
+    await expInput.click();
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+    await page.keyboard.press('Backspace');
+    await expect(expInput).toHaveValue('');
+
+    await page.keyboard.type('1064');
+    await expect(expInput).toHaveValue('1064');
+
+    await page.locator('#neo-calc .panel__head').click();
+    await expect(expInput).toHaveValue('1064');
   });
 
   test('22. 種族アメ在庫を入力できる', async ({ page }) => {
