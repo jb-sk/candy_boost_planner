@@ -3246,7 +3246,7 @@ export const pokemonDb: PokemonDbEntry[] = [
     "ingCJa": [
       "あじわいキノコ"
     ],
-    "mainSkillJa": "エナジーチャージS",
+    "mainSkillJa": "エナジーチャージM",
     "fp": 16,
     "helpSeconds": 2950,
     "link": "https://wikiwiki.jp/poke_sleep/%E3%82%A2%E3%83%96%E3%82%BD%E3%83%AB"
