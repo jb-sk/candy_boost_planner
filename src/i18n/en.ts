@@ -19,7 +19,6 @@ export const en = {
     settingsShort: "Settings",
     help: "Help",
     loading: "Loading...",
-    loadingLocale: "Switching language...",
     ariaOfuse: "Open OFUSE in a new tab",
     ariaBmac: "Open Buy Me a Coffee in a new tab",
   },

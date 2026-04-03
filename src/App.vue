@@ -12,7 +12,6 @@
           <button class="lang__btn" type="button" :class="{ 'lang__btn--on': uiLocale === 'ja' }" :disabled="localeSwitching" @click="setLocale('ja')">JP</button>
           <button class="lang__btn" type="button" :class="{ 'lang__btn--on': uiLocale === 'en' }" :disabled="localeSwitching" @click="setLocale('en')">EN</button>
           <button class="lang__btn lang__btn--help" type="button" @click="showHelp = true">{{ t("common.help") }}</button>
-          <span v-if="localeSwitching" class="lang__loading" role="status">{{ t("common.loadingLocale") }}</span>
         </div>
       </div>
       <div class="heroMeta">
@@ -88,10 +87,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, defineComponent, h, nextTick, onMounted, provide, ref } from "vue";
+import { computed, defineAsyncComponent, nextTick, onMounted, provide, ref } from "vue";
 import type { Component } from "vue";
 import { useI18n } from "vue-i18n";
-import AsyncOverlayLoading from "./components/AsyncOverlayLoading.vue";
 import { ensureLocaleMessagesLoaded } from "./i18n";
 import { localizeGameTerm } from "./i18n/terms";
 import type { ExpGainNature, ExpType, PokemonBoxEntryV1 } from "./domain/types";
@@ -129,23 +127,35 @@ async function setLocale(next: "ja" | "en") {
   }
 }
 
-function createAsyncOverlayComponent(loader: () => Promise<{ default: Component }>, dialog = true) {
+/** 遅延オーバーレイ用チャンク（トップ描画後にプリロードして初回オープン時の待ちを避ける） */
+const loadExportOverlay = () => import("./components/ExportOverlay.vue");
+const loadHelpOverlay = () => import("./components/HelpOverlay.vue");
+const loadSettingsOverlay = () => import("./components/SettingsOverlay.vue");
+const loadAddPokemonModal = () => import("./components/AddPokemonModal.vue");
+const loadOnboardingTour = () => import("./components/OnboardingTour.vue");
+
+function createAsyncOverlayComponent(loader: () => Promise<{ default: Component }>) {
   return defineAsyncComponent({
     loader,
-    delay: 120,
     suspensible: false,
-    loadingComponent: defineComponent(() => () => h(AsyncOverlayLoading, {
-      label: t("common.loading"),
-      dialog,
-    })),
   });
 }
 
-const ExportOverlay = createAsyncOverlayComponent(() => import("./components/ExportOverlay.vue"));
-const HelpOverlay = createAsyncOverlayComponent(() => import("./components/HelpOverlay.vue"));
-const SettingsOverlay = createAsyncOverlayComponent(() => import("./components/SettingsOverlay.vue"));
-const AddPokemonModal = createAsyncOverlayComponent(() => import("./components/AddPokemonModal.vue"));
-const OnboardingTour = createAsyncOverlayComponent(() => import("./components/OnboardingTour.vue"), false);
+const ExportOverlay = createAsyncOverlayComponent(loadExportOverlay);
+const HelpOverlay = createAsyncOverlayComponent(loadHelpOverlay);
+const SettingsOverlay = createAsyncOverlayComponent(loadSettingsOverlay);
+const AddPokemonModal = createAsyncOverlayComponent(loadAddPokemonModal);
+const OnboardingTour = createAsyncOverlayComponent(loadOnboardingTour);
+
+function preloadOverlayChunks() {
+  return Promise.all([
+    loadExportOverlay(),
+    loadHelpOverlay(),
+    loadSettingsOverlay(),
+    loadAddPokemonModal(),
+    loadOnboardingTour(),
+  ]);
+}
 
 type SupportLink = { id: "ofuse" | "bmac"; label: string; href: string; ariaLabel: string };
 
@@ -158,12 +168,6 @@ const themeSwitching = ref(false);
 
 const onboarding = useOnboarding();
 
-// Start onboarding tour on first visit after a short delay
-onMounted(() => {
-  if (!onboarding.isDone.value) {
-    setTimeout(() => onboarding.start(), 600);
-  }
-});
 const scrollContainerRef = ref<HTMLElement | null>(null);
 
 // provide scroll container for child components that need programmatic scrolling
@@ -378,5 +382,18 @@ onMounted(async () => {
   await nextTick();
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   mountBoxPanel.value = true;
+  await nextTick();
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  const scheduleIdle =
+    typeof requestIdleCallback !== "undefined"
+      ? (cb: () => void) => requestIdleCallback(cb)
+      : (cb: () => void) => setTimeout(cb, 0);
+  scheduleIdle(() => {
+    void preloadOverlayChunks();
+  });
+
+  if (!onboarding.isDone.value) {
+    setTimeout(() => onboarding.start(), 600);
+  }
 });
 </script>
