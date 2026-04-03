@@ -19,7 +19,6 @@ export const ja = {
     settingsShort: "設定",
     help: "使い方",
     loading: "読み込み中...",
-    loadingLocale: "言語を切り替えています...",
     ariaOfuse: "OFUSEを新しいタブで開く",
     ariaBmac: "Buy Me a Coffeeを新しいタブで開く",
   },

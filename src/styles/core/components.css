@@ -15,7 +15,6 @@
 /* ===== Component Imports ===== */
 @import "./components/BoxPanel.css";
 @import "./components/CalcPanel.css";
-@import "./components/AsyncOverlayLoading.css";
 @import "./components/Modal.css";
 @import "./components/MobileNav.css";
 @import "./components/ExportOverlay.css";
@@ -102,17 +101,6 @@
 .lang__btn--help:hover {
   background: transparent;
   color: var(--accent);
-}
-
-.lang__loading {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 10px;
-  border-radius: 99px;
-  background: rgba(var(--accent-rgb), 0.08);
-  color: var(--accent);
-  font-size: 0.72rem;
-  font-weight: 600;
 }
 
 /* Hero meta row: support + theme picker side by side */
