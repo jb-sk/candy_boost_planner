@@ -2827,6 +2827,24 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%9C%E3%83%BC%E3%83%9E%E3%83%B3%E3%83%80"
   },
   {
+    "dexNo": 380,
+    "pokedexId": 380,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "ラティアス",
+    "baseNameJa": "ラティアス",
+    "specialty": "Skills",
+    "type": "Dragon",
+    "typeJa": "ドラゴン",
+    "expType": 1080,
+    "ingredients": {
+      "a": "tomato",
+      "b": "pumpkin",
+      "c": "mushroom"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A9%E3%83%86%E3%82%A3%E3%82%A2%E3%82%B9"
+  },
+  {
     "dexNo": 403,
     "pokedexId": 403,
     "form": 0,
