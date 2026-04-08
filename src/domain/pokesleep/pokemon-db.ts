@@ -3428,6 +3428,28 @@ export const pokemonDb: PokemonDbEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%9C%E3%83%BC%E3%83%9E%E3%83%B3%E3%83%80"
   },
   {
+    "dexNo": 380,
+    "nameJa": "ラティアス",
+    "specialtyJa": "スキル",
+    "sleepTypeJa": "うとうと",
+    "berryJa": [
+      "ヤチェのみ"
+    ],
+    "ingAJa": [
+      "あんみんトマト"
+    ],
+    "ingBJa": [
+      "ずっしりカボチャ"
+    ],
+    "ingCJa": [
+      "あじわいキノコ"
+    ],
+    "mainSkillJa": "いやしのはどう(げんきエールS)",
+    "fp": 30,
+    "helpSeconds": 2800,
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A9%E3%83%86%E3%82%A3%E3%82%A2%E3%82%B9"
+  },
+  {
     "dexNo": 403,
     "nameJa": "コリンク",
     "specialtyJa": "食材",
