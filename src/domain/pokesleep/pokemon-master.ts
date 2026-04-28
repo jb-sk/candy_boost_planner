@@ -419,6 +419,42 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A9%E3%82%A4%E3%83%81%E3%83%A5%E3%82%A6"
   },
   {
+    "dexNo": 27,
+    "pokedexId": 27,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "サンド",
+    "baseNameJa": "サンド",
+    "specialty": "Skills",
+    "type": "Ground",
+    "typeJa": "じめん",
+    "expType": 600,
+    "ingredients": {
+      "a": "pumpkin",
+      "b": "corn",
+      "c": "potato"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%B5%E3%83%B3%E3%83%89"
+  },
+  {
+    "dexNo": 28,
+    "pokedexId": 28,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "サンドパン",
+    "baseNameJa": "サンドパン",
+    "specialty": "Skills",
+    "type": "Ground",
+    "typeJa": "じめん",
+    "expType": 600,
+    "ingredients": {
+      "a": "pumpkin",
+      "b": "corn",
+      "c": "potato"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%B5%E3%83%B3%E3%83%89%E3%83%91%E3%83%B3"
+  },
+  {
     "dexNo": 35,
     "pokedexId": 35,
     "form": 0,

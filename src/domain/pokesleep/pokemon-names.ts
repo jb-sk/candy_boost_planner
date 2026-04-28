@@ -42,6 +42,8 @@ export const pokemonNameJaByIdForm = {
   "24": "アーボック",
   "25": "ピカチュウ",
   "26": "ライチュウ",
+  "27": "サンド",
+  "28": "サンドパン",
   "35": "ピッピ",
   "36": "ピクシー",
   "37": "ロコン",
@@ -272,6 +274,8 @@ export const pokemonExpTypeByIdForm = {
   "24": 600,
   "25": 600,
   "26": 600,
+  "27": 600,
+  "28": 600,
   "35": 600,
   "36": 600,
   "37": 600,
@@ -502,6 +506,8 @@ export const pokemonSpecialtyByIdForm = {
   "24": "Berries",
   "25": "Berries",
   "26": "Berries",
+  "27": "Skills",
+  "28": "Skills",
   "35": "Berries",
   "36": "Berries",
   "37": "Berries",
@@ -732,6 +738,8 @@ export const pokemonTypeByIdForm = {
   "24": "Poison",
   "25": "Electric",
   "26": "Electric",
+  "27": "Ground",
+  "28": "Ground",
   "35": "Fairy",
   "36": "Fairy",
   "37": "Fire",
@@ -962,6 +970,8 @@ export const pokemonTypeJaByIdForm = {
   "24": "どく",
   "25": "でんき",
   "26": "でんき",
+  "27": "じめん",
+  "28": "じめん",
   "35": "フェアリー",
   "36": "フェアリー",
   "37": "ほのお",
@@ -1263,6 +1273,16 @@ export const pokemonIngredientsByIdForm = {
     "a": "apple",
     "b": "ginger",
     "c": "egg"
+  },
+  "27": {
+    "a": "pumpkin",
+    "b": "corn",
+    "c": "potato"
+  },
+  "28": {
+    "a": "pumpkin",
+    "b": "corn",
+    "c": "potato"
   },
   "35": {
     "a": "apple",
@@ -2361,6 +2381,12 @@ export const pokemonIdFormsByNameJa = {
   ],
   "ライチュウ": [
     26
+  ],
+  "サンド": [
+    27
+  ],
+  "サンドパン": [
+    28
   ],
   "ピッピ": [
     35

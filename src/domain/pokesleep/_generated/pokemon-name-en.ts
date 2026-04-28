@@ -20,6 +20,8 @@ export const pokemonNameEnByDexNo: Record<number, string> = {
   24: "Arbok",
   25: "Pikachu",
   26: "Raichu",
+  27: "Sandshrew",
+  28: "Sandslash",
   35: "Clefairy",
   36: "Clefable",
   37: "Vulpix",

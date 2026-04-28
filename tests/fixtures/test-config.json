@@ -1,7 +1,7 @@
 {
   "description": "E2Eテスト設定",
   "latestPokemon": {
-    "name": "ラティアス",
+    "name": "サンドパン",
     "comment": "最新ポケモン名。ゲームに新ポケモンが追加されたら更新する。"
   },
   "importData": {
