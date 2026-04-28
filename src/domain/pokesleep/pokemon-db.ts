@@ -480,6 +480,50 @@ export const pokemonDb: PokemonDbEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A9%E3%82%A4%E3%83%81%E3%83%A5%E3%82%A6"
   },
   {
+    "dexNo": 27,
+    "nameJa": "サンド",
+    "specialtyJa": "スキル",
+    "sleepTypeJa": "ぐっすり",
+    "berryJa": [
+      "フィラのみ"
+    ],
+    "ingAJa": [
+      "ずっしりカボチャ"
+    ],
+    "ingBJa": [
+      "ワカクサコーン"
+    ],
+    "ingCJa": [
+      "ほっこりポテト"
+    ],
+    "mainSkillJa": "食材セレクトS",
+    "fp": 5,
+    "helpSeconds": 5300,
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%B5%E3%83%B3%E3%83%89"
+  },
+  {
+    "dexNo": 28,
+    "nameJa": "サンドパン",
+    "specialtyJa": "スキル",
+    "sleepTypeJa": "ぐっすり",
+    "berryJa": [
+      "フィラのみ"
+    ],
+    "ingAJa": [
+      "ずっしりカボチャ"
+    ],
+    "ingBJa": [
+      "ワカクサコーン"
+    ],
+    "ingCJa": [
+      "ほっこりポテト"
+    ],
+    "mainSkillJa": "食材セレクトS",
+    "fp": 12,
+    "helpSeconds": 2800,
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%B5%E3%83%B3%E3%83%89%E3%83%91%E3%83%B3"
+  },
+  {
     "dexNo": 35,
     "nameJa": "ピッピ",
     "specialtyJa": "きのみ",
