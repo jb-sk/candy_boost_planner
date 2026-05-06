@@ -153,6 +153,23 @@ test.describe('03-settings デスクトップ', () => {
     expect(await settings.getDailySleepHours()).toBe(9.5);
   });
 
+  test('12b. 睡眠時間を全削除してから入力し直せる（確定はblur）', async ({ page }) => {
+    const settings = new SettingsModalPage(page);
+
+    await settings.openSettingsFromDesktop();
+
+    await settings.dailySleepHoursInput.click();
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+    await page.keyboard.press('Backspace');
+    await expect(settings.dailySleepHoursInput).toHaveValue('');
+
+    await page.keyboard.type('13');
+    await expect(settings.dailySleepHoursInput).toHaveValue('13');
+
+    await settings.dailySleepHoursInput.blur();
+    expect(await settings.getDailySleepHours()).toBe(13);
+  });
+
   test('13. 睡眠EXPボーナス回数（0-5回）が選択できる', async ({ page }) => {
     const settings = new SettingsModalPage(page);
 

@@ -56,6 +56,26 @@ test.describe('AddPokemonModal - 基本動作', () => {
     await modal.fillAndPickName(prefix);
     await expect(modal.submitButton).toBeEnabled();
   });
+
+  test('レベルピッカーのタイトルに現在選択中のLvが表示される', async () => {
+    await modal.srcLevelTrigger.click();
+    await expect(modal.modal.locator('.levelPick__title')).toHaveText('現在Lv Lv1');
+    await modal.modal.getByTestId('level-picker-popover').getByRole('button', { name: '閉じる' }).click();
+
+    await modal.dstLevelTrigger.click();
+    await expect(modal.modal.locator('.levelPick__title')).toHaveText('目標Lv Lv60');
+  });
+
+  test('レベルピッカーの左右ボタン連打でLvを調節できる', async () => {
+    await modal.srcLevelTrigger.click();
+    const popover = modal.modal.getByTestId('level-picker-popover');
+
+    await popover.getByTestId('level-picker-increment').dblclick();
+    await expect(modal.modal.locator('.levelPick__title')).toHaveText('現在Lv Lv3');
+
+    await popover.getByTestId('level-picker-decrement').dblclick();
+    await expect(modal.modal.locator('.levelPick__title')).toHaveText('現在Lv Lv1');
+  });
 });
 
 // ============================================

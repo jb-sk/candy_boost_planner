@@ -96,8 +96,11 @@
                 max="13"
                 step="0.5"
                 class="field__input field__input--xs"
-                :value="calc.sleepSettings.value.dailySleepHours"
-                @input="calc.updateSleepSettings({ dailySleepHours: Math.max(1, Math.min(13, parseFloat(($event.target as HTMLInputElement).value) || 8.5)) })"
+                :value="dailySleepHoursInputValue"
+                @focus="onDailySleepHoursFocus"
+                @input="onDailySleepHoursInput(($event.target as HTMLInputElement).value)"
+                @blur="onDailySleepHoursBlur"
+                @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
               />
             </label>
             <label class="settingsField settingsField--inline settingsField--aligned">
@@ -161,7 +164,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import type { CalcStore } from "../composables/useCalcStore";
 import { useCandyStore } from "../composables/useCandyStore";
@@ -175,6 +178,27 @@ const { t, locale } = useI18n();
 const candyStore = useCandyStore();
 const pokemonTypes = PokemonTypes;
 const calc = props.calc;
+
+const dailySleepHoursDraft = ref<string | null>(null);
+const dailySleepHoursInputValue = computed(() => dailySleepHoursDraft.value ?? String(calc.sleepSettings.value.dailySleepHours));
+
+function onDailySleepHoursFocus() {
+  dailySleepHoursDraft.value = String(calc.sleepSettings.value.dailySleepHours);
+}
+
+function onDailySleepHoursInput(value: string) {
+  dailySleepHoursDraft.value = value;
+}
+
+function onDailySleepHoursBlur() {
+  const draft = dailySleepHoursDraft.value;
+  if (draft == null) return;
+  dailySleepHoursDraft.value = null;
+
+  const parsed = parseFloat(draft);
+  const dailySleepHours = Number.isFinite(parsed) ? Math.max(1, Math.min(13, parsed)) : 8.5;
+  calc.updateSleepSettings({ dailySleepHours });
+}
 
 // ESCキーで閉じる
 const emit = defineEmits<{ (e: "close"): void }>();
