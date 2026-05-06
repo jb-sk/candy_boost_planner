@@ -60,7 +60,7 @@
         <div class="addModal__levelRow">
           <div class="field">
             <span class="field__label">{{ t("calc.row.srcLevel") }}</span>
-            <LevelPicker v-model="srcLevel" :label="t('calc.row.srcLevel')" :max="MAX_LEVEL" />
+            <LevelPicker v-model="srcLevel" :label="`${t('calc.row.srcLevel')} Lv${srcLevel}`" :max="MAX_LEVEL" />
           </div>
           <label class="field">
             <span class="field__label">{{ t("calc.row.expRemaining") }}</span>
@@ -78,7 +78,7 @@
         <!-- 目標レベル -->
         <div class="field">
           <span class="field__label">{{ t("calc.row.dstLevel") }}</span>
-          <LevelPicker v-model="dstLevel" :min="srcLevel" :max="MAX_LEVEL" :label="t('calc.row.dstLevel')" />
+          <LevelPicker v-model="dstLevel" :min="srcLevel" :max="MAX_LEVEL" :label="`${t('calc.row.dstLevel')} Lv${dstLevel}`" />
         </div>
 
         <!-- 性格 -->

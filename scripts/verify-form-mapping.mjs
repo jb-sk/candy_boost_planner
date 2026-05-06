@@ -103,10 +103,10 @@ function parseFormMapFromTs(source) {
   const mapMatch = source.match(/const\s+formMap\s*:\s*Record<[^>]+>\s*=\s*\{([^}]+)\}/s);
   if (!mapMatch) return null;
   const entries = {};
-  const lineRe = /['"]([^'"]+)['"]\s*:\s*(\d+)/g;
+  const lineRe = /(?:['"]([^'"]+)['"]|(\w+))\s*:\s*(\d+)/g;
   let m;
   while ((m = lineRe.exec(mapMatch[1])) !== null) {
-    entries[m[1]] = Number(m[2]);
+    entries[m[1] || m[2]] = Number(m[3]);
   }
   return entries;
 }

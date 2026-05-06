@@ -132,8 +132,9 @@ onUnmounted(() => {
 
       <div class="levelPick__sliderRow">
         <button
-          class="btn btn--ghost btn--xs"
+          class="btn btn--ghost btn--xs levelPick__stepButton"
           type="button"
+          data-testid="level-picker-decrement"
           @click.stop="update(modelValue - 1)"
           :disabled="modelValue <= (min ?? 1)"
         >
@@ -150,7 +151,7 @@ onUnmounted(() => {
           @click.stop
         />
         <button
-          class="btn btn--ghost btn--xs"
+          class="btn btn--ghost btn--xs levelPick__stepButton"
           type="button"
           data-testid="level-picker-increment"
           @click.stop="update(modelValue + 1)"
