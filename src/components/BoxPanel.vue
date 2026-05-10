@@ -140,6 +140,19 @@
               </select>
             </label>
 
+            <label class="field">
+              <span class="field__label">{{ t("box.detail.sleepHours") }}</span>
+              <input
+                v-model="box.addSleepHours.value"
+                type="number"
+                min="0"
+                step="1"
+                class="field__input"
+                data-testid="box-add-sleep-hours"
+                placeholder=""
+              />
+            </label>
+
             <div class="field field--wide">
               <span class="field__label">{{ t("box.add.subSkills") }}</span>
               <div class="subGrid" data-testid="box-add-subskills">
@@ -689,6 +702,93 @@
                       </select>
                     </div>
                   </div>
+
+                  <div class="boxDetail__kv">
+                    <div class="boxDetail__k">{{ t("box.detail.sleepHours") }}</div>
+                    <div class="boxDetail__v sleepHoursRow">
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        class="field__input"
+                        :value="sleepHoursInput"
+                        placeholder=""
+                        @input="onSleepHoursInput(($event.target as HTMLInputElement).value)"
+                      />
+                      <button
+                        type="button"
+                        class="btn btn--sleepCalc"
+                        :class="{ 'btn--sleepCalc--open': showSleepCalc }"
+                        :aria-expanded="showSleepCalc"
+                        :aria-label="t('box.detail.sleepCalcButton')"
+                        :title="t('box.detail.sleepCalcButton')"
+                        @click="toggleSleepCalc"
+                      >
+                        <span v-if="showSleepCalc" class="btn--sleepCalc__chevron" aria-hidden="true">
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+                            <path d="M18 15L12 9L6 15" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+                          </svg>
+                        </span>
+                        <span v-else v-html="iconCalculatorSvg" aria-hidden="true"></span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div v-if="showSleepCalc" class="sleepCalcPanel" :class="{ 'sleepCalcPanel--enter': sleepCalcAnimating }" data-testid="box-detail-sleep-calc" @animationend="onSleepCalcAnimEnd">
+                    <div class="sleepCalcPanel__daily">
+                      <label class="sleepCalcPanel__label">
+                        {{ t("box.detail.sleepCalcDaily") }}
+                        <span class="sleepCalcPanel__unit">{{ t("box.detail.sleepCalcDailyUnit") }}</span>
+                        <button
+                          type="button"
+                          class="hintIcon"
+                          style="margin-left: 4px;"
+                          @click.stop="showHint($event, t('box.detail.sleepCalcDailyHint'))"
+                        >?</button>
+                      </label>
+                      <input
+                        v-model.number="tempDailySleepHours"
+                        type="number"
+                        min="1"
+                        max="13"
+                        step="0.5"
+                        class="field__input sleepCalcPanel__input"
+                        @blur="onDailySleepBlur"
+                      />
+                    </div>
+                    <div class="sleepTimeline">
+                      <div class="sleepTimeline__axis">
+                        <div :ref="setSleepTrackRowRef" class="sleepTimeline__trackRow" :class="[`sleepTimeline__trackRow--${locale}`, { 'sleepTimeline__trackRow--hasOffset': should500hOffset }]">
+                          <div class="sleepTimeline__track">
+                            <div class="sleepTimeline__progress" :style="{ width: progressPct + '%' }"></div>
+                          </div>
+                          <div
+                            v-for="ms in sleepMilestones"
+                            :key="ms.hours"
+                            class="sleepTimeline__milestone"
+                            :class="[nodeClass(ms), { 'sleepTimeline__milestone--offset': ms.hours === 500 && should500hOffset }]"
+                            :data-milestone="ms.hours"
+                            :style="{ left: milestoneLeftPct(ms.hours) + '%' }"
+                          >
+                            <div class="sleepTimeline__dot">
+                              <span v-if="ms.achieved" class="sleepTimeline__dotMark">✓</span>
+                              <span v-else class="sleepTimeline__dotMark">{{ ms.index }}</span>
+                            </div>
+                            <div class="sleepTimeline__label">{{ ms.hours }}h</div>
+                            <div class="sleepTimeline__status">
+                              <template v-if="ms.achieved">{{ t("box.detail.sleepMilestoneAchieved") }}</template>
+                              <template v-else>
+                                <div class="sleepTimeline__days">
+                                  {{ t("box.detail.sleepMilestoneDaysLeft", { days: ms.remainingDays }) }}
+                                </div>
+                                <div class="sleepTimeline__date">{{ ms.estimatedDate }}</div>
+                              </template>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                   </div>
                 </div>
 
@@ -724,20 +824,24 @@
       </div>
     </div>
 
-    <div v-if="hintState.visible" class="hintOverlay" @click.stop="closeHint"></div>
-    <div
-      v-if="hintState.visible"
-      ref="hintPopoverRef"
-      class="hintPopover"
-      :style="{ left: hintState.left + 'px', top: hintState.top + 'px' }"
-      @click.stop
-      v-text="hintState.message"
-    ></div>
+    <!-- ツールチップ（ヒント） -->
+    <Teleport to="body">
+      <div v-if="hintState.visible" class="hintOverlay" @click.stop="closeHint"></div>
+      <div
+        v-if="hintState.visible"
+        ref="hintPopoverRef"
+        class="hintPopover"
+        :style="{ left: hintState.left + 'px', top: hintState.top + 'px' }"
+        @click="handleHintClick"
+        v-html="hintState.message"
+      ></div>
+    </Teleport>
   </section>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed } from "vue";
+import { ref, watch, nextTick, computed, onBeforeUnmount } from "vue";
+import type { ComponentPublicInstance } from "vue";
 import { useI18n } from "vue-i18n";
 import { localizeNature } from "../i18n/terms";
 import { IngredientTypes } from "../domain/box/nitoyon";
@@ -746,6 +850,7 @@ import { getPokemonNameLocalized } from "../domain/pokesleep/pokemon-name-locali
 import NatureSelect from "./NatureSelect.vue";
 
 import type { BoxStore } from "../composables/useBoxStore";
+import type { CalcStore } from "../composables/useCalcStore";
 import { useCandyStore } from "../composables/useCandyStore";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 
@@ -754,17 +859,28 @@ import iconIngredientsSvg from "../assets/icons/ingredients.svg?raw";
 import iconSkillsSvg from "../assets/icons/skills.svg?raw";
 import iconAllSvg from "../assets/icons/all.svg?raw";
 import iconStarSvg from "../assets/icons/star.svg?raw";
+import iconCalculatorSvg from "../assets/icons/calculator.svg?raw";
+import {
+  calcSleepMilestones,
+  normalizeDailySleepInput,
+  normalizeSleepHoursValue,
+  normalizeSleepHoursInput,
+  type SleepMilestoneResult,
+} from "../domain/box/sleep-milestones";
 
 const props = defineProps<{
   box: BoxStore;
+  calc: CalcStore;
   gt: (s: string) => string;
 }>();
 const emit = defineEmits<{
   (e: "apply-to-calc"): void;
+  (e: "open-settings"): void;
 }>();
 
 const { t, locale } = useI18n();
 const box = props.box;
+const calc = props.calc;
 const gt = props.gt;
 
 // Aliases for v-model so the template compiler updates `.value` correctly.
@@ -792,6 +908,143 @@ const showRelinkSuggest = box.showRelinkSuggest;
 const relinkStatus = box.relinkStatus;
 const boxEditSubInputs = box.boxEditSubInputs;
 const boxEditSubErrors = box.boxEditSubErrors;
+/* ===== Sleep milestone calc (local state) ===== */
+const showSleepCalc = ref(false);
+const tempDailySleepHours = ref<number | null>(null);
+const sleepHoursInput = ref("");
+
+function onDailySleepBlur() {
+  if (normalizeDailySleepInput(tempDailySleepHours.value) == null) {
+    tempDailySleepHours.value = calc.sleepSettings.value.dailySleepHours;
+  }
+}
+
+function syncSleepHoursInput() {
+  const raw = selectedDetail.value?.sleepHours;
+  sleepHoursInput.value = normalizeSleepHoursInput(String(raw ?? "")) != null ? String(Math.floor(raw!)) : "";
+}
+
+function onSleepHoursInput(v: string) {
+  sleepHoursInput.value = v;
+  box.setBoxSleepHours(v);
+}
+
+const effectiveDailySleep = computed(() =>
+  normalizeDailySleepInput(tempDailySleepHours.value) ?? calc.sleepSettings.value.dailySleepHours
+);
+
+const currentSleepHours = computed(() => normalizeSleepHoursValue(selectedDetail.value?.sleepHours));
+const progressPct = computed(() => Math.min(100, (currentSleepHours.value / 2000) * 100));
+
+const sleepMilestones = computed<SleepMilestoneResult[]>(() =>
+  calcSleepMilestones({
+    currentSleepHours: currentSleepHours.value,
+    dailySleepHours: effectiveDailySleep.value,
+  })
+);
+
+const nextMilestoneHours = computed(() => {
+  const next = sleepMilestones.value.find((x) => !x.achieved);
+  return next?.hours ?? null;
+});
+
+const sleepCalcAnimating = ref(false);
+
+function toggleSleepCalc() {
+  const opening = !showSleepCalc.value;
+  showSleepCalc.value = opening;
+  if (opening) {
+    sleepCalcAnimating.value = true;
+  }
+}
+
+function onSleepCalcAnimEnd() {
+  sleepCalcAnimating.value = false;
+}
+
+function milestoneLeftPct(hours: number) {
+  return (hours / 2000) * 100;
+}
+
+function nodeClass(ms: SleepMilestoneResult) {
+  if (ms.achieved) return "sleepTimeline__milestone--done";
+  if (nextMilestoneHours.value === ms.hours) return "sleepTimeline__milestone--next";
+  return "sleepTimeline__milestone--future";
+}
+
+/**
+ * 200h/500h マイルストーンの水平干渉を検出し、500h を下方オフセットするか判定。
+ * コンテナ幅 × パーセント位置 + offsetWidth で計算するため、オフセット状態に依存しない。
+ * ResizeObserver でコンテナ幅の変化を追従し、sleepMilestones の変更でも再判定する。
+ */
+const sleepTrackRowRef = ref<HTMLElement | null>(null);
+const should500hOffset = ref(false);
+let _sleepTrackRO: ResizeObserver | null = null;
+
+function checkMilestoneCollision() {
+  const container = sleepTrackRowRef.value;
+  if (!container) { should500hOffset.value = false; return; }
+
+  // 両方達成済みならオフセット不要（短い「達成!」ラベルは干渉しない）
+  const ms200 = sleepMilestones.value.find((x) => x.hours === 200);
+  const ms500 = sleepMilestones.value.find((x) => x.hours === 500);
+  if (ms200?.achieved && ms500?.achieved) { should500hOffset.value = false; return; }
+
+  const el200 = container.querySelector('[data-milestone="200"]') as HTMLElement | null;
+  const el500 = container.querySelector('[data-milestone="500"]') as HTMLElement | null;
+  if (!el200 || !el500) { should500hOffset.value = false; return; }
+
+  const w = container.clientWidth;
+  const right200 = w * 0.10 + el200.offsetWidth / 2;
+  const left500 = w * 0.25 - el500.offsetWidth / 2;
+  should500hOffset.value = right200 > left500 - 4;
+}
+
+function disconnectSleepTrackObserver() {
+  _sleepTrackRO?.disconnect();
+  _sleepTrackRO = null;
+}
+
+function attachSleepTrackObserver(el: HTMLElement) {
+  disconnectSleepTrackObserver();
+  nextTick(() => {
+    if (sleepTrackRowRef.value !== el) return;
+    checkMilestoneCollision();
+    const ro = new ResizeObserver(() => checkMilestoneCollision());
+    ro.observe(el);
+    _sleepTrackRO = ro;
+  });
+}
+
+/** function ref: クラスのみの再パッチ（同一要素）では observer を維持する */
+function setSleepTrackRowRef(el: Element | ComponentPublicInstance | null) {
+  const nextEl = el instanceof HTMLElement ? el : null;
+  if (nextEl && nextEl === sleepTrackRowRef.value) return;
+  sleepTrackRowRef.value = nextEl;
+  if (nextEl) { attachSleepTrackObserver(nextEl); } else { disconnectSleepTrackObserver(); }
+}
+
+onBeforeUnmount(disconnectSleepTrackObserver);
+
+// マイルストーンデータ変更時にも再判定（ラベル幅が変わりうる）
+watch(sleepMilestones, () => checkMilestoneCollision(), { deep: true, flush: "post" });
+
+watch(
+  () => [selectedBox.value?.id, selectedBox.value?.planner?.sleepHours] as const,
+  () => {
+    syncSleepHoursInput();
+  },
+  { immediate: true }
+);
+
+/** 展開時に 1日の睡眠時間へ設定のデフォルトを表示（空欄にしない）。閉じたらオフセットをリセット */
+watch(showSleepCalc, (open) => {
+  if (open) {
+    tempDailySleepHours.value = calc.sleepSettings.value.dailySleepHours;
+  } else {
+    should500hOffset.value = false;
+  }
+});
 
 /** タイル行ごとに1回だけ displayBoxTitle / boxTileTypeClass を評価（ソート済み一覧の再描画コスト削減） */
 const boxTileClassById = computed(() => {
@@ -1022,6 +1275,15 @@ async function showHint(ev: MouseEvent, message: string) {
 
 function closeHint() {
   hintState.value.visible = false;
+}
+
+function handleHintClick(ev: MouseEvent) {
+  const target = ev.target as HTMLElement;
+  if (target.matches('.link-settings')) {
+    ev.preventDefault();
+    emit("open-settings");
+    closeHint();
+  }
 }
 
 </script>

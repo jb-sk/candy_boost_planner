@@ -68,6 +68,7 @@ function normalizeEntry(x: Record<string, unknown>): PokemonBoxEntryV1 {
     ? {
         level: p.level === undefined ? undefined : toInt(p.level, 1),
         expRemaining: p.expRemaining === undefined ? undefined : toInt(p.expRemaining, 0),
+        sleepHours: p.sleepHours === undefined ? undefined : toInt(p.sleepHours, 0),
         expType: p.expType === undefined ? undefined : toExpType(p.expType, 600),
         expGainNature:
           p.expGainNature === undefined

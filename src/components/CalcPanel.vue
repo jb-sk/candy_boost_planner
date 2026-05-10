@@ -336,24 +336,27 @@
             />
             <span class="field__sub">{{ r.ui.boostRatioPct }}%</span>
           </label>
-          <label class="field field--sm">
-            <span class="field__label">
-              {{ calc.boostKind.value === 'none' ? t("calc.row.boostCandyCountNormal") : t("calc.row.boostCandyCount") }}
+          <div class="field field--sm">
+            <div class="field__labelRow" style="margin-bottom: 4px;">
+              <span class="field__label" style="margin-bottom: 0;">
+                {{ calc.boostKind.value === 'none' ? t("calc.row.boostCandyCountNormal") : t("calc.row.boostCandyCount") }}
+              </span>
               <button
                 data-testid="hintBtn"
                 type="button"
                 class="hintIcon"
-                @click.stop="showHint($event, calc.boostKind.value === 'none' ? t('calc.row.boostCandyCountNormalHint') : t('calc.row.boostCandyCountHint'))"
+                @click.stop.prevent="showHint($event, calc.boostKind.value === 'none' ? t('calc.row.boostCandyCountNormalHint') : t('calc.row.boostCandyCountHint'))"
               >?</button>
               <button
                 data-testid="boostCandyReset"
                 type="button"
                 class="hintIcon hintIcon--reset"
+                style="margin-left: 4px;"
                 :aria-label="t('calc.row.boostCandyCountReset')"
                 :title="t('calc.row.boostCandyCountReset')"
-                @click.stop="calc.resetRowBoostCandy(r.id)"
-              ><svg class="hintIcon__resetSvg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v4h4"/><path d="M3 7a5.5 5.5 0 1 1 1 4"/></svg></button>
-            </span>
+                @click.stop.prevent="calc.resetRowBoostCandy(r.id)"
+              ><svg class="hintIcon__resetSvg" style="pointer-events: none;" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v4h4"/><path d="M3 7a5.5 5.5 0 1 1 1 4"/></svg></button>
+            </div>
             <input
               data-testid="boostCandyCount"
               :value="r.ui.boostCandyInput"
@@ -363,7 +366,7 @@
               @input="calc.onRowBoostCandy(r.id, ($event.target as HTMLInputElement).value)"
               @blur="handleInputBlur"
             />
-          </label>
+          </div>
           <div class="field field--sm field--sleepTarget">
             <span class="field__label">{{ t("calc.row.candyTarget") }}</span>
             <input
@@ -394,7 +397,7 @@
                 data-testid="sleepHintBtn"
                 type="button"
                 class="hintIcon"
-                @click.stop="showHint($event, t('calc.sleep.sleepBtnHint'))"
+                @click.stop="showSleepHint($event, r.id)"
               >?</button>
             </div>
           </div>
@@ -636,16 +639,48 @@
     </div>
     </div>
 
-    <div v-if="hintState.visible" class="hintOverlay" data-testid="calc-hint-overlay" @click.stop="closeHint"></div>
-    <div
-      v-if="hintState.visible"
-      ref="hintPopoverRef"
-      class="hintPopover"
-      data-testid="calc-hint-popover"
-      :style="{ left: hintState.left + 'px', top: hintState.top + 'px' }"
-      @click.stop="handleHintClick"
-      v-html="hintState.message"
-    ></div>
+    <Teleport to="body">
+      <div v-if="hintState.visible" class="hintOverlay" data-testid="calc-hint-overlay" @click.stop="closeHint"></div>
+      <div
+        v-if="hintState.visible"
+        ref="hintPopoverRef"
+        class="hintPopover"
+        data-testid="calc-hint-popover"
+        :style="{ left: hintState.left + 'px', top: hintState.top + 'px' }"
+        @click.stop="handleHintClick"
+        v-html="hintState.message"
+      ></div>
+    </Teleport>
+
+    <Teleport to="body">
+      <div v-if="sleepHintState.visible" class="hintOverlay" @click.stop="closeSleepHint"></div>
+      <div
+        v-if="sleepHintState.visible"
+        ref="sleepHintPopoverRef"
+        class="hintPopover sleepHintPopover"
+        :style="{ left: sleepHintState.left + 'px', top: sleepHintState.top + 'px' }"
+        @click.stop
+      >
+        <p class="sleepHintPopover__text">{{ t('calc.sleep.sleepBtnHintText') }}</p>
+        <button type="button" class="hintLink" @click="openSleepSettings">
+          {{ t('calc.sleep.openSettings') }}
+        </button>
+        <div class="sleepHintPopover__field">
+          <label class="sleepHintPopover__label">{{ t('calc.sleep.currentSleepHours') }}</label>
+          <div class="sleepHintPopover__inputRow">
+            <input
+              type="number"
+              min="0"
+              step="1"
+              class="field__input sleepHintPopover__input"
+              :value="sleepHintRowSleepHours"
+              @change="onSleepHintChange"
+            />
+            <span class="sleepHintPopover__unit">h</span>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </section>
 </template>
 
@@ -660,6 +695,7 @@ import { getTypeName } from "../domain/pokesleep/pokemon-types";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { markForSleep, calcCandyTargetFromSleepExp, calcSleepTimeForExp } from "../domain/pokesleep/sleep-growth";
 import { calcExp } from "../domain/pokesleep/exp";
+import { normalizeSleepHoursInput } from "../domain/box/sleep-milestones";
 import type { BoostEvent } from "../domain/types";
 
 import iconUndoSvg from "../assets/icons/undo.svg?raw";
@@ -1010,9 +1046,13 @@ function applySleepGrowth(rowId: string, targetHours: number) {
   const row = calc.rowsView.value.find(r => r.id === rowId);
   if (!row) return;
 
-  // markForSleep で睡眠EXPを計算
+  // 累計睡眠時間を差し引いた残り時間を計算
+  const currentSleepHours = row.sleepHours ?? 0;
+  const remainingHours = Math.max(0, targetHours - currentSleepHours);
+
+  // remainingHours=0 も通常フローで処理し、sleepExp=0 相当の個数指定を出す。
   const result = markForSleep({
-    targetSleepHours: targetHours,
+    targetSleepHours: remainingHours,
     nature: row.nature,
     dailySleepHours: sleepSettings.dailySleepHours,
     sleepExpBonus,
@@ -1366,6 +1406,55 @@ function handleHintClick(ev: MouseEvent) {
     closeHint();
     emit('open-settings');
   }
+}
+
+// ── 睡眠ヒント専用ポップオーバー ──
+const sleepHintState = ref<{ visible: boolean; rowId: string; left: number; top: number }>({
+  visible: false, rowId: "", left: 0, top: 0,
+});
+const sleepHintPopoverRef = ref<HTMLElement | null>(null);
+
+const sleepHintRowSleepHours = computed(() => {
+  if (!sleepHintState.value.visible) return 0;
+  const row = calc.rowsView.value.find(r => r.id === sleepHintState.value.rowId);
+  return row?.sleepHours ?? 0;
+});
+
+async function showSleepHint(ev: MouseEvent, rowId: string) {
+  const target = ev.target as HTMLElement;
+  const rect = target.getBoundingClientRect();
+  const gap = 4;
+  const viewportWidth = window.innerWidth;
+  const popoverWidth = 240;
+  let left = rect.left;
+  if (left + popoverWidth > viewportWidth) left = viewportWidth - popoverWidth - 8;
+  if (left < 8) left = 8;
+
+  sleepHintState.value = { visible: true, rowId, left, top: rect.bottom + gap };
+
+  await nextTick();
+  if (sleepHintPopoverRef.value) {
+    const popH = sleepHintPopoverRef.value.offsetHeight;
+    const viewportHeight = window.innerHeight;
+    if (rect.bottom + gap + popH > viewportHeight && rect.top - gap - popH > 0) {
+      sleepHintState.value.top = rect.top - gap - popH;
+    }
+  }
+}
+
+function closeSleepHint() {
+  sleepHintState.value.visible = false;
+}
+
+function openSleepSettings() {
+  closeSleepHint();
+  emit('open-settings');
+}
+
+function onSleepHintChange(ev: Event) {
+  const val = (ev.target as HTMLInputElement).value;
+  const sleepHours = normalizeSleepHoursInput(val);
+  calc.setRowSleepHours(sleepHintState.value.rowId, sleepHours);
 }
 
 </script>

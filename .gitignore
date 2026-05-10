@@ -3,6 +3,7 @@
 # ------------------------------
 _local/
 .agent/
+.echoes/
 .sub-agent/
 .gemini/
 .geminiignore

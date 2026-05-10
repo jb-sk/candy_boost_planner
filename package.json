@@ -20,7 +20,8 @@
     "update:all": "npm run generate:master -- --interactive && npm run generate:pokemon-en-names && npm run build",
     "test": "vitest",
     "test:run": "vitest run",
-    "verify:forms": "node scripts/verify-form-mapping.mjs"
+    "verify:forms": "node scripts/verify-form-mapping.mjs",
+    "check:ingredient-labels": "node scripts/check-ingredient-labels.mjs"
   },
   "dependencies": {
     "html2canvas-pro": "2.0.2",

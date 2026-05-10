@@ -35,6 +35,8 @@ export type CalcRowV1 = {
   /** アメ個数指定（未設定=無制限、1以上=目標個数） */
   candyTarget?: number;
   mode: CalcMode;
+  /** 累計睡眠時間（時間単位、ポケモンごと） */
+  sleepHours?: number;
 };
 
 export type CalcSaveSlotV1 = {
@@ -215,6 +217,11 @@ function toRows(v: unknown): CalcRowV1[] {
     const candyPeak = typeof o.candyPeak === "number" ? Math.max(0, Math.floor(o.candyPeak)) : undefined;
     // candyTarget: undefined = 無制限、1以上 = 目標個数
     const candyTarget = typeof o.candyTarget === "number" && o.candyTarget >= 0 ? Math.floor(o.candyTarget) : undefined;
+    // sleepHours: 累計睡眠時間（後方互換: 未設定 = undefined = 0h扱い）
+    const sleepHours =
+      typeof o.sleepHours === "number" && Number.isFinite(o.sleepHours)
+        ? Math.max(0, Math.floor(o.sleepHours))
+        : undefined;
     out.push({
       id,
       boxId,
@@ -233,6 +240,7 @@ function toRows(v: unknown): CalcRowV1[] {
       candyPeak,
       candyTarget,
       mode,
+      sleepHours,
     });
   }
   return out.slice(0, 60);

@@ -46,6 +46,7 @@ export type CalcBoxPlannerPatch = {
   boxId: string;
   level: number;
   expRemaining: number;
+  sleepHours?: number;
 };
 
 type CalcUndoState = {
@@ -188,12 +189,14 @@ export type CalcStore = {
     expType: ExpType;
     nature: ExpGainNature;
     expRemaining?: number;
+    sleepHours?: number;
     title?: string;
     dstLevelDefault?: number;
     pokedexId?: number;
     pokemonType?: string;
   }) => void;
   buildPlannerPatchFromRow: (rowId?: string) => CalcBoxPlannerPatch | null;
+  setRowSleepHours: (rowId: string, sleepHours: number | undefined) => void;
 };
 
 export function useCalcStore(opts: {
@@ -1635,6 +1638,7 @@ export function useCalcStore(opts: {
     expType: ExpType;
     nature: ExpGainNature;
     expRemaining?: number;
+    sleepHours?: number;
     title?: string;
     dstLevelDefault?: number;
     pokedexId?: number;
@@ -1663,6 +1667,7 @@ export function useCalcStore(opts: {
       updateRow(existing.id, {
         title, boxId: p.boxId, srcLevel, dstLevel, expType: p.expType, nature: p.nature,
         expRemaining: remaining, pokedexId: p.pokedexId, pokemonType: p.pokemonType,
+        sleepHours: p.sleepHours,
         ...candyPatchResult,
       });
       activeRowId.value = existing.id;
@@ -1670,6 +1675,7 @@ export function useCalcStore(opts: {
       const row: CalcRow = {
         id: cryptoRandomId(), title, boxId: p.boxId, pokedexId: p.pokedexId, pokemonType: p.pokemonType,
         srcLevel, dstLevel, expRemaining: remaining, expType: p.expType, nature: p.nature,
+        sleepHours: p.sleepHours,
         ...candyPatchResult,
       };
       rows.value = [...rows.value, row];
@@ -1688,7 +1694,14 @@ export function useCalcStore(opts: {
       boxId: r.boxId,
       level: r.srcLevel,
       expRemaining: r.expRemaining,
+      sleepHours: r.sleepHours,
     };
+  }
+
+  function setRowSleepHours(rowId: string, sleepHours: number | undefined) {
+    rows.value = rows.value.map((x) =>
+      x.id === rowId ? { ...x, sleepHours } : x
+    );
   }
 
   return {
@@ -1801,5 +1814,6 @@ export function useCalcStore(opts: {
 
     upsertFromBox,
     buildPlannerPatchFromRow,
+    setRowSleepHours,
   };
 }

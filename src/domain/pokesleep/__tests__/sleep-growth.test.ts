@@ -18,6 +18,19 @@ import type { ExpType, ExpGainNature, BoostEvent } from '../../types';
 
 describe('睡眠育成機能', () => {
   describe('markForSleep', () => {
+    it('Test0: 0hなら0日・0EXP', () => {
+      const result = markForSleep({
+        targetSleepHours: 0,
+        nature: 'normal',
+        dailySleepHours: 8.5,
+        sleepExpBonus: 1.0,
+        includeGSD: true,
+      });
+
+      expect(result.requiredDays).toBe(0);
+      expect(result.sleepExp).toBe(0);
+    });
+
     it('Test1: 2000h、8.5h/日、性格normal、GSDオン', () => {
       const result = markForSleep({
         targetSleepHours: 2000,

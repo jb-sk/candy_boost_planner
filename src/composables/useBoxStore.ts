@@ -18,6 +18,7 @@ import type { ExpGainNature, ExpType } from "../domain";
 import type { BoxSubSkillSlotV1, IngredientType, PokemonBoxEntryV1, PokemonSpecialty } from "../domain/types";
 import { cryptoRandomId, loadBox, saveBox } from "../persistence/box";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
+import { normalizeSleepHoursInput } from "../domain/box/sleep-milestones";
 type FilterJoinMode = "and" | "or";
 
 export type BoxUndoAction =
@@ -101,6 +102,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
   const addSpecialty = ref<PokemonSpecialty | "">("");
   const addSpecialtyTouched = ref(false);
   const addFavorite = ref(true); // デフォルトでお気に入りに追加
+  const addSleepHours = ref<string>("");
 
   const addIngredientType = ref<IngredientType | "">("");
   const addIngredientTypeTouched = ref(false);
@@ -305,6 +307,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
 
     const specialty = (e.planner?.specialty ?? (pokedexId ? getPokemonSpecialty(pokedexId, form) : "unknown")) as PokemonSpecialty;
     const expRemaining = e.planner?.expRemaining ?? 0;
+    const sleepHours = e.planner?.sleepHours ?? 0;
 
     return {
       decoded: decoded
@@ -330,6 +333,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
       subSkills,
       specialty,
       expRemaining,
+      sleepHours,
     };
   });
 
@@ -1004,6 +1008,22 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     importStatus.value = t("status.updated");
   }
 
+  function setBoxSleepHours(v: string) {
+    const e = selectedBox.value;
+    if (!e) return;
+    const sleepHours = normalizeSleepHoursInput(v);
+    const now = new Date().toISOString();
+    boxEntries.value = boxEntries.value.map((x) => {
+      if (x.id !== e.id) return x;
+      return {
+        ...x,
+        planner: { ...(x.planner ?? {}), sleepHours },
+        updatedAt: now,
+      };
+    });
+    importStatus.value = t("status.updated");
+  }
+
   function onEditSelectedExpType(v: string) {
     const e = selectedBox.value;
     if (!e) return;
@@ -1153,6 +1173,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     const subSkills = buildManualPlannerSubSkills();
     const rawExpRem = parseInt(addExpRemaining.value, 10);
     const expRem = Number.isFinite(rawExpRem) && rawExpRem > 0 ? rawExpRem : undefined;
+    const sleepHoursVal = normalizeSleepHoursInput(addSleepHours.value);
     const entry: PokemonBoxEntryV1 = {
       id: cryptoRandomId(),
       source: "manual",
@@ -1175,6 +1196,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
         specialty,
         ingredientType,
         subSkills,
+        sleepHours: sleepHoursVal,
       },
       createdAt: now,
       updatedAt: now,
@@ -1190,6 +1212,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     addLabel.value = "";
     addLevel.value = lvl;
     addExpRemaining.value = "";
+    addSleepHours.value = "";
     if (speciesName) addName.value = speciesName;
     addIngredientType.value = "";
     addIngredientTypeTouched.value = false;
@@ -1319,25 +1342,24 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
 
   // ---- ingredient maps ----
   const ingredientJa: Record<string, string> = {
-    leek: "ネギ",
+    leek: "ねぎ",
     mushroom: "キノコ",
-    egg: "タマゴ",
+    egg: "エッグ",
     potato: "ポテト",
     apple: "リンゴ",
     herb: "ハーブ",
     sausage: "マメミート",
     milk: "ミルク",
-    honey: "ハチミツ",
+    honey: "ミツ",
     oil: "オイル",
-    ginger: "ショウガ",
+    ginger: "ジンジャー",
     tomato: "トマト",
     cacao: "カカオ",
-    tail: "しっぽ",
-    soy: "だいず",
-    corn: "とうもろこし",
+    tail: "シッポ",
+    soy: "大豆",
+    corn: "コーン",
     coffee: "コーヒー",
-    pumpkin: "かぼちゃ",
-    seed: "ひらめきのたね",
+    pumpkin: "カボチャ",
     avocado: "アボカド",
   };
 
@@ -1360,7 +1382,6 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     corn: "Corn",
     coffee: "Coffee",
     pumpkin: "Pumpkin",
-    seed: "Seed of Inspiration",
     avocado: "Avocado",
   };
 
@@ -1404,6 +1425,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     addSubLv100,
     addSubErrors,
     addFavorite,
+    addSleepHours,
 
     // computed
     subSkillOptionLabels,
@@ -1468,6 +1490,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     onEditSelectedLabel,
     onEditSelectedLevel,
     onEditSelectedExpRemaining,
+    setBoxSleepHours,
     onEditSelectedExpType,
     onEditSelectedNature,
     onBoxItemNatureChange,

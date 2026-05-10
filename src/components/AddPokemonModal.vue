@@ -105,8 +105,22 @@
           />
         </label>
 
+        <!-- 睡眠時間 -->
+        <label class="field field--sm">
+          <span class="field__label">{{ t("box.detail.sleepHours") }}</span>
+          <input
+            v-model="sleepHoursInput"
+            type="number"
+            min="0"
+            step="1"
+            class="field__input"
+            data-testid="add-modal-sleep-hours"
+            placeholder=""
+          />
+        </label>
+
         <!-- お気に入り -->
-        <label class="addModal__favCheck addModal__favCheck--inline">
+        <label class="addModal__favCheck">
           <input type="checkbox" v-model="addFavorite" />
           {{ t("box.add.addFavorite") }}
         </label>
@@ -165,6 +179,7 @@ const srcLevel = ref(1);
 const dstLevel = ref(60);
 const expRemainingInput = ref<string>("");
 const speciesCandyInput = ref<string>("");
+const sleepHoursInput = ref<string>("");
 
 const nameInputRef = ref<HTMLInputElement | null>(null);
 
@@ -202,6 +217,9 @@ function onSubmit(ev?: MouseEvent) {
   const parsedExp = rawExp === "" ? undefined : Math.max(0, Math.floor(Number(rawExp) || 0));
   box.addExpRemaining.value = (parsedExp === undefined || parsedExp === 0) ? "" : String(parsedExp);
 
+  // 睡眠時間をストアに転送（パースは onCreateManual 側）
+  box.addSleepHours.value = sleepHoursInput.value.trim();
+
   // Create box entry via store (expRemaining is now embedded in the entry)
   box.onCreateManual({ mode: "toCalc" });
 
@@ -228,6 +246,7 @@ function resetForm() {
   dstLevel.value = 60;
   expRemainingInput.value = "";
   speciesCandyInput.value = "";
+  sleepHoursInput.value = "";
   addNature.value = "normal";
   addFavorite.value = true;
 

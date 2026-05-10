@@ -37,6 +37,8 @@ export type PokemonBoxEntryV1 = {
   planner?: {
     level?: number;
     expRemaining?: number; // ゲーム画面の「あとEXP（次Lvまで）」
+    /** 睡眠時間の累計（時間単位） */
+    sleepHours?: number;
     expType?: ExpType;
     expGainNature?: ExpGainNature;
     /** 手入力/上書き用：とくい（不明も許容） */
