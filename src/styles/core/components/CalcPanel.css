@@ -619,7 +619,7 @@ button.calcRow__dragHandle:active {
 }
 
 .hintIcon--reset {
-  margin-left: 6px;
+  margin-left: 14px;
 }
 
 .hintIcon__resetSvg {
@@ -814,7 +814,51 @@ button.calcRow__dragHandle:active {
   z-index: 1000;
   font-size: 0.9em;
   max-width: 200px;
+  pointer-events: auto;
   animation: fadeIn 0.15s ease-out;
+}
+
+.hintPopover .link-settings {
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.sleepHintPopover {
+  min-width: 200px;
+}
+
+.sleepHintPopover__text {
+  margin: 0 0 8px;
+  font-size: var(--font-sm);
+  line-height: 1.5;
+}
+
+.sleepHintPopover__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.sleepHintPopover__label {
+  font-size: var(--font-xs);
+  font-weight: 600;
+}
+
+.sleepHintPopover__inputRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sleepHintPopover__input {
+  width: 80px;
+}
+
+.sleepHintPopover__unit {
+  font-size: var(--font-sm);
+  color: var(--ink-muted);
 }
 
 /* ===== PC desktop Summary enlargement (≥ 1400px) ===== */

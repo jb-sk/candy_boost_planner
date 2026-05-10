@@ -43,7 +43,7 @@
     <div class="dashboard">
       <CalcPanel ref="calcPanelRef" :calc="calc" :resolve-pokedex-id-by-box-id="resolvePokedexIdByBoxId" @apply-to-box="applyCalculatorToBox($event)" @open-help="showHelp = true" @open-settings="openSettings" @open-add-modal="showAddModal = true" />
 
-      <BoxPanel v-if="mountBoxPanel" :box="box" :gt="gt" @apply-to-calc="applyBoxToCalculator()" />
+      <BoxPanel v-if="mountBoxPanel" :box="box" :calc="calc" :gt="gt" @apply-to-calc="applyBoxToCalculator()" @open-settings="showSettings = true" />
       <div v-else class="panel panel--box boxPanelDefer" aria-busy="true" aria-live="polite">
         <div class="panel__head">
           <h2 class="panel__title">{{ t("box.title") }}</h2>
@@ -266,6 +266,7 @@ function applyBoxToCalculator(dstLevelDefault?: number) {
     expType: expT,
     nature: nat,
     expRemaining: e.planner?.expRemaining,
+    sleepHours: e.planner?.sleepHours,
     dstLevelDefault,
     pokedexId,
     pokemonType,
@@ -286,6 +287,7 @@ function applyCalculatorToBox(rowId: string) {
         ...(x.planner ?? {}),
         level: patch.level,
         expRemaining: patch.expRemaining,
+        sleepHours: patch.sleepHours,
       },
       updatedAt: now,
     };

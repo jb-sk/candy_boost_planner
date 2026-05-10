@@ -219,6 +219,13 @@
   color: rgba(var(--ink-rgb), 0.75);
 }
 
+/* ===== Sleep Calc Panel ===== */
+.sleepCalcPanel {
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  box-shadow: inset 2px 2px 0px rgba(0,0,0,0.05);
+}
+
 /* ===== Box Tiles ===== */
 .boxTile {
   background: var(--surface);

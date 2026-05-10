@@ -113,7 +113,10 @@ function normalizeIngredientLabel(s) {
   if (/^spacer(\.gif)?$/i.test(t0)) return null;
   // 画像ファイル名が混ざることがあるので拡張子は落とす
   const t = t0.replace(/\.(png|gif|jpg|jpeg|webp)$/i, "");
-  return t || null;
+  if (!t) return null;
+  // 「ひらめきのたね」はスキル変化アイテムであり食材ではない（Wikiが食材セルに画像だけ載せる誤表記を無視）
+  if (t.includes("ひらめきのたね")) return null;
+  return t;
 }
 
 function normalizeBerryLabel(s) {
@@ -220,6 +223,7 @@ function toIdForm(pokedexId, form) {
 function ingredientKeyFromWikiJa(s) {
   const t = normalize(s);
   if (!t) return null;
+  if (t.includes("ひらめきのたね")) return null;
   // ねぎ表記ゆれ（例: ふといながねぎ）
   if (t.includes("ネギ") || t.includes("ねぎ")) return "leek";
   if (t.includes("キノコ")) return "mushroom";
@@ -244,8 +248,6 @@ function ingredientKeyFromWikiJa(s) {
   // かぼちゃ表記ゆれ（例: ずっしりカボチャ）
   if (t.includes("かぼちゃ") || t.includes("カボチャ")) return "pumpkin";
   if (t.includes("アボカド")) return "avocado";
-  // ダークライ等（Wiki側で画像表記になっているケース）
-  if (t.includes("ひらめきのたね")) return "seed";
   return null;
 }
 

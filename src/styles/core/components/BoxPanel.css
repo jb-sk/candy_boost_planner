@@ -857,3 +857,326 @@
   cursor: default;
   border-style: dashed;
 }
+
+.sleepHoursRow {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+
+/* Global .field__input is width:100%; override so the calc button stays on the same row. */
+.sleepHoursRow .field__input {
+  width: auto;
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.btn--sleepCalc {
+  width: 32px;
+  height: 32px;
+  margin-top: 1px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: filter 0.15s, background 0.15s, transform 0.15s, box-shadow 0.15s;
+  box-shadow: 3px 3px 0 rgba(var(--ink-rgb), 0.15);
+  transform: translate(-1px, -1px);
+}
+
+.btn--sleepCalc:active {
+  box-shadow: 0 0 0 rgba(var(--ink-rgb), 0.15);
+  transform: translate(2px, 2px);
+}
+
+.btn--sleepCalc:hover {
+  filter: brightness(1.08);
+}
+
+.btn--sleepCalc span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn--sleepCalc svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+/* chevron は .btn--sleepCalc span のルールを継承。SVGサイズだけ上書き */
+.btn--sleepCalc__chevron svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* 睡眠計算パネル：四方のインナー余白を同一値でそろえる */
+.sleepCalcPanel {
+  --sleep-calc-inset: 18px;
+
+  grid-column: 1 / -1;
+  overflow: hidden;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: var(--sleep-calc-inset) 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: rgba(var(--ink-rgb), 0.02);
+}
+
+/* ユーザーが開いた瞬間のみアニメーション。横幅変更による DOM 再生成では再生しない */
+.sleepCalcPanel--enter {
+  animation: sleepCalcSlideDown 0.2s ease-out;
+}
+
+@keyframes sleepCalcSlideDown {
+  from {
+    max-height: 0;
+    opacity: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  to {
+    max-height: 300px;
+    opacity: 1;
+  }
+}
+
+.sleepCalcPanel__daily {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  row-gap: 10px;
+  margin-bottom: var(--sleep-calc-inset);
+  min-width: 0;
+}
+
+.sleepCalcPanel__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.sleepCalcPanel__unit {
+  font-weight: 500;
+}
+
+/* .field__input は width:100% のため、このブロック限定で幅を縛る */
+.sleepCalcPanel .field__input.sleepCalcPanel__input {
+  width: 7.75rem;
+  max-width: 100%;
+  flex: 0 0 auto;
+}
+
+/* 0–2000h 軸上にノードを配置。ノードは absolute のため親に十分な縦サイズを明示する（下側クリップ防止） */
+.sleepTimeline {
+  overflow: visible;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* 背景は親に任せる。横はパネルの padding に任せ、ここでの二重インデントはやめてトラックを広げる */
+.sleepTimeline__axis {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  margin-top: 0;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  border-radius: 0;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+/* 端ノード translateX(-50%) で左右にみ出す分は最小限だけ。親が広くなった分マージンをやや縮める */
+.sleepTimeline__trackRow {
+  /* 軸線をマーカー円の幾何中心に合わせる（子に継承して .sleepTimeline__dot とも共有） */
+  --sleep-timeline-dot: 22px;
+  --sleep-timeline-track: 5px;
+
+  position: relative;
+  min-height: 92px;
+  margin-left: 0;
+  margin-right: 48px;
+  padding-bottom: 0;
+  box-sizing: border-box;
+  transition: min-height 0.2s ease-out;
+}
+
+.sleepTimeline__trackRow--ja {
+  margin-left: 6px;
+  margin-right: 39px;
+}
+
+.sleepTimeline__trackRow--en {
+  margin-left: 10px;
+  margin-right: 38px;
+}
+
+/* 500h オフセット時はトラック行の高さを広げる */
+.sleepTimeline__trackRow--hasOffset {
+  min-height: 156px;
+}
+
+.sleepTimeline__track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--sleep-timeline-dot) / 2 - var(--sleep-timeline-track) / 2);
+  height: var(--sleep-timeline-track);
+  border-radius: 999px;
+  background: rgba(var(--ink-rgb), 0.14);
+  overflow: hidden;
+}
+
+.sleepTimeline__progress {
+  height: 100%;
+  border-radius: inherit;
+  background: #22c55e;
+  transition: width 0.2s ease-out;
+}
+
+.sleepTimeline__milestone {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  width: max-content;
+  margin-left: 0;
+  padding-bottom: 0;
+  text-align: center;
+  transform: translateX(-50%);
+}
+
+/* 500h ラベルを下方へオフセットして 200h との干渉を回避 */
+.sleepTimeline__milestone--offset {
+  --offset-gap: 72px;
+}
+
+.sleepTimeline__milestone--offset .sleepTimeline__label {
+  margin-top: var(--offset-gap);
+}
+
+/* ②ドットからラベルへの接続線 */
+.sleepTimeline__milestone--offset .sleepTimeline__dot::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1px;
+  height: calc(var(--offset-gap) + 8px);
+  background: rgba(var(--ink-rgb), 0.25);
+}
+
+.sleepTimeline__dot {
+  position: relative;
+  margin: 0 auto 8px;
+  width: var(--sleep-timeline-dot, 22px);
+  height: var(--sleep-timeline-dot, 22px);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.sleepTimeline__dotMark {
+  display: block;
+}
+
+.sleepTimeline__milestone--done .sleepTimeline__dot {
+  border: 2px solid #22c55e;
+  background: #22c55e;
+  color: #fff;
+}
+
+.sleepTimeline__milestone--done .sleepTimeline__label {
+  color: #16a34a;
+  font-weight: 700;
+}
+
+.sleepTimeline__milestone--done .sleepTimeline__status {
+  color: #16a34a;
+  font-weight: 700;
+  padding-left: 3px;
+}
+
+.sleepTimeline__milestone--next .sleepTimeline__dot {
+  border: 2px solid #f59e0b;
+  background: var(--paper);
+  color: #d97706;
+}
+
+.sleepTimeline__milestone--next .sleepTimeline__label {
+  color: #ea580c;
+  font-weight: 700;
+}
+
+.sleepTimeline__milestone--future .sleepTimeline__dot {
+  border: 2px solid rgba(var(--ink-rgb), 0.28);
+  background: var(--paper);
+  color: rgba(var(--ink-rgb), 0.55);
+}
+
+.sleepTimeline__milestone--future .sleepTimeline__label {
+  color: rgba(var(--ink-rgb), 0.72);
+  font-weight: 600;
+}
+
+.sleepTimeline__label {
+  font-size: 13px;
+  margin-bottom: 4px;
+  line-height: 1.35;
+}
+
+.sleepTimeline__status {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.sleepTimeline__days {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.sleepTimeline__date {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+  line-height: 1.35;
+}
+
+@media (min-width: 680px) {
+  .sleepCalcPanel {
+    padding-left: 24px;
+    padding-right: 34px;
+  }
+
+  .sleepTimeline__trackRow {
+    margin-right: 56px;
+  }
+
+  .sleepTimeline__trackRow--ja {
+    margin-left: 20px;
+    margin-right: 40px;
+  }
+}
