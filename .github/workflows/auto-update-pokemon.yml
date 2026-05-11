@@ -42,11 +42,19 @@ jobs:
         id: master_check
         run: |
           echo "=== マスターデータ差分確認 ==="
-          OUTPUT=$(npm run generate:master -- --non-interactive --dry-run 2>&1 || true)
+          EXIT_CODE=0
+          OUTPUT=$(npm run generate:master -- --non-interactive --dry-run 2>&1) || EXIT_CODE=$?
           echo "$OUTPUT"
 
-          # 追加があるかチェック
-          if echo "$OUTPUT" | grep -q "追加: 0"; then
+          # exit 79 = fetch一時障害（503等）→ 変更なし扱いでスキップ
+          # それ以外の失敗は本当のエラーなので CI を落とす
+          if [ "$EXIT_CODE" -eq 79 ]; then
+            echo "⚠️ fetch一時障害のため変更チェックをスキップします。"
+            echo "has_master_changes=false" >> $GITHUB_OUTPUT
+          elif [ "$EXIT_CODE" -ne 0 ]; then
+            echo "❌ dry-run が失敗しました（exit=$EXIT_CODE）"
+            exit 1
+          elif echo "$OUTPUT" | grep -q '\[SUMMARY\] has_changes=false'; then
             echo "has_master_changes=false" >> $GITHUB_OUTPUT
             echo "マスターデータ変更なし"
           else
@@ -56,7 +64,7 @@ jobs:
 
           # サマリーを保存（追加/削除の差分情報を抽出）
           echo 'master_summary<<EOF' >> $GITHUB_OUTPUT
-          echo "$OUTPUT" | grep -E "^(\[追加される|\[削除される|  [+-] #)" | head -50 >> $GITHUB_OUTPUT
+          { echo "$OUTPUT" | grep -E "^(\[追加される|\[削除される|  [+-] #)" || true; } | head -50 >> $GITHUB_OUTPUT
           echo 'EOF' >> $GITHUB_OUTPUT
 
       - name: Clone pokesleep-tool for form verification
@@ -165,7 +173,7 @@ jobs:
         run: |
           MASTER_CHANGES="${{ steps.master_check.outputs.has_master_changes }}"
           EN_CHANGES="${{ steps.en_names.outputs.has_en_changes }}"
-          FORM_FIXES="${{ steps.form_verify.outputs.form_fixes }}"
+          FORM_FIXES="${{ steps.form_verify.outputs.form_fixes || '0' }}"
 
           echo "Master changes: $MASTER_CHANGES"
           echo "EN names changes: $EN_CHANGES"

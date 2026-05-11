@@ -606,6 +606,9 @@ const hasChanges = addedEntries.length > 0 || removedIdForms.length > 0 ||
   ingredientsNullNew.length > 0 || ingredientCNullNew.length > 0 ||
   issuesAB.length > 0 || issuesC.length > 0 || unknownFormLabels.size > 0;
 
+// CI用の機械可読サマリー行
+console.log(`[SUMMARY] has_changes=${hasChanges} 追加: ${addedEntries.length} 削除: ${removedIdForms.length}`);
+
 if (hasChanges) {
   await confirmOrAbort({
     interactive: args.interactive,

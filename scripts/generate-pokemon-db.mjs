@@ -13,6 +13,8 @@ function parseArgs(argv) {
   const out = {
     url: DEFAULT_URL,
     outFile: path.join(__dirname, "../src/domain/pokesleep/pokemon-db.ts"),
+    outJson: null,
+    dryRun: false,
   };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
@@ -24,6 +26,15 @@ function parseArgs(argv) {
     if ((a === "--out" || a === "--out-file") && argv[i + 1]) {
       out.outFile = argv[i + 1];
       i++;
+      continue;
+    }
+    if (a === "--out-json" && argv[i + 1]) {
+      out.outJson = argv[i + 1];
+      i++;
+      continue;
+    }
+    if (a === "--dry-run") {
+      out.dryRun = true;
       continue;
     }
   }
@@ -200,14 +211,45 @@ function parsePokemonTable($, best) {
   return { headers, items };
 }
 
-const res = await fetch(args.url, {
-  headers: {
-    // 軽いブロック回避（UA必須ではないが念のため）
-    "User-Agent": "candy-boost-planner (generate-pokemon-db)",
-  },
-});
-if (!res.ok) {
-  throw new Error(`Fetch failed: ${res.status} ${res.statusText}`);
+const MAX_RETRIES = 3;
+const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+let res;
+for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+  try {
+    res = await fetch(args.url, {
+      headers: {
+        "User-Agent": "candy-boost-planner (generate-pokemon-db)",
+      },
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (err) {
+    const causeCode = err.cause?.code ?? "";
+    const isTransient = err.name === "TimeoutError" || err.name === "AbortError" ||
+      ["ECONNRESET", "ETIMEDOUT", "EAI_AGAIN", "UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT"].includes(causeCode);
+    if (!isTransient) throw err;
+    if (attempt === MAX_RETRIES) {
+      console.error(`[FETCH_TRANSIENT_ERROR] ${err.name}: ${err.message}${causeCode ? ` (${causeCode})` : ""}`);
+      process.exit(79);
+    }
+    const wait = attempt * 5_000;
+    console.warn(`Fetch attempt ${attempt} error (${err.name}: ${err.message}${causeCode ? ` ${causeCode}` : ""}), retrying in ${wait / 1000}s...`);
+    await new Promise((r) => setTimeout(r, wait));
+    continue;
+  }
+  if (res.ok) break;
+  // リトライ不要なレスポンスの body を破棄してリソース解放
+  if (!RETRYABLE_STATUSES.has(res.status) || attempt === MAX_RETRIES) {
+    await res.body?.cancel();
+    if (RETRYABLE_STATUSES.has(res.status)) {
+      console.error(`[FETCH_TRANSIENT_ERROR] ${res.status} ${res.statusText} (after ${MAX_RETRIES} attempts)`);
+      process.exit(79);
+    }
+    throw new Error(`Fetch failed: ${res.status} ${res.statusText}`);
+  }
+  await res.body?.cancel();
+  const wait = attempt * 5_000;
+  console.warn(`Fetch attempt ${attempt} failed (${res.status}), retrying in ${wait / 1000}s...`);
+  await new Promise((r) => setTimeout(r, wait));
 }
 const html = await res.text();
 const $ = cheerio.load(html);
@@ -266,25 +308,34 @@ const content =
   `export const pokemonDb: PokemonDbEntry[] = ${JSON.stringify(items, null, 2)} as const;\n\n` +
   `export const pokemonDbHeaders = ${JSON.stringify(headers, null, 2)} as const;\n`;
 
-writeTextIfChanged(outPath, content);
+// dry-run 時は TS ファイルを書き換えない（作業ツリーを汚さない）
+if (!args.dryRun) {
+  writeTextIfChanged(outPath, content);
+}
 
 // 中間JSON（Master生成の入力用）
-const jsonOutPath = path.resolve(path.join(__dirname, "../src/domain/pokesleep/_generated/pokemon-db.json"));
-fs.mkdirSync(path.dirname(jsonOutPath), { recursive: true });
-writeTextIfChanged(
-  jsonOutPath,
-  JSON.stringify(
-    {
-      source: args.url,
-      headers,
-      items,
-      pickedTable: { index: best.idx, headerScore: scoreHeader(best.headers), dexRows: best.dexRows },
-    },
-    null,
-    2
-  )
-);
+// --out-json 指定時はそのパスに書く（dry-run で作業ツリーを汚さない用途）
+// dry-run かつ --out-json 未指定の場合はJSON書き込みもスキップ
+const defaultJsonPath = path.resolve(path.join(__dirname, "../src/domain/pokesleep/_generated/pokemon-db.json"));
+const skipJson = args.dryRun && !args.outJson;
+const jsonOutPath = args.outJson ? path.resolve(args.outJson) : defaultJsonPath;
+if (!skipJson) {
+  fs.mkdirSync(path.dirname(jsonOutPath), { recursive: true });
+  writeTextIfChanged(
+    jsonOutPath,
+    JSON.stringify(
+      {
+        source: args.url,
+        headers,
+        items,
+        pickedTable: { index: best.idx, headerScore: scoreHeader(best.headers), dexRows: best.dexRows },
+      },
+      null,
+      2
+    )
+  );
+}
 
 console.log(`[generate-pokemon-db] picked table index=${best.idx} dexRows=${best.dexRows} headers=${headers.length}`);
-console.log(`[generate-pokemon-db] entries=${items.length} wrote=${outPath}`);
-console.log(`[generate-pokemon-db] wrote json=${jsonOutPath}`);
+console.log(`[generate-pokemon-db] entries=${items.length}${args.dryRun ? " (dry-run)" : ` wrote=${outPath}`}`);
+if (!skipJson) console.log(`[generate-pokemon-db] wrote json=${jsonOutPath}`);
