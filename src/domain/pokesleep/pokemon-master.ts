@@ -3417,6 +3417,42 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%82%A6%E3%82%A9%E3%83%BC%E3%82%B0%E3%83%AB"
   },
   {
+    "dexNo": 696,
+    "pokedexId": 696,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "チゴラス",
+    "baseNameJa": "チゴラス",
+    "specialty": "Berries",
+    "type": "Rock",
+    "typeJa": "いわ",
+    "expType": 600,
+    "ingredients": {
+      "a": "sausage",
+      "b": "apple",
+      "c": "potato"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%81%E3%82%B4%E3%83%A9%E3%82%B9"
+  },
+  {
+    "dexNo": 697,
+    "pokedexId": 697,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "ガチゴラス",
+    "baseNameJa": "ガチゴラス",
+    "specialty": "Berries",
+    "type": "Rock",
+    "typeJa": "いわ",
+    "expType": 600,
+    "ingredients": {
+      "a": "sausage",
+      "b": "apple",
+      "c": "potato"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%AC%E3%83%81%E3%82%B4%E3%83%A9%E3%82%B9"
+  },
+  {
     "dexNo": 700,
     "pokedexId": 700,
     "form": 0,
