@@ -203,6 +203,8 @@ export const pokemonNameJaByIdForm = {
   "558": "イワパレス",
   "627": "ワシボン",
   "628": "ウォーグル",
+  "696": "チゴラス",
+  "697": "ガチゴラス",
   "700": "ニンフィア",
   "702": "デデンネ",
   "714": "オンバット",
@@ -435,6 +437,8 @@ export const pokemonExpTypeByIdForm = {
   "558": 600,
   "627": 600,
   "628": 600,
+  "696": 600,
+  "697": 600,
   "700": 600,
   "702": 600,
   "714": 600,
@@ -667,6 +671,8 @@ export const pokemonSpecialtyByIdForm = {
   "558": "Skills",
   "627": "Skills",
   "628": "Skills",
+  "696": "Berries",
+  "697": "Berries",
   "700": "Skills",
   "702": "Skills",
   "714": "Skills",
@@ -899,6 +905,8 @@ export const pokemonTypeByIdForm = {
   "558": "Bug",
   "627": "Flying",
   "628": "Flying",
+  "696": "Rock",
+  "697": "Rock",
   "700": "Fairy",
   "702": "Electric",
   "714": "Dragon",
@@ -1131,6 +1139,8 @@ export const pokemonTypeJaByIdForm = {
   "558": "むし",
   "627": "ひこう",
   "628": "ひこう",
+  "696": "いわ",
+  "697": "いわ",
   "700": "フェアリー",
   "702": "でんき",
   "714": "ドラゴン",
@@ -2069,6 +2079,16 @@ export const pokemonIngredientsByIdForm = {
     "b": "corn",
     "c": "coffee"
   },
+  "696": {
+    "a": "sausage",
+    "b": "apple",
+    "c": "potato"
+  },
+  "697": {
+    "a": "sausage",
+    "b": "apple",
+    "c": "potato"
+  },
   "700": {
     "a": "milk",
     "b": "cacao",
@@ -2882,6 +2902,12 @@ export const pokemonIdFormsByNameJa = {
   ],
   "ウォーグル": [
     628
+  ],
+  "チゴラス": [
+    696
+  ],
+  "ガチゴラス": [
+    697
   ],
   "ニンフィア": [
     700

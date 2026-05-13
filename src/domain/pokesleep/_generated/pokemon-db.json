@@ -4152,6 +4152,50 @@
       "link": "https://wikiwiki.jp/poke_sleep/%E3%82%A6%E3%82%A9%E3%83%BC%E3%82%B0%E3%83%AB"
     },
     {
+      "dexNo": 696,
+      "nameJa": "チゴラス",
+      "specialtyJa": "きのみ",
+      "sleepTypeJa": "ぐっすり",
+      "berryJa": [
+        "オボンのみ"
+      ],
+      "ingAJa": [
+        "マメミート"
+      ],
+      "ingBJa": [
+        "とくせんリンゴ"
+      ],
+      "ingCJa": [
+        "ほっこりポテト"
+      ],
+      "mainSkillJa": "料理パワーアップS",
+      "fp": 5,
+      "helpSeconds": 5200,
+      "link": "https://wikiwiki.jp/poke_sleep/%E3%83%81%E3%82%B4%E3%83%A9%E3%82%B9"
+    },
+    {
+      "dexNo": 697,
+      "nameJa": "ガチゴラス",
+      "specialtyJa": "きのみ",
+      "sleepTypeJa": "ぐっすり",
+      "berryJa": [
+        "オボンのみ"
+      ],
+      "ingAJa": [
+        "マメミート"
+      ],
+      "ingBJa": [
+        "とくせんリンゴ"
+      ],
+      "ingCJa": [
+        "ほっこりポテト"
+      ],
+      "mainSkillJa": "料理パワーアップS",
+      "fp": 20,
+      "helpSeconds": 2800,
+      "link": "https://wikiwiki.jp/poke_sleep/%E3%82%AC%E3%83%81%E3%82%B4%E3%83%A9%E3%82%B9"
+    },
+    {
       "dexNo": 700,
       "nameJa": "ニンフィア",
       "specialtyJa": "スキル",
