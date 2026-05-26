@@ -199,6 +199,7 @@ export const pokemonNameEnByDexNo: Record<number, string> = {
   764: "Comfey",
   777: "Togedemaru",
   778: "Mimikyu",
+  780: "Drampa",
   845: "Cramorant",
   848: "Toxel",
   849: "Toxtricity",

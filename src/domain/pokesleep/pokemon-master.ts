@@ -3849,6 +3849,24 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%9F%E3%83%9F%E3%83%83%E3%82%AD%E3%83%A5"
   },
   {
+    "dexNo": 780,
+    "pokedexId": 780,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "ジジーロン",
+    "baseNameJa": "ジジーロン",
+    "specialty": "Ingredients",
+    "type": "Dragon",
+    "typeJa": "ドラゴン",
+    "expType": 600,
+    "ingredients": {
+      "a": "soy",
+      "b": "avocado",
+      "c": "sausage"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%B8%E3%82%B8%E3%83%BC%E3%83%AD%E3%83%B3"
+  },
+  {
     "dexNo": 845,
     "pokedexId": 845,
     "form": 0,

@@ -219,6 +219,7 @@ export const pokemonNameJaByIdForm = {
   "764": "キュワワー",
   "777": "トゲデマル",
   "778": "ミミッキュ",
+  "780": "ジジーロン",
   "845": "ウッウ",
   "848": "エレズン",
   "906": "ニャオハ",
@@ -453,6 +454,7 @@ export const pokemonExpTypeByIdForm = {
   "764": 600,
   "777": 600,
   "778": 600,
+  "780": 600,
   "845": 600,
   "848": 600,
   "906": 600,
@@ -687,6 +689,7 @@ export const pokemonSpecialtyByIdForm = {
   "764": "Ingredients",
   "777": "Skills",
   "778": "Skills",
+  "780": "Ingredients",
   "845": "Ingredients",
   "848": "Skills",
   "906": "Ingredients",
@@ -921,6 +924,7 @@ export const pokemonTypeByIdForm = {
   "764": "Fairy",
   "777": "Steel",
   "778": "Ghost",
+  "780": "Dragon",
   "845": "Flying",
   "848": "Poison",
   "906": "Grass",
@@ -1155,6 +1159,7 @@ export const pokemonTypeJaByIdForm = {
   "764": "フェアリー",
   "777": "はがね",
   "778": "ゴースト",
+  "780": "ドラゴン",
   "845": "ひこう",
   "848": "どく",
   "906": "くさ",
@@ -2159,6 +2164,11 @@ export const pokemonIngredientsByIdForm = {
     "b": "coffee",
     "c": "mushroom"
   },
+  "780": {
+    "a": "soy",
+    "b": "avocado",
+    "c": "sausage"
+  },
   "845": {
     "a": "oil",
     "b": "potato",
@@ -2974,6 +2984,9 @@ export const pokemonIdFormsByNameJa = {
   ],
   "ミミッキュ": [
     778
+  ],
+  "ジジーロン": [
+    780
   ],
   "ウッウ": [
     845

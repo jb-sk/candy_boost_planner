@@ -696,7 +696,7 @@ export const pokemonDb: PokemonDbEntry[] = [
     ],
     "mainSkillJa": "げんきオールS",
     "fp": 16,
-    "helpSeconds": 2900,
+    "helpSeconds": 2750,
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%97%E3%82%AF%E3%83%AA%E3%83%B3"
   },
   {
@@ -4680,6 +4680,28 @@ export const pokemonDb: PokemonDbEntry[] = [
     "fp": 16,
     "helpSeconds": 2500,
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%9F%E3%83%9F%E3%83%83%E3%82%AD%E3%83%A5"
+  },
+  {
+    "dexNo": 780,
+    "nameJa": "ジジーロン",
+    "specialtyJa": "食材",
+    "sleepTypeJa": "うとうと",
+    "berryJa": [
+      "ヤチェのみ"
+    ],
+    "ingAJa": [
+      "ワカクサ大豆"
+    ],
+    "ingBJa": [
+      "つやつやアボカド"
+    ],
+    "ingCJa": [
+      "マメミート"
+    ],
+    "mainSkillJa": "料理チャンスS",
+    "fp": 16,
+    "helpSeconds": 3500,
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%B8%E3%82%B8%E3%83%BC%E3%83%AD%E3%83%B3"
   },
   {
     "dexNo": 845,
