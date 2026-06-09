@@ -283,12 +283,12 @@ async function confirmOrAbort({ interactive, title, details }) {
     if (details) console.log(details);
     return true;
   }
+  console.log(`\n[confirm] ${title}`);
+  if (details) console.log(details);
   const ask = createAsk();
   try {
     const ans = normalize(
       await ask.question(
-        `\n[confirm] ${title}\n` +
-        (details ? `${details}\n` : "") +
         `\nこの内容で MasterDB を更新しますか？ [y/N]\n> `
       )
     ).toLowerCase();

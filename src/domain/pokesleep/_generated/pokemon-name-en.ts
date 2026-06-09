@@ -151,6 +151,7 @@ export const pokemonNameEnByDexNo: Record<number, string> = {
   372: "Shelgon",
   373: "Salamence",
   380: "Latias",
+  381: "Latios",
   403: "Shinx",
   404: "Luxio",
   405: "Luxray",
