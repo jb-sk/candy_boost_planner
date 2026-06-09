@@ -173,6 +173,7 @@ export const pokemonNameJaByIdForm = {
   "372": "コモルー",
   "373": "ボーマンダ",
   "380": "ラティアス",
+  "381": "ラティオス",
   "403": "コリンク",
   "404": "ルクシオ",
   "405": "レントラー",
@@ -408,6 +409,7 @@ export const pokemonExpTypeByIdForm = {
   "372": 900,
   "373": 900,
   "380": 1080,
+  "381": 600,
   "403": 600,
   "404": 600,
   "405": 600,
@@ -643,6 +645,7 @@ export const pokemonSpecialtyByIdForm = {
   "372": "Berries",
   "373": "Berries",
   "380": "Skills",
+  "381": "Skills",
   "403": "Ingredients",
   "404": "Ingredients",
   "405": "Ingredients",
@@ -878,6 +881,7 @@ export const pokemonTypeByIdForm = {
   "372": "Dragon",
   "373": "Dragon",
   "380": "Dragon",
+  "381": "Dragon",
   "403": "Electric",
   "404": "Electric",
   "405": "Electric",
@@ -1113,6 +1117,7 @@ export const pokemonTypeJaByIdForm = {
   "372": "ドラゴン",
   "373": "ドラゴン",
   "380": "ドラゴン",
+  "381": "ドラゴン",
   "403": "でんき",
   "404": "でんき",
   "405": "でんき",
@@ -1938,6 +1943,11 @@ export const pokemonIngredientsByIdForm = {
     "a": "tomato",
     "b": "pumpkin",
     "c": "mushroom"
+  },
+  "381": {
+    "a": "tomato",
+    "b": "egg",
+    "c": "milk"
   },
   "403": {
     "a": "tomato",
@@ -2822,6 +2832,9 @@ export const pokemonIdFormsByNameJa = {
   ],
   "ラティアス": [
     380
+  ],
+  "ラティオス": [
+    381
   ],
   "コリンク": [
     403
