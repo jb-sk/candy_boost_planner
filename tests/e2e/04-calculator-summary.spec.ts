@@ -264,7 +264,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     await page.goto('/');
     const box = new BoxPanelPage(page);
     await box.openImportPanel();
-    // 低レベルポケモン（Lv25マルノーム）を使用 - Lv65はEXP入力不可のため
+    // 低レベルポケモン（Lv25マルノーム）を使用 - Lv70はEXP入力不可のため
     await box.fillImportText(testConfig.importData.lowLevelPokemon);
     await box.clickImport();
     await box.selectBoxTile(0);
@@ -394,19 +394,13 @@ test.describe('04-calculator E. 行の入力操作', () => {
     const row = calc.getRow(0);
     const btn1000h = calc.getRowSleepButton1000h(row);
     const candyTargetInput = calc.getRowCandyTargetInput(row);
-    const levelPickPopover = page.locator('.levelPick__popover');
 
     // 現在Lvを25に設定（Lv25→Lv60で十分な個数指定が発生するように）
-    const srcLevelBtn = calc.getRowSrcLevelButton(row);
-    await srcLevelBtn.click();
-    await expect(levelPickPopover).toBeVisible();
-    await levelPickPopover.locator('button').filter({ hasText: '25' }).click();
-    await levelPickPopover.locator('button').filter({ hasText: '閉じる' }).click();
-    await expect(levelPickPopover).not.toBeVisible();
+    await calc.setRowSrcLevel(row, 25);
 
     await btn1000h.click();
     const value = await candyTargetInput.inputValue();
-    expect(parseInt(value)).toBe(1146);
+    expect(parseInt(value)).toBe(1128);
   });
 
   test('28. 2000hボタンで個数指定が設定される', async ({ page }) => {
@@ -414,19 +408,13 @@ test.describe('04-calculator E. 行の入力操作', () => {
     const row = calc.getRow(0);
     const btn2000h = calc.getRowSleepButton2000h(row);
     const candyTargetInput = calc.getRowCandyTargetInput(row);
-    const levelPickPopover = page.locator('.levelPick__popover');
 
     // 現在Lvを25に設定（Lv25→Lv60で十分な個数指定が発生するように）
-    const srcLevelBtn = calc.getRowSrcLevelButton(row);
-    await srcLevelBtn.click();
-    await expect(levelPickPopover).toBeVisible();
-    await levelPickPopover.locator('button').filter({ hasText: '25' }).click();
-    await levelPickPopover.locator('button').filter({ hasText: '閉じる' }).click();
-    await expect(levelPickPopover).not.toBeVisible();
+    await calc.setRowSrcLevel(row, 25);
 
     await btn2000h.click();
     const value = await candyTargetInput.inputValue();
-    expect(parseInt(value)).toBe(609);
+    expect(parseInt(value)).toBe(591);
   });
 });
 
@@ -571,17 +559,11 @@ test.describe('04-calculator Gb. サマリー合計値の検証', () => {
 
     const rowGolem = calc.getRow(0);
     // 現在Lv29
-    const srcLevelBtn1 = calc.getRowSrcLevelButton(rowGolem);
-    await srcLevelBtn1.click();
-    await page.locator('.levelPick__range').first().fill('29');
-    await page.locator('.levelPick__popover button').filter({ hasText: '閉じる' }).click();
-    // あとEXP135
-    await calc.getRowExpRemainingInput(rowGolem).fill('135');
+    await calc.setRowSrcLevel(rowGolem, 29);
+    // あとEXP122
+    await calc.setRowExpRemaining(rowGolem, 122);
     // 目標Lv60
-    const dstLevelBtn1 = calc.getRowDstLevelButton(rowGolem);
-    await dstLevelBtn1.click();
-    await page.locator('.levelPick__popover .levelChip').filter({ hasText: '60' }).click();
-    await page.locator('.levelPick__popover button').filter({ hasText: '閉じる' }).click();
+    await calc.setRowDstLevel(rowGolem, 60);
     // アメブ0%
     await calc.getRowBoostRatioSlider(rowGolem).fill('0');
     // 個数指定1500
@@ -598,17 +580,11 @@ test.describe('04-calculator Gb. サマリー合計値の検証', () => {
 
     const rowSuicune = calc.getRow(1);
     // 現在Lv58
-    const srcLevelBtn2 = calc.getRowSrcLevelButton(rowSuicune);
-    await srcLevelBtn2.click();
-    await page.locator('.levelPick__range').first().fill('58');
-    await page.locator('.levelPick__popover button').filter({ hasText: '閉じる' }).click();
+    await calc.setRowSrcLevel(rowSuicune, 58);
     // あとEXP1362
-    await calc.getRowExpRemainingInput(rowSuicune).fill('1362');
+    await calc.setRowExpRemaining(rowSuicune, 1362);
     // 目標Lv65
-    const dstLevelBtn2 = calc.getRowDstLevelButton(rowSuicune);
-    await dstLevelBtn2.click();
-    await page.locator('.levelPick__range').first().fill('65');
-    await page.locator('.levelPick__popover button').filter({ hasText: '閉じる' }).click();
+    await calc.setRowDstLevel(rowSuicune, 65);
     // 種族アメ147
     await calc.getRowSpeciesCandyInput(rowSuicune).fill('147');
     // アメブ在庫350
@@ -922,7 +898,7 @@ test.describe('04-calculator L. ヒント表示', () => {
 test.describe('04-calculator M. 計算結果の期待値検証', () => {
 
   // M-1. ニャローテ（基本計算・在庫未設定）
-  test('57. ニャローテの計算結果が正しい', async ({ page }) => {
+  test('60. ニャローテの計算結果が正しい', async ({ page }) => {
     await page.goto('/');
     const box = new BoxPanelPage(page);
     const calc = new CalcPanelPage(page);
@@ -936,30 +912,11 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     const row = calc.getRow(0);
 
     // 現在レベル20、あとEXP515を設定
-    const srcLevelBtn = calc.getRowSrcLevelButton(row);
-    await srcLevelBtn.click();
-    const levelPickPopover = page.locator('.levelPick__popover');
-    const levelChip20 = levelPickPopover.locator('.levelChip').filter({ hasText: '20' }).first();
-    // チップがなければスライダーで設定
-    if (await levelChip20.count() === 0) {
-      const slider = levelPickPopover.locator('.levelPick__range');
-      await slider.fill('20');
-    } else {
-      // レベルチップをクリック（20がない場合はスライダー）
-      await page.locator('.levelPick__range').first().fill('20');
-    }
-    await levelPickPopover.locator('button').filter({ hasText: '閉じる' }).click();
-
-    const expInput = calc.getRowExpRemainingInput(row);
-    await expInput.fill('515');
+    await calc.setRowSrcLevel(row, 20);
+    await calc.setRowExpRemaining(row, 515);
 
     // 目標レベル60
-    const dstLevelBtn = calc.getRowDstLevelButton(row);
-    await dstLevelBtn.click();
-    const dstPopover = page.locator('.levelPick__popover');
-    const levelChip60 = dstPopover.locator('.levelChip').filter({ hasText: '60' });
-    await levelChip60.click();
-    await dstPopover.locator('button').filter({ hasText: '閉じる' }).click();
+    await calc.setRowDstLevel(row, 60);
 
     // アメブ0%（スライダーを0に）
     const boostSlider = calc.getRowBoostRatioSlider(row);
@@ -978,18 +935,18 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     const reqShards = await calc.getRowResultValue(row, 'required', 'shards');
 
     expect(reqBoost).toBe('0');
-    expect(reqNormal.replace(/,/g, '')).toBe('1771');
-    expect(reqCandy.replace(/,/g, '')).toBe('1771');
-    expect(reqShards.replace(/,/g, '')).toBe('533937');
+    expect(reqNormal.replace(/,/g, '')).toBe('1745');
+    expect(reqCandy.replace(/,/g, '')).toBe('1745');
+    expect(reqShards.replace(/,/g, '')).toBe('531268');
 
     // 必要アイテム
     const reqItems = await calc.getRowRequiredItems(row);
-    expect(reqItems).toContain('万能S 591');
-    expect(reqItems).toContain('余り 2');
+    expect(reqItems).toContain('万能S 582');
+    expect(reqItems).toContain('余り 1');
   });
 
   // M-2. ゴローニャ（個数指定あり）
-  test('58. ゴローニャの目標まで行が正しい', async ({ page }) => {
+  test('61. ゴローニャの目標まで行が正しい', async ({ page }) => {
     await page.goto('/');
     const box = new BoxPanelPage(page);
     const calc = new CalcPanelPage(page);
@@ -1009,21 +966,13 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     const row = calc.getRow(0);
 
     // 現在レベル29
-    const srcLevelBtn = calc.getRowSrcLevelButton(row);
-    await srcLevelBtn.click();
-    await page.locator('.levelPick__range').first().fill('29');
-    await page.locator('.levelPick__popover button').filter({ hasText: '閉じる' }).click();
+    await calc.setRowSrcLevel(row, 29);
 
-    // あとEXP135
-    const expInput = calc.getRowExpRemainingInput(row);
-    await expInput.fill('135');
+    // あとEXP122
+    await calc.setRowExpRemaining(row, 122);
 
     // 目標レベル60
-    const dstLevelBtn = calc.getRowDstLevelButton(row);
-    await dstLevelBtn.click();
-    const dstPopover = page.locator('.levelPick__popover');
-    await dstPopover.locator('.levelChip').filter({ hasText: '60' }).click();
-    await dstPopover.locator('button').filter({ hasText: '閉じる' }).click();
+    await calc.setRowDstLevel(row, 60);
 
     // アメブ0%
     await calc.getRowBoostRatioSlider(row).fill('0');
@@ -1041,17 +990,16 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     const reqShards = await calc.getRowResultValue(row, 'required', 'shards');
 
     expect(reqBoost).toBe('0');
-    expect(reqNormal.replace(/,/g, '')).toBe('1585');
-    expect(reqCandy.replace(/,/g, '')).toBe('1585');
-    expect(reqShards.replace(/,/g, '')).toBe('515885');
+    expect(reqNormal.replace(/,/g, '')).toBe('1584');
+    expect(reqCandy.replace(/,/g, '')).toBe('1584');
+    expect(reqShards.replace(/,/g, '')).toBe('515860');
 
     const reqItems = await calc.getRowRequiredItems(row);
     expect(reqItems).toContain('いわM 3');
-    expect(reqItems).toContain('万能S 504');
-    expect(reqItems).toContain('余り 2');
+    expect(reqItems).toContain('万能S 503');
   });
 
-  test('59. ゴローニャの到達可能行が正しい', async ({ page }) => {
+  test('62. ゴローニャの到達可能行が正しい', async ({ page }) => {
     await page.goto('/');
     const box = new BoxPanelPage(page);
     const calc = new CalcPanelPage(page);
@@ -1072,18 +1020,10 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
 
     const row = calc.getRow(0);
 
-    // 設定（テスト58と同じ）
-    const srcLevelBtn = calc.getRowSrcLevelButton(row);
-    await srcLevelBtn.click();
-    await page.locator('.levelPick__range').first().fill('29');
-    await page.locator('.levelPick__popover button').filter({ hasText: '閉じる' }).click();
-
-    await calc.getRowExpRemainingInput(row).fill('135');
-
-    const dstLevelBtn = calc.getRowDstLevelButton(row);
-    await dstLevelBtn.click();
-    await page.locator('.levelPick__popover .levelChip').filter({ hasText: '60' }).click();
-    await page.locator('.levelPick__popover button').filter({ hasText: '閉じる' }).click();
+    // 設定（テスト61と同じ）
+    await calc.setRowSrcLevel(row, 29);
+    await calc.setRowExpRemaining(row, 122);
+    await calc.setRowDstLevel(row, 60);
 
     await calc.getRowBoostRatioSlider(row).fill('0');
     await calc.getRowCandyTargetInput(row).fill('1500');
@@ -1102,7 +1042,7 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     expect(usedBoost).toBe('0');
     expect(usedNormal.replace(/,/g, '')).toBe('1500');
     expect(usedCandy.replace(/,/g, '')).toBe('1500');
-    expect(usedShards.replace(/,/g, '')).toBe('465480');
+    expect(usedShards.replace(/,/g, '')).toBe('466048');
 
     const usedItems = await calc.getRowUsedItems(row);
     expect(usedItems).toContain('いわM 3');
@@ -1112,15 +1052,15 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     expect(reachedLv).toBe('59');
 
     const sleepTime = await calc.getRowSleepTime(row);
-    expect(sleepTime).toContain('22日');
-    expect(sleepTime).toContain('187時間');
+    expect(sleepTime).toContain('21日');
+    expect(sleepTime).toContain('178.5時間');
 
     const remainingExp = await calc.getRowRemainingExp(row);
-    expect(remainingExp.replace(/,/g, '')).toBe('2111');
+    expect(remainingExp.replace(/,/g, '')).toBe('2083');
   });
 
   // M-3. スイクン（ブースト使用・個数指定あり・EXP下降補正）
-  test('60. スイクンの目標まで行が正しい', async ({ page }) => {
+  test('63. スイクンの目標まで行が正しい', async ({ page }) => {
     await page.goto('/');
     const box = new BoxPanelPage(page);
     const calc = new CalcPanelPage(page);
@@ -1185,7 +1125,7 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     expect(reqItems).toContain('万能S 361');
   });
 
-  test('61. スイクンの到達可能行が正しい', async ({ page }) => {
+  test('64. スイクンの到達可能行が正しい', async ({ page }) => {
     await page.goto('/');
     const box = new BoxPanelPage(page);
     const calc = new CalcPanelPage(page);
@@ -1210,7 +1150,7 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
 
     const row = calc.getRow(0);
 
-    // 設定（テスト60と同じ）
+    // 設定（テスト63と同じ）
     const srcLevelBtn = calc.getRowSrcLevelButton(row);
     await srcLevelBtn.click();
     await page.locator('.levelPick__range').first().fill('58');
@@ -1254,7 +1194,7 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     expect(sleepTime).toContain('4238時間');
   });
 
-  test('62. ドオーのラスイチ交換が自動最適化される', async ({ page }) => {
+  test('65. ドオーのラスイチ交換が自動最適化される', async ({ page }) => {
     await page.goto('/');
     const box = new BoxPanelPage(page);
     const calc = new CalcPanelPage(page);

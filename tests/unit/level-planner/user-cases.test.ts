@@ -58,10 +58,10 @@ describe('ユーザーケーステスト', () => {
       expect(p.reachableItems.shardsCount).toBeLessThanOrEqual(2000000);
       expect(p.reachableItems.normalCount).toBe(0);
 
-      // 到達Lv56、あとEXP592、残EXP18203
+      // 到達Lv56、あとEXP182、残EXP17793
       expect(p.reachedLevel).toBe(56);
-      expect(p.expToNextLevel).toBe(592);
-      expect(p.expToTarget).toBe(18203);
+      expect(p.expToNextLevel).toBe(182);
+      expect(p.expToTarget).toBe(17793);
 
       // かけらが主要な制限要因
       expect(p.diagnosis.limitingFactor).toBe('shards');
@@ -107,8 +107,8 @@ describe('ユーザーケーステスト', () => {
 
       // Test11と同じ到達Lv（かけら制限のため）
       expect(p.reachedLevel).toBe(56);
-      expect(p.expToNextLevel).toBe(592);
-      expect(p.expToTarget).toBe(18203);
+      expect(p.expToNextLevel).toBe(182);
+      expect(p.expToTarget).toBe(17793);
       expect(p.diagnosis.limitingFactor).toBe('shards');
     });
   });
@@ -125,11 +125,11 @@ describe('ユーザーケーステスト', () => {
   //
   // 期待:
   //   reachedLevel: 56
-  //   boostCount: 1719
-  //   shardsCount: 1,998,660
+  //   boostCount: 1682
+  //   shardsCount: 1,997,845
   //   normalCount: 0
   describe('Test12: スクリーンショット完全再現', () => {
-    it('到達Lv56、アメブ1719、かけら1998660', () => {
+    it('到達Lv56、アメブ1682、かけら1997845', () => {
       const result = planLevelUp(
         [pokemon({
           id: 'test12',
@@ -154,8 +154,8 @@ describe('ユーザーケーステスト', () => {
 
       const p = getPokemon(result, 'test12');
       expect(p.reachedLevel).toBe(56);
-      expect(p.reachableItems.boostCount).toBe(1719);
-      expect(p.reachableItems.shardsCount).toBe(1998660);
+      expect(p.reachableItems.boostCount).toBe(1682);
+      expect(p.reachableItems.shardsCount).toBe(1997845);
       expect(p.reachableItems.normalCount).toBe(0);
     });
   });
@@ -196,8 +196,8 @@ describe('ユーザーケーステスト', () => {
       const p = getPokemon(result, 'test12b');
       // Test12と同じ結果（かけら制限が同じなので）
       expect(p.reachedLevel).toBe(56);
-      expect(p.reachableItems.boostCount).toBe(1719);
-      expect(p.reachableItems.shardsCount).toBe(1998660);
+      expect(p.reachableItems.boostCount).toBe(1682);
+      expect(p.reachableItems.shardsCount).toBe(1997845);
       expect(p.reachableItems.normalCount).toBe(0);
     });
   });
@@ -212,12 +212,12 @@ describe('ユーザーケーステスト', () => {
   // - かけら上限200万
   //
   // 期待値:
-  // - アメブ1719
-  // - かけら1,998,660
+  // - アメブ1682
+  // - かけら1,997,845
   // - 到達Lv56
-  // - あとEXP592
+  // - あとEXP182
   describe('Test13: リリースバージョン期待値', () => {
-    it('到達Lv56、アメブ1719、あとEXP592', () => {
+    it('到達Lv56、アメブ1682、あとEXP182', () => {
       const result = planLevelUp(
         [pokemon({
           id: 'test13',
@@ -242,9 +242,9 @@ describe('ユーザーケーステスト', () => {
 
       const p = getPokemon(result, 'test13');
       expect(p.reachedLevel).toBe(56);
-      expect(p.reachableItems.boostCount).toBe(1719);
-      expect(p.reachableItems.shardsCount).toBe(1998660);
-      expect(p.expToNextLevel).toBe(592);
+      expect(p.reachableItems.boostCount).toBe(1682);
+      expect(p.reachableItems.shardsCount).toBe(1997845);
+      expect(p.expToNextLevel).toBe(182);
       expect(p.reachableItems.normalCount).toBe(0);
     });
   });

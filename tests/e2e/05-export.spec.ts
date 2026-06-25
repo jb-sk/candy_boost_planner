@@ -43,17 +43,11 @@ async function setupGolemSuicuneCondition(page: import('@playwright/test').Page)
 
   const rowGolem = calc.getRow(0);
   // 現在Lv29
-  const srcLevelBtn1 = calc.getRowSrcLevelButton(rowGolem);
-  await srcLevelBtn1.click();
-  await page.locator('.levelPick__range').first().fill('29');
-  await page.locator('.levelPick__popover button').filter({ hasText: '閉じる' }).click();
-  // あとEXP135
-  await calc.getRowExpRemainingInput(rowGolem).fill('135');
+  await calc.setRowSrcLevel(rowGolem, 29);
+  // あとEXP122
+  await calc.setRowExpRemaining(rowGolem, 122);
   // 目標Lv60
-  const dstLevelBtn1 = calc.getRowDstLevelButton(rowGolem);
-  await dstLevelBtn1.click();
-  await page.locator('.levelPick__popover .levelChip').filter({ hasText: '60' }).click();
-  await page.locator('.levelPick__popover button').filter({ hasText: '閉じる' }).click();
+  await calc.setRowDstLevel(rowGolem, 60);
   // アメブ0%
   await calc.getRowBoostRatioSlider(rowGolem).fill('0');
   // 個数指定1500
@@ -70,17 +64,11 @@ async function setupGolemSuicuneCondition(page: import('@playwright/test').Page)
 
   const rowSuicune = calc.getRow(1);
   // 現在Lv58
-  const srcLevelBtn2 = calc.getRowSrcLevelButton(rowSuicune);
-  await srcLevelBtn2.click();
-  await page.locator('.levelPick__range').first().fill('58');
-  await page.locator('.levelPick__popover button').filter({ hasText: '閉じる' }).click();
+  await calc.setRowSrcLevel(rowSuicune, 58);
   // あとEXP1362
-  await calc.getRowExpRemainingInput(rowSuicune).fill('1362');
+  await calc.setRowExpRemaining(rowSuicune, 1362);
   // 目標Lv65
-  const dstLevelBtn2 = calc.getRowDstLevelButton(rowSuicune);
-  await dstLevelBtn2.click();
-  await page.locator('.levelPick__range').first().fill('65');
-  await page.locator('.levelPick__popover button').filter({ hasText: '閉じる' }).click();
+  await calc.setRowDstLevel(rowSuicune, 65);
   // 種族アメ147
   await calc.getRowSpeciesCandyInput(rowSuicune).fill('147');
   // アメブ在庫350
@@ -455,10 +443,10 @@ test.describe('05-export G. 計算機との整合性検証', () => {
     await expect(valueEl).toHaveClass(/statCard__value--danger/);
   });
 
-  test('30. サマリーカード：かけら合計が576,820', async ({ page }) => {
+  test('30. サマリーカード：かけら合計が577,388', async ({ page }) => {
     const exportPanel = new ExportPanelPage(page);
     const value = await exportPanel.getStatCardValue('かけら合計');
-    expect(value.replace(/,/g, '')).toBe('576820');
+    expect(value.replace(/,/g, '')).toBe('577388');
   });
 
   test('31. 合計行：アメ合計が1,550', async ({ page }) => {

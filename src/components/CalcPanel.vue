@@ -245,17 +245,16 @@
         </div>
 
         <div class="calcRow__grid" :class="{ 'calcRow__grid--normal': calc.boostKind.value === 'none' }">
-          <label class="field field--sm">
+          <div class="field field--sm">
             <span class="field__label">{{ t("calc.row.srcLevel") }}</span>
-            <div class="levelPick" data-testid="srcLevel">
-              <LevelPicker
-                :model-value="r.srcLevel"
-                @update:model-value="calc.setSrcLevel(r.id, $event)"
-                :label="`${t('calc.row.srcLevel')}: Lv${r.srcLevel}`"
-                :max="r.dstLevel"
-              />
-            </div>
-          </label>
+            <LevelPicker
+              data-testid="srcLevel"
+              :model-value="r.srcLevel"
+              @update:model-value="calc.setSrcLevel(r.id, $event)"
+              :label="`${t('calc.row.srcLevel')}: Lv${r.srcLevel}`"
+              :max="r.dstLevel"
+            />
+          </div>
 
           <label class="field field--sm">
             <span class="field__label">{{ t("calc.row.expRemaining") }}</span>
@@ -273,27 +272,27 @@
             />
           </label>
 
-          <label class="field field--sm">
+          <div class="field field--sm">
             <span class="field__label">
               {{ t("calc.row.dstLevel") }}
               <span v-if="(rowP(r)?.targetExpToNextLevel ?? 0) > 0" style="font-weight:normal; margin-left:4px; opacity:0.8">
                 {{ t("calc.row.expLeftNext", { exp: calc.fmtNum(rowP(r)?.targetExpToNextLevel ?? 0) }) }}
               </span>
             </span>
-            <div class="levelPick" data-testid="dstLevel">
-              <LevelPicker
-                :model-value="r.dstLevel"
-                @update:model-value="calc.setDstLevel(r.id, $event)"
-                :min="r.srcLevel"
-                :max="MAX_LEVEL"
-              >
-                <template #title>
-                  Lv{{ r.srcLevel }} → Lv{{ r.dstLevel }}
-                  <span v-if="isCandyShort(r)" :title="t('calc.row.candyShortage')" style="font-size: 1.2em; vertical-align: middle; margin-left: 4px;">🍬</span>
-                </template>
-              </LevelPicker>
-            </div>
-          </label>
+            <LevelPicker
+              data-testid="dstLevel"
+              :model-value="r.dstLevel"
+              @update:model-value="calc.setDstLevel(r.id, $event)"
+              :label="`${t('calc.row.dstLevel')}: Lv${r.dstLevel}`"
+              :min="r.srcLevel"
+              :max="MAX_LEVEL"
+            >
+              <template #title>
+                Lv{{ r.srcLevel }} → Lv{{ r.dstLevel }}
+                <span v-if="isCandyShort(r)" :title="t('calc.row.candyShortage')" style="font-size: 1.2em; vertical-align: middle; margin-left: 4px;">🍬</span>
+              </template>
+            </LevelPicker>
+          </div>
           <label class="field field--sm" v-if="getRowPokedexId(r)">
             <span class="field__label">{{ t("calc.row.speciesCandy") }}</span>
             <input
@@ -306,22 +305,22 @@
             />
           </label>
 
-          <label class="field field--sm" v-if="calc.boostKind.value !== 'none'">
+          <div class="field field--sm" v-if="calc.boostKind.value !== 'none'">
             <span class="field__label">{{ t("calc.row.boostReachLevel") }}</span>
-            <div class="levelPick" data-testid="boostReachLevel">
-              <LevelPicker
-                :model-value="r.ui.boostReachLevel"
-                @update:model-value="calc.setBoostLevel(r.id, $event)"
-                :min="r.srcLevel"
-                :max="r.dstLevel"
-              >
-                <template #title>
-                  Lv{{ r.srcLevel }} → Lv{{ r.ui.boostReachLevel }}
-                  <span v-if="isCandyShort(r)" :title="t('calc.row.candyShortage')" style="font-size: 1.2em; vertical-align: middle; margin-left: 4px;">🍬</span>
-                </template>
-              </LevelPicker>
-            </div>
-          </label>
+            <LevelPicker
+              data-testid="boostReachLevel"
+              :model-value="r.ui.boostReachLevel"
+              @update:model-value="calc.setBoostLevel(r.id, $event)"
+              :label="`${t('calc.row.boostReachLevel')}: Lv${r.ui.boostReachLevel}`"
+              :min="r.srcLevel"
+              :max="r.dstLevel"
+            >
+              <template #title>
+                Lv{{ r.srcLevel }} → Lv{{ r.ui.boostReachLevel }}
+                <span v-if="isCandyShort(r)" :title="t('calc.row.candyShortage')" style="font-size: 1.2em; vertical-align: middle; margin-left: 4px;">🍬</span>
+              </template>
+            </LevelPicker>
+          </div>
           <label class="field field--sm" v-if="calc.boostKind.value !== 'none'">
             <span class="field__label">{{ t("calc.row.boostRatio") }}</span>
             <input
@@ -337,8 +336,8 @@
             <span class="field__sub">{{ r.ui.boostRatioPct }}%</span>
           </label>
           <div class="field field--sm">
-            <div class="field__labelRow" style="margin-bottom: 4px;">
-              <span class="field__label" style="margin-bottom: 0;">
+            <div class="field__labelRow">
+              <span class="field__label">
                 {{ calc.boostKind.value === 'none' ? t("calc.row.boostCandyCountNormal") : t("calc.row.boostCandyCount") }}
               </span>
               <button

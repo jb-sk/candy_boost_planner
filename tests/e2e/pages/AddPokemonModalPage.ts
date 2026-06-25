@@ -19,9 +19,11 @@ export class AddPokemonModalPage {
   readonly submitButton: Locator;
   readonly closeButton: Locator;
 
-  // === レベルピッカートリガー（srcLevel / dstLevel） ===
+  // === レベルピッカー（srcLevel / dstLevel） ===
   readonly srcLevelTrigger: Locator;
   readonly dstLevelTrigger: Locator;
+  readonly srcLevelChevron: Locator;
+  readonly dstLevelChevron: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -39,9 +41,11 @@ export class AddPokemonModalPage {
     // モーダルヘッダーの閉じるボタン（addModal__head 直下）
     this.closeButton = page.locator('.addModal__head .btn--ghost');
 
-    // LevelPicker内のトリガーボタン（モーダル内に2つある: src/dst）
+    // LevelPicker内の入力フィールド（モーダル内に2つある: src/dst）
     this.srcLevelTrigger = this.modal.getByTestId('level-picker-trigger').nth(0);
     this.dstLevelTrigger = this.modal.getByTestId('level-picker-trigger').nth(1);
+    this.srcLevelChevron = this.modal.getByTestId('level-picker-chevron').nth(0);
+    this.dstLevelChevron = this.modal.getByTestId('level-picker-chevron').nth(1);
   }
 
   /** モーダルを開く */
@@ -66,14 +70,14 @@ export class AddPokemonModalPage {
 
   /** 現在の目標Lvのテキストを数値で取得 */
   async getDstLevel(): Promise<number> {
-    const text = await this.dstLevelTrigger.textContent();
-    return Number(text?.replace(/[^0-9]/g, ''));
+    const val = await this.dstLevelTrigger.inputValue();
+    return Number(val);
   }
 
   /** 現在の現在Lvのテキストを数値で取得 */
   async getSrcLevel(): Promise<number> {
-    const text = await this.srcLevelTrigger.textContent();
-    return Number(text?.replace(/[^0-9]/g, ''));
+    const val = await this.srcLevelTrigger.inputValue();
+    return Number(val);
   }
 
   /**
@@ -82,7 +86,7 @@ export class AddPokemonModalPage {
    * ポップオーバー内の閉じるボタンで確実に閉じる。
    */
   async setSrcLevel(level: number) {
-    await this.srcLevelTrigger.click();
+    await this.srcLevelChevron.click();
     const popover = this.modal.getByTestId('level-picker-popover').first();
     await expect(popover).toBeVisible();
     const rangeInput = popover.locator('input[type=range]');
@@ -98,7 +102,7 @@ export class AddPokemonModalPage {
    * ポップオーバー内の閉じるボタンで確実に閉じる。
    */
   async setDstLevel(level: number) {
-    await this.dstLevelTrigger.click();
+    await this.dstLevelChevron.click();
     const popover = this.modal.getByTestId('level-picker-popover').first();
     await expect(popover).toBeVisible();
     const rangeInput = popover.locator('input[type=range]');

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, nextTick, onMounted, onUnmounted } from "vue";
+import { ref, watch, nextTick, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
+import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 
 const props = defineProps<{
   modelValue: number;
@@ -18,7 +19,14 @@ const { t } = useI18n();
 const isOpen = ref(false);
 const root = ref<HTMLElement | null>(null);
 const popoverStyle = ref<Record<string, string>>({});
-const presets = [10, 25, 30, 40, 50, 55, 60, 65];
+const presets = [10, 25, 30, 40, 50, 55, 60, 65, MAX_LEVEL];
+
+const inputValue = ref(String(props.modelValue));
+const isEditing = ref(false);
+
+watch(() => props.modelValue, (v) => {
+  if (!isEditing.value) inputValue.value = String(v);
+});
 
 const EDGE_GAP = 8; // px from viewport edge
 
@@ -66,6 +74,9 @@ function adjustPopoverPosition() {
 }
 
 async function toggle() {
+  if (isEditing.value) {
+    commitInput();
+  }
   isOpen.value = !isOpen.value;
   if (isOpen.value) {
     await nextTick();
@@ -82,11 +93,56 @@ function setValue(v: number) {
 }
 
 function update(v: number) {
+  if (isEditing.value) {
+    commitInput();
+  }
   const min = props.min ?? 1;
-  const max = props.max ?? 65;
+  const max = props.max ?? MAX_LEVEL;
   if (v < min) v = min;
   if (v > max) v = max;
+  inputValue.value = String(v);
   setValue(v);
+}
+
+function nudge(delta: number) {
+  const base = isEditing.value ? commitInput() : props.modelValue;
+  update(base + delta);
+}
+
+function effectiveInputNumber() {
+  const n = parseInt(inputValue.value);
+  return isNaN(n) ? props.modelValue : n;
+}
+
+function onInputFocus() {
+  isEditing.value = true;
+}
+
+function commitInput(): number {
+  isEditing.value = false;
+  const n = parseInt(inputValue.value);
+  if (isNaN(n) || inputValue.value.trim() === "") {
+    inputValue.value = String(props.modelValue);
+    return props.modelValue;
+  }
+  const lo = props.min ?? 1;
+  const hi = props.max ?? MAX_LEVEL;
+  const clamped = Math.max(lo, Math.min(hi, n));
+  inputValue.value = String(clamped);
+  emit("update:modelValue", clamped);
+  return clamped;
+}
+
+function onInputBlur() {
+  commitInput();
+}
+
+function onInputEnter(e: KeyboardEvent) {
+  (e.target as HTMLInputElement).blur();
+}
+
+function onInputTyping(e: Event) {
+  inputValue.value = (e.target as HTMLInputElement).value.replace(/[^0-9]/g, "");
 }
 
 function onClickOutside(event: MouseEvent) {
@@ -106,14 +162,30 @@ onUnmounted(() => {
 
 <template>
   <div class="levelPick" ref="root">
+    <input
+      type="number"
+      inputmode="numeric"
+      pattern="[0-9]*"
+      :min="min ?? 1"
+      :max="max ?? MAX_LEVEL"
+      step="1"
+      class="field__input levelPick__input"
+      data-testid="level-picker-trigger"
+      :aria-label="label ?? 'Level'"
+      :value="inputValue"
+      @focus="onInputFocus"
+      @blur="onInputBlur"
+      @keydown.enter.prevent="onInputEnter"
+      @input="onInputTyping"
+    />
     <button
       type="button"
-      class="field__input field__input--button levelPick__button"
-      data-testid="level-picker-trigger"
+      class="levelPick__chevron"
+      data-testid="level-picker-chevron"
+      :aria-label="label ? `${label} picker` : 'Level picker'"
+      :title="label ? `${label} picker` : 'Level picker'"
       @click.stop="toggle"
-    >
-      {{ modelValue }}
-    </button>
+    ></button>
 
     <div v-if="isOpen" class="levelPick__popover" data-testid="level-picker-popover" role="dialog" :style="popoverStyle">
       <div class="levelPick__top">
@@ -135,8 +207,8 @@ onUnmounted(() => {
           class="btn btn--ghost btn--xs levelPick__stepButton"
           type="button"
           data-testid="level-picker-decrement"
-          @click.stop="update(modelValue - 1)"
-          :disabled="modelValue <= (min ?? 1)"
+          @click.stop="nudge(-1)"
+          :disabled="effectiveInputNumber() <= (min ?? 1)"
         >
           ◀
         </button>
@@ -144,7 +216,7 @@ onUnmounted(() => {
           class="levelPick__range"
           type="range"
           :min="min ?? 1"
-          :max="max ?? 65"
+          :max="max ?? MAX_LEVEL"
           step="1"
           :value="modelValue"
           @input="update(parseInt(($event.target as HTMLInputElement).value))"
@@ -154,8 +226,8 @@ onUnmounted(() => {
           class="btn btn--ghost btn--xs levelPick__stepButton"
           type="button"
           data-testid="level-picker-increment"
-          @click.stop="update(modelValue + 1)"
-          :disabled="modelValue >= (max ?? 65)"
+          @click.stop="nudge(1)"
+          :disabled="effectiveInputNumber() >= (max ?? MAX_LEVEL)"
         >
           ▶
         </button>
@@ -169,7 +241,7 @@ onUnmounted(() => {
           class="levelChip"
           :class="{ 'levelChip--on': lv === modelValue }"
           @click.stop="update(lv)"
-          :disabled="lv < (min ?? 1) || lv > (max ?? 65)"
+          :disabled="lv < (min ?? 1) || lv > (max ?? MAX_LEVEL)"
         >
           {{ lv }}
         </button>

@@ -96,6 +96,7 @@ export const en = {
       expLeftNext: "(Next: {exp})",
       expType: "EXP type",
       expTypeFixedHint: "EXP type is fixed by species and cannot be edited.",
+      specialtyFixedHint: "Specialty is fixed by species and cannot be edited.",
       nature: "Nature (EXP gains)",
       natureNormal: "-",
       natureUp: "▲",

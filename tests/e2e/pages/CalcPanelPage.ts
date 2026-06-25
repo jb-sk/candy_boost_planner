@@ -105,11 +105,19 @@ export class CalcPanelPage {
 
   // === 行内のセレクタ ===
   getRowSrcLevelButton(row: Locator): Locator {
-    return row.getByTestId('srcLevel').locator('button');
+    return row.getByTestId('srcLevel').getByTestId('level-picker-chevron');
   }
 
   getRowDstLevelButton(row: Locator): Locator {
-    return row.getByTestId('dstLevel').locator('button');
+    return row.getByTestId('dstLevel').getByTestId('level-picker-chevron');
+  }
+
+  getRowSrcLevelInput(row: Locator): Locator {
+    return row.getByTestId('srcLevel').getByTestId('level-picker-trigger');
+  }
+
+  getRowDstLevelInput(row: Locator): Locator {
+    return row.getByTestId('dstLevel').getByTestId('level-picker-trigger');
   }
 
   getRowExpRemainingInput(row: Locator): Locator {
@@ -121,7 +129,11 @@ export class CalcPanelPage {
   }
 
   getRowBoostReachLevelButton(row: Locator): Locator {
-    return row.getByTestId('boostReachLevel').locator('button');
+    return row.getByTestId('boostReachLevel').getByTestId('level-picker-chevron');
+  }
+
+  getRowBoostReachLevelInput(row: Locator): Locator {
+    return row.getByTestId('boostReachLevel').getByTestId('level-picker-trigger');
   }
 
   getRowBoostRatioSlider(row: Locator): Locator {
@@ -146,6 +158,34 @@ export class CalcPanelPage {
 
   getRowSleepButton2000h(row: Locator): Locator {
     return row.getByTestId('sleepBtn2000h');
+  }
+
+  async setRowSrcLevel(row: Locator, level: number): Promise<void> {
+    const input = this.getRowSrcLevelInput(row);
+    await input.fill(String(level));
+    await input.blur();
+    await expect(input).toHaveValue(String(level));
+  }
+
+  async setRowDstLevel(row: Locator, level: number): Promise<void> {
+    const input = this.getRowDstLevelInput(row);
+    await input.fill(String(level));
+    await input.blur();
+    await expect(input).toHaveValue(String(level));
+  }
+
+  async setRowBoostReachLevel(row: Locator, level: number): Promise<void> {
+    const input = this.getRowBoostReachLevelInput(row);
+    await input.fill(String(level));
+    await input.blur();
+    await expect(input).toHaveValue(String(level));
+  }
+
+  async setRowExpRemaining(row: Locator, value: number): Promise<void> {
+    const input = this.getRowExpRemainingInput(row);
+    await input.fill(String(value));
+    await input.blur();
+    await expect(input).toHaveValue(String(value));
   }
 
   getRowDeleteButton(row: Locator): Locator {

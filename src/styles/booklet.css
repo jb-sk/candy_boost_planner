@@ -120,6 +120,11 @@
   background: var(--paper);
 }
 
+.hero .support__link:hover {
+  background: var(--accent);
+  color: var(--paper);
+}
+
 /* ===== Panel — Blue Folder ===== */
 .panel {
   background: var(--surface-alt);

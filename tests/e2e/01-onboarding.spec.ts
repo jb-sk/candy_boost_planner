@@ -114,6 +114,26 @@ test.describe('新規追加パネル', () => {
     expect(newLevel).toBe(initialLevel + 1);
   });
 
+  test('レベル直接入力中にピッカーを開いても値がずれない', async () => {
+    await boxPanel.openAddNewPanel();
+
+    await boxPanel.levelTriggerButton.fill('25');
+    await boxPanel.openLevelPicker();
+    await boxPanel.incrementLevel();
+
+    await expect(boxPanel.levelTriggerButton).toHaveValue('26');
+  });
+
+  test('ピッカー表示中に直接入力しても操作値がずれない', async () => {
+    await boxPanel.openAddNewPanel();
+
+    await boxPanel.openLevelPicker();
+    await boxPanel.levelTriggerButton.fill('25');
+    await boxPanel.incrementLevel();
+
+    await expect(boxPanel.levelTriggerButton).toHaveValue('26');
+  });
+
   test('EXP性格補正が選択できる', async () => {
     await boxPanel.openAddNewPanel();
 
