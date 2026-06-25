@@ -55,7 +55,7 @@ export type PokemonBoxEntryV1 = {
 export type PokemonSpecialty = "Berries" | "Ingredients" | "Skills" | "All" | "unknown";
 export type IngredientType = "AAA" | "AAB" | "AAC" | "ABA" | "ABB" | "ABC";
 export type BoxSubSkillSlotV1 = {
-  lv: 10 | 25 | 50 | 75 | 100;
+  lv: 10 | 25 | 50 | 70 | 80;
   nameEn: string;
 };
 

@@ -193,28 +193,28 @@
                   <span v-if="addSubErrors['50']" class="field__error">{{ addSubErrors["50"] }}</span>
                 </label>
                 <label class="subField">
-                  <span class="subField__k">Lv75</span>
+                  <span class="subField__k">Lv70</span>
                   <select
-                    v-model="addSubLv75"
+                    v-model="addSubLv70"
                     class="field__input"
-                    :class="{ 'field__input--error': !!addSubErrors['75'] }"
+                    :class="{ 'field__input--error': !!addSubErrors['70'] }"
                   >
                     <option value=""></option>
                     <option v-for="label in subSkillOptionLabels" :key="label" :value="label">{{ label }}</option>
                   </select>
-                  <span v-if="addSubErrors['75']" class="field__error">{{ addSubErrors["75"] }}</span>
+                  <span v-if="addSubErrors['70']" class="field__error">{{ addSubErrors["70"] }}</span>
                 </label>
                 <label class="subField">
-                  <span class="subField__k">Lv100</span>
+                  <span class="subField__k">Lv80</span>
                   <select
-                    v-model="addSubLv100"
+                    v-model="addSubLv80"
                     class="field__input"
-                    :class="{ 'field__input--error': !!addSubErrors['100'] }"
+                    :class="{ 'field__input--error': !!addSubErrors['80'] }"
                   >
                     <option value=""></option>
                     <option v-for="label in subSkillOptionLabels" :key="label" :value="label">{{ label }}</option>
                   </select>
-                  <span v-if="addSubErrors['100']" class="field__error">{{ addSubErrors["100"] }}</span>
+                  <span v-if="addSubErrors['80']" class="field__error">{{ addSubErrors["80"] }}</span>
                 </label>
               </div>
             </div>
@@ -567,14 +567,12 @@
                   <div class="boxDetail__kv">
                     <div class="boxDetail__k">{{ t("box.detail.level") }}</div>
                     <div class="boxDetail__v">
-                      <div class="levelPick">
-                        <LevelPicker
-                          :model-value="selectedDetail?.level ?? 1"
-                          @update:model-value="box.setBoxLevel($event)"
-                          :label="`${t('box.add.level')}: Lv${selectedDetail?.level ?? 1}`"
-                          :max="MAX_LEVEL"
-                        />
-                      </div>
+                      <LevelPicker
+                        :model-value="selectedDetail?.level ?? 1"
+                        @update:model-value="box.setBoxLevel($event)"
+                        :label="`${t('box.add.level')}: Lv${selectedDetail?.level ?? 1}`"
+                        :max="MAX_LEVEL"
+                      />
                     </div>
                   </div>
 
@@ -622,7 +620,7 @@
                         v-if="(selectedDetail?.pokedexId ?? 0) > 0"
                         class="field__input field__input--static"
                         data-testid="box-detail-specialty-display"
-                        :title="t('calc.row.expTypeFixedHint')"
+                        :title="t('calc.row.specialtyFixedHint')"
                       >
                         {{
                           selectedDetail?.specialty === 'Berries'
@@ -797,7 +795,7 @@
                     <div class="boxDetail__k">{{ t("box.detail.subSkills") }}</div>
                     <div class="boxDetail__v">
                       <div class="boxDetail__subEdit" data-testid="box-detail-subskills">
-                        <div v-for="lv in [10, 25, 50, 75, 100]" :key="lv" class="subField">
+                        <div v-for="lv in [10, 25, 50, 70, 80]" :key="lv" class="subField">
                           <span class="subField__k">Lv{{ lv }}</span>
                           <select
                             :value="boxEditSubInputs[String(lv)] ?? ''"
@@ -1082,8 +1080,8 @@ const addIngredientType = box.addIngredientType;
 const addSubLv10 = box.addSubLv10;
 const addSubLv25 = box.addSubLv25;
 const addSubLv50 = box.addSubLv50;
-const addSubLv75 = box.addSubLv75;
-const addSubLv100 = box.addSubLv100;
+const addSubLv70 = box.addSubLv70;
+const addSubLv80 = box.addSubLv80;
 const relinkName = box.relinkName;
 const relinkOpen = box.relinkOpen;
 const selectedNature = box.selectedNature;

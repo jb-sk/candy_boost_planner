@@ -96,6 +96,7 @@ export const ja = {
       expLeftNext: "(あとEXP {exp})",
       expType: "EXPタイプ",
       expTypeFixedHint: "EXPタイプは種族固定のため編集できません。",
+      specialtyFixedHint: "とくいは種族固定のため編集できません。",
       nature: "EXP性格補正",
       natureNormal: "-",
       natureUp: "▲",

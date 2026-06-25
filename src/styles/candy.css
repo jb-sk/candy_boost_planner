@@ -93,6 +93,11 @@
   background: rgba(255, 255, 255, 0.9);
 }
 
+.hero .support__link:hover {
+  background: var(--accent);
+  color: var(--paper);
+}
+
 /* ===== Panel ===== */
 .panel {
   border: 2px solid var(--border);

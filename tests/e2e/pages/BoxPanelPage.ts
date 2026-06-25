@@ -16,6 +16,7 @@ export class BoxPanelPage {
   readonly suggestItems: Locator;
   readonly levelField: Locator;
   readonly levelTriggerButton: Locator;
+  readonly levelChevron: Locator;
   readonly levelPopover: Locator;
   readonly levelPlusButton: Locator;
   readonly natureField: Locator;
@@ -66,6 +67,7 @@ export class BoxPanelPage {
   readonly detailRelinkButton: Locator;
   readonly detailRelinkSuggestPanel: Locator;
   readonly detailLevelTrigger: Locator;
+  readonly detailLevelChevron: Locator;
   readonly detailExpRemainingInput: Locator;
   readonly detailNatureTrigger: Locator;
   readonly detailSpecialtyDisplay: Locator;
@@ -88,6 +90,7 @@ export class BoxPanelPage {
     // レベルピッカー（新規追加用）
     this.levelField = page.getByTestId('box-add-level-field');
     this.levelTriggerButton = page.getByTestId('level-picker-trigger').first();
+    this.levelChevron = page.getByTestId('level-picker-chevron').first();
     this.levelPopover = page.getByTestId('level-picker-popover');
     this.levelPlusButton = page.getByTestId('level-picker-increment').first();
 
@@ -154,6 +157,7 @@ export class BoxPanelPage {
     this.detailRelinkSuggestPanel = page.getByTestId('box-detail-relink-suggest-panel');
     // 新規追加パネルが lazy mount のとき level-picker が1つだけのため、詳細は box-detail-panel 内に限定する
     this.detailLevelTrigger = this.detailPanel.getByTestId('level-picker-trigger');
+    this.detailLevelChevron = this.detailPanel.getByTestId('level-picker-chevron');
     this.detailExpRemainingInput = page.getByTestId('box-detail-exp-remaining-input');
     this.detailNatureTrigger = this.detailPanel.getByTestId('nature-select-trigger');
     this.detailSpecialtyDisplay = page.getByTestId('box-detail-specialty-display');
@@ -222,13 +226,12 @@ export class BoxPanelPage {
 
   // レベルピッカー操作
   async openLevelPicker() {
-    await this.levelTriggerButton.click();
+    await this.levelChevron.click();
     await expect(this.levelPopover).toBeVisible();
   }
 
   async getLevelValue(): Promise<number> {
-    const text = await this.levelTriggerButton.textContent();
-    return Number(text?.replace(/[^0-9]/g, ''));
+    return Number(await this.levelTriggerButton.inputValue());
   }
 
   async incrementLevel() {
@@ -243,7 +246,7 @@ export class BoxPanelPage {
   }
 
   async selectNatureOption(index: number) {
-    await this.natureOptions.nth(index).click();
+    await this.natureOptions.nth(index).dispatchEvent('mousedown');
     await expect(this.natureDropdown).not.toBeVisible();
   }
 
@@ -371,7 +374,7 @@ export class BoxPanelPage {
   }
 
   async openDetailLevelPicker() {
-    await this.detailLevelTrigger.click();
+    await this.detailLevelChevron.click();
   }
 
   async fillExpRemaining(value: number) {

@@ -5,36 +5,32 @@
   position: relative;
 }
 
-/* ===== Trigger button ===== */
-.levelPick__button {
+.levelPick .field__input.levelPick__input {
   width: 100%;
-  text-align: left;
-  font: inherit;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--input-border);
-  background: var(--input-bg);
-  color: var(--ink);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  cursor: pointer;
+  padding-right: 32px;
 }
 
-.levelPick__button::after {
+.levelPick__chevron {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.levelPick__chevron::after {
   content: "";
   display: block;
   width: 16px;
   height: 16px;
-  margin-left: 8px;
-  flex-shrink: 0;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat center / contain;
-}
-
-.levelPick__button:focus-visible {
-  outline: none;
-  border-color: var(--ring);
-  box-shadow: 0 0 0 3px rgba(var(--ring-rgb), 0.2);
 }
 
 /* ===== Popover ===== */

@@ -117,8 +117,7 @@
 }
 
 .addModal__body .field__input,
-.addModal__body select.field__input,
-.addModal__body .field__input--button {
+.addModal__body select.field__input {
   height: 34px;
   min-height: 34px;
   max-height: 34px;

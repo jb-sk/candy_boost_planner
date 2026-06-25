@@ -1579,23 +1579,23 @@ export function useCalcStore(opts: {
 
     if (totalUniversalValue <= 0) return [];
 
-    return planResult.value.pokemons
-      .map((p: PokemonLevelUpResult) => {
+    return planResult.value.itemUsageRanking
+      .map((p) => {
         const uniValue =
-          p.reachableItems.universalS * CANDY_VALUES.universal.s +
-          p.reachableItems.universalM * CANDY_VALUES.universal.m +
-          p.reachableItems.universalL * CANDY_VALUES.universal.l;
+          p.universalS * CANDY_VALUES.universal.s +
+          p.universalM * CANDY_VALUES.universal.m +
+          p.universalL * CANDY_VALUES.universal.l;
         const usagePct = totalUniversalValue > 0 ? (uniValue / totalUniversalValue) * 100 : 0;
         return {
           id: p.id,
           pokemonName: p.pokemonName,
           universalValue: uniValue,
           usagePct: Math.round(usagePct),
-          uniSUsed: p.reachableItems.universalS,
-          uniMUsed: p.reachableItems.universalM,
-          uniLUsed: p.reachableItems.universalL,
-          typeSUsed: p.reachableItems.typeS,
-          typeMUsed: p.reachableItems.typeM,
+          uniSUsed: p.universalS,
+          uniMUsed: p.universalM,
+          uniLUsed: p.universalL,
+          typeSUsed: p.typeS,
+          typeMUsed: p.typeM,
         };
       })
       .filter((x: { universalValue: number }) => x.universalValue > 0)

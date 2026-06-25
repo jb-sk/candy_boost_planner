@@ -17,7 +17,7 @@ export type NitoyonIvDecoded = {
 export type NitoyonIvDecodedDetail = NitoyonIvDecoded & {
   ingredientType: IngredientType | null;
   subSkills: Array<{
-    lv: 10 | 25 | 50 | 75 | 100;
+    lv: 10 | 25 | 50 | 70 | 80;
     nameEn: string;
     nameJa: string;
   }>;
@@ -123,7 +123,7 @@ export function decodeNitoyonIvDetail(iv: string): NitoyonIvDecodedDetail | null
     const ingredientType = IngredientTypes[ingIndex] ?? null;
 
     const subSkills: NitoyonIvDecodedDetail["subSkills"] = [];
-    const addSub = (lv: 10 | 25 | 50 | 75 | 100, idx: number) => {
+    const addSub = (lv: 10 | 25 | 50 | 70 | 80, idx: number) => {
       if (idx === 31) return;
       const nameEn = SubSkillAllNames[idx];
       if (!nameEn) return;
@@ -133,8 +133,8 @@ export function decodeNitoyonIvDetail(iv: string): NitoyonIvDecodedDetail | null
     addSub(10, (array16[2] >> 11) & 31);
     addSub(25, (array16[3] >> 0) & 31);
     addSub(50, (array16[3] >> 5) & 31);
-    addSub(75, (array16[3] >> 10) & 31);
-    addSub(100, (array16[4] >> 0) & 31);
+    addSub(70, (array16[3] >> 10) & 31);
+    addSub(80, (array16[4] >> 0) & 31);
 
     return { pokedexId, form, level, natureName, expGainNature, expType, ingredientType, subSkills };
   } catch {

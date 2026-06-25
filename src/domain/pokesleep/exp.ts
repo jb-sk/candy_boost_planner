@@ -73,10 +73,9 @@ export function calcExp(level1: number, level2: number, expType: ExpType): numbe
 export function calcExpPerCandy(level: number, nature: ExpGainNature, boost: BoostEvent): number {
   const boostFactor = boostRules[boost].expMultiplier;
 
-  // レベル帯で基礎値が変化（<25:35, <30:30, それ以外:25）
   const base =
-    level < 25 ? (nature === "up" ? 41 : nature === "down" ? 29 : 35) :
-      level < 30 ? (nature === "up" ? 35 : nature === "down" ? 25 : 30) :
+    level < 25 ? (nature === "up" ? 47 : nature === "down" ? 33 : 40) :
+      level < 30 ? (nature === "up" ? 41 : nature === "down" ? 29 : 35) :
         (nature === "up" ? 30 : nature === "down" ? 21 : 25);
 
   return base * boostFactor;
@@ -205,10 +204,8 @@ export function calcExpAndCandy(params: {
 }): CalcExpAndCandyResult {
   const { srcLevel, dstLevel, expType, nature, boost } = params;
   const expGot = params.expGot ?? 0;
-  // Lv65（最大レベル）ではこれ以上EXPを稼げないため、dstExpInLevelを0に制限
   const dstExpInLevel = dstLevel >= maxLevel ? 0 : (params.dstExpInLevel ?? 0);
 
-  // Lv+EXP で比較（目標到達済みなら何もしない）
   if (isInvalidLevel(srcLevel, dstLevel) || isTargetReached(srcLevel, dstLevel, expGot, dstExpInLevel)) {
     return { exp: 0, candy: 0, shards: 0 };
   }
@@ -269,7 +266,6 @@ export function calcExpAndCandyMixed(params: {
 }): CalcExpAndCandyMixedResult {
   const { srcLevel, dstLevel, expType, nature, boost } = params;
   const expGot = params.expGot ?? 0;
-  // Lv65（最大レベル）ではこれ以上EXPを稼げないため、dstExpInLevelを0に制限
   const dstExpInLevel = dstLevel >= maxLevel ? 0 : (params.dstExpInLevel ?? 0);
   const boostCandyBudget = Math.max(0, Math.floor(params.boostCandy));
 
@@ -477,7 +473,6 @@ export function calcLevelByCandy(params: {
   }
 
   const candyUsed = Math.max(0, Math.floor(params.candy)) - candyLeft;
-  // Lv65（最大レベル）到達後はこれ以上EXPを稼げないため、expGotを0に制限
   const finalExpGot = level >= maxLevel ? 0 : carry;
   return { exp, expLeft, level, expGot: finalExpGot, shards, candyUsed, candyLeft };
 }
@@ -601,7 +596,6 @@ export function calcLevelByCandyAndShards(params: {
   }
 
   const candyUsed = Math.max(0, Math.floor(params.candy)) - candyLeft;
-  // Lv65（最大レベル）到達後はこれ以上EXPを稼げないため、expGotを0に制限
   const finalExpGot = level >= maxLevel ? 0 : carry;
   return { exp, expLeft, level, expGot: finalExpGot, shards, candyUsed, candyLeft };
 }
@@ -631,7 +625,6 @@ export function calcCandyAndShardsForLevelMixed(params: {
 } {
   const { srcLevel, dstLevel, expType, nature, boost } = params;
   const expGot = params.expGot ?? 0;
-  // Lv65（最大レベル）ではこれ以上EXPを稼げないため、dstExpInLevelを0に制限
   const dstExpInLevel = dstLevel >= maxLevel ? 0 : (params.dstExpInLevel ?? 0);
   const boostCandyBudget = Math.max(0, Math.floor(params.boostCandyLimit));
 

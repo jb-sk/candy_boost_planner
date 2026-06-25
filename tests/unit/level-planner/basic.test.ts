@@ -200,7 +200,7 @@ describe('基本制限テスト', () => {
       const p = getPokemon(result, 'test4');
       expect(p.reachableItems.totalSupply).toBe(210);
       expect(p.shortage.candy).toBe(74);
-      expect(p.reachedLevel).toBe(32);
+      expect(p.reachedLevel).toBe(33);
       validatePokemonInvariants(p, { globalBoostLimit: 3500, globalShardsLimit: 2000000, boostKind: 'full' }, 'Test4');
     });
   });

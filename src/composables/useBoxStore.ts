@@ -109,15 +109,15 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
   const addSubLv10 = ref("");
   const addSubLv25 = ref("");
   const addSubLv50 = ref("");
-  const addSubLv75 = ref("");
-  const addSubLv100 = ref("");
+  const addSubLv70 = ref("");
+  const addSubLv80 = ref("");
 
-  const addSubErrors = ref<Record<"10" | "25" | "50" | "75" | "100", string | null>>({
+  const addSubErrors = ref<Record<"10" | "25" | "50" | "70" | "80", string | null>>({
     "10": null,
     "25": null,
     "50": null,
-    "75": null,
-    "100": null,
+    "70": null,
+    "80": null,
   });
 
   const subSkillOptionLabels = computed(() => {
@@ -855,20 +855,20 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     }
   );
 
-  const boxEditSubInputs = ref<Record<string, string>>({ "10": "", "25": "", "50": "", "75": "", "100": "" });
-  const boxEditSubErrors = ref<Record<string, string | null>>({ "10": null, "25": null, "50": null, "75": null, "100": null });
+  const boxEditSubInputs = ref<Record<string, string>>({ "10": "", "25": "", "50": "", "70": "", "80": "" });
+  const boxEditSubErrors = ref<Record<string, string | null>>({ "10": null, "25": null, "50": null, "70": null, "80": null });
   const openBoxLevelPick = ref(false);
 
   function syncBoxEditSubInputsFromSelected() {
     const d = selectedDetail.value;
-    const next: Record<string, string> = { "10": "", "25": "", "50": "", "75": "", "100": "" };
+    const next: Record<string, string> = { "10": "", "25": "", "50": "", "70": "", "80": "" };
     for (const s of d?.subSkills ?? []) {
-      if (s.lv === 10 || s.lv === 25 || s.lv === 50 || s.lv === 75 || s.lv === 100) {
+      if (s.lv === 10 || s.lv === 25 || s.lv === 50 || s.lv === 70 || s.lv === 80) {
         next[String(s.lv)] = locale.value === "en" ? s.nameEn : s.nameJa;
       }
     }
     boxEditSubInputs.value = next;
-    boxEditSubErrors.value = { "10": null, "25": null, "50": null, "75": null, "100": null };
+    boxEditSubErrors.value = { "10": null, "25": null, "50": null, "70": null, "80": null };
   }
 
   watch(
@@ -882,9 +882,9 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     () => syncBoxEditSubInputsFromSelected()
   );
 
-  function toSubSkillLevel(v: unknown): 10 | 25 | 50 | 75 | 100 | null {
+  function toSubSkillLevel(v: unknown): 10 | 25 | 50 | 70 | 80 | null {
     const n = typeof v === "number" ? v : Number(v);
-    if (n === 10 || n === 25 || n === 50 || n === 75 || n === 100) return n;
+    if (n === 10 || n === 25 || n === 50 || n === 70 || n === 80) return n;
     return null;
   }
 
@@ -932,7 +932,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
 
   // Box level presets (shared with calc UI – kept here for BoxPanel)
   // 動的に生成し、末尾に現在の上限を含める
-  const levelPresets = [10, 25, 30, 40, 50, 55, 57, 60, MAX_LEVEL] as const;
+  const levelPresets = [10, 25, 30, 40, 50, 55, 60, 65, MAX_LEVEL] as const;
 
   function writeSelectedLevel(lvl: number) {
     const e = selectedBox.value;
@@ -1107,12 +1107,12 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
   }
 
   function buildManualPlannerSubSkills(): BoxSubSkillSlotV1[] | undefined {
-    const slots: Array<{ lv: 10 | 25 | 50 | 75 | 100; ja: string }> = [
+    const slots: Array<{ lv: 10 | 25 | 50 | 70 | 80; ja: string }> = [
       { lv: 10, ja: addSubLv10.value },
       { lv: 25, ja: addSubLv25.value },
       { lv: 50, ja: addSubLv50.value },
-      { lv: 75, ja: addSubLv75.value },
-      { lv: 100, ja: addSubLv100.value },
+      { lv: 70, ja: addSubLv70.value },
+      { lv: 80, ja: addSubLv80.value },
     ];
     const out: BoxSubSkillSlotV1[] = [];
     for (const s of slots) {
@@ -1125,9 +1125,9 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     return out.length ? out : undefined;
   }
 
-  function validateSubSkillField(lv: 10 | 25 | 50 | 75 | 100, value: string) {
+  function validateSubSkillField(lv: 10 | 25 | 50 | 70 | 80, value: string) {
     const ja = String(value ?? "").trim();
-    const key = String(lv) as "10" | "25" | "50" | "75" | "100";
+    const key = String(lv) as "10" | "25" | "50" | "70" | "80";
     if (!ja) {
       addSubErrors.value[key] = null;
       return;
@@ -1136,7 +1136,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     addSubErrors.value[key] = en ? null : t("status.subSkillUnknown");
   }
 
-  function onSubBlur(lv: 10 | 25 | 50 | 75 | 100) {
+  function onSubBlur(lv: 10 | 25 | 50 | 70 | 80) {
     const v =
       lv === 10
         ? addSubLv10.value
@@ -1144,9 +1144,9 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
           ? addSubLv25.value
           : lv === 50
             ? addSubLv50.value
-            : lv === 75
-              ? addSubLv75.value
-              : addSubLv100.value;
+            : lv === 70
+              ? addSubLv70.value
+              : addSubLv80.value;
     validateSubSkillField(lv, v);
   }
 
@@ -1221,9 +1221,9 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     addSubLv10.value = "";
     addSubLv25.value = "";
     addSubLv50.value = "";
-    addSubLv75.value = "";
-    addSubLv100.value = "";
-    addSubErrors.value = { "10": null, "25": null, "50": null, "75": null, "100": null };
+    addSubLv70.value = "";
+    addSubLv80.value = "";
+    addSubErrors.value = { "10": null, "25": null, "50": null, "70": null, "80": null };
   }
 
   /** @returns number of entries actually added (0 = nothing imported) */
@@ -1421,8 +1421,8 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     addSubLv10,
     addSubLv25,
     addSubLv50,
-    addSubLv75,
-    addSubLv100,
+    addSubLv70,
+    addSubLv80,
     addSubErrors,
     addFavorite,
     addSleepHours,

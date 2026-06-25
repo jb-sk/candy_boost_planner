@@ -204,7 +204,7 @@ describe('エッジケーステスト', () => {
       );
 
       const p = getPokemon(result, 'entei');
-      expect(p.reachableItems.shardsCount).toBe(392245);
+      expect(p.reachableItems.shardsCount).toBe(395625);
       expect(p.reachedLevel).toBe(42);
       expect(p.diagnosis.limitingFactor).toBe(null);
     });
@@ -531,7 +531,7 @@ describe('エッジケーステスト', () => {
 
       // 実機確認値と一致
       expect(p.targetNormal).toBe(1198);
-      expect(p.targetShards).toBe(180728);
+      expect(p.targetShards).toBe(176183);
       expect(p.reachedLevel).toBe(46);
     });
   });

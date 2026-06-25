@@ -129,7 +129,7 @@ function toIngredientType(v: unknown): IngredientType | undefined {
   return undefined;
 }
 
-function toSubSkills(v: unknown): BoxSubSkillSlotV1[] | undefined {
+export function toSubSkills(v: unknown): BoxSubSkillSlotV1[] | undefined {
   if (!Array.isArray(v)) return undefined;
   const out: BoxSubSkillSlotV1[] = [];
   for (const x of v) {
@@ -138,8 +138,9 @@ function toSubSkills(v: unknown): BoxSubSkillSlotV1[] | undefined {
     const lv = Number(r.lv);
     const nameEn = String(r.nameEn ?? "").trim();
     if (!nameEn) continue;
-    if (lv !== 10 && lv !== 25 && lv !== 50 && lv !== 75 && lv !== 100) continue;
-    out.push({ lv: lv as 10 | 25 | 50 | 75 | 100, nameEn });
+    const migrated = lv === 75 ? 70 : lv === 100 ? 80 : lv;
+    if (migrated !== 10 && migrated !== 25 && migrated !== 50 && migrated !== 70 && migrated !== 80) continue;
+    out.push({ lv: migrated as 10 | 25 | 50 | 70 | 80, nameEn });
   }
   return out.length ? out : undefined;
 }

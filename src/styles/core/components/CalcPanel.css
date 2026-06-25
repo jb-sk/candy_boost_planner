@@ -559,11 +559,14 @@ button.calcRow__dragHandle:active {
 
 /* Compact inputs inside calc rows */
 /* Compact padding for calc row inputs (height & font-size inherited from core .field__input) */
-.calcRow .field--sm .field__input,
-.calcRow .field--sm select.field__input,
-.calcRow .field--sm .field__input--button {
+.calcRow .field--sm .field__input:not(.levelPick__input),
+.calcRow .field--sm select.field__input {
   padding: 0 10px;
   line-height: normal;
+}
+
+.calcRow .field--sm .levelPick__input {
+  padding-left: 10px;
 }
 
 /* ===== Field Utilities (CalcPanel specific) ===== */

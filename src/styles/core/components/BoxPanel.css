@@ -81,8 +81,7 @@
 }
 
 .boxAddGrid .field__input,
-.boxAddGrid select.field__input,
-.boxAddGrid .field__input--button {
+.boxAddGrid select.field__input {
   height: 34px;
   min-height: 34px;
   max-height: 34px;
@@ -823,8 +822,7 @@
 
 /* --- Unified input height inside detail --- */
 .boxDetail .field__input,
-.boxDetail select.field__input,
-.boxDetail .field__input--button {
+.boxDetail select.field__input {
   height: 34px;
   min-height: 34px;
   max-height: 34px;
