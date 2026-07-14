@@ -2899,6 +2899,168 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A9%E3%83%86%E3%82%A3%E3%82%AA%E3%82%B9"
   },
   {
+    "dexNo": 387,
+    "pokedexId": 387,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "ナエトル",
+    "baseNameJa": "ナエトル",
+    "specialty": "Skills",
+    "type": "Grass",
+    "typeJa": "くさ",
+    "expType": 600,
+    "ingredients": {
+      "a": "mushroom",
+      "b": "potato",
+      "c": "ginger"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%8A%E3%82%A8%E3%83%88%E3%83%AB"
+  },
+  {
+    "dexNo": 388,
+    "pokedexId": 388,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "ハヤシガメ",
+    "baseNameJa": "ハヤシガメ",
+    "specialty": "Skills",
+    "type": "Grass",
+    "typeJa": "くさ",
+    "expType": 600,
+    "ingredients": {
+      "a": "mushroom",
+      "b": "potato",
+      "c": "ginger"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%8F%E3%83%A4%E3%82%B7%E3%82%AC%E3%83%A1"
+  },
+  {
+    "dexNo": 389,
+    "pokedexId": 389,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "ドダイトス",
+    "baseNameJa": "ドダイトス",
+    "specialty": "Skills",
+    "type": "Ground",
+    "typeJa": "じめん",
+    "expType": 600,
+    "ingredients": {
+      "a": "mushroom",
+      "b": "potato",
+      "c": "ginger"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%89%E3%83%80%E3%82%A4%E3%83%88%E3%82%B9"
+  },
+  {
+    "dexNo": 390,
+    "pokedexId": 390,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "ヒコザル",
+    "baseNameJa": "ヒコザル",
+    "specialty": "Skills",
+    "type": "Fire",
+    "typeJa": "ほのお",
+    "expType": 600,
+    "ingredients": {
+      "a": "herb",
+      "b": "ginger",
+      "c": "coffee"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%92%E3%82%B3%E3%82%B6%E3%83%AB"
+  },
+  {
+    "dexNo": 391,
+    "pokedexId": 391,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "モウカザル",
+    "baseNameJa": "モウカザル",
+    "specialty": "Skills",
+    "type": "Fighting",
+    "typeJa": "かくとう",
+    "expType": 600,
+    "ingredients": {
+      "a": "herb",
+      "b": "ginger",
+      "c": "coffee"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A2%E3%82%A6%E3%82%AB%E3%82%B6%E3%83%AB"
+  },
+  {
+    "dexNo": 392,
+    "pokedexId": 392,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "ゴウカザル",
+    "baseNameJa": "ゴウカザル",
+    "specialty": "Skills",
+    "type": "Fighting",
+    "typeJa": "かくとう",
+    "expType": 600,
+    "ingredients": {
+      "a": "herb",
+      "b": "ginger",
+      "c": "coffee"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%B4%E3%82%A6%E3%82%AB%E3%82%B6%E3%83%AB"
+  },
+  {
+    "dexNo": 393,
+    "pokedexId": 393,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "ポッチャマ",
+    "baseNameJa": "ポッチャマ",
+    "specialty": "Berries",
+    "type": "Water",
+    "typeJa": "みず",
+    "expType": 600,
+    "ingredients": {
+      "a": "egg",
+      "b": "leek",
+      "c": "honey"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%9D%E3%83%83%E3%83%81%E3%83%A3%E3%83%9E"
+  },
+  {
+    "dexNo": 394,
+    "pokedexId": 394,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "ポッタイシ",
+    "baseNameJa": "ポッタイシ",
+    "specialty": "Berries",
+    "type": "Water",
+    "typeJa": "みず",
+    "expType": 600,
+    "ingredients": {
+      "a": "egg",
+      "b": "leek",
+      "c": "honey"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%9D%E3%83%83%E3%82%BF%E3%82%A4%E3%82%B7"
+  },
+  {
+    "dexNo": 395,
+    "pokedexId": 395,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "エンペルト",
+    "baseNameJa": "エンペルト",
+    "specialty": "Berries",
+    "type": "Steel",
+    "typeJa": "はがね",
+    "expType": 600,
+    "ingredients": {
+      "a": "egg",
+      "b": "leek",
+      "c": "honey"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%A8%E3%83%B3%E3%83%9A%E3%83%AB%E3%83%88"
+  },
+  {
     "dexNo": 403,
     "pokedexId": 403,
     "form": 0,

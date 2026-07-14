@@ -3514,6 +3514,204 @@
       "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A9%E3%83%86%E3%82%A3%E3%82%AA%E3%82%B9"
     },
     {
+      "dexNo": 387,
+      "nameJa": "ナエトル",
+      "specialtyJa": "スキル",
+      "sleepTypeJa": "うとうと",
+      "berryJa": [
+        "ドリのみ"
+      ],
+      "ingAJa": [
+        "あじわいキノコ"
+      ],
+      "ingBJa": [
+        "ほっこりポテト"
+      ],
+      "ingCJa": [
+        "あったかジンジャー"
+      ],
+      "mainSkillJa": "げんきオールS",
+      "fp": 5,
+      "helpSeconds": 4500,
+      "link": "https://wikiwiki.jp/poke_sleep/%E3%83%8A%E3%82%A8%E3%83%88%E3%83%AB"
+    },
+    {
+      "dexNo": 388,
+      "nameJa": "ハヤシガメ",
+      "specialtyJa": "スキル",
+      "sleepTypeJa": "うとうと",
+      "berryJa": [
+        "ドリのみ"
+      ],
+      "ingAJa": [
+        "あじわいキノコ"
+      ],
+      "ingBJa": [
+        "ほっこりポテト"
+      ],
+      "ingCJa": [
+        "あったかジンジャー"
+      ],
+      "mainSkillJa": "げんきオールS",
+      "fp": 12,
+      "helpSeconds": 3700,
+      "link": "https://wikiwiki.jp/poke_sleep/%E3%83%8F%E3%83%A4%E3%82%B7%E3%82%AC%E3%83%A1"
+    },
+    {
+      "dexNo": 389,
+      "nameJa": "ドダイトス",
+      "specialtyJa": "スキル",
+      "sleepTypeJa": "ぐっすり",
+      "berryJa": [
+        "フィラのみ"
+      ],
+      "ingAJa": [
+        "あじわいキノコ"
+      ],
+      "ingBJa": [
+        "ほっこりポテト"
+      ],
+      "ingCJa": [
+        "あったかジンジャー"
+      ],
+      "mainSkillJa": "げんきオールS",
+      "fp": 20,
+      "helpSeconds": 2900,
+      "link": "https://wikiwiki.jp/poke_sleep/%E3%83%89%E3%83%80%E3%82%A4%E3%83%88%E3%82%B9"
+    },
+    {
+      "dexNo": 390,
+      "nameJa": "ヒコザル",
+      "specialtyJa": "スキル",
+      "sleepTypeJa": "すやすや",
+      "berryJa": [
+        "ヒメリのみ"
+      ],
+      "ingAJa": [
+        "げきからハーブ"
+      ],
+      "ingBJa": [
+        "あったかジンジャー"
+      ],
+      "ingCJa": [
+        "めざましコーヒー"
+      ],
+      "mainSkillJa": "きのみバースト",
+      "fp": 5,
+      "helpSeconds": 4100,
+      "link": "https://wikiwiki.jp/poke_sleep/%E3%83%92%E3%82%B3%E3%82%B6%E3%83%AB"
+    },
+    {
+      "dexNo": 391,
+      "nameJa": "モウカザル",
+      "specialtyJa": "スキル",
+      "sleepTypeJa": "ぐっすり",
+      "berryJa": [
+        "クラボのみ"
+      ],
+      "ingAJa": [
+        "げきからハーブ"
+      ],
+      "ingBJa": [
+        "あったかジンジャー"
+      ],
+      "ingCJa": [
+        "めざましコーヒー"
+      ],
+      "mainSkillJa": "きのみバースト",
+      "fp": 12,
+      "helpSeconds": 3100,
+      "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A2%E3%82%A6%E3%82%AB%E3%82%B6%E3%83%AB"
+    },
+    {
+      "dexNo": 392,
+      "nameJa": "ゴウカザル",
+      "specialtyJa": "スキル",
+      "sleepTypeJa": "ぐっすり",
+      "berryJa": [
+        "クラボのみ"
+      ],
+      "ingAJa": [
+        "げきからハーブ"
+      ],
+      "ingBJa": [
+        "あったかジンジャー"
+      ],
+      "ingCJa": [
+        "めざましコーヒー"
+      ],
+      "mainSkillJa": "きのみバースト",
+      "fp": 20,
+      "helpSeconds": 2400,
+      "link": "https://wikiwiki.jp/poke_sleep/%E3%82%B4%E3%82%A6%E3%82%AB%E3%82%B6%E3%83%AB"
+    },
+    {
+      "dexNo": 393,
+      "nameJa": "ポッチャマ",
+      "specialtyJa": "きのみ",
+      "sleepTypeJa": "ぐっすり",
+      "berryJa": [
+        "オレンのみ"
+      ],
+      "ingAJa": [
+        "とくせんエッグ"
+      ],
+      "ingBJa": [
+        "ふといながねぎ"
+      ],
+      "ingCJa": [
+        "あまいミツ"
+      ],
+      "mainSkillJa": "おてつだいサポートS",
+      "fp": 5,
+      "helpSeconds": 4500,
+      "link": "https://wikiwiki.jp/poke_sleep/%E3%83%9D%E3%83%83%E3%83%81%E3%83%A3%E3%83%9E"
+    },
+    {
+      "dexNo": 394,
+      "nameJa": "ポッタイシ",
+      "specialtyJa": "きのみ",
+      "sleepTypeJa": "ぐっすり",
+      "berryJa": [
+        "オレンのみ"
+      ],
+      "ingAJa": [
+        "とくせんエッグ"
+      ],
+      "ingBJa": [
+        "ふといながねぎ"
+      ],
+      "ingCJa": [
+        "あまいミツ"
+      ],
+      "mainSkillJa": "おてつだいサポートS",
+      "fp": 12,
+      "helpSeconds": 3700,
+      "link": "https://wikiwiki.jp/poke_sleep/%E3%83%9D%E3%83%83%E3%82%BF%E3%82%A4%E3%82%B7"
+    },
+    {
+      "dexNo": 395,
+      "nameJa": "エンペルト",
+      "specialtyJa": "きのみ",
+      "sleepTypeJa": "ぐっすり",
+      "berryJa": [
+        "ベリブのみ"
+      ],
+      "ingAJa": [
+        "とくせんエッグ"
+      ],
+      "ingBJa": [
+        "ふといながねぎ"
+      ],
+      "ingCJa": [
+        "あまいミツ"
+      ],
+      "mainSkillJa": "おてつだいサポートS",
+      "fp": 20,
+      "helpSeconds": 3200,
+      "link": "https://wikiwiki.jp/poke_sleep/%E3%82%A8%E3%83%B3%E3%83%9A%E3%83%AB%E3%83%88"
+    },
+    {
       "dexNo": 403,
       "nameJa": "コリンク",
       "specialtyJa": "食材",
