@@ -2,7 +2,7 @@
  * E2E Test: 05-export
  * エクスポートオーバーレイのテスト（32件）
  */
-import { test, expect } from '@playwright/test';
+import { test, expect, type Download } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -18,6 +18,32 @@ const __dirname = path.dirname(__filename);
 const testConfig = JSON.parse(
   fs.readFileSync(path.join(__dirname, '../fixtures/test-config.json'), 'utf-8')
 );
+
+// ============================================================
+// PNG 構造検証ヘルパー（fbl03 Phase 0）
+// ============================================================
+async function readDownloadBuffer(download: Download): Promise<Buffer> {
+  const p = await download.path();
+  expect(p, 'download.path() must resolve to a saved file').toBeTruthy();
+  return fs.readFileSync(p as string);
+}
+
+/**
+ * PNG signature と IHDR の width/height を検証し寸法を返す。
+ * OS を跨ぐ全 byte hash は font rasterize 差で不安定なため、構造だけを合否条件にする。
+ */
+function assertValidPng(buf: Buffer): { width: number; height: number } {
+  const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  const head = Array.from(buf.subarray(0, 8));
+  expect(head, 'PNG signature 89 50 4E 47 0D 0A 1A 0A').toEqual(signature);
+  // 8byte signature + 4byte length + "IHDR"
+  expect(buf.toString('ascii', 12, 16)).toBe('IHDR');
+  const width = buf.readUInt32BE(16);
+  const height = buf.readUInt32BE(20);
+  expect(width, 'IHDR width > 0').toBeGreaterThan(0);
+  expect(height, 'IHDR height > 0').toBeGreaterThan(0);
+  return { width, height };
+}
 
 // ============================================================
 // セットアップヘルパー: ゴローニャ＋スイクン条件
@@ -146,30 +172,95 @@ test.describe('05-export B. 画像出力', () => {
     await expect(exportPanel.saveImageButton).toBeVisible();
   });
 
-  test('5. 「画像を保存」ボタンクリックで処理が開始される', async ({ page }) => {
+  // fbl03 Phase 0: download を必須にし、PNG 構造まで検証する。
+  // 旧テストは download が無くても通る偽陽性だったため厳格化した。
+  // Canvas 直接描画へ切替後に安定して通ることを必須条件とする。
+  test('5. 「画像を保存」で PNG が download され、署名と寸法が有効', async ({ page }) => {
     const exportPanel = new ExportPanelPage(page);
 
-    // ダウンロードイベントを待つ
-    const downloadPromise = page.waitForEvent('download', { timeout: 10000 }).catch(() => null);
+    const download = await exportPanel.saveImageAndWaitDownload();
+    expect(download.suggestedFilename()).toContain('CandyBoost-Planner');
+    expect(download.suggestedFilename().endsWith('.png')).toBe(true);
 
-    await exportPanel.clickSaveImage();
+    const buf = await readDownloadBuffer(download);
+    assertValidPng(buf);
+  });
 
-    // ダウンロードが開始されるか、exportBusy状態になることを確認
-    const download = await downloadPromise;
-    if (download) {
-      // ダウンロードが成功した場合
-      expect(download.suggestedFilename()).toContain('CandyBoost-Planner');
+  // fbl03 Phase 0: 同一 overlay をリロードせず連続 3 回保存できること。
+  // 旧 DOM capture 経路は連続保存で状態破損・reload するため、この必須テストで検出する。
+  test('5b. 同一 overlay で連続 3 回 download でき、毎回有効な PNG', async ({ page }) => {
+    const exportPanel = new ExportPanelPage(page);
+
+    for (let i = 0; i < 3; i++) {
+      const download = await exportPanel.saveImageAndWaitDownload();
+      const buf = await readDownloadBuffer(download);
+      assertValidPng(buf);
+      // overlay は開いたまま操作可能であること
+      await expect(exportPanel.saveImageButton).toBeEnabled();
     }
   });
 
-  test('6. 処理中はボタンが無効化される', async ({ page }) => {
+  // fbl03 Phase 0: 保存が export sheet の DOM を破壊しないこと。
+  test('5c. 保存前後で sheet の DOM と capture iframe が変化しない', async ({ page }) => {
     const exportPanel = new ExportPanelPage(page);
 
-    // 処理開始前は有効
-    await expect(exportPanel.saveImageButton).toBeEnabled();
+    const before = await exportPanel.getSheetSnapshot();
+    const iframeBefore = await exportPanel.countCaptureIframes();
 
-    // 注: 実際の処理中の無効化はタイミングが短いため、
-    // ボタンが存在し、初期状態で有効であることを確認
+    const download = await exportPanel.saveImageAndWaitDownload();
+    assertValidPng(await readDownloadBuffer(download));
+
+    const after = await exportPanel.getSheetSnapshot();
+    const iframeAfter = await exportPanel.countCaptureIframes();
+
+    // 親要素・class・inline style・scrollTop が保存前後で不変
+    expect(after.parentTag).toBe(before.parentTag);
+    expect(after.className).toBe(before.className);
+    expect(after.styleAttr).toBe(before.styleAttr);
+    expect(after.overlayScrollTop).toBe(before.overlayScrollTop);
+
+    // capture iframe が残留・増加しない（新 renderer では 0 件）
+    expect(iframeAfter.html2canvas).toBe(0);
+    expect(iframeAfter.bodyIframes).toBeLessThanOrEqual(iframeBefore.bodyIframes);
+
+    // 保存後も overlay を操作できる（CSV メニュー開閉・close）
+    await exportPanel.openCsvMenu();
+    await expect(exportPanel.csvMenu).toBeVisible();
+    await exportPanel.sheet.click();
+    await expect(exportPanel.csvMenu).not.toBeVisible();
+    await exportPanel.close();
+    await exportPanel.expectOverlayHidden();
+  });
+
+  test('6. 「画像を保存」ボタンは初期状態で有効', async ({ page }) => {
+    const exportPanel = new ExportPanelPage(page);
+    await expect(exportPanel.saveImageButton).toBeEnabled();
+  });
+
+  test('6b. 長押し保存ビューアの案内が狭い画面でも上端に隠れない', async ({ page }) => {
+    const exportPanel = new ExportPanelPage(page);
+    await page.setViewportSize({ width: 390, height: 500 });
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'userAgent', {
+        configurable: true,
+        value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)',
+      });
+      Object.defineProperty(navigator, 'share', {
+        configurable: true,
+        value: undefined,
+      });
+    });
+
+    await exportPanel.clickSaveImage();
+
+    const viewer = page.getByTestId('export-save-viewer');
+    const hint = viewer.locator('.exportSaveViewer__hint');
+    await expect(viewer).toBeVisible();
+    await expect(hint).toBeVisible();
+
+    const hintBox = await hint.boundingBox();
+    expect(hintBox, '長押し保存の案内に表示領域がある').not.toBeNull();
+    expect(hintBox!.y, '長押し保存の案内が viewport 上端より下にある').toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -272,7 +363,7 @@ test.describe('05-export D. サマリー表示', () => {
 
   test('13. ブランドラベルが正しく表示される（フル）', async ({ page }) => {
     const exportPanel = new ExportPanelPage(page);
-    // デフォルトはフルなので「ポケモンスリープ　アメブースト計画」が表示される
+    // デフォルトはフルなので「ポケモンスリープ アメブースト計画」が表示される
     await expect(exportPanel.brandLabel).toContainText('ポケモンスリープ');
   });
 
@@ -297,7 +388,6 @@ test.describe('05-export D. サマリー表示', () => {
   });
 
   test('17. 使用率が正しく表示される', async ({ page }) => {
-    const exportPanel = new ExportPanelPage(page);
     // プログレスバーのヘッダーに使用率が表示される
     const barHead = page.locator('.exportBarHead').first();
     await expect(barHead).toContainText('%');
@@ -333,6 +423,10 @@ test.describe('05-export E. リスト表示', () => {
     const row = exportPanel.getListRow(0);
     const values = await exportPanel.getListRowValues(row);
 
+    await expect(exportPanel.listHead.locator('.exportList__col')).toHaveCount(6);
+    await expect(row.locator('.exportList__col')).toHaveCount(6);
+    await expect(exportPanel.listHead).not.toContainText('アイテム');
+    await expect(exportPanel.listHead).not.toContainText('calc.candySupply');
     expect(values.name).toBeTruthy();
     expect(values.srcLevel).toBeTruthy();
     expect(values.dstLevel).toBeTruthy();
@@ -363,6 +457,8 @@ test.describe('05-export E. リスト表示', () => {
 
     // ヘッダーにアメブカラムがないことを確認
     await expect(exportPanel.listHead).not.toContainText('アメブ');
+    await expect(exportPanel.listHead.locator('.exportList__col')).toHaveCount(4);
+    await expect(exportPanel.getListRow(0).locator('.exportList__col')).toHaveCount(4);
   });
 
   test('23. 不足カラムが存在しないことを確認する', async ({ page }) => {
@@ -469,5 +565,17 @@ test.describe('05-export G. 計算機との整合性検証', () => {
     expect(values.pct).toBe('100%');
     expect(values.items).toContain('S475');
     expect(values.items).toContain('M3');
+  });
+
+  test('33. CSVに実使用アイテム内訳が含まれる', async ({ page }) => {
+    const exportPanel = new ExportPanelPage(page);
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await exportPanel.openCsvMenu();
+    await exportPanel.clickCsvCopy();
+    const csv = await page.evaluate(() => navigator.clipboard.readText());
+
+    expect(csv).toContain('アイテム');
+    expect(csv).toContain('タM3');
+    expect(csv).toContain('万S475');
   });
 });

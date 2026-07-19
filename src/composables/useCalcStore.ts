@@ -1,19 +1,29 @@
-import { computed, nextTick, ref, toRaw, watch, type Ref } from "vue";
+import { computed, ref, toRaw, watch, type Ref } from "vue";
 import type { Composer } from "vue-i18n";
 import type { AppLocale } from "../i18n";
 import type { BoostEvent, ExpGainNature, ExpType, SleepSettings } from "../domain/types";
 import { calcExp, calcExpAndCandy, calcExpAndCandyMixed, calcLevelByCandy } from "../domain/pokesleep";
 import { boostRules, defaultBoostKind } from "../domain/pokesleep/boost-config";
 import type { CalcRowV1, CalcSaveSlotV1 } from "../persistence/calc";
-import { loadCalcSlots, loadLegacyTotalShards, saveCalcSlots, saveTotalShards, loadBoostCandyRemaining, saveBoostCandyRemaining, loadSleepSettings, saveSleepSettings } from "../persistence/calc";
+import { loadCalcSlots, loadTotalShards, saveCalcSlots, saveTotalShards, loadBoostCandyRemaining, saveBoostCandyRemaining, loadSleepSettings, saveSleepSettings } from "../persistence/calc";
+import { deferPersistUntilReleased, schedulePersist } from "../persistence/deferredPersist";
 import { cryptoRandomId } from "../persistence/box";
 import { useCandyStore } from "./useCandyStore";
 import { getPokemonType } from "../domain/pokesleep/pokemon-names";
-import { CANDY_VALUES } from "../persistence/candy";
-import { planLevelUp } from "../domain/level-planner/core/plan";
-import type { LevelUpPlanResult, PokemonLevelUpResult, ItemUsage } from "../domain/level-planner/types";
+import { CANDY_VALUES } from "../domain/level-planner/constants";
+import { solveLevelPlanWithBudget } from "../domain/level-planner/core/solveLevelPlan";
+import { buildDebugExportTsv as formatDebugExportTsv } from "../domain/level-planner/debugExport";
+import type { DebugExportContext } from "../domain/level-planner/debugExport";
+import { buildPlannerInput as buildLevelPlannerInput } from "../domain/level-planner/buildPlannerInput";
+import type { CalculationMode, CalculationPolicy, ItemCompareMode, LevelPlannerInput, LevelPlannerResult, MixedCalculationMeta, PokemonPlanLine, PokemonPlanResult, StructuralProbeStatus } from "../domain/level-planner/types";
+import { buildPlannerInputSignature, buildPlannerProbeSignature, buildPlannerStructureSignature } from "../domain/level-planner/signature";
+import type { DeadlineExceededMeta, PlannerTuning } from "../domain/level-planner/types";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
+import { isPerfEnabled } from "../utils/perf";
 export type CalcRow = CalcRowV1;
+
+const PLAN_RESULT_PERF_ENABLED = isPerfEnabled();
+const PLAN_RESULT_EXACT_VERIFICATION_ENABLED = PLAN_RESULT_PERF_ENABLED;
 
 export type CalcRowView = CalcRow & {
   title: string;
@@ -42,6 +52,55 @@ export type CalcExportRow = {
 
 export type CalcExportTotals = { boostCandy: number; normalCandy: number; totalCandy: number; shards: number };
 
+const PLAN_RESULT_DEBOUNCE_MS = 150;
+const STRUCTURAL_PROBE_DEADLINE_MS = 2_000;
+const AUTO_EXACT_SOFT_LIMIT_MS = 1_500;
+
+type PlannerWorkerRequest = {
+  slotId: string;
+  requestId: number;
+  lane: 'auto' | 'manualExact';
+  inputSignature: string;
+  input: LevelPlannerInput;
+  calculationMode: CalculationMode;
+  tuning?: Partial<PlannerTuning>;
+  deadlineMs?: number;
+  abortAfterExpansions?: number;
+  mixedPrefixCount?: number;
+  perfEnabled: boolean;
+};
+
+type PlannerWorkerResponse =
+  | { kind: 'result'; slotId: string; requestId: number; lane: 'auto' | 'manualExact'; inputSignature: string; calculationMode: CalculationMode; result: LevelPlannerResult; durationMs: number; mixedMeta?: MixedCalculationMeta }
+  | { kind: 'deadlineExceeded'; slotId: string; requestId: number; lane: 'auto' | 'manualExact'; inputSignature: string; calculationMode: 'exact'; meta: DeadlineExceededMeta; mixedResult: LevelPlannerResult; durationMs: number; mixedMeta: MixedCalculationMeta }
+  | { kind: 'error'; slotId: string; requestId: number; lane: 'auto' | 'manualExact'; inputSignature: string; error: string };
+
+export type DisplayedPlanResult = {
+  result: LevelPlannerResult;
+  slotId: string;
+  inputSignature: string;
+  calculationMode: CalculationMode;
+  loss: boolean;
+  durationMs: number;
+  mixedPrefixCount?: number;
+  mixedSource?: MixedCalculationMeta['source'];
+};
+
+export type CalculationPerformanceProfile = {
+  policy: CalculationPolicy;
+  structuralProbeStatus: StructuralProbeStatus;
+  lastCalculationMode?: CalculationMode;
+  lastExactDurationMs?: number;
+  lastFastDurationMs?: number;
+  lastStructuralProbeDurationMs?: number;
+  lastDeadlineMs?: number;
+  mixedPrefixCount?: number;
+  lastInputSignature?: string;
+  exactResultStale: boolean;
+};
+
+type DebugExportResult = "copied" | "downloaded" | "failed";
+
 export type CalcBoxPlannerPatch = {
   boxId: string;
   level: number;
@@ -53,12 +112,16 @@ type CalcUndoState = {
   rows: CalcRow[];
   activeRowId: string | null;
   slots: Array<CalcSaveSlotV1 | null>;
+  boostCandyRemaining: number | null;
+  itemCompareMode: ItemCompareMode;
 };
 
 export type CalcStore = {
   // core state
   boostKind: Readonly<Ref<BoostEvent>>;
   setSlotBoostKind: (kind: BoostEvent) => void;
+  itemCompareMode: Ref<ItemCompareMode>;
+  setItemCompareMode: (mode: ItemCompareMode) => void;
   totalShards: Ref<number>;
   totalShardsText: Ref<string>;
   boostCandyRemaining: Ref<number | null>;
@@ -87,7 +150,7 @@ export type CalcStore = {
 
   exportRows: Readonly<Ref<CalcExportRow[]>>;
   exportActualTotals: Readonly<Ref<CalcExportTotals>>;
-  exportScale: Readonly<Ref<number>>;
+  debugExportEnabled: boolean;
 
   totalShardsUsed: Readonly<Ref<number>>;
   shardsCap: Readonly<Ref<number>>;
@@ -117,11 +180,20 @@ export type CalcStore = {
   activeRowBoostCandyUsagePct: Readonly<Ref<number>>;
 
   // candy allocation (new phase-based)
-  planResult: Readonly<Ref<LevelUpPlanResult | null>>;
+  planResult: Readonly<Ref<LevelPlannerResult | null>>;
+  planResultPending: Readonly<Ref<boolean>>;
+  displayedPlanResult: Readonly<Ref<DisplayedPlanResult | null>>;
+  calculationPerformanceProfile: Readonly<Ref<CalculationPerformanceProfile>>;
+  calculationPolicy: Readonly<Ref<CalculationPolicy>>;
+  structuralProbeStatus: Readonly<Ref<StructuralProbeStatus>>;
+  showFastCalculation: Readonly<Ref<boolean>>;
+  showExactImprovementHint: Readonly<Ref<boolean>>;
+  showManualExactVerification: Readonly<Ref<boolean>>;
+  runManualExactVerification: () => void;
   /** rowId → 計画結果（テンプレートや一覧での O(1) 参照用） */
-  pokemonResultByRowId: Readonly<Ref<Map<string, PokemonLevelUpResult>>>;
-  getPokemonResult: (id: string) => PokemonLevelUpResult | null;
-  getTheoreticalRow: (p: PokemonLevelUpResult) => ItemUsage;
+  pokemonResultByRowId: Readonly<Ref<Map<string, PokemonPlanResult>>>;
+  getPokemonResult: (id: string) => PokemonPlanResult | null;
+  getTheoreticalRow: (p: PokemonPlanResult) => PokemonPlanLine;
   universalCandyUsagePct: Readonly<Ref<number>>;
   universalCandyNeeded: Readonly<Ref<{ s: number; m: number; l: number; total: number }>>;
   universalCandyRanking: Readonly<Ref<Array<{
@@ -150,6 +222,8 @@ export type CalcStore = {
   resetBoostCandyRemaining: () => void;
   openExport: () => void;
   closeExport: () => void;
+  buildDebugExportTsv: () => string;
+  copyDebugExportTsv: () => Promise<DebugExportResult>;
 
   beginUndo: () => void;
   undo: () => void;
@@ -160,6 +234,12 @@ export type CalcStore = {
 
   switchToSlot: (slotIndex: number) => void;
   swapSlots: (fromIndex: number, toIndex: number) => void;
+
+  // slot clipboard (copy/paste)
+  canCopySlot: Readonly<Ref<boolean>>;
+  canPasteSlot: Readonly<Ref<boolean>>;
+  copySlot: () => void;
+  pasteSlot: () => void;
 
   // row UI: level / drag reorder
   nudgeDstLevel: (id: string, delta: number) => void;
@@ -212,7 +292,7 @@ export function useCalcStore(opts: {
   }
 
 
-  const slots = ref<Array<CalcSaveSlotV1 | null>>(loadCalcSlots());
+  const slots = ref<Array<CalcSaveSlotV1 | null>>(loadCalcSlots().map(slot => slot ? { ...slot, slotId: slot.slotId ?? cryptoRandomId() } : null));
 
   // アクティブスロットをLocalStorageから読み込み
   const SLOT_TAB_KEY = "candy-boost-planner:calc:activeSlot";
@@ -241,11 +321,17 @@ export function useCalcStore(opts: {
     const slot = slots.value[activeSlotTab.value];
     return slot?.boostKind ?? defaultBoostKind;
   });
+  const itemCompareMode = ref<ItemCompareMode>(slot0?.itemCompareMode ?? "surplusFirst");
+  function setItemCompareMode(mode: ItemCompareMode) {
+    itemCompareMode.value = mode;
+  }
 
-  const totalShards = ref<number>(loadLegacyTotalShards());
+  const totalShards = ref<number>(loadTotalShards());
   const totalShardsText = ref<string>("");
   // アメブ残数（nullの場合はboostKindによる上限を使用）
-  const boostCandyRemaining = ref<number | null>(loadBoostCandyRemaining());
+  const initialBoostCandyRemaining =
+    slot0?.boostCandyRemaining !== undefined ? slot0.boostCandyRemaining ?? null : loadBoostCandyRemaining();
+  const boostCandyRemaining = ref<number | null>(initialBoostCandyRemaining);
   const boostCandyRemainingText = ref<string>("");
 
   // 睡眠育成設定
@@ -288,17 +374,20 @@ export function useCalcStore(opts: {
 
   // 全行のアメブ個数を再計算（アメブ上限変更時用）
   function recalculateAllRows() {
-    // リスト上位から順に再計算（上位が優先的にリソースを使用するため）
-    for (const r of rows.value) {
-      // 既存の目標Lvで再計算（calcCandyPatch が呼ばれる）
-      nextTick(() => {
-        const row = rows.value.find(x => x.id === r.id);
-        if (row) {
-          // setDstLevel を呼ぶことで calcCandyPatch が実行される
-          setDstLevel(row.id, row.dstLevel);
-        }
+    let remainingBoostCandy = autoBoostCandyCap();
+    rows.value = rows.value.map((row) => {
+      const patch = calcCandyPatch({
+        srcLevel: row.srcLevel,
+        dstLevel: row.dstLevel,
+        expType: row.expType,
+        nature: row.nature,
+        expRemaining: row.expRemaining,
+        excludeRowId: row.id,
+        availableBoostCandy: remainingBoostCandy,
       });
-    }
+      remainingBoostCandy = Math.max(0, remainingBoostCandy - rowBoostCandyForAutoAllocation({ ...row, ...patch }));
+      return { ...row, ...patch };
+    });
   }
 
   function resetBoostCandyRemaining() {
@@ -338,10 +427,12 @@ export function useCalcStore(opts: {
     if (!currentSlot) {
       // 空のスロットの場合は新規作成
       const newSlot: CalcSaveSlotV1 = {
+        slotId: cryptoRandomId(),
         savedAt: new Date().toISOString(),
         rows: [],
         activeRowId: null,
         boostKind: newKind,
+        itemCompareMode: itemCompareMode.value,
       };
       slots.value = slots.value.map((x, idx) => (idx === i ? newSlot : x));
       return;
@@ -357,13 +448,8 @@ export function useCalcStore(opts: {
     boostCandyRemaining.value = null;
     boostCandyRemainingText.value = "";
 
-    // 全行の boostOrExpAdjustment を0にリセット後、目標Lvを再設定
-    for (const r of rows.value) {
-      r.boostOrExpAdjustment = 0;
-    }
-    for (const r of rows.value) {
-      setDstLevel(r.id, r.dstLevel);
-    }
+    // 全行を上位から一括再計算し、UI入力値もグローバル上限内に収める
+    recalculateAllRows();
   }
 
   const fullLabel = computed(() =>
@@ -399,11 +485,13 @@ export function useCalcStore(opts: {
     const i = activeSlotTab.value;
     const now = new Date().toISOString();
     const slot: CalcSaveSlotV1 = {
+      slotId: slots.value[i]?.slotId ?? cryptoRandomId(),
       savedAt: now,
       rows: cloneCalcRows(rows.value),
       activeRowId: activeRowId.value,
       boostKind: boostKind.value,  // 保存時の boostKind を記録
       boostCandyRemaining: boostCandyRemaining.value,  // スロットごとに保存
+      itemCompareMode: itemCompareMode.value,
     };
     slots.value = slots.value.map((x, idx) => (idx === i ? slot : x));
   }
@@ -427,11 +515,13 @@ export function useCalcStore(opts: {
       activeRowId.value = slot.activeRowId ?? rows.value[0]?.id ?? null;
       // スロットから boostCandyRemaining を復元（未設定の場合は null = デフォルト値使用）
       boostCandyRemaining.value = slot.boostCandyRemaining ?? null;
+      itemCompareMode.value = slot.itemCompareMode ?? "surplusFirst";
     } else {
       rows.value = [];
       activeRowId.value = null;
       // 空スロットは null（デフォルト値を使用）
       boostCandyRemaining.value = null;
+      itemCompareMode.value = "surplusFirst";
     }
 
     // undo/redoスタックをクリア
@@ -464,16 +554,73 @@ export function useCalcStore(opts: {
     }
   }
 
+  // ===== スロットのコピー / ペースト =====
+  // クリップボードはメモリ内のみ（リロードで消える）
+  const slotClipboard = ref<CalcSaveSlotV1 | null>(null);
+  const canCopySlot = computed(() => rows.value.length > 0);
+  const canPasteSlot = computed(() => slotClipboard.value !== null);
+
+  // 現在アクティブなスロットの内容をクリップボードへコピー（状態は変更しないのでundo対象外）
+  function copySlot() {
+    if (rows.value.length === 0) return;
+    slotClipboard.value = {
+      slotId: cryptoRandomId(),
+      savedAt: new Date().toISOString(),
+      rows: cloneCalcRows(rows.value),
+      activeRowId: activeRowId.value,
+      boostKind: boostKind.value,
+      boostCandyRemaining: boostCandyRemaining.value,
+      itemCompareMode: itemCompareMode.value,
+    };
+  }
+
+  // クリップボードの内容を現在アクティブなスロットへ貼り付け（丸ごと上書き・undo対象）
+  function pasteSlot() {
+    const clip = slotClipboard.value;
+    if (!clip) return;
+    beginUndo();
+
+    const i = activeSlotTab.value;
+    const pastedRows = cloneCalcRows(clip.rows);
+    const newActiveRowId =
+      clip.activeRowId && pastedRows.some((r) => r.id === clip.activeRowId)
+        ? clip.activeRowId
+        : pastedRows[0]?.id ?? null;
+    const pastedBoostCandyRemaining = clip.boostCandyRemaining ?? null;
+    const pastedItemCompareMode = clip.itemCompareMode ?? "surplusFirst";
+
+    // スロット（boostKind の真実のソース）を更新
+    const newSlot: CalcSaveSlotV1 = {
+      slotId: slots.value[i]?.slotId ?? cryptoRandomId(),
+      savedAt: new Date().toISOString(),
+      rows: pastedRows,
+      activeRowId: newActiveRowId,
+      boostKind: clip.boostKind,
+      boostCandyRemaining: pastedBoostCandyRemaining,
+      itemCompareMode: pastedItemCompareMode,
+    };
+    slots.value = slots.value.map((x, idx) => (idx === i ? newSlot : x));
+
+    // ライブ状態へ反映（boostKind は slots から算出される computed のため設定不要）
+    rows.value = cloneCalcRows(pastedRows);
+    activeRowId.value = newActiveRowId;
+    boostCandyRemaining.value = pastedBoostCandyRemaining;
+    itemCompareMode.value = pastedItemCompareMode;
+  }
+
 
   // データ変更時に現在のスロットに自動保存
   watch([rows, activeRowId], () => saveToCurrentSlot(), { deep: true });
-  watch(slots, (v) => saveCalcSlots(v), { deep: true });
+  // slots の全更新経路は新しい配列を代入する。行変更のたびに複製済みの
+  // 全スロットを再度 deep traversal せず、配列置換だけで永続化を予約する。
+  watch(slots, () => schedulePersist("calcSlots", () => saveCalcSlots(slots.value)));
   // 設定値の自動保存
   watch(totalShards, (v) => saveTotalShards(v));
   watch(boostCandyRemaining, (v) => saveBoostCandyRemaining(v));
+  watch(itemCompareMode, () => saveToCurrentSlot());
 
   watch(
-    rows,
+    () => rows.value.map((row) => row.id).join("\u0000"),
     () => {
       const id = activeRowId.value;
       if (!id) {
@@ -483,8 +630,7 @@ export function useCalcStore(opts: {
       if (!rows.value.some((x) => x.id === id)) {
         activeRowId.value = rows.value[0]?.id ?? null;
       }
-    },
-    { deep: true }
+    }
   );
 
   const activeRow = computed(() => rows.value.find((x) => x.id === activeRowId.value) ?? null);
@@ -500,6 +646,8 @@ export function useCalcStore(opts: {
       rows: cloneCalcRows(rows.value),
       activeRowId: activeRowId.value,
       slots: cloneCalcSlots(slots.value),
+      boostCandyRemaining: boostCandyRemaining.value,
+      itemCompareMode: itemCompareMode.value,
     };
   }
 
@@ -507,6 +655,8 @@ export function useCalcStore(opts: {
     rows.value = s.rows;
     activeRowId.value = s.activeRowId;
     slots.value = s.slots;
+    boostCandyRemaining.value = s.boostCandyRemaining;
+    itemCompareMode.value = s.itemCompareMode;
   }
 
   function beginUndo() {
@@ -566,6 +716,23 @@ export function useCalcStore(opts: {
     return Math.max(min, Math.min(max, Math.floor(n)));
   }
 
+  function autoBoostCandyCap(): number {
+    if (boostKind.value === "none") return 0;
+    return boostCandyRemaining.value ?? (boostKind.value === "mini" ? 350 : 3500);
+  }
+
+  function rowBoostCandyForAutoAllocation(row: CalcRow): number {
+    if (boostKind.value === "none") return 0;
+    return Math.max(0, Math.floor(row.boostOrExpAdjustment ?? 0));
+  }
+
+  function upperRowsBoostCandyForAutoAllocation(excludeRowId?: string): number {
+    if (boostKind.value === "none") return 0;
+    const targetIndex = excludeRowId === undefined ? rows.value.length : rows.value.findIndex((row) => row.id === excludeRowId);
+    const end = targetIndex >= 0 ? targetIndex : rows.value.length;
+    return rows.value.slice(0, end).reduce((sum, row) => sum + rowBoostCandyForAutoAllocation(row), 0);
+  }
+
   function updateRow(id: string, patch: Partial<CalcRow>) {
     rows.value = rows.value.map((x) => (x.id === id ? { ...x, ...patch } : x));
   }
@@ -585,8 +752,9 @@ export function useCalcStore(opts: {
     nature: ExpGainNature;
     expRemaining?: number;
     excludeRowId?: string;
+    availableBoostCandy?: number;
   }): Pick<CalcRow, 'boostOrExpAdjustment' | 'candyPeak' | 'boostRatioPct' | 'boostReachLevel' | 'mode'> {
-    const { srcLevel, dstLevel, expType, nature, expRemaining, excludeRowId } = params;
+    const { srcLevel, dstLevel, expType, nature, expRemaining, excludeRowId, availableBoostCandy } = params;
 
     if (srcLevel === dstLevel) {
       return { boostOrExpAdjustment: 0, candyPeak: 0, boostRatioPct: 100, boostReachLevel: dstLevel, mode: "targetLevel" };
@@ -609,22 +777,11 @@ export function useCalcStore(opts: {
       return { boostOrExpAdjustment: candy, candyPeak: candy, boostRatioPct: 100, boostReachLevel: dstLevel, mode: "targetLevel" };
     }
 
-    // アメブ/ミニブ: グローバル上限を考慮してリセット値を決定
-    // ユーザーが設定した上限があればそれを使用、なければデフォルト値（アメブ:3500、ミニブ:350）
-    const defaultCap = boostKind.value === "mini" ? 350 : 3500;
-    const globalCap = boostCandyRemaining.value ?? defaultCap;
-
-    // 対象ポケモンより上位のポケモンの実使用量を合計
-    // リスト上位から優先的にリソースを配分するため、上位が使った残りを下位に割り当てる
-    const targetIndex = rows.value.findIndex((r) => r.id === excludeRowId);
-    const upperPokemonsBoostUsed = planResult.value
-      ? planResult.value.pokemons
-        .slice(0, targetIndex >= 0 ? targetIndex : rows.value.length)
-        .reduce((sum, p) => sum + p.reachableItems.boostCount, 0)
-      : 0;
-
-    // グローバル残数 = グローバル上限 - 上位ポケモンの実使用量
-    const globalRemaining = Math.max(0, globalCap - upperPokemonsBoostUsed);
+    // アメブ/ミニブ: グローバル上限を考慮してリセット値を決定。
+    // UI自動設定は planResult を待たず、現在の上位行UI値から top-down に残数を決める。
+    const globalRemaining = availableBoostCandy !== undefined
+      ? Math.max(0, Math.floor(availableBoostCandy))
+      : Math.max(0, autoBoostCandyCap() - upperRowsBoostCandyForAutoAllocation(excludeRowId));
 
     // リセット値 = min(必要数, グローバル残数)
     const resetValue = Math.min(candy, globalRemaining);
@@ -1179,7 +1336,7 @@ export function useCalcStore(opts: {
 
   const exportOpen = ref(false);
   function openExport() {
-    if (!rowsView.value.length) return;
+    if (!rowsView.value.length || planResultPending.value || !planResult.value) return;
     exportOpen.value = true;
   }
   function closeExport() {
@@ -1198,18 +1355,19 @@ export function useCalcStore(opts: {
       const p = getPokemonResult(r.id);
       if (!p) return null;
 
-      // 実使用（reachableItems）ベースの値を使用
-      const boostCandy = p.reachableItems.boostCount;
-      const normalCandy = p.reachableItems.normalCount;
-      const shards = p.reachableItems.shardsCount;
+      // 実使用（reachableLine）ベースの値を使用
+      const boostCandy = p.reachableLine.boostedCandyUnits;
+      const normalCandy = p.reachableLine.nonBoostCandyUnits;
+      const shards = p.reachableLine.dreamShardsUsed;
+      const supply = p.reachableLine.candySupply;
 
       // アメ補填情報
       const parts: string[] = [];
-      if (p.reachableItems.typeM > 0) parts.push(`${t("calc.candy.typeAbbr")}M${p.reachableItems.typeM}`);
-      if (p.reachableItems.typeS > 0) parts.push(`${t("calc.candy.typeAbbr")}S${p.reachableItems.typeS}`);
-      if (p.reachableItems.universalL > 0) parts.push(`${t("calc.candy.uniAbbr")}L${p.reachableItems.universalL}`);
-      if (p.reachableItems.universalM > 0) parts.push(`${t("calc.candy.uniAbbr")}M${p.reachableItems.universalM}`);
-      if (p.reachableItems.universalS > 0) parts.push(`${t("calc.candy.uniAbbr")}S${p.reachableItems.universalS}`);
+      if (supply.type.m > 0) parts.push(`${t("calc.candy.typeAbbr")}M${supply.type.m}`);
+      if (supply.type.s > 0) parts.push(`${t("calc.candy.typeAbbr")}S${supply.type.s}`);
+      if (supply.universal.l > 0) parts.push(`${t("calc.candy.uniAbbr")}L${supply.universal.l}`);
+      if (supply.universal.m > 0) parts.push(`${t("calc.candy.uniAbbr")}M${supply.universal.m}`);
+      if (supply.universal.s > 0) parts.push(`${t("calc.candy.uniAbbr")}S${supply.universal.s}`);
       const candySupply = parts.join(" ");
 
       return {
@@ -1217,7 +1375,7 @@ export function useCalcStore(opts: {
         title: String(r.title ?? "").trim() || "(no name)",
         natureLabel: natureLabel(r.nature),
         srcLevel: r.srcLevel,
-        dstLevel: p.reachedLevel,
+        dstLevel: p.reachableLine.level,
         boostCandy,
         normalCandy,
         totalCandy: boostCandy + normalCandy,
@@ -1229,23 +1387,119 @@ export function useCalcStore(opts: {
 
   const exportActualTotals = computed(() => {
     if (!planResult.value) return { boostCandy: 0, normalCandy: 0, totalCandy: 0, shards: 0 };
-    const boostCandy = planResult.value.actualBoostTotal;
-    const normalCandy = planResult.value.actualNormalTotal;
-    const shards = planResult.value.actualShardsTotal;
+    const boostCandy = planResult.value.summary.totalSupplied.totalBoostedCandyUnits;
+    const normalCandy = planResult.value.summary.totalSupplied.totalNonBoostCandyUnits;
+    const shards = planResult.value.summary.totalSupplied.totalDreamShards;
     return { boostCandy, normalCandy, totalCandy: boostCandy + normalCandy, shards };
   });
 
-  const exportScale = computed(() => {
-    const n = exportRows.value.length;
-    if (n <= 6) return 1;
-    if (n <= 9) return 0.94;
-    if (n <= 12) return 0.88;
-    if (n <= 16) return 0.82;
-    return 0.76;
-  });
+  const debugExportEnabled = PLAN_RESULT_EXACT_VERIFICATION_ENABLED;
+
+  function buildDebugExportContext(): DebugExportContext {
+    const displayed = displayedPlanResult.value;
+    const profile = calculationPerformanceProfile.value;
+    return {
+      result: planResult.value,
+      rows: rowsView.value.map(row => {
+        const plan = getPokemonResult(row.id);
+        const pokedexId = plan?.pokedexId ?? getRowPokedexId(row);
+        return {
+          id: row.id,
+          name: row.title,
+          pokedexId,
+          type: row.pokemonType || (pokedexId ? getPokemonType(pokedexId) : ""),
+          nature: row.nature,
+          mode: row.mode,
+          currentLevel: row.srcLevel,
+          currentExpInLevel: Math.max(0, calcExp(row.srcLevel, row.srcLevel + 1, row.expType) - row.expRemaining),
+          expRemaining: row.expRemaining,
+          targetLevel: row.dstLevel,
+          targetExpInLevel: plan?.targetExpInLevel,
+          candyTarget: row.candyTarget,
+          plan,
+        };
+      }),
+      itemCompareMode: itemCompareMode.value,
+      // inventorySnapshot.value is a Vue reactive proxy and cannot be passed
+      // directly to structuredClone in browsers. getInventory() returns a
+      // detached plain object suitable for the debug export DTO.
+      inventorySnapshot: candyStore.getInventory(),
+      boost: {
+        kind: boostKind.value,
+        limit: boostCandyRemaining.value ?? boostCandyDefaultCap.value,
+      },
+      dreamShards: shardsCap.value,
+      displayed: displayed ? {
+        result: displayed.result,
+        calculationMode: displayed.calculationMode,
+        loss: displayed.loss,
+        durationMs: displayed.durationMs,
+        mixedPrefixCount: displayed.mixedPrefixCount,
+        mixedSource: displayed.mixedSource,
+      } : null,
+      performanceProfile: {
+        policy: profile.policy,
+        structuralProbeStatus: profile.structuralProbeStatus,
+        lastDeadlineMs: profile.lastDeadlineMs,
+        mixedPrefixCount: profile.mixedPrefixCount,
+      },
+      verificationMode: "normalPathSnapshot",
+    };
+  }
+
+  function buildDebugExportTsv(): string {
+    return formatDebugExportTsv(buildDebugExportContext());
+  }
+
+  function downloadDebugExportTsv(text: string): boolean {
+    try {
+      const blob = new Blob([text], { type: "text/tab-separated-values;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      anchor.href = url;
+      anchor.download = `level-planner-debug-${timestamp}.tsv`;
+      anchor.style.display = "none";
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function copyDebugExportTsv(): Promise<DebugExportResult> {
+    if (!debugExportEnabled) return "failed";
+    const text = buildDebugExportTsv();
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return "copied";
+      }
+    } catch {
+      // fall through to textarea and file fallback
+    }
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.setAttribute("readonly", "true");
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      document.body.appendChild(textarea);
+      textarea.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(textarea);
+      if (ok) return "copied";
+    } catch {
+      // fall through to file fallback
+    }
+    return downloadDebugExportTsv(text) ? "downloaded" : "failed";
+  }
 
   // 実使用ベースのかけら合計 (planResult から取得)
-  const totalShardsUsed = computed(() => planResult.value?.actualShardsTotal ?? 0);
+  const totalShardsUsed = computed(() => planResult.value?.summary.totalSupplied.totalDreamShards ?? 0);
   const shardsCap = computed(() => Math.max(0, Math.floor(Number(totalShards.value) || 0)));
   const shardsOver = computed(() => totalShardsUsed.value - shardsCap.value);
   const shardsUsedPct = computed(() => (shardsCap.value > 0 ? (totalShardsUsed.value / shardsCap.value) * 100 : 0));
@@ -1266,7 +1520,7 @@ export function useCalcStore(opts: {
   });
 
   // 実使用ベースのアメブ合計 (planResult から取得)
-  const totalBoostCandyUsed = computed(() => planResult.value?.actualBoostTotal ?? 0);
+  const totalBoostCandyUsed = computed(() => planResult.value?.summary.totalSupplied.totalBoostedCandyUnits ?? 0);
   // アメブ種別による上限（デフォルト値）
   const boostCandyDefaultCap = computed(() => {
     if (boostKind.value === "mini") return 350;
@@ -1299,14 +1553,14 @@ export function useCalcStore(opts: {
   const activeRowShardsUsed = computed(() => {
     const activeId = activeRowId.value;
     if (!activeId || !planResult.value) return 0;
-    const p = planResult.value.pokemons.find(p => p.id === activeId);
-    return p?.reachableItems.shardsCount ?? 0;
+    const p = planResult.value.pokemonResults.find(p => p.pokemonId === activeId);
+    return p?.reachableLine.dreamShardsUsed ?? 0;
   });
   const activeRowBoostCandyUsed = computed(() => {
     const activeId = activeRowId.value;
     if (!activeId || !planResult.value) return 0;
-    const p = planResult.value.pokemons.find(p => p.id === activeId);
-    return p?.reachableItems.boostCount ?? 0;
+    const p = planResult.value.pokemonResults.find(p => p.pokemonId === activeId);
+    return p?.reachableLine.boostedCandyUnits ?? 0;
   });
 
   // バー用: 選択中ポケモン分のかけら%（超過がない場合のみ正しく表示）
@@ -1387,170 +1641,346 @@ export function useCalcStore(opts: {
   // planResult (新フェーズベースのレベルアップ計画)
   // ─────────────────────────────────────────────────────────────
 
+  function buildPlannerInput(): LevelPlannerInput | null {
+    return buildLevelPlannerInput(rowsView.value.map(row => ({
+      id: row.id,
+      pokedexId: getRowPokedexId(row),
+      title: row.title,
+      pokemonType: row.pokemonType,
+      srcLevel: row.srcLevel,
+      dstLevel: row.dstLevel,
+      expRemaining: row.expRemaining,
+      expType: row.expType,
+      nature: row.nature,
+      mode: row.mode,
+      boostReachLevel: row.boostReachLevel,
+      candyPeak: row.candyPeak,
+      candyTarget: row.candyTarget,
+      boostCandyInput: row.ui.boostCandyInput,
+    })), {
+      candyInventory: candyStore.getInventory(),
+      dreamShards: shardsCap.value,
+      boost: {
+        kind: boostKind.value,
+        limit: boostCandyRemaining.value ?? boostCandyDefaultCap.value,
+      },
+      itemCompareMode: itemCompareMode.value,
+    });
+  }
   /**
    * レベルアップ計画結果
+   *
+   * solveLevelPlan は重いため computed 内で同期実行しない。
+   * 連続した入力変更は debounce して、最後の入力だけを計算する。
    */
-  const planResult = computed<LevelUpPlanResult | null>(() => {
-    const rv = rowsView.value;
-    if (rv.length === 0) return null;
+  const planResult = ref<LevelPlannerResult | null>(null);
+  const planResultPending = ref(false);
+  const displayedPlanResult = ref<DisplayedPlanResult | null>(null);
+  const defaultCalculationPerformanceProfile = (): CalculationPerformanceProfile => ({ policy: 'autoExact', structuralProbeStatus: 'idle', exactResultStale: false });
+  const calculationPerformanceProfile = ref<CalculationPerformanceProfile>(defaultCalculationPerformanceProfile());
+  const calculationPolicy = computed(() => calculationPerformanceProfile.value.policy);
+  const structuralProbeStatus = computed(() => calculationPerformanceProfile.value.structuralProbeStatus);
+  const showFastCalculation = computed(() => displayedPlanResult.value?.calculationMode === 'prefixLocalMixed');
+  const showExactImprovementHint = computed(() => PLAN_RESULT_EXACT_VERIFICATION_ENABLED && showFastCalculation.value && Boolean(displayedPlanResult.value?.loss));
+  const showManualExactVerification = computed(() => PLAN_RESULT_EXACT_VERIFICATION_ENABLED && typeof Worker !== 'undefined' && showFastCalculation.value);
+  const slotProfiles = new Map<string, CalculationPerformanceProfile>();
+  const slotDisplayedResults = new Map<string, DisplayedPlanResult>();
+  let planResultTimer: ReturnType<typeof setTimeout> | null = null;
+  let planResultWorker: Worker | null = null;
+  let manualExactWorker: Worker | null = null;
+  let manualExactSlotId: string | null = null;
+  let planResultWorkerBusy = false;
+  let releasePlanResultPersistDeferral: (() => void) | null = null;
+  let releaseManualExactPersistDeferral: (() => void) | null = null;
+  let planResultRequestId = 0;
+  let manualExactRequestId = 0;
+  let planResultHasDispatched = false;
+  let displayGeneration = 0;
+  let previousInputSignature: string | null = null;
+  let previousStructureSignature: string | null = null;
+  let previousProbeSignature: string | null = null;
+  let previousSlotId: string | null = null;
+  let activeAutoContext: { slotId: string; inputSignature: string; input: LevelPlannerInput; generation: number; probe: boolean; calculationMode: CalculationMode } | null = null;
 
-    const inventory = candyStore.getInventory();
-    const requests = [];
+  function currentSlotId(): string {
+    return slots.value[activeSlotTab.value]?.slotId ?? `empty-slot-${activeSlotTab.value}`;
+  }
 
-    for (const r of rv) {
-      const pokedexId = getRowPokedexId(r);
-      if (!pokedexId) continue;
+  function disposePlanResultWorker(): void {
+    planResultWorker?.terminate();
+    planResultWorker = null;
+    planResultWorkerBusy = false;
+    releasePlanResultPersistDeferral?.();
+    releasePlanResultPersistDeferral = null;
+  }
 
-      const pokemonType = r.pokemonType || getPokemonType(pokedexId);
-      const toNextLevel = calcExp(r.srcLevel, r.srcLevel + 1, r.expType);
-      const expGot = (r.expRemaining > 0) ? Math.max(0, toNextLevel - r.expRemaining) : 0;
+  function updateProfile(patch: Partial<CalculationPerformanceProfile>, slotId = currentSlotId()): void {
+    const base = slotProfiles.get(slotId)
+      ?? (slotId === currentSlotId() ? calculationPerformanceProfile.value : defaultCalculationPerformanceProfile());
+    const next = { ...base, ...patch };
+    if (slotId === currentSlotId()) calculationPerformanceProfile.value = next;
+    slotProfiles.set(slotId, next);
+  }
 
-      // ピークと入力値からアメ数を計算
-      const peak = r.candyPeak || r.ui.boostCandyInput;
+  function applyDisplayedResult(result: LevelPlannerResult, context: { slotId: string; inputSignature: string; calculationMode: CalculationMode; durationMs: number; mixedPrefixCount?: number; mixedSource?: MixedCalculationMeta['source'] }): void {
+    const displayed: DisplayedPlanResult = { result, slotId: context.slotId, inputSignature: context.inputSignature, calculationMode: context.calculationMode, loss: result.lossLedger.hasLoss, durationMs: context.durationMs, mixedPrefixCount: context.mixedPrefixCount, mixedSource: context.mixedSource };
+    planResult.value = result;
+    displayedPlanResult.value = displayed;
+    slotDisplayedResults.set(context.slotId, displayed);
+  }
 
-      let candyNeed: number;
-      let boostOrExpAdjustment: number;
-      let dynamicDstLevel: number;
-      let dynamicDstExpInLevel: number;
+  function exactResultGate(response: { slotId: string; inputSignature: string; generation: number }): boolean {
+    return response.slotId === currentSlotId()
+      && response.inputSignature === previousInputSignature
+      && response.generation === displayGeneration;
+  }
 
-      if (boostKind.value === "none") {
-        // 通常モード: ピークと入力が連動、アメブがないので入力値がそのまま必要アメ数
-        candyNeed = r.ui.boostCandyInput;
-        boostOrExpAdjustment = r.ui.boostCandyInput;
+  function logMixedDiff(mixed: LevelPlannerResult, exact: LevelPlannerResult): void {
+    if (!PLAN_RESULT_PERF_ENABLED) return;
+    const mixedRows = mixed.pokemonResults;
+    const exactRows = exact.pokemonResults;
+    const boundaryMixed = mixed.summary.boundaryPokemonId;
+    const boundaryExact = exact.summary.boundaryPokemonId;
+    const boundaryMixedRow = mixedRows.find(row => row.pokemonId === boundaryMixed);
+    const boundaryExactRow = exactRows.find(row => row.pokemonId === boundaryExact);
+    console.info('[perf] levelPlanner.mixedDiff', {
+      mixedRemainder: mixed.summary.totalSupplied.totalCandyValue - mixed.summary.totalNeed.totalCandyUnits,
+      exactRemainder: exact.summary.totalSupplied.totalCandyValue - exact.summary.totalNeed.totalCandyUnits,
+      mixedUniversal: mixed.summary.universalCandyUsed,
+      exactUniversal: exact.summary.universalCandyUsed,
+      mixedType: mixed.summary.typeCandyUsed,
+      exactType: exact.summary.typeCandyUsed,
+      reachedLevelChanged: mixedRows.filter((row, index) => row.reachableLine.level !== exactRows[index]?.reachableLine.level).length,
+      boundaryChanged: boundaryMixed !== boundaryExact,
+      boundaryLevelDelta: (boundaryExactRow?.reachableLine.level ?? 0) - (boundaryMixedRow?.reachableLine.level ?? 0),
+      boundaryExpDelta: (boundaryExactRow?.reachableLine.expGained ?? 0) - (boundaryMixedRow?.reachableLine.expGained ?? 0),
+    });
+  }
 
-        // ピークで到達可能なLv+expGotを計算
-        const peakResult = calcLevelByCandy({
-          srcLevel: r.srcLevel,
-          dstLevel: MAX_LEVEL, // システム上限まで
-          expType: r.expType,
-          nature: r.nature,
-          boost: boostKind.value,
-          candy: peak,
-          expGot,
-        });
-        dynamicDstLevel = peakResult.level;
-        // 目標Lvモード: dstExpInLevel = 0、ピークモード: peakResult.expGot
-        dynamicDstExpInLevel = r.mode === 'peak' ? peakResult.expGot : 0;
-      } else if (r.mode === "targetLevel" && r.boostReachLevel !== undefined && r.boostReachLevel < r.dstLevel) {
-        // アメブ目標Lvモード: boostReachLevelまでアメブ、残りは通常アメ
-        // calcExpAndCandyMixedでboostCandyを使った場合のnormalCandyを計算
-        const boostCandy = r.ui.boostCandyInput;
-        const mixedResult = calcExpAndCandyMixed({
-          srcLevel: r.srcLevel,
-          dstLevel: r.dstLevel,
-          expType: r.expType,
-          nature: r.nature,
-          boost: boostKind.value,
-          boostCandy,
-          expGot,
-        });
-        candyNeed = boostCandy + mixedResult.normalCandy;
-        boostOrExpAdjustment = boostCandy;
-
-        // boostLevelモードでは目標Lvはユーザー設定のまま
-        dynamicDstLevel = r.dstLevel;
-        dynamicDstExpInLevel = 0;
-      } else {
-        // 割合/個数モード: ピークで到達可能なLv+expGotを計算
-        const boostCandy = r.ui.boostCandyInput;
-
-        // ピークで到達可能なLv+expGotを計算
-        const peakResult = calcLevelByCandy({
-          srcLevel: r.srcLevel,
-          dstLevel: MAX_LEVEL, // システム上限まで
-          expType: r.expType,
-          nature: r.nature,
-          boost: boostKind.value,
-          candy: peak,
-          expGot,
-        });
-
-        // 目標Lvモード: dstExpInLevel = 0（目標Lvにちょうど到達）
-        // ピークモード: peakResult.expGot を使用
-        const targetDstExpInLevel = r.mode === 'peak' ? peakResult.expGot : 0;
-
-        // その到達点を目標として calcExpAndCandyMixed を呼ぶ
-        const mixedResult = calcExpAndCandyMixed({
-          srcLevel: r.srcLevel,
-          dstLevel: peakResult.level,
-          dstExpInLevel: targetDstExpInLevel,
-          expType: r.expType,
-          nature: r.nature,
-          boost: boostKind.value,
-          boostCandy,
-          expGot,
-        });
-        candyNeed = boostCandy + mixedResult.normalCandy;
-        boostOrExpAdjustment = boostCandy;
-        dynamicDstLevel = peakResult.level;
-        dynamicDstExpInLevel = targetDstExpInLevel;
+  function startManualExactVerification(input: LevelPlannerInput, inputSignature: string, slotId: string, generation: number): void {
+    if (!PLAN_RESULT_EXACT_VERIFICATION_ENABLED || typeof Worker === 'undefined' || displayedPlanResult.value?.calculationMode === 'exact') return;
+    if (manualExactSlotId) updateProfile({ exactResultStale: true }, manualExactSlotId);
+    manualExactWorker?.terminate();
+    releaseManualExactPersistDeferral?.();
+    releaseManualExactPersistDeferral = null;
+    updateProfile({ exactResultStale: false }, slotId);
+    const worker = new Worker(new URL('../workers/levelPlanner.worker.ts', import.meta.url), { type: 'module' });
+    manualExactWorker = worker;
+    manualExactSlotId = slotId;
+    const requestId = ++manualExactRequestId;
+    worker.onmessage = (event: MessageEvent<PlannerWorkerResponse>) => {
+      const response = event.data;
+      if (response.kind !== 'result' || response.requestId !== requestId || response.lane !== 'manualExact') return;
+      if (!exactResultGate({ slotId: response.slotId, inputSignature: response.inputSignature, generation })) {
+        updateProfile({ exactResultStale: true }, slotId);
+        worker.terminate();
+        if (manualExactWorker === worker) {
+          manualExactWorker = null;
+          manualExactSlotId = null;
+          releaseManualExactPersistDeferral?.();
+          releaseManualExactPersistDeferral = null;
+        }
+        return;
       }
-
-      // 必要EXPは動的な目標レベルまでのEXP
-      const calcResult = calcExpAndCandy({
-        srcLevel: r.srcLevel,
-        dstLevel: dynamicDstLevel,
-        dstExpInLevel: dynamicDstExpInLevel,
-        expType: r.expType,
-        nature: r.nature,
-        boost: boostKind.value,
-        expGot,
-      });
-      const expNeed = calcResult.exp;
-
-      requests.push({
-        id: r.id,
-        pokedexId,
-        form: 0,
-        pokemonName: r.title,
-        type: pokemonType,
-        srcLevel: r.srcLevel,
-        dstLevel: dynamicDstLevel,
-        dstExpInLevel: dynamicDstExpInLevel,
-        expType: r.expType,
-        nature: r.nature,
-        expGot,
-        candyNeed,
-        expNeed,
-        boostOrExpAdjustment,
-        candyTarget: r.candyTarget,
-        mode: r.mode,
-      });
-    }
-
-    if (requests.length === 0) return null;
-
-    const config = {
-      boostKind: boostKind.value,
-      globalBoostLimit: boostCandyRemaining.value ?? boostCandyDefaultCap.value,
-      globalShardsLimit: shardsCap.value,
+      const mixed = displayedPlanResult.value?.result;
+      applyDisplayedResult(response.result, { slotId, inputSignature, calculationMode: 'exact', durationMs: response.durationMs });
+      updateProfile({ lastCalculationMode: 'exact', lastExactDurationMs: response.durationMs, exactResultStale: false }, slotId);
+      if (mixed) logMixedDiff(mixed, response.result);
+      worker.terminate();
+      if (manualExactWorker === worker) {
+        manualExactWorker = null;
+        manualExactSlotId = null;
+        releaseManualExactPersistDeferral?.();
+        releaseManualExactPersistDeferral = null;
+      }
     };
+    worker.onerror = () => {
+      updateProfile({ exactResultStale: true }, slotId);
+      worker.terminate();
+      if (manualExactWorker === worker) {
+        manualExactWorker = null;
+        manualExactSlotId = null;
+        releaseManualExactPersistDeferral?.();
+        releaseManualExactPersistDeferral = null;
+      }
+    };
+    releaseManualExactPersistDeferral = deferPersistUntilReleased();
+    worker.postMessage({ slotId, requestId, lane: 'manualExact', inputSignature, input, calculationMode: 'exact', perfEnabled: PLAN_RESULT_PERF_ENABLED } satisfies PlannerWorkerRequest);
+  }
 
-    return planLevelUp(requests, inventory, config);
-  });
+  function runManualExactVerification(): void {
+    if (!PLAN_RESULT_EXACT_VERIFICATION_ENABLED || typeof Worker === 'undefined') return;
+    const input = buildPlannerInput();
+    if (!input) return;
+    startManualExactVerification(input, buildPlannerInputSignature(input), currentSlotId(), displayGeneration);
+  }
+
+  function handleAutoResponse(response: PlannerWorkerResponse, context: { slotId: string; inputSignature: string; input: LevelPlannerInput; generation: number; probe: boolean; calculationMode: CalculationMode }): void {
+    if (response.requestId !== planResultRequestId || response.lane !== 'auto') return;
+    planResultWorkerBusy = false;
+    releasePlanResultPersistDeferral?.();
+    releasePlanResultPersistDeferral = null;
+    planResultPending.value = false;
+    if (response.kind === 'error') {
+      updateProfile({ structuralProbeStatus: 'aborted', exactResultStale: true }, context.slotId);
+      console.error('[level-planner] worker failed:', response.error);
+      return;
+    }
+    if (!exactResultGate({ slotId: response.slotId, inputSignature: response.inputSignature, generation: context.generation })) {
+      updateProfile({ exactResultStale: true }, context.slotId);
+      return;
+    }
+    if (response.kind === 'deadlineExceeded') {
+      updateProfile({
+        policy: 'autoMixed',
+        ...(context.probe ? { structuralProbeStatus: 'deadlineExceeded' as const, lastStructuralProbeDurationMs: response.meta.elapsedMs } : {}),
+        lastCalculationMode: 'prefixLocalMixed',
+        lastFastDurationMs: response.durationMs,
+        mixedPrefixCount: response.mixedMeta.exactPrefixCount,
+        lastInputSignature: context.inputSignature,
+        exactResultStale: false,
+      }, context.slotId);
+      applyDisplayedResult(response.mixedResult, { slotId: context.slotId, inputSignature: context.inputSignature, calculationMode: 'prefixLocalMixed', durationMs: response.durationMs, mixedPrefixCount: response.mixedMeta.exactPrefixCount, mixedSource: response.mixedMeta.source });
+      return;
+    }
+    const mode = response.calculationMode;
+    const nextPolicy: CalculationPolicy = mode === 'prefixLocalMixed' ? 'autoMixed' : 'autoExact';
+    updateProfile({ policy: nextPolicy, structuralProbeStatus: context.probe ? (mode === 'exact' ? 'exactCompleted' : 'aborted') : calculationPerformanceProfile.value.structuralProbeStatus, lastCalculationMode: mode, lastExactDurationMs: mode === 'exact' ? response.durationMs : calculationPerformanceProfile.value.lastExactDurationMs, lastFastDurationMs: mode === 'exact' ? calculationPerformanceProfile.value.lastFastDurationMs : response.durationMs, lastStructuralProbeDurationMs: context.probe ? response.durationMs : calculationPerformanceProfile.value.lastStructuralProbeDurationMs, lastInputSignature: context.inputSignature, exactResultStale: false, ...(response.mixedMeta ? { mixedPrefixCount: response.mixedMeta.exactPrefixCount } : {}) }, context.slotId);
+    applyDisplayedResult(response.result, { slotId: context.slotId, inputSignature: context.inputSignature, calculationMode: mode, durationMs: response.durationMs, mixedPrefixCount: response.mixedMeta?.exactPrefixCount, mixedSource: response.mixedMeta?.source });
+  }
+
+  function ensurePlanResultWorker(): Worker {
+    if (planResultWorker) return planResultWorker;
+    const worker = new Worker(new URL('../workers/levelPlanner.worker.ts', import.meta.url), { type: 'module' });
+    planResultWorker = worker;
+    worker.onmessage = (event: MessageEvent<PlannerWorkerResponse>) => {
+      if (!activeAutoContext) return;
+      handleAutoResponse(event.data, activeAutoContext);
+    };
+    worker.onerror = (event) => {
+      console.error('[level-planner] worker error:', event.message);
+      planResultPending.value = false;
+      updateProfile({ structuralProbeStatus: 'aborted', exactResultStale: true });
+      disposePlanResultWorker();
+    };
+    return worker;
+  }
+
+  function runPlanResult(input: LevelPlannerInput, context: { slotId: string; inputSignature: string; input: LevelPlannerInput; generation: number; probe: boolean; calculationMode: CalculationMode }): void {
+    activeAutoContext = context;
+    if (typeof Worker === 'undefined') {
+      const mixedPrefixCount = slotProfiles.get(context.slotId)?.mixedPrefixCount;
+      const outcome = solveLevelPlanWithBudget(input, { calculationMode: 'prefixLocalMixed', mixedPrefixCount });
+      if (outcome.kind === 'result') {
+        handleAutoResponse({ kind: 'result', slotId: context.slotId, requestId: planResultRequestId, lane: 'auto', inputSignature: context.inputSignature, calculationMode: 'prefixLocalMixed', result: outcome.result, durationMs: outcome.durationMs, mixedMeta: outcome.mixedMeta }, context);
+      }
+      return;
+    }
+    const worker = ensurePlanResultWorker();
+    planResultWorkerBusy = true;
+    releasePlanResultPersistDeferral?.();
+    releasePlanResultPersistDeferral = deferPersistUntilReleased();
+    const deadlineMs = context.calculationMode === 'exact' ? (context.probe ? STRUCTURAL_PROBE_DEADLINE_MS : AUTO_EXACT_SOFT_LIMIT_MS) : undefined;
+    const mixedPrefixCount = context.calculationMode === 'prefixLocalMixed'
+      ? slotProfiles.get(context.slotId)?.mixedPrefixCount
+      : undefined;
+    worker.postMessage({ slotId: context.slotId, requestId: planResultRequestId, lane: 'auto', inputSignature: context.inputSignature, input, calculationMode: context.calculationMode, deadlineMs, mixedPrefixCount, perfEnabled: PLAN_RESULT_PERF_ENABLED } satisfies PlannerWorkerRequest);
+  }
+
+  watch(
+    [rows, boostKind, boostCandyRemaining, boostCandyDefaultCap, shardsCap, itemCompareMode, candyStore.inventorySnapshot, activeSlotTab],
+    () => {
+      if (planResultTimer) {
+        clearTimeout(planResultTimer);
+        planResultTimer = null;
+      }
+      displayGeneration++;
+      planResultRequestId++;
+      if (planResultWorkerBusy) disposePlanResultWorker();
+      if (manualExactWorker && manualExactSlotId) updateProfile({ exactResultStale: true }, manualExactSlotId);
+      if (rows.value.length === 0) {
+        planResult.value = null;
+        displayedPlanResult.value = null;
+        planResultPending.value = false;
+        updateProfile({ structuralProbeStatus: 'idle', exactResultStale: false });
+        previousInputSignature = null;
+        previousStructureSignature = null;
+        previousProbeSignature = null;
+        previousSlotId = currentSlotId();
+        return;
+      }
+      planResultPending.value = true;
+      const delayMs = planResultHasDispatched ? PLAN_RESULT_DEBOUNCE_MS : 0;
+      const generation = displayGeneration;
+      const scheduledAt = PLAN_RESULT_PERF_ENABLED ? performance.now() : 0;
+      planResultTimer = setTimeout(() => {
+        const input = buildPlannerInput();
+        if (!input) {
+          planResult.value = null;
+          displayedPlanResult.value = null;
+          planResultPending.value = false;
+          return;
+        }
+        const inputSignature = buildPlannerInputSignature(input);
+        const structureSignature = buildPlannerStructureSignature(input);
+        const probeSignature = buildPlannerProbeSignature(input);
+        const slotId = currentSlotId();
+        const switching = previousSlotId !== null && previousSlotId !== slotId;
+        const slotProfile = slotProfiles.get(slotId)
+          ?? (switching ? defaultCalculationPerformanceProfile() : calculationPerformanceProfile.value);
+        calculationPerformanceProfile.value = slotProfile;
+        slotProfiles.set(slotId, slotProfile);
+        const cached = switching && slotProfiles.get(slotId)?.lastInputSignature === inputSignature ? slotDisplayedResults.get(slotId) : undefined;
+        if (cached) {
+          planResult.value = cached.result;
+          displayedPlanResult.value = cached;
+          calculationPerformanceProfile.value = slotProfiles.get(slotId) ?? calculationPerformanceProfile.value;
+          previousInputSignature = inputSignature;
+          previousStructureSignature = structureSignature;
+          previousProbeSignature = probeSignature;
+          previousSlotId = slotId;
+          planResultPending.value = false;
+          planResultTimer = null;
+          return;
+        }
+        const probe = previousInputSignature === null || previousStructureSignature !== structureSignature || previousProbeSignature !== probeSignature;
+        const calculationMode: CalculationMode = 'exact';
+        updateProfile({ structuralProbeStatus: probe ? 'running' : calculationPerformanceProfile.value.structuralProbeStatus, lastInputSignature: inputSignature, lastDeadlineMs: calculationMode === 'exact' ? (probe ? STRUCTURAL_PROBE_DEADLINE_MS : AUTO_EXACT_SOFT_LIMIT_MS) : undefined, exactResultStale: false }, slotId);
+        previousInputSignature = inputSignature;
+        previousStructureSignature = structureSignature;
+        previousProbeSignature = probeSignature;
+        previousSlotId = slotId;
+        planResultHasDispatched = true;
+        runPlanResult(input, { slotId, inputSignature, input, generation, probe, calculationMode });
+        if (PLAN_RESULT_PERF_ENABLED) console.info('[perf] levelPlanner.schedule', { delayMs, waitedMs: Math.round((performance.now() - scheduledAt) * 100) / 100, calculationMode, probe });
+        planResultTimer = null;
+      }, delayMs);
+    },
+    { deep: true, immediate: true }
+  );
 
   /** 同一 planResult に対する find をテンプレート内で繰り返さないよう Map 化 */
   const pokemonResultByRowId = computed(() => {
     const pr = planResult.value;
-    if (!pr) return new Map<string, PokemonLevelUpResult>();
-    return new Map(pr.pokemons.map((p) => [p.id, p] as const));
+    if (!pr) return new Map<string, PokemonPlanResult>();
+    return new Map(pr.pokemonResults.map((p) => [p.pokemonId, p] as const));
   });
 
   /**
    * ポケモンの計画結果を取得
    */
-  function getPokemonResult(id: string): PokemonLevelUpResult | null {
+  function getPokemonResult(id: string): PokemonPlanResult | null {
     return pokemonResultByRowId.value.get(id) ?? null;
   }
 
   /**
    * 理論値行を取得（個数指定があれば candyTarget、なければ target）
    */
-  function getTheoreticalRow(p: PokemonLevelUpResult): ItemUsage {
-    if (p.candyTarget !== undefined && p.candyTargetItems) {
-      return p.candyTargetItems;
+  function getTheoreticalRow(p: PokemonPlanResult): PokemonPlanLine {
+    if (p.candyTargetLine) {
+      return p.candyTargetLine;
     }
-    return p.targetItems;
+    return p.targetLine;
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -1568,18 +1998,18 @@ export function useCalcStore(opts: {
     return Math.round((neededValue / totalValue) * 100);
   });
 
-  // 万能アメ使用ランキング（planResult.itemUsageRanking を使用）
+  // 万能アメ使用ランキング（planResult.summary.itemUsageRanking を使用）
   const universalCandyRanking = computed(() => {
     if (!planResult.value) return [];
 
     const totalUniversalValue =
-      planResult.value.universalUsed.s * CANDY_VALUES.universal.s +
-      planResult.value.universalUsed.m * CANDY_VALUES.universal.m +
-      planResult.value.universalUsed.l * CANDY_VALUES.universal.l;
+      planResult.value.summary.universalCandyUsed.s * CANDY_VALUES.universal.s +
+      planResult.value.summary.universalCandyUsed.m * CANDY_VALUES.universal.m +
+      planResult.value.summary.universalCandyUsed.l * CANDY_VALUES.universal.l;
 
     if (totalUniversalValue <= 0) return [];
 
-    return planResult.value.itemUsageRanking
+    return planResult.value.summary.itemUsageRanking
       .map((p) => {
         const uniValue =
           p.universalS * CANDY_VALUES.universal.s +
@@ -1587,8 +2017,8 @@ export function useCalcStore(opts: {
           p.universalL * CANDY_VALUES.universal.l;
         const usagePct = totalUniversalValue > 0 ? (uniValue / totalUniversalValue) * 100 : 0;
         return {
-          id: p.id,
-          pokemonName: p.pokemonName,
+          id: p.pokemonId,
+          pokemonName: p.name,
           universalValue: uniValue,
           usagePct: Math.round(usagePct),
           uniSUsed: p.universalS,
@@ -1605,7 +2035,7 @@ export function useCalcStore(opts: {
   // 万能アメ合計使用数 (planResult から取得)
   const universalCandyUsedTotal = computed(() => {
     if (!planResult.value) return { s: 0, m: 0, l: 0 };
-    return planResult.value.universalUsed;
+    return planResult.value.summary.universalCandyUsed;
   });
 
   // 万能アメの必要数（サマリー用、実使用ベース）
@@ -1616,12 +2046,11 @@ export function useCalcStore(opts: {
     let totalM = 0;
     let totalL = 0;
 
-    for (const p of planResult.value.pokemons) {
-      // 実使用（reachableItems）を使用
-      const items = p.reachableItems;
-      totalS += items.universalS;
-      totalM += items.universalM;
-      totalL += items.universalL;
+    for (const p of planResult.value.pokemonResults) {
+      // 実使用（reachableLine）を使用
+      totalS += p.reachableLine.candySupply.universal.s;
+      totalM += p.reachableLine.candySupply.universal.m;
+      totalL += p.reachableLine.candySupply.universal.l;
     }
 
     return {
@@ -1707,6 +2136,8 @@ export function useCalcStore(opts: {
   return {
     boostKind,
     setSlotBoostKind,
+    itemCompareMode,
+    setItemCompareMode,
     totalShards,
     totalShardsText,
     boostCandyRemaining,
@@ -1732,7 +2163,7 @@ export function useCalcStore(opts: {
 
     exportRows,
     exportActualTotals,
-    exportScale,
+    debugExportEnabled,
 
     totalShardsUsed,
     shardsCap,
@@ -1761,9 +2192,20 @@ export function useCalcStore(opts: {
     activeRowBoostCandyUsagePct,
 
     planResult,
+    planResultPending,
+    displayedPlanResult,
+    calculationPerformanceProfile,
+    calculationPolicy,
+    structuralProbeStatus,
+    showFastCalculation,
+    showExactImprovementHint,
+    showManualExactVerification,
+    runManualExactVerification,
     pokemonResultByRowId,
     getPokemonResult,
     getTheoreticalRow,
+    buildDebugExportTsv,
+    copyDebugExportTsv,
     universalCandyUsagePct,
     universalCandyNeeded,
     universalCandyRanking,
@@ -1790,6 +2232,11 @@ export function useCalcStore(opts: {
 
     switchToSlot,
     swapSlots,
+
+    canCopySlot,
+    canPasteSlot,
+    copySlot,
+    pasteSlot,
 
     nudgeDstLevel,
     nudgeSrcLevel,

@@ -16,6 +16,7 @@ node_modules/
 **/node_modules/
 .pnpm-store/
 .vite/
+vite.config.ts.timestamp-*
 dist/
 dist-ssr/
 coverage/

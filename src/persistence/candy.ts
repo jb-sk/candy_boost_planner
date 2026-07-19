@@ -4,15 +4,10 @@
  * - タイプアメ（タイプ別 S/M）
  * - ポケモンのアメ（種族別）
  */
+import { perfSpan } from "../utils/perf";
 
 const STORAGE_KEY = "candy-boost-planner:candy-inventory:v1";
 const SCHEMA_VERSION = 1 as const;
-
-// アメ換算値
-export const CANDY_VALUES = {
-  universal: { s: 3, m: 20, l: 100 },
-  type: { s: 4, m: 25 },
-} as const;
 
 export type UniversalCandyInventory = {
   s: number;
@@ -58,7 +53,8 @@ export function loadCandyInventory(): CandyInventoryV1 {
 
 export function saveCandyInventory(inv: CandyInventoryV1): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(inv));
+    const serialized = perfSpan("persist.candy.serialize", () => JSON.stringify(inv));
+    perfSpan("persist.candy.write", () => localStorage.setItem(STORAGE_KEY, serialized));
   } catch {
     // localStorage can throw (quota exceeded / blocked)
   }

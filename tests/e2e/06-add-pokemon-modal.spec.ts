@@ -195,3 +195,43 @@ test.describe('AddPokemonModal - EXP入力バグ修正', () => {
     await expect(boxPanel.boxTiles).toHaveCount(beforeCount + 1);
   });
 });
+
+// ============================================
+// バグ修正 #3: 睡眠時間入力時の追加 + 追加成功フィードバック
+// ============================================
+
+test.describe('AddPokemonModal - 睡眠時間・追加フィードバック', () => {
+  let modal: AddPokemonModalPage;
+  let boxPanel: BoxPanelPage;
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    modal = new AddPokemonModalPage(page);
+    boxPanel = new BoxPanelPage(page);
+    await modal.open();
+  });
+
+  test('睡眠時間を入力してもポケモンを追加できる', async () => {
+    const prefix = latestPokemonName.slice(0, 2);
+    await modal.fillAndPickName(prefix);
+
+    // 睡眠時間を入力
+    await modal.sleepHoursInput.fill('12');
+
+    const beforeCount = await boxPanel.boxTiles.count();
+    await modal.submitButton.click();
+
+    // 睡眠時間が入っていても追加できる
+    await expect(boxPanel.boxTiles).toHaveCount(beforeCount + 1);
+  });
+
+  test('追加成功時に「追加しました」が表示される', async () => {
+    const prefix = latestPokemonName.slice(0, 2);
+    await modal.fillAndPickName(prefix);
+
+    await modal.submitButton.click();
+
+    // 閉じるボタン左に追加成功メッセージが表示される
+    await expect(modal.addedMessage).toBeVisible();
+  });
+});

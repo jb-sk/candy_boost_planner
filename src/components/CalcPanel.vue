@@ -13,7 +13,7 @@
             <span class="calcSumInline__k">{{ t("calc.export.sumBoostTotal") }}</span>
             <span class="calcSumInline__v">{{ calc.fmtNum(calc.totalBoostCandyUsed.value) }}</span>
           </span>
-          <span class="calcSumInline calcSumInline--danger" v-if="calc.boostKind.value !== 'none' && calc.boostCandyUnused.value > 0 && calc.rowsView.value.length > 0">
+          <span class="calcSumInline calcSumInline--danger" v-if="calc.boostKind.value !== 'none' && calc.planResult.value && !calc.planResultPending.value && calc.boostCandyUnused.value > 0 && calc.rowsView.value.length > 0">
             <span class="calcSumInline__k">{{ t("calc.export.sumBoostUnused") }}</span>
             <span class="calcSumInline__v">{{ calc.fmtNum(calc.boostCandyUnused.value) }}</span>
           </span>
@@ -143,12 +143,32 @@
       <button class="btn btn--primary calcActions__settings" data-testid="settings-open-button-desktop" data-onboarding="settings" type="button" @click="$emit('open-settings')" :title="t('common.settings')">
         {{ t("common.settingsShort") }}
       </button>
-      <button class="btn btn--primary" data-testid="calc-export-button" type="button" @click="calc.openExport()" :disabled="!calc.rowsView.value.length" :title="t('calc.export.open')">
+      <button class="btn btn--primary" data-testid="calc-export-button" type="button" @click="calc.openExport()" :disabled="!calc.rowsView.value.length || calc.planResultPending.value || !calc.planResult.value" :title="t('calc.export.open')">
         {{ t("calc.export.openShort") }}
       </button>
+      <button v-if="calc.debugExportEnabled" class="btn btn--ghost" data-testid="calc-debug-export-button" type="button" @click="copyDebugExport()" :disabled="!calc.rowsView.value.length || calc.planResultPending.value || !calc.planResult.value" title="検算用TSVをコピー">
+        検算TSV
+      </button>
+      <button v-if="calc.showManualExactVerification.value" class="btn btn--ghost" data-testid="calc-manual-exact-button" type="button" @click="calc.runManualExactVerification()" :disabled="calc.planResultPending.value || !calc.planResult.value" :title="t('calc.manualExactVerification')">
+        {{ t("calc.manualExactVerification") }}
+      </button>
+      <span v-if="debugExportStatus" class="calcActions__status" data-testid="calc-debug-export-status">{{ debugExportStatus }}</span>
       <button class="btn btn--ghost" data-testid="calc-clear-button" type="button" @click="calc.clear()" :disabled="!calc.rowsView.value.length" :title="t('calc.clearPokemons')">
         {{ t("calc.clearPokemonsShort") }}
       </button>
+      <div class="calcActions__group">
+        <button class="btn btn--ghost" data-testid="calc-copy-slot-button" type="button" @click="calc.copySlot()" :disabled="!calc.canCopySlot.value" :title="t('calc.copySlotTitle')">
+          {{ t("calc.copySlot") }}
+        </button>
+        <button class="btn btn--ghost" data-testid="calc-paste-slot-button" type="button" @click="calc.pasteSlot()" :disabled="!calc.canPasteSlot.value" :title="t('calc.pasteSlotTitle')">
+          {{ t("calc.pasteSlot") }}
+        </button>
+      </div>
+    </div>
+
+    <div v-if="calc.showFastCalculation.value" class="calcPlanStatus" data-testid="calc-plan-status" role="status">
+      <span>{{ t("calc.fastCalculation") }}</span>
+      <span v-if="calc.showExactImprovementHint.value">{{ t("calc.fastCalculationHint") }}</span>
     </div>
 
     <div class="calcSlots">
@@ -275,8 +295,8 @@
           <div class="field field--sm">
             <span class="field__label">
               {{ t("calc.row.dstLevel") }}
-              <span v-if="(rowP(r)?.targetExpToNextLevel ?? 0) > 0" style="font-weight:normal; margin-left:4px; opacity:0.8">
-                {{ t("calc.row.expLeftNext", { exp: calc.fmtNum(rowP(r)?.targetExpToNextLevel ?? 0) }) }}
+              <span v-if="(rowP(r)?.targetLine.expToNextLevel ?? 0) > 0" style="font-weight:normal; margin-left:4px; opacity:0.8">
+                {{ t("calc.row.expLeftNext", { exp: calc.fmtNum(rowP(r)?.targetLine.expToNextLevel ?? 0) }) }}
               </span>
             </span>
             <LevelPicker
@@ -416,16 +436,16 @@
             <span class="calcRow__resultLabel">{{ t("calc.row.required") }}</span>
               <span class="calcRow__resultItems">{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                 <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
-                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'boost') }">{{ calc.fmtNum(rowP(r)?.targetBoost ?? 0) }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'boost') }">{{ calc.fmtNum(rowP(r)?.targetLine.boostedCandyUnits ?? 0) }}</span>
               </span>{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                 <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
-                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'normal') }">{{ calc.fmtNum(rowP(r)?.targetNormal ?? 0) }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'normal') }">{{ calc.fmtNum(rowP(r)?.targetLine.nonBoostCandyUnits ?? 0) }}</span>
               </span>{{ ' ' }}<span class="calcRow__res">
                 <span class="calcRow__k">{{ t(calc.boostKind.value === 'none' ? "calc.row.candy" : "calc.row.candyTotal") }}</span>
-                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'candy') }">{{ calc.fmtNum((rowP(r)?.targetBoost ?? 0) + (rowP(r)?.targetNormal ?? 0)) }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'candy') }">{{ calc.fmtNum(rowP(r)?.targetLine.totalCandyUnitsUsed ?? 0) }}</span>
               </span>{{ ' ' }}<span class="calcRow__res">
                 <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
-                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'shards') }">{{ calc.fmtNum(rowP(r)?.targetShards ?? 0) }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'shards') }">{{ calc.fmtNum(rowP(r)?.targetLine.dreamShardsUsed ?? 0) }}</span>
               </span>{{ ' ' }}<span class="calcRow__res" v-if="hasItemUsage(r)">
                 <span class="calcRow__k">{{ t("calc.row.itemRequired") }}</span>
                 <span class="calcRow__num calcRow__num--text">
@@ -434,6 +454,24 @@
                     <span v-if="idx < (rowItemUsageMaps.target.get(r.id) ?? []).length - 1">, </span>
                   </template>
                 </span>
+              </span>{{ ' ' }}<span class="calcRow__res" v-if="getSurplusValue(r, 'target') > 0">
+                <span class="calcRow__k">{{ t("calc.candy.surplus") }}</span>
+                <span class="calcRow__num">{{ getSurplusValue(r, 'target') }}</span>
+              </span>{{ ' ' }}<span class="calcRow__res" v-if="!isExpanded(r.id) && getShortageValue(r, 'candy') > 0">
+                <span class="calcRow__k calcRow__k--danger">{{ t("calc.row.candyShortage") }}</span>
+                <span class="calcRow__num calcRow__num--danger">{{ getShortageValue(r, 'candy') }}</span>
+              </span>{{ ' ' }}<span class="calcRow__res" v-if="!isExpanded(r.id) && getShortageValue(r, 'boost') > 0">
+                <span class="calcRow__k calcRow__k--danger">{{ t("calc.row.boostCandyShortage") }}</span>
+                <span class="calcRow__num calcRow__num--danger">{{ getShortageValue(r, 'boost') }}</span>
+              </span>{{ ' ' }}<span class="calcRow__res" v-if="!isExpanded(r.id) && getShortageValue(r, 'shards') > 0">
+                <span class="calcRow__k calcRow__k--danger">{{ t("calc.row.shardsShortage") }}</span>
+                <span class="calcRow__num calcRow__num--danger">{{ calc.fmtNum(getShortageValue(r, 'shards')) }}</span>
+              </span>{{ ' ' }}<span class="calcRow__res" v-if="!isExpanded(r.id) && rowP(r) && !hasAnyShortage(r) && getSurplusValue(r, 'reachable') > 0">
+                <span class="calcRow__k">{{ t("calc.row.itemUsage") }} {{ t("calc.candy.surplus") }}</span>
+                <span class="calcRow__num">{{ getSurplusValue(r, 'reachable') }}</span>
+              </span>{{ ' ' }}<span class="calcRow__res" v-if="!isExpanded(r.id) && hasLimit(r) && !hasAnyShortage(r) && getSurplusValue(r, 'limit') > 0">
+                <span class="calcRow__k">{{ t("calc.row.candyTargetRow") }} {{ t("calc.candy.surplus") }}</span>
+                <span class="calcRow__num">{{ getSurplusValue(r, 'limit') }}</span>
               </span>
             </span>
           </div>
@@ -442,7 +480,7 @@
           <div style="display: flex; flex-direction: column; gap: 0;">
             <!-- 個数指定行（個数指定ありかつ不足がある場合のみ表示） -->
             <div
-              v-if="isExpanded(r.id) && hasLimit(r) && getTheoreticalResources(r) && rowP(r)?.diagnosis.limitingFactor !== null"
+              v-if="isExpanded(r.id) && hasLimit(r) && getTheoreticalResources(r)"
               data-testid="resultRowCandyTarget"
               class="calcRow__resultRow calcRow__resultRow--used"
               style="margin-bottom: 0; padding-bottom: 4px; border-bottom-left-radius: 0; border-bottom-right-radius: 0;"
@@ -467,6 +505,9 @@
                     @click.stop="toggleLimitItems(r.id)"
                     style="cursor: pointer; text-decoration: underline;"
                   >{{ t("calc.row.itemRequired") }}</span>
+                </span>{{ ' ' }}<span class="calcRow__res" v-if="getSurplusValue(r, 'limit') > 0">
+                  <span class="calcRow__k">{{ t("calc.candy.surplus") }}</span>
+                  <span class="calcRow__num">{{ getSurplusValue(r, 'limit') }}</span>
                 </span>{{ ' ' }}<span class="calcRow__res" v-if="isLimitItemsExpanded(r.id) && (rowItemUsageMaps.limit.get(r.id) ?? []).length > 0">
                   <span class="calcRow__num calcRow__num--text">
                     <template v-for="(item, idx) in (rowItemUsageMaps.limit.get(r.id) ?? [])" :key="idx">
@@ -483,22 +524,22 @@
               v-if="isExpanded(r.id) && rowP(r)"
               data-testid="resultRowReachable"
               class="calcRow__resultRow calcRow__resultRow--used"
-              :style="hasLimit(r) && getTheoreticalResources(r) && getTheoreticalShortageType(r) !== null ? 'margin-top: 0; padding-top: 4px; border-top-left-radius: 0; border-top-right-radius: 0;' : ''"
+              :style="hasLimit(r) && getTheoreticalResources(r) ? 'margin-top: 0; padding-top: 4px; border-top-left-radius: 0; border-top-right-radius: 0;' : ''"
             >
               <span class="calcRow__expandIcon" style="visibility: hidden"></span>
               <span class="calcRow__resultLabel">{{ t("calc.row.used") }}</span>
               <span class="calcRow__resultItems">{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                   <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'boost') }">{{ calc.fmtNum(rowP(r)!.reachableItems.boostCount) }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'boost') }">{{ calc.fmtNum(rowP(r)!.reachableLine.boostedCandyUnits) }}</span>
                 </span>{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                   <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'normal') }">{{ calc.fmtNum(rowP(r)!.reachableItems.normalCount) }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'normal') }">{{ calc.fmtNum(rowP(r)!.reachableLine.nonBoostCandyUnits) }}</span>
                 </span>{{ ' ' }}<span class="calcRow__res">
                   <span class="calcRow__k">{{ t(calc.boostKind.value === 'none' ? "calc.row.candy" : "calc.row.candyTotal") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'candy') }">{{ calc.fmtNum(rowP(r)!.reachableItems.boostCount + rowP(r)!.reachableItems.normalCount) }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'candy') }">{{ calc.fmtNum(rowP(r)!.reachableLine.totalCandyUnitsUsed) }}</span>
                 </span>{{ ' ' }}<span class="calcRow__res">
                   <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'shards') }">{{ calc.fmtNum(rowP(r)!.reachableItems.shardsCount) }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'shards') }">{{ calc.fmtNum(rowP(r)!.reachableLine.dreamShardsUsed) }}</span>
                 </span>{{ ' ' }}<span class="calcRow__res" v-if="(rowItemUsageMaps.reachable.get(r.id) ?? []).length > 0">
                   <span class="calcRow__k">{{ t("calc.row.itemUsage") }}</span>
                   <span class="calcRow__num calcRow__num--text">
@@ -507,27 +548,30 @@
                       <span v-if="idx < (rowItemUsageMaps.reachable.get(r.id) ?? []).length - 1">, </span>
                     </template>
                   </span>
+                </span>{{ ' ' }}<span class="calcRow__res" v-if="getSurplusValue(r, 'reachable') > 0">
+                  <span class="calcRow__k">{{ t("calc.candy.surplus") }}</span>
+                  <span class="calcRow__num">{{ getSurplusValue(r, 'reachable') }}</span>
                 </span>
-                <!-- 主要な不足要因（到達Lvの前に表示） -->
-                {{ ' ' }}<span class="calcRow__res" v-if="rowP(r)!.diagnosis.limitingFactor === 'candy'">
+                <!-- 不足量（到達Lvの前に表示） -->
+                {{ ' ' }}<span class="calcRow__res" v-if="getShortageValue(r, 'candy') > 0">
                   <span class="calcRow__k calcRow__k--danger">{{ t("calc.row.candyShortage") }}</span>
-                  <span class="calcRow__num calcRow__num--danger">{{ rowP(r)!.shortage.candy }}</span>
-                </span>{{ ' ' }}<span class="calcRow__res" v-if="rowP(r)!.diagnosis.limitingFactor === 'boost'">
+                  <span class="calcRow__num calcRow__num--danger">{{ getShortageValue(r, 'candy') }}</span>
+                </span>{{ ' ' }}<span class="calcRow__res" v-if="getShortageValue(r, 'boost') > 0">
                   <span class="calcRow__k calcRow__k--danger">{{ t("calc.row.boostCandyShortage") }}</span>
-                  <span class="calcRow__num calcRow__num--danger">{{ rowP(r)!.shortage.boost }}</span>
-                </span>{{ ' ' }}<span class="calcRow__res" v-if="rowP(r)!.diagnosis.limitingFactor === 'shards'">
+                  <span class="calcRow__num calcRow__num--danger">{{ getShortageValue(r, 'boost') }}</span>
+                </span>{{ ' ' }}<span class="calcRow__res" v-if="getShortageValue(r, 'shards') > 0">
                   <span class="calcRow__k calcRow__k--danger">{{ t("calc.row.shardsShortage") }}</span>
-                  <span class="calcRow__num calcRow__num--danger">{{ calc.fmtNum(rowP(r)!.shortage.shards) }}</span>
+                  <span class="calcRow__num calcRow__num--danger">{{ calc.fmtNum(getShortageValue(r, 'shards')) }}</span>
                 </span>{{ ' ' }}<span class="calcRow__res">
                   <span class="calcRow__k calcRow__k--info">{{ t("calc.row.reachedLv") }}</span>
-                  <span class="calcRow__num calcRow__num--info">{{ rowP(r)!.reachedLevel }}</span>
-                  <span class="calcRow__k calcRow__k--info" v-if="rowP(r)!.expToNextLevel > 0" style="margin-left: 4px;">({{ t("calc.row.expRemaining") }}</span>
-                  <span class="calcRow__num calcRow__num--info" v-if="rowP(r)!.expToNextLevel > 0">{{ calc.fmtNum(rowP(r)!.expToNextLevel) }}</span><span class="calcRow__k calcRow__k--info" v-if="rowP(r)!.expToNextLevel > 0">)</span>
-                </span>{{ ' ' }}<span class="calcRow__res" v-if="rowP(r)!.expToTarget > 0">
+                  <span class="calcRow__num calcRow__num--info">{{ rowP(r)!.reachableLine.level }}</span>
+                  <span class="calcRow__k calcRow__k--info" v-if="rowP(r)!.reachableLine.expToNextLevel > 0" style="margin-left: 4px;">({{ t("calc.row.expRemaining") }}</span>
+                  <span class="calcRow__num calcRow__num--info" v-if="rowP(r)!.reachableLine.expToNextLevel > 0">{{ calc.fmtNum(rowP(r)!.reachableLine.expToNextLevel) }}</span><span class="calcRow__k calcRow__k--info" v-if="rowP(r)!.reachableLine.expToNextLevel > 0">)</span>
+                </span>{{ ' ' }}<span class="calcRow__res" v-if="rowP(r)!.shortage.expToTarget > 0">
                   <span class="calcRow__k calcRow__k--info">{{ t("calc.row.remainingExp") }}</span>
-                  <span class="calcRow__num calcRow__num--info">{{ calc.fmtNum(rowP(r)!.expToTarget) }}</span>
-                  <span class="calcRow__sleepTime" v-if="getSleepTimeText(r.id, rowP(r)!.expToTarget)">
-                    {{ getSleepTimeText(r.id, rowP(r)!.expToTarget) }}
+                  <span class="calcRow__num calcRow__num--info">{{ calc.fmtNum(rowP(r)!.shortage.expToTarget) }}</span>
+                  <span class="calcRow__sleepTime" v-if="getSleepTimeText(r.id, rowP(r)!.shortage.expToTarget)">
+                    {{ getSleepTimeText(r.id, rowP(r)!.shortage.expToTarget) }}
                   </span>
                 </span>
               </span>
@@ -688,12 +732,14 @@ import { computed, ref, reactive, nextTick, onUnmounted, inject } from "vue";
 import { useI18n } from "vue-i18n";
 import LevelPicker from "./LevelPicker.vue";
 import type { CalcStore, CalcRowView } from "../composables/useCalcStore";
-import type { PokemonLevelUpResult } from "../domain/level-planner/types";
+import type { CandySupplyBreakdown, PokemonPlanLine, PokemonPlanResult } from "../domain/level-planner/types";
+import { CANDY_VALUES } from "../domain/level-planner/constants";
 import { useCandyStore } from "../composables/useCandyStore";
+import { getPokemonType } from "../domain/pokesleep/pokemon-names";
 import { getTypeName } from "../domain/pokesleep/pokemon-types";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { markForSleep, calcCandyTargetFromSleepExp, calcSleepTimeForExp } from "../domain/pokesleep/sleep-growth";
-import { calcExp } from "../domain/pokesleep/exp";
+import { calcExp, calcExpAndCandyMixed, calcLevelByCandy } from "../domain/pokesleep/exp";
 import { normalizeSleepHoursInput } from "../domain/box/sleep-milestones";
 import type { BoostEvent } from "../domain/types";
 
@@ -716,10 +762,28 @@ const calc = props.calc;
 const { t, locale } = useI18n();
 
 /** 行ごとの計画結果（テンプレートで getPokemonResult を繰り返さず Map を O(1) 参照） */
-function rowP(r: CalcRowView): PokemonLevelUpResult | null {
+function rowP(r: CalcRowView): PokemonPlanResult | null {
   return calc.pokemonResultByRowId.value.get(r.id) ?? null;
 }
 const candyStore = useCandyStore();
+const debugExportStatus = ref("");
+let debugExportStatusTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function copyDebugExport() {
+  if (debugExportStatusTimer) clearTimeout(debugExportStatusTimer);
+  debugExportStatus.value = "生成中...";
+  await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+  const result = await calc.copyDebugExportTsv();
+  debugExportStatus.value = result === "copied"
+    ? "コピーしました"
+    : result === "downloaded"
+      ? "ファイル保存しました"
+      : "出力失敗";
+  debugExportStatusTimer = setTimeout(() => {
+    debugExportStatus.value = "";
+    debugExportStatusTimer = null;
+  }, 2500);
+}
 
 /** Onboarding tour state (injected from App.vue) */
 const _onboardingActive = inject<import("vue").Ref<boolean>>("onboardingActive");
@@ -917,6 +981,7 @@ function releaseRowDrag() {
 
 onUnmounted(() => {
   if (rowDragId) releaseRowDrag();
+  if (debugExportStatusTimer) clearTimeout(debugExportStatusTimer);
 });
 
 // ===== タブドラッグ（並べ替え） =====
@@ -1035,15 +1100,13 @@ function onCandyTargetInput(rowId: string, value: string) {
  */
 function applySleepGrowth(rowId: string, targetHours: number) {
   calc.activeRowId.value = rowId;
-  const p = calc.getPokemonResult(rowId);
-  if (!p) return;
-
   const sleepSettings = calc.sleepSettings.value;
   const sleepExpBonus = 1.0 + 0.14 * sleepSettings.sleepExpBonusCount;
 
   // 行データから性格・レベル情報を取得
   const row = calc.rowsView.value.find(r => r.id === rowId);
   if (!row) return;
+  const target = calcSleepGrowthTarget(row);
 
   // 累計睡眠時間を差し引いた残り時間を計算
   const currentSleepHours = row.sleepHours ?? 0;
@@ -1067,13 +1130,13 @@ function applySleepGrowth(rowId: string, targetHours: number) {
   // p.dstLevel と p.dstExpInLevel を使用（動的計算された目標で一貫性を持たせる）
   const candyTarget = calcCandyTargetFromSleepExp({
     srcLevel: row.srcLevel,
-    dstLevel: p.dstLevel,
-    dstExpInLevel: p.dstExpInLevel ?? 0,
+    dstLevel: target.dstLevel,
+    dstExpInLevel: target.dstExpInLevel,
     expType: row.expType,
     nature: row.nature,
     boostKind: calc.boostKind.value,
-    targetBoostCandy: p.targetBoost,
-    targetNormalCandy: p.targetNormal,
+    targetBoostCandy: target.targetBoostCandy,
+    targetNormalCandy: target.targetNormalCandy,
     sleepExp: result.sleepExp,
     expGot,
   });
@@ -1084,6 +1147,82 @@ function applySleepGrowth(rowId: string, targetHours: number) {
   // 自動的に到達可能行を開く
   expandedRows.value.add(rowId);
   expandedRows.value = new Set(expandedRows.value);
+}
+
+function calcSleepGrowthTarget(row: CalcRowView): {
+  dstLevel: number;
+  dstExpInLevel: number;
+  targetBoostCandy: number;
+  targetNormalCandy: number;
+} {
+  const toNextLevel = calcExp(row.srcLevel, row.srcLevel + 1, row.expType);
+  const expGot = Math.max(0, toNextLevel - row.expRemaining);
+
+  if (calc.boostKind.value === "none") {
+    const targetNormalCandy = row.ui.boostCandyInput;
+    const peakResult = calcLevelByCandy({
+      srcLevel: row.srcLevel,
+      dstLevel: MAX_LEVEL,
+      expType: row.expType,
+      nature: row.nature,
+      boost: "none",
+      candy: row.candyPeak || targetNormalCandy,
+      expGot,
+    });
+    return {
+      dstLevel: peakResult.level,
+      dstExpInLevel: row.mode === "peak" ? peakResult.expGot : 0,
+      targetBoostCandy: 0,
+      targetNormalCandy,
+    };
+  }
+
+  const targetBoostCandy = row.ui.boostCandyInput;
+  if (row.mode === "targetLevel" && row.boostReachLevel !== undefined && row.boostReachLevel < row.dstLevel) {
+    const mixed = calcExpAndCandyMixed({
+      srcLevel: row.srcLevel,
+      dstLevel: row.dstLevel,
+      expType: row.expType,
+      nature: row.nature,
+      boost: calc.boostKind.value,
+      boostCandy: targetBoostCandy,
+      expGot,
+    });
+    return {
+      dstLevel: row.dstLevel,
+      dstExpInLevel: 0,
+      targetBoostCandy,
+      targetNormalCandy: mixed.normalCandy,
+    };
+  }
+
+  const peak = row.candyPeak || targetBoostCandy;
+  const peakResult = calcLevelByCandy({
+    srcLevel: row.srcLevel,
+    dstLevel: MAX_LEVEL,
+    expType: row.expType,
+    nature: row.nature,
+    boost: calc.boostKind.value,
+    candy: peak,
+    expGot,
+  });
+  const dstExpInLevel = row.mode === "peak" ? peakResult.expGot : 0;
+  const mixed = calcExpAndCandyMixed({
+    srcLevel: row.srcLevel,
+    dstLevel: peakResult.level,
+    dstExpInLevel,
+    expType: row.expType,
+    nature: row.nature,
+    boost: calc.boostKind.value,
+    boostCandy: targetBoostCandy,
+    expGot,
+  });
+  return {
+    dstLevel: peakResult.level,
+    dstExpInLevel,
+    targetBoostCandy,
+    targetNormalCandy: mixed.normalCandy,
+  };
 }
 
 /**
@@ -1144,7 +1283,7 @@ function getRowPokedexId(r: { pokedexId?: number; boxId?: string }): number | un
   return undefined;
 }
 
-// PokemonLevelUpResult への直接アクセス: calc.getPokemonResult(rowId) を使用
+// PokemonPlanResult への直接アクセス: calc.getPokemonResult(rowId) を使用
 
 // アイテム使用リストの項目型
 type ItemUsageItem = { label: string; value: number; isDanger: boolean };
@@ -1152,37 +1291,51 @@ type ItemUsageItem = { label: string; value: number; isDanger: boolean };
 // アイテム使用リストの赤字判定モード
 type ItemDangerMode = 'target' | 'limit' | 'reachable';
 
+function supplyValue(supply: CandySupplyBreakdown): number {
+  return supply.species
+    + supply.type.s * CANDY_VALUES.type.s
+    + supply.type.m * CANDY_VALUES.type.m
+    + supply.universal.s * CANDY_VALUES.universal.s
+    + supply.universal.m * CANDY_VALUES.universal.m
+    + supply.universal.l * CANDY_VALUES.universal.l;
+}
+
+function lineSurplus(line: PokemonPlanLine): number {
+  return Math.max(0, line.surplusCandyValue, supplyValue(line.candySupply) - line.totalCandyUnitsUsed);
+}
+
 // 共通ヘルパー: アイテム使用リストを生成
 function buildItemUsageList(
   r: CalcRowView,
   mode: ItemDangerMode,
-  pCached?: PokemonLevelUpResult | null
+  pCached?: PokemonPlanResult | null
 ): ItemUsageItem[] {
   const p = pCached !== undefined ? pCached : rowP(r);
   if (!p) return [];
 
   // モードに応じてアイテムソースを決定
-  let sourceItems: typeof p.targetItems;
+  let sourceLine: PokemonPlanLine;
   switch (mode) {
     case 'target':
-      sourceItems = p.targetItems;
+      sourceLine = p.targetLine;
       break;
     case 'limit':
       if (!hasLimit(r)) return [];
-      sourceItems = p.candyTargetItems ?? p.targetItems;
+      sourceLine = p.candyTargetLine ?? p.targetLine;
       break;
     case 'reachable':
-      sourceItems = p.reachableItems;
+      sourceLine = p.reachableLine;
       break;
   }
+  const sourceItems = sourceLine.candySupply;
 
   const items: ItemUsageItem[] = [];
-  const typeName = getTypeName(p.type, locale.value);
+  const typeName = getTypeName(r.pokemonType || getPokemonType(p.pokedexId), locale.value);
   const uniLabel = t("calc.export.labelUni");
 
   // 在庫を取得（limit モード用）
   const uniStock = candyStore.universalCandy.value;
-  const typeStock = candyStore.getTypeCandyFor(p.type);
+  const typeStock = candyStore.getTypeCandyFor(r.pokemonType || getPokemonType(p.pokedexId));
 
   // 赤字判定関数
   const getDanger = (itemType: 'typeS' | 'typeM' | 'uniS' | 'uniM' | 'uniL', value: number): boolean => {
@@ -1199,45 +1352,52 @@ function buildItemUsageList(
       // 目標まで行: 万能Sのみ、不足時かつ個数指定なしで赤字
       if (itemType === 'uniS') {
         const hasLimitValue = r.candyTarget != null && r.candyTarget >= 0;
-        return p.shortage.candy > 0 && !hasLimitValue;
+        return p.shortage.candyToTarget > 0 && !hasLimitValue;
       }
       return false;
     } else {
       // 到達可能行: 万能Sのみ、不足時に赤字
       if (itemType === 'uniS') {
-        return p.shortage.candy > 0;
+        return p.shortage.candyToTarget > 0;
       }
       return false;
     }
   };
 
   // タイプアメ
-  if (sourceItems.typeS > 0) {
-    items.push({ label: `${typeName}S`, value: sourceItems.typeS, isDanger: getDanger('typeS', sourceItems.typeS) });
+  if (sourceItems.type.s > 0) {
+    items.push({ label: `${typeName}S`, value: sourceItems.type.s, isDanger: getDanger('typeS', sourceItems.type.s) });
   }
-  if (sourceItems.typeM > 0) {
-    items.push({ label: `${typeName}M`, value: sourceItems.typeM, isDanger: getDanger('typeM', sourceItems.typeM) });
+  if (sourceItems.type.m > 0) {
+    items.push({ label: `${typeName}M`, value: sourceItems.type.m, isDanger: getDanger('typeM', sourceItems.type.m) });
   }
 
   // 万能アメ
-  if (sourceItems.universalS > 0) {
-    items.push({ label: `${uniLabel}S`, value: sourceItems.universalS, isDanger: getDanger('uniS', sourceItems.universalS) });
+  if (sourceItems.universal.s > 0) {
+    items.push({ label: `${uniLabel}S`, value: sourceItems.universal.s, isDanger: getDanger('uniS', sourceItems.universal.s) });
   }
-  if (sourceItems.universalM > 0) {
-    items.push({ label: `${uniLabel}M`, value: sourceItems.universalM, isDanger: getDanger('uniM', sourceItems.universalM) });
+  if (sourceItems.universal.m > 0) {
+    items.push({ label: `${uniLabel}M`, value: sourceItems.universal.m, isDanger: getDanger('uniM', sourceItems.universal.m) });
   }
-  if (sourceItems.universalL > 0) {
-    items.push({ label: `${uniLabel}L`, value: sourceItems.universalL, isDanger: getDanger('uniL', sourceItems.universalL) });
-  }
-
-  // 余り
-  const usedTypeOrUniCandy = sourceItems.typeS > 0 || sourceItems.typeM > 0 ||
-    sourceItems.universalS > 0 || sourceItems.universalM > 0 || sourceItems.universalL > 0;
-  if (sourceItems.surplus > 0 && usedTypeOrUniCandy) {
-    items.push({ label: t("calc.candy.surplus"), value: sourceItems.surplus, isDanger: false });
+  if (sourceItems.universal.l > 0) {
+    items.push({ label: `${uniLabel}L`, value: sourceItems.universal.l, isDanger: getDanger('uniL', sourceItems.universal.l) });
   }
 
   return items;
+}
+
+function getSurplusValue(r: CalcRowView, mode: ItemDangerMode): number {
+  const p = rowP(r);
+  if (!p) return 0;
+  switch (mode) {
+    case 'target':
+      return lineSurplus(p.targetLine);
+    case 'limit':
+      if (!hasLimit(r)) return 0;
+      return lineSurplus(p.candyTargetLine ?? p.targetLine);
+    case 'reachable':
+      return lineSurplus(p.reachableLine);
+  }
 }
 
 /** 行ごとのアイテム内訳（1 computed にまとめ、行あたり rowP は1回だけ） */
@@ -1254,24 +1414,43 @@ const rowItemUsageMaps = computed(() => {
   return { target, limit, reachable };
 });
 
-// アイテム使用があるか判定（目標まで行用 = targetItems）
+// アイテム使用があるか判定（目標まで行用 = targetLine）
 // 種族アメのみで足りた場合はfalse、タイプアメまたは万能アメを使用した場合のみtrue
 function hasItemUsage(r: CalcRowView): boolean {
   const p = rowP(r);
   if (!p) return false;
-  const items = p.targetItems;
+  const items = p.targetLine.candySupply;
   return (
-    items.universalS > 0 ||
-    items.universalM > 0 ||
-    items.universalL > 0 ||
-    items.typeS > 0 ||
-    items.typeM > 0
+    items.universal.s > 0 ||
+    items.universal.m > 0 ||
+    items.universal.l > 0 ||
+    items.type.s > 0 ||
+    items.type.m > 0
   );
 }
 
 // ============================================================
 // 不足判定ヘルパー
 // ============================================================
+
+type ShortageDisplayKind = 'boost' | 'candy' | 'shards';
+
+function getShortageValue(r: CalcRowView, kind: ShortageDisplayKind): number {
+  const p = rowP(r);
+  if (!p) return 0;
+  const value = kind === 'boost'
+    ? p.shortage.boostCandyUnavailable
+    : kind === 'candy'
+      ? p.shortage.candyToTarget
+      : p.shortage.dreamShardShortage;
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+function hasAnyShortage(r: CalcRowView): boolean {
+  return getShortageValue(r, 'boost') > 0
+    || getShortageValue(r, 'candy') > 0
+    || getShortageValue(r, 'shards') > 0;
+}
 
 // 赤字判定
 function isDanger(
@@ -1288,10 +1467,10 @@ function isDanger(
   if (row === 'target' && hasLimitValue) return false;
 
   switch (field) {
-    case 'boost': return p.shortage.boost > 0;
-    case 'normal': return p.shortage.normal > 0;
-    case 'candy': return p.shortage.candy > 0;
-    case 'shards': return p.shortage.shards > 0;
+    case 'boost': return p.shortage.boostCandyUnavailable > 0;
+    case 'normal': return p.shortage.candyToTarget > 0;
+    case 'candy': return p.shortage.candyToTarget > 0;
+    case 'shards': return p.shortage.dreamShardShortage > 0;
   }
 }
 
@@ -1299,7 +1478,7 @@ function isDanger(
 function isCandyShort(r: CalcRowView): boolean {
   const p = rowP(r);
   if (!p) return false;
-  return p.shortage.candy > 0;
+  return p.shortage.candyToTarget > 0;
 }
 
 // 個数指定があるか
@@ -1320,9 +1499,10 @@ function getTheoreticalResources(r: CalcRowView): TheoreticalResources | null {
   const p = rowP(r);
   if (!p) return null;
 
-  const boostCandy = p.candyTargetBoost ?? p.targetBoost;
-  const normalCandy = p.candyTargetNormal ?? p.targetNormal;
-  const shards = p.candyTargetShards ?? p.targetShards;
+  const line = p.candyTargetLine ?? p.targetLine;
+  const boostCandy = line.boostedCandyUnits;
+  const normalCandy = line.nonBoostCandyUnits;
+  const shards = line.dreamShardsUsed;
 
   return {
     candy: boostCandy + normalCandy,
@@ -1330,19 +1510,6 @@ function getTheoreticalResources(r: CalcRowView): TheoreticalResources | null {
     normalCandy,
     shards,
   };
-}
-
-// 個数指定がある場合、理論値ベースで最初に不足したリソース種類を判定
-// 順序: アメブ → アメ → かけら
-type ShortageType = "boost" | "candy" | "shards" | null;
-function getTheoreticalShortageType(r: CalcRowView): ShortageType {
-  if (!hasLimit(r)) return null;
-
-  const p = rowP(r);
-  if (!p) return null;
-
-  // diagnosis.limitingFactor を直接使用
-  return p.diagnosis.limitingFactor;
 }
 
 // ヒントアイコン用

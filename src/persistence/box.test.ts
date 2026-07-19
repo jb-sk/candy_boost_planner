@@ -44,4 +44,19 @@ describe("persistence/box", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]?.planner?.sleepHours).toBe(123);
   });
+
+  it("keeps reading the released raw-array storage format", () => {
+    localStorage.setItem("candy-boost-planner:box:v1", JSON.stringify([{
+      id: "legacy-entry",
+      source: "manual",
+      rawText: "",
+      label: "legacy",
+      createdAt: "2025-01-01T00:00:00.000Z",
+      updatedAt: "2025-01-01T00:00:00.000Z",
+    }]));
+
+    expect(loadBox()).toEqual([
+      expect.objectContaining({ id: "legacy-entry", label: "legacy" }),
+    ]);
+  });
 });

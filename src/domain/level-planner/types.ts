@@ -1,4 +1,4 @@
-﻿/**
+/**
  * LevelPlanner - 型定義
  *
  * レベルアップ計画に必要な全ての型を定義。
@@ -19,135 +19,6 @@ export type PokemonType = string;
 
 /** 不足の種類 */
 export type ShortageType = 'candy' | 'boost' | 'shards';
-
-// ============================================================
-// Lv+EXP 型（目標・到達点の表現）
-// ============================================================
-
-/**
- * Lv+EXP のペア
- * 目標や到達点の正確な表現に使用
- */
-export type LevelExp = {
-  level: number;
-  expInLevel: number;
-};
-
-/**
- * Lv+EXP を比較
- * @returns 負: a < b, 0: a == b, 正: a > b
- */
-export function compareLevelExp(a: LevelExp, b: LevelExp): number {
-  if (a.level !== b.level) return a.level - b.level;
-  return a.expInLevel - b.expInLevel;
-}
-
-/**
- * aがb以上か（目標達成判定用）
- */
-export function isLevelExpReached(current: LevelExp, target: LevelExp): boolean {
-  return compareLevelExp(current, target) >= 0;
-}
-
-/**
- * 2つの LevelExp のうち小さい方を返す
- */
-export function minLevelExp(a: LevelExp, b: LevelExp): LevelExp {
-  return compareLevelExp(a, b) <= 0 ? a : b;
-}
-
-// ============================================================
-// 入力型
-// ============================================================
-
-/**
- * レベルアップ計画の入力（1匹のポケモン）
- */
-export type PokemonLevelUpRequest = {
-  /** 一意識別子 */
-  id: string;
-
-  /** 図鑑番号 */
-  pokedexId: number;
-
-  /** フォーム（デフォルト: 0） */
-  form?: number;
-
-  /** ポケモン名 */
-  pokemonName: string;
-
-  /** タイプ（英語） */
-  type: PokemonType;
-
-  // ────────────────────────────────────────
-  // レベル情報
-  // ────────────────────────────────────────
-
-  /** 現在Lv */
-  srcLevel: number;
-
-  /** 目標Lv */
-  dstLevel: number;
-
-  /** 目標Lv内のEXP（省略時=0: ちょうどdstLevelに到達） */
-  dstExpInLevel?: number;
-
-  /** EXPタイプ（600, 900, 1080, 1320） */
-  expType: ExpType;
-
-  /** 性格補正（up, neutral, down） */
-  nature: ExpGainNature;
-
-  /** 現在Lv内の獲得済みEXP */
-  expGot: number;
-
-  // ────────────────────────────────────────
-  // 必要量（事前計算済み）
-  // ────────────────────────────────────────
-
-  /** 目標Lvまでに必要なアメ数（価値換算） */
-  candyNeed: number;
-
-  /** 目標Lvまでに必要なEXP */
-  expNeed: number;
-
-  // ────────────────────────────────────────
-  // 個数設定
-  // ────────────────────────────────────────
-
-  /**
-   * アメブ時: ブースト個数（残りは通常アメ）＋ EXP調整
-   * 通常時: EXP調整量
-   */
-  boostOrExpAdjustment: number;
-
-  /**
-   * アメ個数指定（第2の目標）
-   * 指定した個数を使いたい。使えなければ不足表示
-   */
-  candyTarget?: number;
-
-  /**
-   * 計算モード
-   * - 'targetLevel': 目標Lvモード（デフォルト）- dstExpInLevel = 0
-   * - 'peak': ピークモード - dstExpInLevel を使用
-   */
-  mode?: 'targetLevel' | 'peak';
-};
-
-/**
- * 計画設定
- */
-export type PlanConfig = {
-  /** アメブースト種類 */
-  boostKind: BoostKind;
-
-  /** グローバルアメブ上限 */
-  globalBoostLimit: number;
-
-  /** グローバルかけら上限 */
-  globalShardsLimit: number;
-};
 
 // ============================================================
 // 在庫型
@@ -185,65 +56,101 @@ export type CandyInventory = {
 };
 
 // ============================================================
-// 出力型
+// fbl01d feasibility witness
 // ============================================================
 
-/**
- * アイテム使用量
- */
-export type ItemUsage = {
-  /** 種族アメ使用量 */
-  speciesCandy: number;
-
-  /** タイプS使用量 */
-  typeS: number;
-
-  /** タイプM使用量 */
-  typeM: number;
-
-  /** 万能S使用量 */
-  universalS: number;
-
-  /** 万能M使用量 */
-  universalM: number;
-
-  /** 万能L使用量 */
-  universalL: number;
-
-  /** 配分アイテムの供給価値（余り込み） */
-  totalSupply: number;
-
-  /** アメブ個数 */
-  boostCount: number;
-
-  /** 通常アメ個数 */
-  normalCount: number;
-
-  /** アメ合計（boostCount + normalCount） */
-  totalCandyCount: number;
-
-  /** かけら個数 */
-  shardsCount: number;
-
-  /** アイテム配分の余り（アメ価値）：配分したアイテムの価値 - 必要アメ価値。万能Sで端数調整し、2以下が理想 */
-  surplus: number;
+/** 合同 feasibility に渡す、供給内訳をまだ持たない固定需要行。 */
+export type FeasibilityDemandRow = {
+  pokemonId: string;
+  pokedexId: number;
+  type: PokemonType;
+  totalCandy: number;
+  boostCandy: number;
+  normalCandy: number;
+  shards: number;
+  reachedLv: number;
+  expInLevel: number;
+  targetReached: boolean;
+  preferZeroSurplus?: boolean;
+  speciesLexWeight?: number;
 };
 
-/**
- * 不足情報（各リソースの独立した不足量。diagnosis.isXxxShortage に基づいて設定）
- */
-export type ShortageInfo = {
-  /** アメブ不足量（isBoostShortage 時のみ > 0） */
-  boost: number;
+/** 合同 feasibility が復元する、行単位の実在供給 witness。 */
+export type FeasiblePlanRow = FeasibilityDemandRow & {
+  supply: {
+    species: number;
+    typeS: number;
+    typeM: number;
+    universalS: number;
+    universalM: number;
+    universalL: number;
+  };
+};
 
-  /** 通常アメ不足量（isInventoryShortage 時のみ > 0） */
-  normal: number;
+/** witness から再計算できる残資源。余りを種族在庫へ戻した値は持たない。 */
+export type FeasibleResourceState = {
+  species: Record<string, number>;
+  typeCandy: Record<PokemonType, TypeCandyStock>;
+  universal: UniversalCandyStock;
+  boostCandy: number;
+  dreamShards: number;
+};
 
-  /** アメ合計不足量（isInventoryShortage 時のみ > 0） */
-  candy: number;
+/** 固定需要 feasibility の実行条件。需要行のアメブ/かけらは変更しない。 */
+export type FeasibilitySolverOptions = {
+  boostKind?: BoostKind;
+  boostLimit?: number;
+  dreamShards?: number;
+  itemCompareMode?: SolverItemCompareMode;
+  /** 探索打ち切り時に品質床として保持する既存 witness。 */
+  fallbackWitness?: FeasibilityWitness;
+  /** テスト・制御経路用。状態を近似削減する cap ではなく、打ち切りを inconclusive にする境界。 */
+  abortAfterTransitions?: number;
+  deadlineMs?: number;
+  logPerformance?: boolean;
+  /** 検索用の安全なゲート。指定時は各行の供給余りがこの値を超える行候補を除外する。 */
+  maxRowSurplus?: number;
+  /** 検索用の安全なゲート。指定時は全行合計の供給余りがこの値を超える状態を除外する。 */
+  maxTotalSurplus?: number;
+};
 
-  /** かけら不足量（isShardsShortage 時のみ > 0） */
-  shards: number;
+export type FeasibilityWitness = {
+  reachedCount: number;
+  boundaryIndex: number | null;
+  boundaryLevel: number;
+  boundaryExpInLevel: number;
+  rows: FeasiblePlanRow[];
+  remaining: FeasibleResourceState;
+};
+
+export type FeasibilityStats = {
+  rowOptionCounts: number[];
+  rowFrontierCounts: number[];
+  typeBlockFrontierCounts: number[];
+  globalKeyCount: number;
+  transitions: number;
+  witnessRestoreMs: number;
+  durationMs: number;
+  elapsedMs: number;
+};
+
+export type FeasibilityValidationResult =
+  | { valid: true }
+  | { valid: false; errors: string[] };
+
+export type FeasibilityResult =
+  | { status: 'feasible'; witness: FeasibilityWitness; stats: FeasibilityStats }
+  | { status: 'infeasible'; reason: string; stats: FeasibilityStats }
+  | { status: 'inconclusive'; reason: string; stats: FeasibilityStats; witness?: FeasibilityWitness };
+
+export type FeasibilityRefineStatus = 'ok' | 'invalid_selected' | 'unsupported' | 'inconclusive' | 'no_feasible_combination';
+
+export type FeasibilityRefineResult = {
+  status: 'refined' | 'baseline';
+  witness: FeasibilityWitness;
+  refineStatus: FeasibilityRefineStatus;
+  durationMs: number;
+  reason?: string;
 };
 
 /**
@@ -258,343 +165,6 @@ export type ReachableInfo = {
 
   /** 到達に使用したアメ数（この制限での仮のcandyNeed） */
   candyUsed: number;
-};
-
-/**
- * 制約診断（Lvと獲得EXPで比較し、最も制限的な要因を特定）
- */
-export type ConstraintDiagnosis = {
-  /** 在庫のみを考慮した場合の到達可能情報 */
-  byInventory: ReachableInfo;
-
-  /** アメブ制限を適用した場合の到達可能情報 */
-  byBoostLimit: ReachableInfo;
-
-  /** かけら制限を適用した場合の到達可能情報 */
-  byShardsLimit: ReachableInfo;
-
-  /** 最も制限的な要因（目標達成時はnull） */
-  limitingFactor: ShortageType | null;
-
-  // ────────────────────────────────────────
-  // 独立した不足フラグ（各項目が赤字かどうか判定用）
-  // ────────────────────────────────────────
-
-  /** アメ在庫不足か（在庫が目標に足りない） */
-  isInventoryShortage: boolean;
-
-  /** アメブ上限不足か（アメブ残が理論アメブに足りない） */
-  isBoostShortage: boolean;
-
-  /** かけら上限不足か（かけら残が理論かけらに足りない） */
-  isShardsShortage: boolean;
-};
-
-/**
- * 配分時点のリソース状態（診断用）
- */
-export type ResourceSnapshot = {
-  /** 配分時点のグローバルアメブ残数 */
-  availableBoost: number;
-
-  /** 配分時点のグローバルかけら残数 */
-  availableShards: number;
-
-  /** 配分時点のアメ在庫価値（このポケモンが使用可能な量） */
-  availableInventoryValue: number;
-
-  /** 配分時点の万能S残数 */
-  availableUniversalS: number;
-};
-
-/**
- * レベルアップ計画の結果（1匹のポケモン）
- */
-export type PokemonLevelUpResult = PokemonLevelUpRequest & {
-  // ────────────────────────────────────────
-  // 到達情報
-  // ────────────────────────────────────────
-
-  /** 到達Lv */
-  reachedLevel: number;
-
-  /** あとEXP（次レベルまでのEXP） */
-  expToNextLevel: number;
-
-  /** 残EXP（目標Lvまでの残りEXP） */
-  expToTarget: number;
-
-  // ────────────────────────────────────────
-  // アイテム使用量（到達可能行用）
-  // ────────────────────────────────────────
-
-  /** 到達可能行用アイテム使用量（配分結果） */
-  reachableItems: ItemUsage;
-
-  // ────────────────────────────────────────
-  // 不足情報
-  // ────────────────────────────────────────
-
-  /** 不足情報 */
-  shortage: ShortageInfo;
-
-  // ────────────────────────────────────────
-  // 診断情報
-  // ────────────────────────────────────────
-
-  /** 制約診断 */
-  diagnosis: ConstraintDiagnosis;
-
-  /** 配分時点のリソース状態 */
-  resourceSnapshot: ResourceSnapshot;
-
-  // ────────────────────────────────────────
-  // 目標まで行用（常にあり）
-  // ────────────────────────────────────────
-
-  /** 目標まで: アメブ必要量 */
-  targetBoost: number;
-
-  /** 目標まで: 通常アメ必要量 */
-  targetNormal: number;
-
-  /** 目標まで: かけら必要量 */
-  targetShards: number;
-
-  /** 目標まで: 必要アイテム詳細 */
-  targetItems: ItemUsage;
-
-  /** 目標まで: あとEXP（次レベルまでのEXP） */
-  targetExpToNextLevel: number;
-
-  // ────────────────────────────────────────
-  // 第2目標（個数指定行用、candyTargetがある場合のみ）
-  // ────────────────────────────────────────
-
-  /** 第2目標: アメブ必要量 */
-  candyTargetBoost?: number;
-
-  /** 第2目標: 通常アメ必要量 */
-  candyTargetNormal?: number;
-
-  /** 第2目標: かけら必要量 */
-  candyTargetShards?: number;
-
-  /** 第2目標: 必要アイテム詳細 */
-  candyTargetItems?: ItemUsage;
-};
-
-/**
- * レベルアップ計画の全体結果
- */
-export type LevelUpPlanResult = {
-  /** 各ポケモンの計画結果 */
-  pokemons: PokemonLevelUpResult[];
-
-  // ────────────────────────────────────────
-  // 在庫使用サマリー（実使用量）
-  // ────────────────────────────────────────
-
-  /** 万能アメ使用量 */
-  universalUsed: UniversalCandyStock;
-
-  /** 万能アメ残量 */
-  universalRemaining: UniversalCandyStock;
-
-  /** タイプアメ使用量 */
-  typeCandyUsed: Record<string, TypeCandyStock>;
-
-  /** 種族アメ使用量 */
-  speciesCandyUsed: Record<string, number>;
-
-  // ────────────────────────────────────────
-  // 理論値サマリー（目標まで行 or 個数指定行）
-  // ────────────────────────────────────────
-
-  /** 理論アメブ合計 */
-  theoreticalBoostTotal: number;
-
-  /** 理論通常アメ合計 */
-  theoreticalNormalTotal: number;
-
-  /** 理論かけら合計 */
-  theoreticalShardsTotal: number;
-
-  // ────────────────────────────────────────
-  // 実使用サマリー（到達可能行）
-  // ────────────────────────────────────────
-
-  /** 実使用アメブ合計 */
-  actualBoostTotal: number;
-
-  /** 実使用通常アメ合計 */
-  actualNormalTotal: number;
-
-  /** 実使用かけら合計 */
-  actualShardsTotal: number;
-
-  // ────────────────────────────────────────
-  // 不足サマリー
-  // ────────────────────────────────────────
-
-  /** アメ不足しているポケモン */
-  candyShortages: Array<{ id: string; pokemonName: string; shortage: number }>;
-
-  /** かけら不足しているポケモン */
-  shardsShortages: Array<{ id: string; pokemonName: string; shortage: number }>;
-
-  /** アメ不足合計 */
-  totalCandyShortage: number;
-
-  /** かけら不足合計 */
-  totalShardsShortage: number;
-
-  // ────────────────────────────────────────
-  // ランキング
-  // ────────────────────────────────────────
-
-  /** 万能アメ消費ランキング（実使用、価値順） */
-  itemUsageRanking: ItemUsageRankingEntry[];
-
-  // ────────────────────────────────────────
-  // 合計
-  // ────────────────────────────────────────
-
-  /** 必要アメ合計 */
-  totalNeed: number;
-
-  /** 供給アメ合計 */
-  totalSupplied: number;
-};
-
-/**
- * アイテム消費ランキングのエントリ
- */
-export type ItemUsageRankingEntry = {
-  id: string;
-  pokemonName: string;
-  /** タイプアメS */
-  typeS: number;
-  /** タイプアメM */
-  typeM: number;
-  /** 万能S */
-  universalS: number;
-  /** 万能M */
-  universalM: number;
-  /** 万能L */
-  universalL: number;
-  /** 合計価値（ランキングソート用） */
-  totalValue: number;
-};
-
-// ============================================================
-// 内部作業型
-// ============================================================
-
-/**
- * Phase処理中のポケモン状態
- *
- * 新フェーズ設計:
- * - フェーズ1: 配分と制約適用（ポケモンごとに順番・完結）
- * - フェーズ2: スワップ（全ポケモン）
- * - フェーズ3: 結果構築
- */
-export type PokemonWorkingState = PokemonLevelUpRequest & {
-  // ────────────────────────────────────────
-  // 到達情報（フェーズ1で設定）
-  // ────────────────────────────────────────
-
-  /** 現在の到達Lv */
-  reachedLevel: number;
-
-  /** あとEXP（次レベルまでのEXP） */
-  expToNextLevel?: number;
-
-  /** 残EXP（目標までのEXP） */
-  expToTarget?: number;
-
-  // ────────────────────────────────────────
-  // 目標まで行（フェーズ1で計算、フェーズ3で補填）
-  // ────────────────────────────────────────
-
-  /** 目標まで行: 必要アイテム（補填前→フェーズ3で補填） */
-  targetItems: ItemUsage;
-
-  /** 目標まで行: アメブ必要量 */
-  targetBoost?: number;
-
-  /** 目標まで行: 通常アメ必要量 */
-  targetNormal?: number;
-
-  /** 目標まで行: かけら必要量 */
-  targetShards?: number;
-
-  /** 目標まで行: あとEXP（次レベルまでのEXP） */
-  targetExpToNextLevel?: number;
-
-  // ────────────────────────────────────────
-  // 個数指定行（フェーズ1で計算、フェーズ3で補填、candyTarget がある場合のみ）
-  // ────────────────────────────────────────
-
-  /** 個数指定行: 必要アイテム（補填前→フェーズ3で補填） */
-  candyTargetItems?: ItemUsage;
-
-  /** 個数指定行: アメブ必要量 */
-  candyTargetBoost?: number;
-
-  /** 個数指定行: 通常アメ必要量 */
-  candyTargetNormal?: number;
-
-  /** 個数指定行: かけら必要量 */
-  candyTargetShards?: number;
-
-  // ────────────────────────────────────────
-  // 到達可能行（フェーズ1で設定、補填なし）
-  // ────────────────────────────────────────
-
-  /** 到達可能行: 実使用アイテム */
-  reachableItems: ItemUsage;
-
-  // ────────────────────────────────────────
-  // 診断・不足情報（フェーズ1で設定）
-  // ────────────────────────────────────────
-
-  /** 各制約での到達可能情報 */
-  diagnosis?: ConstraintDiagnosis;
-
-  /** 配分時点のリソース状態 */
-  resourceSnapshot?: ResourceSnapshot;
-
-  /** 不足情報 */
-  shortage?: ShortageInfo;
-};
-
-/**
- * Phase処理の状態
- */
-export type PhaseState = {
-  /** 処理中のポケモンリスト */
-  pokemons: PokemonWorkingState[];
-
-  /** 現在の在庫状態（可変） */
-  inventory: CandyInventory;
-
-  /** グローバルアメブ残数 */
-  boostRemaining: number;
-
-  /** グローバルかけら残数 */
-  shardsRemaining: number;
-};
-
-/**
- * 計画コンテキスト
- */
-export type PlanContext = {
-  /** 設定 */
-  config: PlanConfig;
-
-  /** 初期在庫（参照用、変更しない） */
-  initialInventory: Readonly<CandyInventory>;
 };
 
 // ============================================================
@@ -621,4 +191,277 @@ export type UniversalAllocationResult = {
   m: number;
   l: number;
   supplied: number;
+};
+
+// ============================================================
+// 単一最適化パイプライン（fbl01）
+// ============================================================
+
+/** 個数指定行の入力。個数はすべて価値換算アメ個数。 */
+export type CandyTargetInput = {
+  totalCandyUnits: number;
+  boostedCandyUnits?: number;
+};
+
+export type ItemCompareMode = 'surplusFirst' | 'surplusGateFirst' | 'legacyImproved';
+export type SolverItemCompareMode = ItemCompareMode;
+
+export type PlannerOptions = {
+  itemCompareMode: SolverItemCompareMode;
+};
+
+export type PokemonPlanInput = {
+  pokemonId: string;
+  pokedexId: number;
+  name: string;
+  /** UIの入力モード。solver計算自体では使わないが、signatureの構造情報に含める。 */
+  mode?: 'targetLevel' | 'peak';
+  type: PokemonType;
+  currentLevel: number;
+  currentExpInLevel: number;
+  targetLevel: number;
+  targetExpInLevel?: number;
+  candyTarget?: CandyTargetInput;
+  expType: ExpType;
+  nature: ExpGainNature;
+  requestedBoostCandy: number;
+  boostAllowed: boolean;
+  preferZeroSurplus?: boolean;
+  priorityIndex: number;
+};
+
+export type LevelPlannerInput = {
+  pokemonList: PokemonPlanInput[];
+  dreamShards: number;
+  boost: { kind: BoostKind; limit: number };
+  candyInventory: CandyInventory;
+  options?: Partial<PlannerOptions>;
+};
+
+/**
+ * レベルプランナーの自動再計算方針。表示中結果の計算モードとは別物。
+ *
+ * autoExact: 自動再計算でもまず exact を試す。
+ * autoMixed: 互換名。現在は exact を試さず fbl01d feasibility witness 計算へ流す。
+ */
+export type CalculationPolicy = 'autoExact' | 'autoMixed';
+
+export type StructuralProbeStatus =
+  | 'idle'
+  | 'running'
+  | 'exactCompleted'
+  | 'deadlineExceeded'
+  | 'aborted';
+
+/**
+ * 実際に走らせる計算方式。
+ *
+ * prefixLocalMixed: 互換名。現在の通常経路では fbl01d feasibility witness 計算を表す。
+ */
+export type CalculationMode = 'exact' | 'prefixLocalMixed';
+export type MixedCalculationSource = 'mixed' | 'feasibility';
+
+export type MixedCalculationMeta = {
+  source: MixedCalculationSource;
+  exactPrefixCount: number;
+  localSuffixCount: number;
+};
+
+export type DeadlineExceededMeta = {
+  deadlineExceeded: true;
+  elapsedMs: number;
+  reachedIndex: number;
+  expansions: number;
+  maxNextStates: number;
+  maxOutputStates: number;
+  /** deadline超過時点で完全処理済みのprefix長。処理中indexは含まない。 */
+  completedPrefixCount: number;
+};
+
+export type PlannerTuning = {
+  maxSupplyCandidates: number;
+  maxSharedSpeciesSupplyCandidates: number;
+  maxStatesPerIndex: number;
+  maxStatesBeforeFinalIndex: number;
+  maxExpansions: number;
+};
+
+export type PlannerSolveOptions = {
+  deadlineMs?: number;
+  /** CIで安定して deadlineExceeded を再現する決定的budget。maxExpansionsとは別物。 */
+  abortAfterExpansions?: number;
+  /** prefixLocalMixedで再利用する完走済みprefix長。処理中indexは含めない。 */
+  mixedPrefixCount?: number;
+  tuning?: Partial<PlannerTuning>;
+  calculationMode?: CalculationMode;
+};
+
+export type PlannerSolveOutcome =
+  | { kind: 'result'; result: LevelPlannerResult; durationMs: number; mixedMeta?: MixedCalculationMeta }
+  | { kind: 'deadlineExceeded'; meta: DeadlineExceededMeta; mixedResult: LevelPlannerResult; durationMs: number; mixedMeta: MixedCalculationMeta };
+
+export type CandySupplyBreakdown = {
+  species: number;
+  type: { s: number; m: number };
+  universal: { s: number; m: number; l: number };
+};
+
+export type PokemonPlanLine = {
+  level: number;
+  expInLevel: number;
+  expToNextLevel: number;
+  expToTarget: number;
+  totalCandyUnitsUsed: number;
+  boostedCandyUnits: number;
+  nonBoostCandyUnits: number;
+  candySupply: CandySupplyBreakdown;
+  dreamShardsUsed: number;
+  expGained: number;
+  surplusExp: number;
+  surplusCandyValue: number;
+  targetReached: boolean;
+};
+
+export type PokemonShortage = {
+  expToTarget: number;
+  candyToTarget: number;
+  dreamShardShortage: number;
+  boostCandyUnavailable: number;
+};
+
+export type PokemonConstraintDiagnosis = {
+  byCandyInventory: ReachableInfo;
+  byBoostLimit: ReachableInfo;
+  byDreamShards: ReachableInfo;
+  limitingFactor: ShortageType | null;
+  isInventoryShortage: boolean;
+  isBoostShortage: boolean;
+  isShardsShortage: boolean;
+};
+
+export type PokemonPlanResult = {
+  pokemonId: string;
+  pokedexId: number;
+  name: string;
+  currentLevel: number;
+  currentExpInLevel: number;
+  targetLevel: number;
+  targetExpInLevel: number;
+  targetLine: PokemonPlanLine;
+  candyTargetLine?: PokemonPlanLine;
+  reachableLine: PokemonPlanLine;
+  targetReached: boolean;
+  shortage: PokemonShortage;
+  constraintDiagnosis: PokemonConstraintDiagnosis;
+  role: 'upper' | 'boundary' | 'lower';
+};
+
+export type BoostUsageSummary = {
+  kind: BoostKind;
+  boostLimit: number;
+  boostUsed: number;
+  boostRemaining: number;
+};
+
+export type PlannerSummary = {
+  totalDreamShardsUsed: number;
+  dreamShardsRemaining: number;
+  boost: BoostUsageSummary;
+  speciesCandyUsed: Record<string, number>;
+  typeCandyUsed: Record<PokemonType, TypeCandyStock>;
+  universalCandyUsed: UniversalCandyStock;
+  speciesCandyRemaining: Record<string, number>;
+  typeCandyRemaining: Record<PokemonType, TypeCandyStock>;
+  universalCandyRemaining: UniversalCandyStock;
+  itemUsageRanking: Array<{ pokemonId: string; name: string; typeS: number; typeM: number; universalS: number; universalM: number; universalL: number; totalValue: number }>;
+  totalNeed: { totalCandyUnits: number; totalDreamShards: number; totalBoostCandyRequested: number };
+  totalSupplied: { totalCandyValue: number; totalBoostedCandyUnits: number; totalNonBoostCandyUnits: number; totalDreamShards: number };
+  boundaryPokemonId?: string;
+  fullyReachedCount: number;
+};
+
+export type PlannerShortageSummary = {
+  hasShortage: boolean;
+  totalExpToTargets: number;
+  totalCandyShortage: number;
+  totalDreamShardShortage: number;
+  candyShortages: Array<{ pokemonId: string; name: string; amount: number }>;
+  shardShortages: Array<{ pokemonId: string; name: string; amount: number }>;
+};
+
+export type PlannerLossLedger = {
+  hasLoss: boolean;
+  supplyCandidateCuts: Array<{
+    pokemonId: string;
+    name: string;
+    pokedexId: number;
+    totalCandyUnits: number;
+    limit: number;
+    kept: number;
+    selectedBeforeTrim: number;
+    stoppedAtSurplus: number;
+    maxSurplus: number;
+    sharedSpecies: boolean;
+    itemCompareMode: ItemCompareMode;
+  }>;
+  frontierCuts: Array<{
+    index: number;
+    before: number;
+    after: number;
+    limit: number;
+    signatureMergedStates: number;
+  }>;
+  stateCaps: Array<{
+    index: number;
+    cap: number;
+    reason: 'beforeFinal';
+  }>;
+  expansionCapReductions: Array<{
+    index: number;
+    expansions: number;
+    cap: number;
+  }>;
+};
+
+export type LevelPlannerResult = {
+  pokemonResults: PokemonPlanResult[];
+  summary: PlannerSummary;
+  shortages: PlannerShortageSummary;
+  lossLedger: PlannerLossLedger;
+  performance?: {
+    feasibilityMs?: number;
+    refineMs?: number;
+    refineStatus?: string;
+    refineReason?: string;
+    boundarySearch?: {
+      mode: ItemCompareMode;
+      boundaryIndex: number;
+      targetTotalCandy: number;
+      maxFeasibleTotalCandy: number;
+      maxFeasibleScope: 'unrestricted' | 'rowSurplusGate' | 'totalSurplusGate' | 'unknown';
+      selectedTotalCandy: number;
+      checkedLowerTotals: number;
+      feasibleLowerTotals: number;
+      rejectedLowerTotals: number;
+      inconclusiveLowerTotals: number;
+      rowSurplusGateSkippedTotals: number;
+      decisionRejectedLowerTotals: number;
+      firstZeroRawSurplusTotalCandy?: number;
+      selectedRawSurplus: number;
+      selectedNormalizedSurplus: number;
+      selectedBoundaryLevel: number;
+      selectedBoundaryExpInLevel: number;
+      stoppedReason: 'exp_first' | 'first_zero_raw_surplus' | 'first_acceptable_surplus' | 'row_surplus_bound' | 'exhausted' | 'inconclusive';
+      rawSurplusTrend: 'not_checked' | 'flat' | 'nonincreasing' | 'nondecreasing' | 'mixed';
+      samplesTruncated: boolean;
+      samples: Array<{
+        totalCandy: number;
+        status: 'max_feasible' | 'feasible' | 'infeasible' | 'inconclusive';
+        rawSurplus?: number;
+        normalizedSurplus?: number;
+        boundaryLevel?: number;
+        boundaryExpInLevel?: number;
+      }>;
+    };
+  };
 };

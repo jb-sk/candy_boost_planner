@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { loadSleepSettings, saveSleepSettings, DEFAULT_SLEEP_SETTINGS } from "./calc";
+import { loadCalcSlots, loadSleepSettings, loadTotalShards, saveSleepSettings, saveTotalShards, DEFAULT_SLEEP_SETTINGS } from "./calc";
 
 function installLocalStorageMock() {
   const store = new Map<string, string>();
@@ -67,5 +67,145 @@ describe("persistence/calc sleepSettings", () => {
     expect(loaded.dailySleepHours).toBe(10);
     expect(loaded.sleepExpBonusCount).toBe(DEFAULT_SLEEP_SETTINGS.sleepExpBonusCount);
     expect(loaded.includeGSD).toBe(DEFAULT_SLEEP_SETTINGS.includeGSD);
+  });
+});
+
+describe("persistence/calc slots", () => {
+  beforeEach(() => {
+    installLocalStorageMock();
+  });
+
+  const row = {
+    id: "row-1",
+    title: "テスト",
+    srcLevel: 10,
+    dstLevel: 20,
+    expRemaining: 100,
+    expType: 600 as const,
+    nature: "normal" as const,
+    boostReachLevel: 10,
+    boostRatioPct: 0,
+    mode: "targetLevel" as const,
+  };
+
+  it("fills missing itemCompareMode with the current default", () => {
+    localStorage.setItem(
+      "candy-boost-planner:calc:slots:v1",
+      JSON.stringify({
+        schemaVersion: 1,
+        slots: [
+          {
+            savedAt: "2026-07-13T00:00:00.000Z",
+            rows: [row],
+            activeRowId: "row-1",
+            boostKind: "mini",
+          },
+        ],
+      }),
+    );
+
+    const slots = loadCalcSlots();
+
+    expect(slots[0]?.itemCompareMode).toBe("surplusFirst");
+  });
+
+  it("keeps reading raw slot arrays, removed row modes, and slots without boostKind", () => {
+    localStorage.setItem(
+      "candy-boost-planner:calc:slots:v1",
+      JSON.stringify([{
+        savedAt: "2025-01-01T00:00:00.000Z",
+        rows: [{ ...row, mode: "legacyMode" }],
+        activeRowId: "row-1",
+      }]),
+    );
+
+    const slots = loadCalcSlots();
+
+    expect(slots[0]?.boostKind).toBe("mini");
+    expect(slots[0]?.itemCompareMode).toBe("surplusFirst");
+    expect(slots[0]?.rows[0]?.mode).toBe("targetLevel");
+    expect(slots.slice(1)).toEqual([null, null]);
+  });
+
+  it("falls back to the current default for unknown itemCompareMode values", () => {
+    localStorage.setItem(
+      "candy-boost-planner:calc:slots:v1",
+      JSON.stringify({
+        schemaVersion: 1,
+        slots: [
+          {
+            savedAt: "2026-07-13T00:00:00.000Z",
+            rows: [row],
+            activeRowId: "row-1",
+            boostKind: "mini",
+            itemCompareMode: "unknown",
+          },
+        ],
+      }),
+    );
+
+    const slots = loadCalcSlots();
+
+    expect(slots[0]?.itemCompareMode).toBe("surplusFirst");
+  });
+
+  it("preserves the surplus 0-2 priority itemCompareMode", () => {
+    localStorage.setItem(
+      "candy-boost-planner:calc:slots:v1",
+      JSON.stringify({
+        schemaVersion: 1,
+        slots: [
+          {
+            savedAt: "2026-07-13T00:00:00.000Z",
+            rows: [row],
+            activeRowId: "row-1",
+            boostKind: "mini",
+            itemCompareMode: "surplusGateFirst",
+          },
+        ],
+      }),
+    );
+
+    const slots = loadCalcSlots();
+
+    expect(slots[0]?.itemCompareMode).toBe("surplusGateFirst");
+  });
+
+  it("preserves itemCompareMode for an empty configured slot", () => {
+    localStorage.setItem(
+      "candy-boost-planner:calc:slots:v1",
+      JSON.stringify({
+        schemaVersion: 1,
+        slots: [
+          {
+            slotId: "slot-empty",
+            savedAt: "2026-07-13T00:00:00.000Z",
+            rows: [],
+            activeRowId: null,
+            boostKind: "mini",
+            itemCompareMode: "surplusGateFirst",
+          },
+        ],
+      }),
+    );
+
+    const slots = loadCalcSlots();
+
+    expect(slots[0]?.rows).toEqual([]);
+    expect(slots[0]?.itemCompareMode).toBe("surplusGateFirst");
+  });
+
+});
+
+describe("persistence/calc totalShards", () => {
+  beforeEach(() => {
+    installLocalStorageMock();
+  });
+
+  it("keeps the existing storage key while using the current API name", () => {
+    saveTotalShards(1234.9);
+
+    expect(localStorage.getItem("candy-boost-planner:calc:totalShards")).toBe("1234");
+    expect(loadTotalShards()).toBe(1234);
   });
 });

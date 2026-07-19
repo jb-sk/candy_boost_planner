@@ -29,6 +29,24 @@
           </div>
           <div class="settingsRow">
             <label class="settingsField settingsField--inline settingsField--aligned">
+              <span class="settingsField__label">{{ t("settings.itemCompareModeLabel") }}</span>
+              <select
+                class="field__input field__input--sm"
+                data-testid="settings-item-compare-mode-select"
+                :value="calc.itemCompareMode.value"
+                @change="setItemCompareModeFromEvent($event)"
+              >
+                <option value="surplusFirst">{{ t("settings.itemCompareModeSurplusFirst") }}</option>
+                <option value="surplusGateFirst">{{ t("settings.itemCompareModeSurplusGateFirst") }}</option>
+                <option value="legacyImproved">{{ t("settings.itemCompareModeLegacyImproved") }}</option>
+              </select>
+            </label>
+          </div>
+          <p v-if="calc.itemCompareMode.value === 'surplusFirst'" class="settingsHelp" data-testid="settings-item-compare-mode-help">{{ t("settings.itemCompareModeSurplusFirstHelp") }}</p>
+          <p v-else-if="calc.itemCompareMode.value === 'surplusGateFirst'" class="settingsHelp" data-testid="settings-item-compare-mode-help">{{ t("settings.itemCompareModeSurplusGateFirstHelp") }}</p>
+          <p v-else class="settingsHelp" data-testid="settings-item-compare-mode-help">{{ t("settings.itemCompareModeLegacyImprovedHelp") }}</p>
+          <div class="settingsRow">
+            <label class="settingsField settingsField--inline settingsField--aligned">
               <span class="settingsField__label">{{ t("calc.maxShardsLabel") }}</span>
               <input
                 data-testid="settings-total-shards-input"
@@ -131,7 +149,7 @@
           <h3>{{ t("settings.typeCandyTitle") }}</h3>
           <div class="typeCandyGrid" data-testid="settings-type-candy-grid">
             <div v-for="typeName in pokemonTypes" :key="typeName" class="typeRow" :data-testid="'settings-type-row-' + typeName">
-              <span class="typeRow__name">{{ getTypeName(typeName, locale) }}</span>
+              <span class="typeRow__name">{{ getTypeName(typeName, locale.value) }}</span>
               <label class="candyInput">
                 <span class="candyInput__label">{{ t("calc.candy.typeS") }}</span>
                 <input
@@ -167,6 +185,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import type { CalcStore } from "../composables/useCalcStore";
+import type { ItemCompareMode } from "../domain/level-planner/types";
 import { useCandyStore } from "../composables/useCandyStore";
 import { PokemonTypes, getTypeName } from "../domain/pokesleep/pokemon-types";
 
@@ -181,6 +200,15 @@ const calc = props.calc;
 
 const dailySleepHoursDraft = ref<string | null>(null);
 const dailySleepHoursInputValue = computed(() => dailySleepHoursDraft.value ?? String(calc.sleepSettings.value.dailySleepHours));
+
+function isItemCompareMode(value: string): value is ItemCompareMode {
+  return value === "surplusFirst" || value === "surplusGateFirst" || value === "legacyImproved";
+}
+
+function setItemCompareModeFromEvent(event: Event) {
+  const value = (event.target as HTMLSelectElement).value;
+  calc.setItemCompareMode(isItemCompareMode(value) ? value : "surplusFirst");
+}
 
 function onDailySleepHoursFocus() {
   dailySleepHoursDraft.value = String(calc.sleepSettings.value.dailySleepHours);

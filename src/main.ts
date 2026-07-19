@@ -2,6 +2,8 @@ import { createApp } from "vue";
 import App from "./App.vue";
 
 import { createAppI18n, ensureLocaleMessagesLoaded, normalizeLocale } from "./i18n";
+import { installPersistFlushHandlers } from "./persistence/deferredPersist";
+import { isPerfEnabled } from "./utils/perf";
 
 // Cloudflare Web Analytics (optional)
 // Set VITE_CF_WEB_ANALYTICS_TOKEN in your environment to enable.
@@ -18,6 +20,12 @@ const savedLocale = localStorage.getItem("candy-boost-planner:lang");
 const detectedLocale = savedLocale ?? (navigator.language.startsWith("en") ? "en" : "ja");
 const initialLocale = normalizeLocale(detectedLocale);
 const i18n = createAppI18n(initialLocale);
+const removePersistFlushHandlers = installPersistFlushHandlers();
+if (import.meta.hot) import.meta.hot.dispose(removePersistFlushHandlers);
+
+if (isPerfEnabled()) {
+  void import("./utils/interactionPerf").then(({ installInteractionObserver }) => installInteractionObserver());
+}
 
 // Theme CSS loading
 // Production: loaded via blocking <link> in index.html (vite-plugin-theme-css)

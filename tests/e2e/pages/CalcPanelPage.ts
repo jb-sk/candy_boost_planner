@@ -23,6 +23,8 @@ export class CalcPanelPage {
   readonly undoButton: Locator;
   readonly redoButton: Locator;
   readonly settingsButton: Locator;
+  readonly copySlotButton: Locator;
+  readonly pasteSlotButton: Locator;
 
   // === スロットタブ ===
   readonly slotTabs: Locator;
@@ -65,6 +67,8 @@ export class CalcPanelPage {
     this.undoButton = page.getByTestId('calc-undo-button');
     this.redoButton = page.getByTestId('calc-redo-button');
     this.settingsButton = page.getByTestId('settings-open-button-desktop');
+    this.copySlotButton = page.getByTestId('calc-copy-slot-button');
+    this.pasteSlotButton = page.getByTestId('calc-paste-slot-button');
 
     // スロットタブ（アクティブ＋非アクティブの両方を含む）
     this.slotTabs = page.getByTestId('calc-slot-tabs').locator('.slotTab');
@@ -240,9 +244,12 @@ export class CalcPanelPage {
       return;
     }
     const requiredRow = this.getRowRequiredRow(row);
-    await requiredRow.click();
-    // 到達可能行が表示されるまで待機
-    await usedRow.waitFor({ state: 'visible', timeout: 5000 });
+    await expect(async () => {
+      if (await usedRow.isVisible()) return;
+      await requiredRow.scrollIntoViewIfNeeded();
+      await requiredRow.click({ position: { x: 12, y: 12 } });
+      await expect(usedRow).toBeVisible({ timeout: 1000 });
+    }).toPass({ timeout: 7000 });
   }
 
   // === 結果値の取得 ===
@@ -264,11 +271,32 @@ export class CalcPanelPage {
     return numText?.trim() ?? '';
   }
 
+  async waitForRowResultValue(
+    row: Locator,
+    resultType: 'required' | 'used',
+    field: 'boost' | 'normal' | 'candy' | 'shards',
+    expected: string,
+    timeout = 10000
+  ): Promise<void> {
+    await expect.poll(async () => {
+      const value = await this.getRowResultValue(row, resultType, field);
+      return value.replace(/,/g, '');
+    }, { timeout }).toBe(expected.replace(/,/g, ''));
+  }
+
+  async waitForPlannerResult(timeout = 10000): Promise<void> {
+    await expect(this.calcRows.first()).toBeVisible({ timeout });
+    await expect(this.exportButton).toBeEnabled({ timeout });
+  }
+
   async getRowRequiredItems(row: Locator): Promise<string> {
     const requiredRow = this.getRowRequiredRow(row);
-    const itemsRes = requiredRow.locator('.calcRow__res').filter({ hasText: '必要アイテム' });
-    const numText = await itemsRes.locator('.calcRow__num').textContent();
-    return numText?.trim() ?? '';
+    const text = await requiredRow.textContent();
+    return text?.replace(/余り(\d+)/g, '余り $1').trim() ?? '';
+  }
+
+  async waitForRowRequiredItems(row: Locator, pattern: string | RegExp, timeout = 10000): Promise<void> {
+    await expect.poll(async () => this.getRowRequiredItems(row), { timeout }).toMatch(pattern);
   }
 
   async getRowUsedItems(row: Locator): Promise<string> {
@@ -288,6 +316,10 @@ export class CalcPanelPage {
   async getRowRemainingExp(row: Locator): Promise<string> {
     const usedRow = this.getRowUsedRow(row);
     const res = usedRow.locator('.calcRow__res').filter({ hasText: '残EXP' });
+    if (await res.count() === 0) {
+      const text = await usedRow.textContent();
+      return text?.match(/あとEXP\s*([0-9,]+)/)?.[1]?.trim() ?? '';
+    }
     const numText = await res.locator('.calcRow__num').first().textContent();
     return numText?.trim() ?? '';
   }
@@ -295,6 +327,7 @@ export class CalcPanelPage {
   async getRowSleepTime(row: Locator): Promise<string> {
     const usedRow = this.getRowUsedRow(row);
     const sleepTime = usedRow.locator('.calcRow__sleepTime');
+    if (await sleepTime.count() === 0) return '';
     const text = await sleepTime.textContent();
     return text?.trim() ?? '';
   }
@@ -318,6 +351,9 @@ export class CalcPanelPage {
 
   // === アクション操作 ===
   async clickExport(): Promise<void> {
+    if (await this.calcRows.count() > 0) {
+      await this.waitForPlannerResult();
+    }
     await this.exportButton.click();
   }
 
@@ -339,6 +375,14 @@ export class CalcPanelPage {
 
   async clickSettings(): Promise<void> {
     await this.settingsButton.click();
+  }
+
+  async clickCopySlot(): Promise<void> {
+    await this.copySlotButton.click();
+  }
+
+  async clickPasteSlot(): Promise<void> {
+    await this.pasteSlotButton.click();
   }
 
   // === 行操作 ===
