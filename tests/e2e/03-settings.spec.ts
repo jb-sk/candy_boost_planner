@@ -112,6 +112,25 @@ test.describe('03-settings デスクトップ', () => {
     await expect(capText).toContainText('200,000');
   });
 
+  test('9b. 配分方針は現行3モードのみ表示され、変更が保存される', async ({ page }) => {
+    const settings = new SettingsModalPage(page);
+
+    await settings.openSettingsFromDesktop();
+    const optionTexts = await settings.itemCompareModeSelect.locator('option').allTextContents();
+    const optionValues = await settings.itemCompareModeSelect.locator('option').evaluateAll((options) =>
+      options.map(option => (option as HTMLOptionElement).value)
+    );
+
+    expect(optionTexts).toEqual(['余り最小', 'バランス', 'EXP最大']);
+    expect(optionValues).toEqual(['surplusFirst', 'surplusGateFirst', 'legacyImproved']);
+
+    await settings.setItemCompareMode('legacyImproved');
+    await settings.closeByButton();
+
+    await settings.openSettingsFromDesktop();
+    expect(await settings.getItemCompareMode()).toBe('legacyImproved');
+  });
+
   test('10. 万能アメ（S/M/L）の入力ができる', async ({ page }) => {
     const settings = new SettingsModalPage(page);
 
@@ -336,9 +355,6 @@ test.describe('03-settings デスクトップ', () => {
     const settings = new SettingsModalPage(page);
 
     await settings.openSettingsFromDesktop();
-
-    // 初期値を取得
-    const initialValue = await settings.getDailySleepHours();
 
     // マイナス値を入力
     await settings.dailySleepHoursInput.fill('-5');

@@ -44,6 +44,7 @@ export class SettingsModalPage {
   // === グローバル設定セクション ===
   readonly globalSection: Locator;
   readonly boostCandyRemainingInput: Locator;
+  readonly itemCompareModeSelect: Locator;
   readonly totalShardsInput: Locator;
 
   // 万能アメ
@@ -77,6 +78,7 @@ export class SettingsModalPage {
     // グローバル設定
     this.globalSection = page.getByTestId('settings-global-section');
     this.boostCandyRemainingInput = page.getByTestId('settings-boost-remaining-input');
+    this.itemCompareModeSelect = page.getByTestId('settings-item-compare-mode-select');
     this.totalShardsInput = page.getByTestId('settings-total-shards-input');
 
     // 万能アメ（S/M/L）
@@ -135,6 +137,14 @@ export class SettingsModalPage {
 
   async getBoostCandyRemaining(): Promise<string> {
     return await this.boostCandyRemainingInput.inputValue();
+  }
+
+  async setItemCompareMode(mode: 'surplusFirst' | 'surplusGateFirst' | 'legacyImproved') {
+    await this.itemCompareModeSelect.selectOption(mode);
+  }
+
+  async getItemCompareMode(): Promise<string> {
+    return await this.itemCompareModeSelect.inputValue();
   }
 
   async setTotalShards(value: string) {

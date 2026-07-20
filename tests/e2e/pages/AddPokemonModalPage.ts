@@ -16,8 +16,10 @@ export class AddPokemonModalPage {
   readonly suggestPanel: Locator;
   readonly expRemainingInput: Locator;
   readonly speciesCandyInput: Locator;
+  readonly sleepHoursInput: Locator;
   readonly submitButton: Locator;
   readonly closeButton: Locator;
+  readonly addedMessage: Locator;
 
   // === レベルピッカー（srcLevel / dstLevel） ===
   readonly srcLevelTrigger: Locator;
@@ -37,9 +39,12 @@ export class AddPokemonModalPage {
     this.suggestPanel = page.locator('.addModal .suggest__panel');
     this.expRemainingInput = page.getByTestId('add-modal-exp-remaining');
     this.speciesCandyInput = page.getByTestId('add-modal-species-candy');
+    this.sleepHoursInput = page.getByTestId('add-modal-sleep-hours');
     this.submitButton = page.getByTestId('add-modal-submit');
     // モーダルヘッダーの閉じるボタン（addModal__head 直下）
     this.closeButton = page.locator('.addModal__head .btn--ghost');
+    // 追加成功フィードバック（閉じるボタン左の「✓ 追加しました」）
+    this.addedMessage = page.getByTestId('add-modal-added');
 
     // LevelPicker内の入力フィールド（モーダル内に2つある: src/dst）
     this.srcLevelTrigger = this.modal.getByTestId('level-picker-trigger').nth(0);

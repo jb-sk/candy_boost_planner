@@ -1,4 +1,4 @@
-import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Ref } from "vue";
+import { computed, nextTick, ref, watch, type Ref } from "vue";
 import type { Composer } from "vue-i18n";
 import type { AppLocale } from "../i18n";
 
@@ -17,6 +17,7 @@ import {
 import type { ExpGainNature, ExpType } from "../domain";
 import type { BoxSubSkillSlotV1, IngredientType, PokemonBoxEntryV1, PokemonSpecialty } from "../domain/types";
 import { cryptoRandomId, loadBox, saveBox } from "../persistence/box";
+import { schedulePersist } from "../persistence/deferredPersist";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { normalizeSleepHoursInput } from "../domain/box/sleep-milestones";
 type FilterJoinMode = "and" | "or";
@@ -837,12 +838,13 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     });
   }
 
+  // Store actions and App.vue replace the array and changed entry objects;
+  // persistence therefore observes only the canonical array replacement.
   watch(
     boxEntries,
-    (v) => {
-      saveBox(v);
-    },
-    { deep: true }
+    () => {
+      schedulePersist("box", () => saveBox(boxEntries.value));
+    }
   );
 
   watch(
@@ -851,13 +853,11 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
       relinkName.value = "";
       relinkOpen.value = false;
       relinkStatus.value = "";
-      openBoxLevelPick.value = false;
     }
   );
 
   const boxEditSubInputs = ref<Record<string, string>>({ "10": "", "25": "", "50": "", "70": "", "80": "" });
   const boxEditSubErrors = ref<Record<string, string | null>>({ "10": null, "25": null, "50": null, "70": null, "80": null });
-  const openBoxLevelPick = ref(false);
 
   function syncBoxEditSubInputsFromSelected() {
     const d = selectedDetail.value;
@@ -930,10 +930,6 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     return Math.max(min, Math.min(max, Math.floor(n)));
   }
 
-  // Box level presets (shared with calc UI – kept here for BoxPanel)
-  // 動的に生成し、末尾に現在の上限を含める
-  const levelPresets = [10, 25, 30, 40, 50, 55, 60, 65, MAX_LEVEL] as const;
-
   function writeSelectedLevel(lvl: number) {
     const e = selectedBox.value;
     if (!e) return;
@@ -949,32 +945,12 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     importStatus.value = t("status.levelUpdated");
   }
 
-  function toggleBoxLevelPick() {
-    openBoxLevelPick.value = !openBoxLevelPick.value;
-  }
-  function closeBoxLevelPick() {
-    openBoxLevelPick.value = false;
-  }
   function setBoxLevel(v: unknown) {
     const e = selectedBox.value;
     if (!e) return;
     const lvl = clampInt(v, 1, MAX_LEVEL, e.planner?.level ?? e.derived?.level ?? 1);
     writeSelectedLevel(lvl);
   }
-  function nudgeBoxLevel(delta: number) {
-    const cur = selectedDetail.value?.level ?? 1;
-    setBoxLevel(cur + delta);
-  }
-
-  // Legacy aliases (used by some callers / older template fragments)
-  function onToggleBoxLevelPick() {
-    toggleBoxLevelPick();
-  }
-  function onPickBoxLevel(lv: number) {
-    openBoxLevelPick.value = false;
-    setBoxLevel(lv);
-  }
-
   function onEditSelectedLabel(v: string) {
     const e = selectedBox.value;
     if (!e) return;
@@ -1313,25 +1289,6 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     importStatus.value = t("status.boxCleared");
   }
 
-  // Global interactions (box-only): close level picker on outside click / Esc
-  function onGlobalPointerDown(ev: MouseEvent) {
-    const el = ev.target as HTMLElement | null;
-    if (!el) return;
-    if (el.closest(".levelPick")) return;
-    openBoxLevelPick.value = false;
-  }
-  function onGlobalKeyDown(ev: KeyboardEvent) {
-    if (ev.key === "Escape") openBoxLevelPick.value = false;
-  }
-  onMounted(() => {
-    document.addEventListener("mousedown", onGlobalPointerDown, true);
-    document.addEventListener("keydown", onGlobalKeyDown);
-  });
-  onUnmounted(() => {
-    document.removeEventListener("mousedown", onGlobalPointerDown, true);
-    document.removeEventListener("keydown", onGlobalKeyDown);
-  });
-
   const selectedSpecialtySelectValue = computed(() => {
     const manual = selectedBox.value?.planner?.specialty;
     if (manual && manual !== "unknown") return manual;
@@ -1480,13 +1437,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     pickRelinkName,
     onRelinkBlur,
     onRelinkApply,
-    levelPresets,
-    toggleBoxLevelPick,
-    closeBoxLevelPick,
     setBoxLevel,
-    nudgeBoxLevel,
-    onToggleBoxLevelPick,
-    onPickBoxLevel,
     onEditSelectedLabel,
     onEditSelectedLevel,
     onEditSelectedExpRemaining,
@@ -1500,7 +1451,6 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     onBoxEditSubBlur,
     boxEditSubInputs,
     boxEditSubErrors,
-    openBoxLevelPick,
     displayPokemonName,
     displayBoxTitle,
     boxTileTypeClass,

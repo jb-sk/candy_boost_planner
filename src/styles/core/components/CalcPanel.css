@@ -246,6 +246,27 @@
   gap: 4px;
 }
 
+.calcActions__status {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-strong);
+}
+
+.calcPlanStatus {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.calcPlanStatus > :last-child {
+  color: rgba(var(--ink-rgb), 0.68);
+  font-weight: 600;
+}
+
 /* ===== Slot Tabs ===== */
 .calcSlots {
   display: flex;
@@ -370,8 +391,7 @@
   border-bottom: none;
 }
 
-/* Raise z-index when interacting (above sticky header) */
-.calcSlotContainer:focus-within,
+/* Only an open level popover may rise above the sticky summary. */
 .calcSlotContainer:has(.levelPick__popover) {
   z-index: 30;
 }

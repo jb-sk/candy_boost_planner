@@ -18,6 +18,93 @@
   min-height: 100%;
 }
 
+/* ===== Save toast（保存完了の一時通知）===== */
+.exportToast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 1100;
+  max-width: calc(100% - 32px);
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  background: rgba(22, 163, 74, 0.95);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  animation: exportToastIn 0.18s ease-out;
+}
+
+@keyframes exportToastIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* ===== 長押し保存ビューア（共有が使えない端末向けフォールバック）===== */
+.exportSaveViewer {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 16px;
+  padding-top: calc(16px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  background: rgba(0, 0, 0, 0.82);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.exportSaveViewer__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  max-width: 100%;
+  margin-block: auto;
+}
+
+.exportSaveViewer__hint {
+  margin: 0;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.exportSaveViewer__sub {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.exportSaveViewer__img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  /* iOS の長押し保存メニューを確実に出す */
+  -webkit-touch-callout: default;
+  touch-action: manipulation;
+}
+
+.exportSaveViewer__close {
+  flex-shrink: 0;
+}
+
 .exportSheet {
   position: relative;
   width: 100%;
@@ -32,256 +119,6 @@
   --export-danger: var(--danger);
   --export-divider: var(--border);
   --export-section-bg: rgba(var(--ink-rgb), 0.05);
-}
-
-.exportSheet--capture .exportActions {
-  display: none;
-}
-
-/* During capture: neutralise flex/margin centering so html2canvas
-   renders the sheet at (0,0) instead of offset by the parent layout.
-   Also force the sheet to expand to its full natural height —
-   old iOS Safari clips the canvas to the viewport unless overflow is
-   visible and the element is fully expanded. */
-.exportSheet--capture {
-  margin: 0 !important;
-  position: relative !important;
-  left: 0 !important;
-  top: 0 !important;
-  overflow: visible !important;
-  max-height: none !important;
-  transform: none !important;
-  min-height: auto !important;
-  /* width は JS のラッパー要素で制御する（el 自体には触れない）。
-     padding はデスクトップ用を無条件適用。 */
-  padding: 28px 32px !important;
-}
-
-/* --- Desktop layout forced during capture (viewport-independent) ---
-   モバイルでも @media (min-width:680px) と同等のレイアウトで画像保存する。
-   幅は JS のラッパーで最低 760px を保証するため、ここでは子要素のみ定義。
-   ⚠ このブロックと下の @media (min-width: 680px) は同じスタイルを持つ。
-     片方を変更したらもう片方も同期すること。 */
-
-.exportSheet--capture .exportHead {
-  margin: -28px -32px 20px;
-  padding: 14px 32px;
-}
-
-.exportSheet--capture .exportBrand {
-  font-size: 26px;
-}
-
-.exportSheet--capture .exportMeta {
-  margin-top: 0;
-}
-
-.exportSheet--capture .exportMonth {
-  position: absolute;
-  top: 14px;
-  right: 48px;
-  font-size: 22px;
-}
-
-.exportSheet--capture .exportSectionTitle {
-  font-size: 21px;
-}
-
-.exportSheet--capture .statCard__label {
-  font-size: 15px;
-}
-
-.exportSheet--capture .exportBarK {
-  font-size: 15px;
-}
-
-.exportSheet--capture .exportBarK--right {
-  font-size: 15px;
-}
-
-.exportSheet--capture .exportList__name {
-  font-size: 17px;
-  flex: 1;
-  min-width: 5em;
-}
-
-.exportSheet--capture .exportList__badge {
-  font-size: 12px;
-}
-
-.exportSheet--capture .exportList__arrow {
-  font-size: 13px;
-}
-
-.exportSheet--capture .exportCalcTop {
-  padding: 0 24px 8px;
-  margin: 0 -8px 0;
-}
-
-.exportSheet--capture .exportStats {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 10px;
-}
-
-.exportSheet--capture .statCard {
-  flex: 1;
-  min-width: 0;
-}
-
-.exportSheet--capture .statCard--wide {
-  flex: 1.3;
-}
-
-.exportSheet--capture .exportList {
-  padding: 0 24px 8px;
-  margin: 0 -8px;
-}
-
-.exportSheet--capture .exportRanking {
-  margin: 0 -8px 0;
-  padding: 0 24px;
-}
-
-.exportSheet--capture .exportList__head {
-  display: grid;
-  grid-template-columns: 2.5fr 1fr repeat(3, 1fr) 1.3fr;
-  gap: 8px;
-  padding: 10px 12px;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--muted);
-  border-bottom: 2px solid var(--ink);
-  align-items: end;
-}
-
-.exportSheet--capture .exportList__row {
-  grid-template-columns: 2.5fr 1fr repeat(3, 1fr) 1.3fr;
-  gap: 8px;
-  padding: 10px 12px;
-}
-
-.exportSheet--capture .exportList__nameCol {
-  grid-column: span 1;
-  flex-wrap: nowrap;
-  overflow: hidden;
-  min-width: 0;
-}
-
-.exportSheet--capture .exportList__lvInline {
-  display: none;
-}
-
-.exportSheet--capture .exportList__col.exportList__lvCol {
-  display: flex;
-  grid-column: span 1;
-  justify-self: end;
-  font-size: 17px;
-}
-
-.exportSheet--capture .exportList__col.u-align-right {
-  flex-direction: row;
-  align-items: center;
-  text-align: right;
-  justify-content: flex-end;
-}
-
-.exportSheet--capture .exportList__col.u-align-center {
-  flex-direction: row;
-  align-items: center;
-  text-align: center;
-  justify-content: center;
-}
-
-.exportSheet--capture .u-mobile-label {
-  display: none;
-}
-
-.exportSheet--capture .exportList__row--total {
-  padding: 12px;
-}
-
-.exportSheet--capture .exportList__row--total .exportList__nameCol,
-.exportSheet--capture .exportList__row--total .exportList__lvCol {
-  display: block;
-  visibility: hidden;
-}
-
-.exportSheet--capture .exportList__row--total .exportList__numCol {
-  flex-direction: row;
-  align-items: center;
-  justify-content: flex-end;
-}
-
-.exportSheet--capture .exportList__numCol .exportList__num {
-  font-size: 17px;
-}
-
-.exportSheet--capture .exportList__lvCol {
-  font-size: 17px;
-}
-
-.exportSheet--capture .exportRanking__total {
-  font-size: 17px;
-}
-
-.exportSheet--capture .exportRanking__total span:first-child {
-  font-size: 15px;
-}
-
-.exportSheet--capture .exportPie {
-  gap: 24px;
-}
-
-.exportSheet--capture .exportPie__svg {
-  width: 160px;
-  height: 160px;
-}
-
-.exportSheet--capture .exportPie__legend {
-  grid-template-columns: 14px auto auto;
-  column-gap: 10px;
-}
-
-.exportSheet--capture .exportPie__legendItem {
-  font-size: 17px;
-}
-
-.exportSheet--capture .exportPie__legendPct {
-  font-size: 18px;
-}
-
-.exportSheet--capture .exportPie__legendDetail {
-  padding-left: 24px;
-}
-
-.exportSheet--capture .exportRanking__itemGroup {
-  font-size: 17px;
-}
-
-.exportSheet--capture .exportRanking__itemLabel {
-  font-size: 15px;
-}
-
-/* Compact legend overrides for capture */
-.exportSheet--capture .exportPie__legend--compact {
-  grid-template-columns: 14px auto 1fr auto;
-}
-
-.exportSheet--capture .exportPie__legend--compact .exportPie__legendDetail {
-  grid-column: auto;
-  padding: 0;
-  justify-content: flex-start;
-  font-size: 15px;
-}
-
-.exportSheet--capture .exportPie__legend--compact .exportRanking__itemGroup {
-  font-size: 15px;
-}
-
-.exportSheet--capture .exportPie__legend--compact .exportRanking__itemLabel {
-  font-size: 14px;
-  margin-right: 3px;
 }
 
 /* ===== Header ===== */
@@ -580,6 +417,19 @@
   align-self: center;
 }
 
+.exportList__supplyInline {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--surface-alt);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .exportList__lvWrap {
   display: inline-flex;
   align-items: center;
@@ -785,8 +635,8 @@
    stays in the normal 2-line layout regardless of the class. */
 
 /* ===== Tablet+ single-row list (≥ 680px) ===== */
-/* ⚠ このブロックと上の .exportSheet--capture は同じスタイルを持つ。
-     片方を変更したらもう片方も同期すること。 */
+/* 画像保存は Canvas 直接描画（renderExportImage.ts）へ移行済み。
+   このブロックは画面表示のデスクトップレイアウト専用で、画像出力とは独立している。 */
 @media (min-width: 680px) {
   .exportSheetWrap {
     min-height: 100%;
@@ -889,6 +739,11 @@
     padding: 10px 12px;
   }
 
+  .exportList--normal .exportList__head,
+  .exportList--normal .exportList__row {
+    grid-template-columns: 2.5fr 1fr 1fr 1.3fr;
+  }
+
   /* Reset mobile overrides on name / lv columns */
   .exportList__nameCol {
     grid-column: span 1;
@@ -950,6 +805,10 @@
     font-size: 17px;
     flex: 1;
     min-width: 5em;
+  }
+
+  .exportList__supplyInline {
+    display: none;
   }
 
   .exportList__badge {

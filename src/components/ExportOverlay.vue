@@ -5,7 +5,6 @@
         ref="exportSheetEl"
         class="exportSheet"
         data-testid="export-sheet"
-        :style="{ transform: `scale(${scale})` }"
         @click="exportCsvMenuOpen = false"
       >
         <div class="exportHead">
@@ -140,6 +139,7 @@
                 <span class="exportList__lvInline">Lv{{ row.srcLevel }}→{{ row.dstLevel }}</span>
                 <span class="exportList__name">{{ row.title }}</span>
                 <span v-if="row.natureLabel" class="exportList__badge">{{ row.natureLabel }}</span>
+                <span v-if="row.candySupply" class="exportList__supplyInline">{{ row.candySupply }}</span>
               </div>
               <div class="exportList__col u-align-center exportList__lvCol">
                 <div class="exportList__lvWrap">
@@ -243,40 +243,48 @@
         </div>
       </div>
     </div>
+    <div v-if="toastMsg" class="exportToast" role="status" aria-live="polite" data-testid="export-toast">{{ toastMsg }}</div>
+
+    <!-- 共有が使えない端末向け: 画像を長押しして写真に保存させるフォールバック -->
+    <div
+      v-if="fallbackImageUrl"
+      class="exportSaveViewer"
+      data-testid="export-save-viewer"
+      role="dialog"
+      :aria-label="t('calc.export.longPressToSave')"
+      @click.self="closeFallback"
+    >
+      <div class="exportSaveViewer__inner">
+        <p class="exportSaveViewer__hint">{{ t("calc.export.longPressToSave") }}</p>
+        <img class="exportSaveViewer__img" :src="fallbackImageUrl" alt="" />
+        <p class="exportSaveViewer__sub">{{ t("calc.export.saveViewerReloadHint") }}</p>
+        <button class="btn btn--primary exportSaveViewer__close" type="button" @click="closeFallback">
+          {{ t("common.close") }}
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref } from "vue";
-import type html2canvasType from "html2canvas-pro";
+import { computed, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-
-type Html2CanvasOptions = Parameters<typeof html2canvasType>[1];
-
-type ExportRow = {
-  id: string;
-  title: string;
-  natureLabel?: string;
-  srcLevel: number;
-  dstLevel: number;
-  boostCandy: number;
-  normalCandy: number;
-  totalCandy: number;
-  shards: number;
-  candySupply?: string; // アメ補填
-};
-
-type ExportTotals = {
-  boostCandy: number;
-  normalCandy: number;
-  totalCandy: number;
-  shards: number;
-};
+import {
+  buildExportImageModel,
+  type ExportImageBoostKind,
+  type ExportImageRankingItem,
+  type ExportImageRow,
+  type ExportImageSource,
+  type ExportImageTotals,
+  type ExportImageTranslate,
+} from "../export/exportImageModel";
+import { createExportImageCanvas, ExportImageError } from "../export/renderExportImage";
+import { saveExportImage, type SaveImageAdapter } from "../export/saveExportImage";
+import { isSharePending, setSharePending } from "../export/sharePendingState";
 
 const props = defineProps<{
-  scale: number;
-  rows: ExportRow[];
-  totals: ExportTotals;
+  rows: ExportImageRow[];
+  totals: ExportImageTotals;
 
   boostUsed: number;
   boostUnused: number;
@@ -291,19 +299,9 @@ const props = defineProps<{
   shardsUsagePct: number;
   shardsFillPct: number;
 
-  universalCandyRanking: Array<{
-    id: string;
-    pokemonName: string;
-    universalValue: number;
-    usagePct: number;
-    uniSUsed: number;
-    uniMUsed: number;
-    uniLUsed: number;
-    typeSUsed: number;
-    typeMUsed: number;
-  }>;
+  universalCandyRanking: ExportImageRankingItem[];
   universalCandyUsedTotal: { s: number; m: number; l: number };
-  boostKind: "full" | "mini" | "none";
+  boostKind: ExportImageBoostKind;
 }>();
 
 const emit = defineEmits<{ close: []; "open-settings": [] }>();
@@ -313,7 +311,34 @@ const exportSheetEl = ref<HTMLElement | null>(null);
 const exportBusy = ref(false);
 const exportStatus = ref("");
 const exportCsvMenuOpen = ref(false);
-let html2canvasPromise: Promise<typeof html2canvasType> | null = null;
+
+// 保存完了トースト（共有/ダウンロード成功時に一時表示）
+const toastMsg = ref("");
+let toastTimer: ReturnType<typeof setTimeout> | null = null;
+function showToast(msg: string) {
+  toastMsg.value = msg;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toastMsg.value = "";
+    toastTimer = null;
+  }, 2500);
+}
+// 共有が使えない時のフォールバック: 画像を表示し「長押しで写真に保存」させる（url は object URL）
+const fallbackImageUrl = ref("");
+function closeFallback() {
+  if (!fallbackImageUrl.value) return;
+  try {
+    URL.revokeObjectURL(fallbackImageUrl.value);
+  } catch {
+    /* ignore */
+  }
+  fallbackImageUrl.value = "";
+}
+
+onUnmounted(() => {
+  if (toastTimer) clearTimeout(toastTimer);
+  closeFallback();
+});
 
 function fmtNum(n: number): string {
   return new Intl.NumberFormat(locale.value).format(n);
@@ -397,7 +422,7 @@ function csvCell(v: unknown): string {
 function buildCalcExportCsv(): string {
   const isNormal = props.boostKind === "none";
 
-  // 列順：Pokemon, EXP補正, 現在Lv, 目標Lv, (Boost, Normal), Total, Shards
+  // 列順：Pokemon, EXP補正, 現在Lv, 目標Lv, (Boost, Normal), Total, Shards, Items
   const headCols = [
     t("calc.export.colPokemon"),
     t("calc.export.colExpAdj"),
@@ -406,6 +431,7 @@ function buildCalcExportCsv(): string {
     ...(isNormal ? [] : [t("calc.export.colBoost"), t("calc.export.colNormal")]),
     t("calc.export.colTotal"),
     t("calc.export.colShards"),
+    t("calc.row.candySupply"),
   ];
   const head = headCols.map(csvCell).join(",");
 
@@ -418,6 +444,7 @@ function buildCalcExportCsv(): string {
       ...(isNormal ? [] : [r.boostCandy, r.normalCandy]),
       r.totalCandy,
       r.shards,
+      r.candySupply || "",
     ];
     return cols.map(csvCell).join(",");
   });
@@ -430,6 +457,7 @@ function buildCalcExportCsv(): string {
     ...(isNormal ? [] : [props.totals.boostCandy, props.totals.normalCandy]),
     props.totals.totalCandy,
     props.totals.shards,
+    "",
   ];
   const total = totalCols.map(csvCell).join(",");
 
@@ -584,170 +612,126 @@ const pieSlices = computed<PieSlice[]>(() => {
   return slices;
 });
 
-/**
- * html2canvas をタイムアウト付きで実行する。
- * 古い iOS Safari では html2canvas が resolve も reject もせずハングすることが
- * あるため、指定時間で reject して exportBusy を確実に解除する。
- */
-async function loadHtml2canvas() {
-  if (!html2canvasPromise) {
-    html2canvasPromise = import("html2canvas-pro").then((mod) => mod.default);
-  }
-  return html2canvasPromise;
+// ── 画像保存（Canvas 2D 直接描画）──────────────────────────────────
+
+/** vue-i18n の t を ExportImageTranslate 形へ橋渡しする（model は global i18n を読まない）。 */
+const translate: ExportImageTranslate = (key, params) => (params ? t(key, params) : t(key));
+
+/** 現行 props をそのまま source DTO へ渡す（solver は再実行しない）。 */
+function buildExportSource(): ExportImageSource {
+  return {
+    rows: props.rows,
+    totals: props.totals,
+    boostUnused: props.boostUnused,
+    shardsUsed: props.shardsUsed,
+    shardsCap: props.shardsCap,
+    boostUsagePct: props.boostUsagePct,
+    boostCap: props.boostCap,
+    boostFillPct: props.boostFillPct,
+    shardsUsagePct: props.shardsUsagePct,
+    shardsFillPct: props.shardsFillPct,
+    universalCandyRanking: props.universalCandyRanking,
+    universalCandyUsedTotal: props.universalCandyUsedTotal,
+    boostKind: props.boostKind,
+  };
 }
 
-async function html2canvasWithTimeout(
-  el: HTMLElement,
-  opts: Html2CanvasOptions,
-  timeoutMs: number,
-): Promise<HTMLCanvasElement> {
-  const html2canvas = await loadHtml2canvas();
-
-  return new Promise<HTMLCanvasElement>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("html2canvas timeout")), timeoutMs);
-    html2canvas(el, opts).then(
-      (canvas) => { clearTimeout(timer); resolve(canvas); },
-      (err) => { clearTimeout(timer); reject(err); },
-    );
-  });
+/** filename 用時刻。model の now と同じ操作開始時刻から生成する。 */
+function formatFileTimestamp(now: Date): string {
+  return now.toISOString().slice(0, 19).replace(/[:T]/g, "-");
 }
 
 /**
- * キャプチャした canvas が CSS 適用済みの有効な画像かどうかを判定する。
- * CSS 未適用のテキスト画像は背景色（白）がほぼ全面を占めるため、
- * サンプリングで非白ピクセルの比率が極端に低ければ無効と判断する。
+ * webfont 読込前の初回保存で崩れないよう document.fonts.ready を短い上限付きで待つ。
+ * 待機失敗は保存全体の失敗にはせず、解決済み system fallback で描画する。
  */
-function looksLikeValidCapture(canvas: HTMLCanvasElement, bgHex: string): boolean {
+async function waitFontsReady(timeoutMs: number): Promise<void> {
   try {
-    const w = canvas.width;
-    const h = canvas.height;
-    if (w === 0 || h === 0) return false;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return true; // 取得できなければ検証スキップ
-
-    // 正常な画像には CSS 由来の色付きピクセル（アクセントカラー、プログレスバー、
-    // 円グラフ等）が含まれる。CSS 未適用の画像は黒テキスト＋白背景のみで
-    // 彩度のあるピクセルがほぼゼロになる。
-    //
-    // 判定方法:
-    // 1. 彩度検出 — R,G,B の max-min 差が閾値以上なら「色付き」
-    // 2. テーマ背景色検出 — テーマの --paper 色に近いピクセルの存在
-    //    CSS 未適用画像は backgroundColor (#ffffff 固定) のまま描画されるが、
-    //    正常画像はテーマの paper 色で描画される。paper が白でないテーマ
-    //    (booklet: #fdf6ed 等) では paper 色ピクセルの存在が CSS 適用の証拠になる。
-
-    // bgHex から背景色 RGB を抽出
-    const bgR = parseInt(bgHex.slice(1, 3), 16);
-    const bgG = parseInt(bgHex.slice(3, 5), 16);
-    const bgB = parseInt(bgHex.slice(5, 7), 16);
-    // paper 色が白でないテーマかどうか判定（白: #ffffff との差が10以上）
-    const paperIsNonWhite = Math.abs(bgR - 255) + Math.abs(bgG - 255) + Math.abs(bgB - 255) > 10;
-
-    // サンプリング領域: 上部 (y=5%付近) と中央
-    const sampleW = Math.min(200, w);
-    const sampleH = Math.min(200, h);
-    const regions = [
-      { x: Math.floor((w - sampleW) / 2), y: Math.floor(h * 0.05) },  // 上部
-      { x: Math.floor((w - sampleW) / 2), y: Math.floor((h - sampleH) / 2) },  // 中央
-    ];
-
-    let totalPixels = 0;
-    let chromatic = 0; // 彩度のあるピクセル（黒/白/灰色でないもの）
-    let paperLike = 0; // テーマ背景色に近いピクセル
-
-    for (const { x, y } of regions) {
-      const sx = Math.max(0, Math.min(x, w - sampleW));
-      const sy = Math.max(0, Math.min(y, h - sampleH));
-      const data = ctx.getImageData(sx, sy, sampleW, sampleH).data;
-      const count = sampleW * sampleH;
-      totalPixels += count;
-
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i], g = data[i + 1], b = data[i + 2];
-        // 彩度判定: R,G,B の最大値と最小値の差が閾値以上なら「色付き」
-        const maxC = Math.max(r, g, b);
-        const minC = Math.min(r, g, b);
-        if (maxC - minC > 20) {
-          chromatic++;
-        }
-        // テーマ背景色判定: paper 色と各チャンネルの差が5以内
-        if (paperIsNonWhite &&
-            Math.abs(r - bgR) <= 5 && Math.abs(g - bgG) <= 5 && Math.abs(b - bgB) <= 5) {
-          paperLike++;
-        }
-      }
+    const fontsReady = document.fonts?.ready;
+    if (fontsReady && typeof fontsReady.then === "function") {
+      await Promise.race([
+        fontsReady,
+        new Promise<void>((resolve) => window.setTimeout(resolve, timeoutMs)),
+      ]);
     }
-
-    // 判定: 以下のいずれかを満たせば有効
-    // 1. 彩度のあるピクセルが 0.5% 以上（アクセント色・バー・グラフ等が描画されている）
-    // 2. テーマ背景色（非白）のピクセルが 10% 以上（CSS で背景色が適用されている）
-    if (chromatic / totalPixels >= 0.005) return true;
-    if (paperIsNonWhite && paperLike / totalPixels >= 0.10) return true;
-
-    return false;
   } catch {
-    return true; // セキュリティ制限等で getImageData に失敗した場合は検証スキップ
+    // フォント待機失敗は無視して fallback フォントで続行する
   }
 }
 
-/**
- * iOS Safari の Canvas ピクセル上限に収まる scale を計算する。
- * iOS 15 以下: 16,777,216 px (16 MP)
- * 安全マージン 5% を取って 16,000,000 px を上限とする。
- */
-function clampScaleForCanvas(w: number, h: number, idealScale: number): number {
-  const MAX_CANVAS_PIXELS = 16_000_000; // iOS 15 Safari の安全上限
-  const pixels = w * idealScale * h * idealScale;
-  if (pixels <= MAX_CANVAS_PIXELS) return idealScale;
-  const maxScale = Math.sqrt(MAX_CANVAS_PIXELS / (w * h));
-  // 最低 1 は確保する
-  return Math.max(1, Math.floor(maxScale * 100) / 100);
+function detectLikelyIOS(): boolean {
+  const ua = navigator.userAgent || "";
+  return (
+    /iPad|iPhone|iPod/i.test(ua) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+/** saveExportImage に渡す browser adapter を組み立てる。 */
+function createSaveAdapter(): SaveImageAdapter {
+  const nav = navigator as Navigator & {
+    share?: (data: unknown) => Promise<void>;
+    canShare?: (data: unknown) => boolean;
+  };
+  return {
+    isLikelyIOS: detectLikelyIOS(),
+    // share 呼び出し中は sharePending を立て、settle で下ろす。古い iOS では 1 回目が
+    // 永遠に settle せず「共有中」のまま残るため、2 回目以降は isSharePending で検知して
+    // share を呼ばず長押し保存へ回す（誤った成功トーストを避ける）。
+    share:
+      typeof nav.share === "function"
+        ? (data) => {
+            const p = nav.share!(data);
+            setSharePending(true);
+            const clear = () => setSharePending(false);
+            p.then(clear, clear);
+            return p;
+          }
+        : undefined,
+    isSharePending,
+    canShare: typeof nav.canShare === "function" ? (data) => nav.canShare!(data) : undefined,
+    createFile: (parts, name, type) => new File(parts, name, { type }),
+    createObjectURL: (blob) => URL.createObjectURL(blob),
+    revokeObjectURL: (url) => URL.revokeObjectURL(url),
+    triggerDownload: (url, filename) => {
+      const a = document.createElement("a");
+      a.download = filename;
+      a.href = url;
+      a.click();
+    },
+    setTimer: (fn, ms) => window.setTimeout(fn, ms),
+    clearTimer: (id) => window.clearTimeout(id),
+    onPageHide: (fn) => {
+      window.addEventListener("pagehide", fn);
+      return () => window.removeEventListener("pagehide", fn);
+    },
+    // 共有シートが閉じてページに戻った瞬間を検知（hidden→visible / blur→focus）。
+    // 一度 hidden/blur した後の復帰のみ発火し、シート提示前の誤発火を避ける。
+    onVisibleAgain: (fn) => {
+      let left = false;
+      const onLeave = () => { left = true; };
+      const onReturn = () => { if (left) fn(); };
+      const onVis = () => {
+        if (document.visibilityState === "hidden") onLeave();
+        else onReturn();
+      };
+      document.addEventListener("visibilitychange", onVis);
+      window.addEventListener("blur", onLeave);
+      window.addEventListener("focus", onReturn);
+      return () => {
+        document.removeEventListener("visibilitychange", onVis);
+        window.removeEventListener("blur", onLeave);
+        window.removeEventListener("focus", onReturn);
+      };
+    },
+  };
 }
 
 /**
- * iOS 15 Safari で DOM 移動後にレイアウトが壊れる問題に対処する。
- * overflow / display / -webkit-overflow-scrolling を切り替えて強制リフローを起こす。
+ * 現行 props から ExportImageModel を構築し、Canvas 2D へ直接描画して保存する。
+ * .exportSheet の clone・移動・reflow・reload はしない。style は読取のみ。
+ * heavy solver を再実行せず、既に渡された props だけを使う。
  */
-async function forceIOSReflow(overlay: HTMLElement | null) {
-  if (!overlay) return;
-  overlay.style.overflow = "hidden";
-  void overlay.offsetHeight;
-  overlay.style.overflow = "";
-  void overlay.offsetHeight;
-  overlay.style.setProperty("-webkit-overflow-scrolling", "auto");
-  void overlay.offsetHeight;
-  overlay.style.setProperty("-webkit-overflow-scrolling", "touch");
-  void overlay.offsetHeight;
-  overlay.style.display = "none";
-  void overlay.offsetHeight;
-  overlay.style.display = "";
-  void overlay.offsetHeight;
-  await nextTick();
-  await new Promise<void>((r) => requestAnimationFrame(() => r()));
-  await new Promise<void>((r) => requestAnimationFrame(() => r()));
-}
-
-/**
- * html2canvas が残した iframe を強制クリーンアップする。
- * 通常は html2canvas 内部で削除されるが、iOS 15 Safari では
- * タイミングによって残留し、position:fixed な iframe が
- * タッチイベントをブロックする場合がある。
- */
-function cleanupHtml2canvasIframes() {
-  // 公式クラス付き iframe
-  document.querySelectorAll("iframe.html2canvas-container").forEach((f) => {
-    f.parentNode?.removeChild(f);
-  });
-  // クラスなしだが html2canvas の特徴（body 直下 + position:fixed + 極端な位置）を持つ iframe
-  document.querySelectorAll<HTMLIFrameElement>("body > iframe").forEach((f) => {
-    const s = f.style;
-    if (s.position === "fixed" && (parseInt(s.left) < -1000 || parseInt(s.top) < -1000)) {
-      f.parentNode?.removeChild(f);
-    }
-  });
-}
-
 async function downloadCalcExportPng() {
   const el = exportSheetEl.value;
   if (!el) return;
@@ -755,224 +739,52 @@ async function downloadCalcExportPng() {
   exportStatus.value = "";
   exportCsvMenuOpen.value = false;
 
-  // DOM 移動方式の復元用
-  let captureWrapper: HTMLDivElement | null = null;
-  const originalParent = el.parentElement;
-  const originalNextSibling = el.nextSibling;
-  let visualClone: HTMLElement | null = null; // 黒画面・レイアウト崩れ防止用
-
-  // オーバーレイの復元用
-  const overlay = el.closest(".exportOverlay") as HTMLElement | null;
-  let savedScroll = 0;
-
-  const ua = navigator.userAgent || "";
-  const isLikelyIOS =
-    /iPad|iPhone|iPod/i.test(ua) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-
   try {
-    // Webフォントが読み込まれる前にキャプチャすると崩れるので待つ
-    const fontsReady = document.fonts?.ready;
-    if (fontsReady && typeof fontsReady.then === "function") await fontsReady;
-    await loadHtml2canvas();
-    await nextTick();
-    await new Promise<void>((r) => requestAnimationFrame(() => r()));
-    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    // webfont 待機（上限付き・非致命）
+    await waitFontsReady(600);
 
-    // --- ダミークローン + DOM 移動方式（全環境共通） ---
-    // html2canvas-pro は渡された要素の ownerDocument 全体を iframe にクローンする。
-    // iOS 15 では overlay (position:fixed; overflow:auto) が祖先にあると
-    // iframe 内で getBoundingClientRect() がクリップされた値を返し途切れる。
-    // PC でも同じ方式を使い、ラッパーに元の幅を指定して正しいレイアウトを維持する。
-    //
-    // 1. el の見た目用クローンを元位置に残す（黒画面防止 + 親要素の高さ維持）
-    // 2. el を body 直下のラッパーに一時移動してから html2canvas-pro に渡す
-    // 3. 復帰時に replaceChild でクローンと実 DOM を入れ替え
+    // 操作開始時刻を 1 度だけ取得し、月表示と filename で共有する
+    const now = new Date();
+    const model = buildExportImageModel(buildExportSource(), {
+      locale: locale.value,
+      now,
+      t: translate,
+    });
 
-    // 1. スクロール位置保存 & リセット
-    savedScroll = overlay ? overlay.scrollTop : 0;
-    if (overlay) overlay.scrollTop = 0;
+    // style 読取（読取のみ）→ Canvas 生成・描画
+    const canvas = createExportImageCanvas(model, el);
+    const filename = `CandyBoost-Planner_${formatFileTimestamp(now)}.png`;
 
-     // 移動前に元の幅を取得し、最低 760px（デスクトップ幅）を保証する。
-     // モバイルでもデスクトップレイアウトで画像保存するため。
-     // el 自体の width は変更しない（iOS 15 のスタイル解決を壊すため）。
-     // ラッパーの幅で制御し、CSS の .exportSheet--capture で子要素を
-     // デスクトップレイアウトに切り替える。
-     const DESKTOP_MIN_WIDTH = 760;
-    const originalWidth = Math.max(el.offsetWidth, DESKTOP_MIN_WIDTH);
+    const outcome = await saveExportImage(
+      canvas,
+      { filename, shareTitle: t("app.title") },
+      createSaveAdapter(),
+    );
 
-    // 2. ダミークローンを作成して元位置に配置
-    //    - ユーザーにはクローンが見え続けるので黒画面にならない
-    //    - 親要素 exportSheetWrap の高さが維持され、iOS 15 のスクロール境界バグを防止
-    visualClone = el.cloneNode(true) as HTMLElement;
-    visualClone.style.pointerEvents = "none"; // クローンは操作不可
-    visualClone.setAttribute("aria-hidden", "true");
-    if (originalParent) {
-      if (originalNextSibling) {
-        originalParent.insertBefore(visualClone, originalNextSibling);
-      } else {
-        originalParent.appendChild(visualClone);
-      }
+    if (outcome.kind === "error") {
+      exportStatus.value = t("status.exportFailed");
+    } else if (outcome.kind === "manual-save") {
+      // 共有が使えない（古いiOSで共有中のまま / 非セキュア等）→ アプリ内で長押し保存させる。
+      // 未保存なので成功トーストは出さない。
+      closeFallback();
+      fallbackImageUrl.value = outcome.url;
+    } else if (
+      outcome.kind === "shared" ||
+      outcome.kind === "downloaded" ||
+      outcome.kind === "dismissed"
+    ) {
+      // shared: 共有成功 / downloaded: PC保存 / dismissed: 共有シートを閉じた（保存想定）
+      // → 保存完了トーストを表示。cancelled は出さない。
+      showToast(t("status.imageSaved"));
     }
-
-    // 3. キャプチャ用クラスを付与
-    el.classList.add("exportSheet--capture");
-
-    await nextTick();
-
-    // 4. el を body 直下のラッパーに移動
-    //    ラッパーに最低 760px の幅を指定し、モバイルでもデスクトップレイアウトを維持する
-    captureWrapper = document.createElement("div");
-    captureWrapper.style.cssText =
-      `position:fixed;left:-9999px;top:0;width:${originalWidth}px;overflow:visible;pointer-events:none;`;
-    document.body.appendChild(captureWrapper);
-    captureWrapper.appendChild(el);
-
-    await nextTick();
-    await new Promise<void>((r) => requestAnimationFrame(() => r()));
-    // iOS Safari では DOM 移動直後にスタイル解決が完了していないことがある。
-    // 追加の待機で iframe クローン時の CSS 適用を安定させる。
-    await new Promise<void>((r) => setTimeout(r, 100));
-    await new Promise<void>((r) => requestAnimationFrame(() => r()));
-
-    // 5. 移動後のサイズ取得（body 直下なのでクリッピングされない）
-    const elWidth = el.scrollWidth;
-    const elHeight = el.scrollHeight;
-
-    // iOS Safari は Canvas サイズに上限がある (iOS 15: 16MP)。
-    const scale = isLikelyIOS
-      ? clampScaleForCanvas(elWidth, elHeight, 2)
-      : 2;
-
-    // テーマの --paper 色を canvas 背景に使用する。
-    // CSS 未適用時（html2canvas の iframe 内でスタイル欠落）は白になるため、
-    // looksLikeValidCapture でテーマ背景色の有無を CSS 適用の証拠として使える。
-    const paperColor = getComputedStyle(el).getPropertyValue("--paper").trim() || "#ffffff";
-    // CSS変数は "#fdf6ed" 等の hex か "rgb(...)" のどちらかで返る。
-    // html2canvas の backgroundColor は hex/rgb 両対応なのでそのまま渡す。
-    const bgHex = paperColor.startsWith("#") ? paperColor
-      : (() => {
-          const m = paperColor.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
-          if (!m) return "#ffffff";
-          return `#${[m[1], m[2], m[3]].map((v) => Number(v).toString(16).padStart(2, "0")).join("")}`;
-        })();
-
-    const h2cOpts = {
-      scale,
-      backgroundColor: bgHex,
-      useCORS: true,
-      logging: false,
-      width: elWidth,
-      height: elHeight,
-      windowWidth: elWidth,
-      windowHeight: elHeight,
-      scrollX: 0,
-      scrollY: 0,
-    };
-
-    // html2canvas-pro は iOS Safari で稀に CSS 未適用のテキスト画像を生成する。
-    // canvas のピクセルを検証し、色付きピクセルが不足（CSS 未適用の兆候）なら再試行する。
-    let canvas: HTMLCanvasElement | null = null;
-    const MAX_ATTEMPTS = 3;
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      // iframe 残骸が前回の試行から残っている場合に備えて掃除し、
-      // iOS WebKit のスタイル解決を待つために十分な時間を確保する
-      if (attempt > 1) {
-        cleanupHtml2canvasIframes();
-        await new Promise<void>((r) => setTimeout(r, 300));
-        await new Promise<void>((r) => requestAnimationFrame(() => r()));
-        await new Promise<void>((r) => requestAnimationFrame(() => r()));
-     }
-      canvas = await html2canvasWithTimeout(el, h2cOpts, 15000);
-      if (looksLikeValidCapture(canvas, bgHex)) break;
-      // 最終試行でも失敗した場合はそのまま使う（白画像でも保存は可能）
-    }
-
-    const dataUrl = canvas!.toDataURL("image/png");
-
-    const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-    const filename = `CandyBoost-Planner_${ts}.png`;
-
-    if (isLikelyIOS && navigator.share) {
-      try {
-        const blob = await (await fetch(dataUrl)).blob();
-        const file = new File([blob], filename, { type: "image/png" });
-        const canShareFiles = typeof navigator.canShare !== "function" || navigator.canShare({ files: [file] });
-        if (canShareFiles) {
-          // Share API にタイムアウトを設ける。iOS 15 では resolve/reject
-          // せずハングする場合がある。30秒でタイムアウトして先に進む。
-          await Promise.race([
-            navigator.share({ files: [file], title: t("app.title") }),
-            new Promise<void>((_, reject) =>
-              setTimeout(() => reject(new Error("share timeout")), 30000)),
-          ]);
-          return;
-        }
-      } catch {
-        // Share API 失敗・タイムアウト・ユーザーキャンセル → fallback
-      }
-      try {
-        window.open(dataUrl, "_blank", "noopener,noreferrer");
-        return;
-      } catch {
-        // fall through to download
-      }
-    }
-
-    const a = document.createElement("a");
-    a.download = filename;
-    a.href = dataUrl;
-    a.click();
   } catch (e) {
-    exportStatus.value = `${t("status.exportFailed")} [${e instanceof Error ? e.message : "unknown"}]`;
+    if (e instanceof ExportImageError && e.reason === "image_too_large") {
+      exportStatus.value = t("status.imageTooLarge");
+    } else {
+      exportStatus.value = `${t("status.exportFailed")} [${e instanceof Error ? e.message : "unknown"}]`;
+    }
   } finally {
-    // --- DOM 復帰 ---
-    el.classList.remove("exportSheet--capture");
-
-    // クローンと実 DOM を replaceChild で入れ替え（insertBefore より確実）
-    if (visualClone && visualClone.parentNode) {
-      visualClone.parentNode.replaceChild(el, visualClone);
-    } else if (originalParent) {
-      // フォールバック: クローンが既に除去されていた場合
-      if (originalNextSibling) {
-        originalParent.insertBefore(el, originalNextSibling);
-      } else {
-        originalParent.appendChild(el);
-      }
-    }
-
-    captureWrapper?.remove();
-
-    // オーバーレイを復元
-    if (overlay) {
-      overlay.scrollTop = savedScroll;
-    }
-
     exportBusy.value = false;
-
-    // iframe 掃除（1回目 — reflow 前）
-    cleanupHtml2canvasIframes();
-
-    // 実 DOM 自身に display トグルで強制リフロー
-    // iOS 15 WebKit でレイヤー崩れが起きた場合に復元する
-    el.style.display = "none";
-    void el.offsetHeight;
-    el.style.display = "";
-
-    // オーバーレイ全体のリフロー
-    await forceIOSReflow(overlay);
-
-    // iframe 掃除（2回目 — reflow 後に遅延生成された残骸を除去）
-    cleanupHtml2canvasIframes();
-
-    // DOM 復帰の検証: 要素が正しく表示されているか確認
-    // 失敗していたら location.reload() で強制復旧
-    // （画像保存は完了済みなので UX 上許容範囲）
-    await nextTick();
-    const restored = el.getBoundingClientRect().height > 0;
-    if (!restored) {
-      location.reload();
-    }
   }
 }
 </script>

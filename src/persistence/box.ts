@@ -1,12 +1,12 @@
 import type {
   BoxEntrySource,
   BoxSubSkillSlotV1,
-  ExpGainNature,
-  ExpType,
   IngredientType,
   PokemonBoxEntryV1,
   PokemonSpecialty,
 } from "../domain/types";
+import { toExpGainNature, toExpType, toInt } from "./shared";
+import { perfSpan } from "../utils/perf";
 
 const STORAGE_KEY = "candy-boost-planner:box:v1";
 const SCHEMA_VERSION = 1 as const;
@@ -41,7 +41,8 @@ export function loadBox(): PokemonBoxEntryV1[] {
 export function saveBox(entries: PokemonBoxEntryV1[]) {
   try {
     const v: BoxStoreV1 = { schemaVersion: SCHEMA_VERSION, entries };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(v));
+    const serialized = perfSpan("persist.box.serialize", () => JSON.stringify(v));
+    perfSpan("persist.box.write", () => localStorage.setItem(STORAGE_KEY, serialized));
   } catch {
     // localStorage can throw (quota exceeded / blocked). Persistence must not break UI.
   }
@@ -97,24 +98,6 @@ function normalizeEntry(x: Record<string, unknown>): PokemonBoxEntryV1 {
     createdAt: typeof x.createdAt === "string" ? x.createdAt : now,
     updatedAt: typeof x.updatedAt === "string" ? x.updatedAt : now,
   };
-}
-
-function toInt(v: unknown, fallback: number): number {
-  const n = typeof v === "number" ? v : Number(v);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.floor(n);
-}
-
-function toExpType(v: unknown, fallback: ExpType): ExpType {
-  const n = toInt(v, fallback);
-  if (n === 600 || n === 900 || n === 1080 || n === 1320) return n;
-  return fallback;
-}
-
-function toExpGainNature(v: unknown, fallback: ExpGainNature): ExpGainNature {
-  const s = typeof v === "string" ? v : String(v ?? "");
-  if (s === "up" || s === "down" || s === "normal") return s;
-  return fallback;
 }
 
 function toSpecialty(v: unknown): PokemonSpecialty | undefined {

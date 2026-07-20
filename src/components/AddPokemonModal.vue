@@ -3,7 +3,16 @@
     <div class="modal addModal" role="dialog" :aria-label="t('addModal.title')" @keydown.esc="$emit('close')">
       <div class="addModal__head">
         <h2 class="addModal__title">{{ t("addModal.title") }}</h2>
-        <button class="btn btn--ghost btn--xs" type="button" @click="$emit('close')">{{ t("common.close") }}</button>
+        <div class="addModal__headRight">
+          <span
+            v-if="justAdded"
+            class="addModal__added"
+            role="status"
+            aria-live="polite"
+            data-testid="add-modal-added"
+          >✓ {{ t("addModal.added") }}</span>
+          <button class="btn btn--ghost btn--xs" type="button" @click="$emit('close')">{{ t("common.close") }}</button>
+        </div>
       </div>
 
       <div class="addModal__body">
@@ -142,7 +151,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from "vue";
 import { useI18n } from "vue-i18n";
 import LevelPicker from "./LevelPicker.vue";
 import NatureSelect from "./NatureSelect.vue";
@@ -183,6 +192,21 @@ const sleepHoursInput = ref<string>("");
 
 const nameInputRef = ref<HTMLInputElement | null>(null);
 
+// 追加成功フィードバック（インポート成功／反映ボタンのリアクションに倣い一定時間だけ表示）
+const justAdded = ref(false);
+let justAddedTimer: ReturnType<typeof setTimeout> | null = null;
+function flashAdded() {
+  justAdded.value = true;
+  if (justAddedTimer) clearTimeout(justAddedTimer);
+  justAddedTimer = setTimeout(() => {
+    justAdded.value = false;
+    justAddedTimer = null;
+  }, 2500);
+}
+onUnmounted(() => {
+  if (justAddedTimer) clearTimeout(justAddedTimer);
+});
+
 // Sync srcLevel → box.addLevel so onCreateManual uses it
 watch(srcLevel, (v) => { box.addLevel.value = v; });
 
@@ -218,7 +242,9 @@ function onSubmit(ev?: MouseEvent) {
   box.addExpRemaining.value = (parsedExp === undefined || parsedExp === 0) ? "" : String(parsedExp);
 
   // 睡眠時間をストアに転送（パースは onCreateManual 側）
-  box.addSleepHours.value = sleepHoursInput.value.trim();
+  // type="number" の v-model は Vue が数値へ自動キャストするため String() で包んでから trim する
+  // （そのまま .trim() すると数値入力時に throw して追加できなくなる。expRemaining / speciesCandy と同様の対策）
+  box.addSleepHours.value = String(sleepHoursInput.value ?? "").trim();
 
   // Create box entry via store (expRemaining is now embedded in the entry)
   box.onCreateManual({ mode: "toCalc" });
@@ -234,6 +260,9 @@ function onSubmit(ev?: MouseEvent) {
 
   // Emit to parent so it can bridge to CalcStore
   emit("added", dstLevel.value, ev);
+
+  // 追加成功フィードバック（閉じるボタン左に「✓ 追加しました」を一時表示）
+  flashAdded();
 
   // Reset local form for next add
   resetForm();

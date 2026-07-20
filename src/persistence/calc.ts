@@ -1,6 +1,9 @@
 import type { BoostEvent, ExpGainNature, ExpType, SleepSettings } from "../domain/types";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { defaultBoostKind } from "../domain/pokesleep/boost-config";
+import type { ItemCompareMode } from "../domain/level-planner/types";
+import { toExpGainNature, toExpType, toInt } from "./shared";
+import { perfSpan } from "../utils/perf";
 
 /**
  * 計算モード
@@ -40,6 +43,8 @@ export type CalcRowV1 = {
 };
 
 export type CalcSaveSlotV1 = {
+  /** スロット位置とは独立したセッション/保存データ上の安定ID。 */
+  slotId?: string;
   savedAt: string;
   rows: CalcRowV1[];
   activeRowId: string | null;
@@ -47,6 +52,8 @@ export type CalcSaveSlotV1 = {
   boostKind: BoostEvent;
   /** スロットのアメブ上限（ユーザー入力値、未設定=デフォルト値を使用） */
   boostCandyRemaining?: number | null;
+  /** 既定は surplusFirst（余り最小）。 */
+  itemCompareMode?: ItemCompareMode;
 };
 
 
@@ -56,7 +63,7 @@ type CalcSlotsStoreV1 = {
 };
 
 const SLOTS_KEY = "candy-boost-planner:calc:slots:v1";
-const LEGACY_TOTAL_SHARDS_KEY = "candy-boost-planner:calc:totalShards";
+const TOTAL_SHARDS_KEY = "candy-boost-planner:calc:totalShards";
 
 export function loadCalcSlots(): Array<CalcSaveSlotV1 | null> {
   try {
@@ -84,15 +91,16 @@ export function saveCalcSlots(v: Array<CalcSaveSlotV1 | null>) {
   while (a.length < 3) a.push(null);
   const store: CalcSlotsStoreV1 = { schemaVersion: 1, slots: a };
   try {
-    localStorage.setItem(SLOTS_KEY, JSON.stringify(store));
+    const serialized = perfSpan("persist.calc.serialize", () => JSON.stringify(store));
+    perfSpan("persist.calc.write", () => localStorage.setItem(SLOTS_KEY, serialized));
   } catch {
     // localStorage can throw (quota exceeded / blocked). Persistence must not break UI.
   }
 }
 
-export function loadLegacyTotalShards(): number {
+export function loadTotalShards(): number {
   try {
-    const raw = localStorage.getItem(LEGACY_TOTAL_SHARDS_KEY);
+    const raw = localStorage.getItem(TOTAL_SHARDS_KEY);
     if (!raw) return 0;
     const n = Number(raw);
     return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
@@ -103,7 +111,7 @@ export function loadLegacyTotalShards(): number {
 
 export function saveTotalShards(v: number): void {
   try {
-    localStorage.setItem(LEGACY_TOTAL_SHARDS_KEY, String(Math.max(0, Math.floor(v))));
+    localStorage.setItem(TOTAL_SHARDS_KEY, String(Math.max(0, Math.floor(v))));
   } catch {
     // localStorage can throw (quota exceeded / blocked). Persistence must not break UI.
   }
@@ -172,9 +180,11 @@ function normalizeSlot(x: unknown): CalcSaveSlotV1 | null {
   if (!x || typeof x !== "object") return null;
   const r = x as Record<string, unknown>;
   const savedAt = typeof r.savedAt === "string" ? r.savedAt : new Date().toISOString();
+  const slotId = typeof r.slotId === "string" && r.slotId.trim() ? r.slotId : undefined;
   const rows = toRows(r.rows);
-  const activeRowId = typeof r.activeRowId === "string" ? r.activeRowId : null;
-  if (!rows.length) return null;
+  const activeRowId = typeof r.activeRowId === "string" && rows.some((row) => row.id === r.activeRowId)
+    ? r.activeRowId
+    : null;
   // boostKind: 旧データは defaultBoostKind を適用
   const boostKind: BoostEvent = r.boostKind === "full" || r.boostKind === "mini" || r.boostKind === "none"
     ? r.boostKind
@@ -183,7 +193,24 @@ function normalizeSlot(x: unknown): CalcSaveSlotV1 | null {
   const boostCandyRemaining = typeof r.boostCandyRemaining === "number" && r.boostCandyRemaining >= 0
     ? Math.floor(r.boostCandyRemaining)
     : undefined;
-  return { savedAt, rows, activeRowId, boostKind, boostCandyRemaining };
+  const itemCompareMode = normalizeItemCompareMode(r.itemCompareMode);
+  const hasSlotSettings =
+    slotId !== undefined
+    || r.boostKind === "full"
+    || r.boostKind === "mini"
+    || r.boostKind === "none"
+    || boostCandyRemaining !== undefined
+    || r.itemCompareMode !== undefined;
+  if (!rows.length && !hasSlotSettings) return null;
+  return { slotId, savedAt, rows, activeRowId, boostKind, boostCandyRemaining, itemCompareMode };
+}
+
+function normalizeItemCompareMode(value: unknown): ItemCompareMode {
+  if (value === "legacyImproved") return "legacyImproved";
+  if (value === "surplusGateFirst") return "surplusGateFirst";
+  if (value === "surplusFirst") return "surplusFirst";
+  // 未設定や不明値は現行デフォルトへ倒す。
+  return "surplusFirst";
 }
 
 
@@ -203,7 +230,7 @@ function toRows(v: unknown): CalcRowV1[] {
     // 0 は保存データ上もそのまま読み込み、calcRowExpGot 側で toNext に補正する。
     // ただし undefined / null / NaN は安全なフォールバックとして 0 を設定（calcRowExpGot が toNext に補正）。
     const expRemaining = clampInt(o.expRemaining, 0, 999999, 0);
-    const nature = toNature(o.nature, "normal");
+    const nature = toExpGainNature(o.nature, "normal");
     const boostReachLevel = clampInt(o.boostReachLevel, srcLevel, dstLevel, dstLevel);
     const boostRatioPct = clampInt(o.boostRatioPct, 0, 100, 100);
     const mode: CalcMode = o.mode === "peak" ? "peak" : "targetLevel";
@@ -246,27 +273,9 @@ function toRows(v: unknown): CalcRowV1[] {
   return out.slice(0, 60);
 }
 
-function toInt(v: unknown, fallback: number): number {
-  const n = typeof v === "number" ? v : Number(v);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.floor(n);
-}
-
 function clampInt(v: unknown, min: number, max: number, fallback: number): number {
   const n = toInt(v, fallback);
   return Math.max(min, Math.min(max, n));
-}
-
-function toExpType(v: unknown, fallback: ExpType): ExpType {
-  const n = toInt(v, fallback);
-  if (n === 600 || n === 900 || n === 1080 || n === 1320) return n;
-  return fallback;
-}
-
-function toNature(v: unknown, fallback: ExpGainNature): ExpGainNature {
-  const s = typeof v === "string" ? v : String(v ?? "");
-  if (s === "up" || s === "down" || s === "normal") return s;
-  return fallback;
 }
 
 /**

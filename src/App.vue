@@ -43,7 +43,7 @@
     <div class="dashboard">
       <CalcPanel ref="calcPanelRef" :calc="calc" :resolve-pokedex-id-by-box-id="resolvePokedexIdByBoxId" @apply-to-box="applyCalculatorToBox($event)" @open-help="showHelp = true" @open-settings="openSettings" @open-add-modal="showAddModal = true" />
 
-      <BoxPanel v-if="mountBoxPanel" :box="box" :calc="calc" :gt="gt" @apply-to-calc="applyBoxToCalculator()" @open-settings="showSettings = true" />
+      <BoxPanel v-if="mountBoxPanel" :box="box" :calc="calc" :gt="gt" @apply-to-calc="applyBoxToCalculator(undefined, true)" @open-settings="showSettings = true" />
       <div v-else class="panel panel--box boxPanelDefer" aria-busy="true" aria-live="polite">
         <div class="panel__head">
           <h2 class="panel__title">{{ t("box.title") }}</h2>
@@ -57,7 +57,6 @@
 
     <ExportOverlay
       v-if="calc.exportOpen.value"
-      :scale="calc.exportScale.value"
       :rows="calc.exportRows.value"
       :totals="calc.exportActualTotals.value"
       :boost-used="calc.totalBoostCandyUsed.value"
@@ -87,7 +86,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, onMounted, provide, ref } from "vue";
+import { computed, defineAsyncComponent, nextTick, onMounted, provide, ref, watch } from "vue";
 import type { Component } from "vue";
 import { useI18n } from "vue-i18n";
 import { ensureLocaleMessagesLoaded } from "./i18n";
@@ -98,6 +97,7 @@ import { getPokemonType } from "./domain/pokesleep/pokemon-names";
 import CalcPanel from "./components/CalcPanel.vue";
 import BoxPanel from "./components/BoxPanel.vue";
 import MobileNav from "./components/MobileNav.vue";
+import SettingsOverlay from "./components/SettingsOverlay.vue";
 import { useBoxStore } from "./composables/useBoxStore";
 import { useCalcStore } from "./composables/useCalcStore";
 import { useOnboarding } from "./composables/useOnboarding";
@@ -130,7 +130,6 @@ async function setLocale(next: "ja" | "en") {
 /** 遅延オーバーレイ用チャンク（トップ描画後にプリロードして初回オープン時の待ちを避ける） */
 const loadExportOverlay = () => import("./components/ExportOverlay.vue");
 const loadHelpOverlay = () => import("./components/HelpOverlay.vue");
-const loadSettingsOverlay = () => import("./components/SettingsOverlay.vue");
 const loadAddPokemonModal = () => import("./components/AddPokemonModal.vue");
 const loadOnboardingTour = () => import("./components/OnboardingTour.vue");
 
@@ -143,7 +142,6 @@ function createAsyncOverlayComponent(loader: () => Promise<{ default: Component 
 
 const ExportOverlay = createAsyncOverlayComponent(loadExportOverlay);
 const HelpOverlay = createAsyncOverlayComponent(loadHelpOverlay);
-const SettingsOverlay = createAsyncOverlayComponent(loadSettingsOverlay);
 const AddPokemonModal = createAsyncOverlayComponent(loadAddPokemonModal);
 const OnboardingTour = createAsyncOverlayComponent(loadOnboardingTour);
 
@@ -151,7 +149,6 @@ function preloadOverlayChunks() {
   return Promise.all([
     loadExportOverlay(),
     loadHelpOverlay(),
-    loadSettingsOverlay(),
     loadAddPokemonModal(),
     loadOnboardingTour(),
   ]);
@@ -250,7 +247,93 @@ const calc = useCalcStore({
   resolvePokedexIdByBoxId,
 });
 
-function applyBoxToCalculator(dstLevelDefault?: number) {
+function nextAnimationFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+function preserveBoxDetailPosition(update: () => void): void {
+  const container = scrollContainerRef.value;
+  const anchor = document.querySelector<HTMLElement>('[data-testid="box-detail-panel"]');
+  if (!container || !anchor || window.matchMedia('(min-width: 1400px)').matches) {
+    update();
+    return;
+  }
+
+  const anchorTop = anchor.getBoundingClientRect().top;
+  const previousOverflowAnchor = container.style.getPropertyValue('overflow-anchor');
+  const previousPriority = container.style.getPropertyPriority('overflow-anchor');
+  const calcPanel = document.getElementById('neo-calc');
+  let finished = false;
+  let stopPendingWatch: (() => void) | null = null;
+  let resolvePendingWait: (() => void) | null = null;
+
+  const restoreOverflowAnchor = () => {
+    if (previousOverflowAnchor) {
+      container.style.setProperty('overflow-anchor', previousOverflowAnchor, previousPriority);
+    } else {
+      container.style.removeProperty('overflow-anchor');
+    }
+  };
+  const stop = () => {
+    if (finished) return;
+    finished = true;
+    observer?.disconnect();
+    stopPendingWatch?.();
+    resolvePendingWait?.();
+    container.removeEventListener('pointerdown', stop);
+    container.removeEventListener('wheel', stop);
+    restoreOverflowAnchor();
+  };
+  const adjust = () => {
+    if (finished || !anchor.isConnected) return;
+    const movedBy = anchor.getBoundingClientRect().top - anchorTop;
+    if (Math.abs(movedBy) >= 0.5) container.scrollTop += movedBy;
+  };
+  const observer = typeof ResizeObserver !== 'undefined' && calcPanel
+    ? new ResizeObserver(() => adjust())
+    : null;
+
+  // Safari の自動補正との二重適用を避け、今回の追加だけ実測値で補正する。
+  container.style.setProperty('overflow-anchor', 'none');
+  observer?.observe(calcPanel!);
+  // 計算中にユーザーが次の操作を始めた場合は、自動補正を打ち切る。
+  container.addEventListener('pointerdown', stop, { passive: true });
+  container.addEventListener('wheel', stop, { passive: true });
+  update();
+
+  void (async () => {
+    try {
+      await nextTick();
+      await nextAnimationFrame();
+      await nextAnimationFrame();
+      adjust();
+
+      if (!finished && calc.planResultPending.value) {
+        await new Promise<void>((resolve) => {
+          resolvePendingWait = resolve;
+          const stopWatch = watch(calc.planResultPending, (pending) => {
+            if (!pending) {
+              stopWatch();
+              stopPendingWatch = null;
+              resolve();
+            }
+          });
+          stopPendingWatch = stopWatch;
+        });
+        resolvePendingWait = null;
+        stopPendingWatch = null;
+      }
+      await nextTick();
+      await nextAnimationFrame();
+      await nextAnimationFrame();
+      adjust();
+    } finally {
+      stop();
+    }
+  })();
+}
+
+function applyBoxToCalculator(dstLevelDefault?: number, preserveScrollPosition = false) {
   const e = box.selectedBox.value;
   if (!e) return;
   const lvl = e.planner?.level ?? e.derived?.level ?? 10;
@@ -259,18 +342,22 @@ function applyBoxToCalculator(dstLevelDefault?: number) {
   const pokedexId = e.derived?.pokedexId;
   const pokemonType = pokedexId ? getPokemonType(pokedexId) : undefined;
 
-  calc.upsertFromBox({
-    boxId: e.id,
-    title: box.displayBoxTitle(e),
-    srcLevel: Number(lvl),
-    expType: expT,
-    nature: nat,
-    expRemaining: e.planner?.expRemaining,
-    sleepHours: e.planner?.sleepHours,
-    dstLevelDefault,
-    pokedexId,
-    pokemonType,
-  });
+  const upsert = () => {
+    calc.upsertFromBox({
+      boxId: e.id,
+      title: box.displayBoxTitle(e),
+      srcLevel: Number(lvl),
+      expType: expT,
+      nature: nat,
+      expRemaining: e.planner?.expRemaining,
+      sleepHours: e.planner?.sleepHours,
+      dstLevelDefault,
+      pokedexId,
+      pokemonType,
+    });
+  };
+  if (preserveScrollPosition) preserveBoxDetailPosition(upsert);
+  else upsert();
 }
 
 function applyCalculatorToBox(rowId: string) {

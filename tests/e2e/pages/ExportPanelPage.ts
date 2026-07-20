@@ -3,7 +3,15 @@
  * エクスポートオーバーレイのセレクタと操作をまとめる
  * すべてのセレクタはdata-testidベースで統一
  */
-import { type Page, type Locator, expect } from '@playwright/test';
+import { type Page, type Locator, type Download, expect } from '@playwright/test';
+
+/** export-sheet の非破壊性検証に使う DOM スナップショット */
+export type ExportSheetSnapshot = {
+  parentTag: string;
+  className: string;
+  styleAttr: string;
+  overlayScrollTop: number;
+};
 
 export class ExportPanelPage {
   readonly page: Page;
@@ -121,6 +129,39 @@ export class ExportPanelPage {
     await this.csvCopyButton.click();
   }
 
+  // === 画像保存の厳格検証ヘルパー（fbl03 Phase 0） ===
+
+  /**
+   * 「画像を保存」をクリックし download を必須で待つ。
+   * download が発生しなければ waitForEvent がタイムアウトして失敗する（偽陽性を作らない）。
+   */
+  async saveImageAndWaitDownload(timeout = 15000): Promise<Download> {
+    const downloadPromise = this.page.waitForEvent('download', { timeout });
+    await this.clickSaveImage();
+    return downloadPromise;
+  }
+
+  /** export-sheet の親要素・class・inline style と overlay の scrollTop を取得する。 */
+  async getSheetSnapshot(): Promise<ExportSheetSnapshot> {
+    return this.sheet.evaluate((el) => {
+      const overlay = el.closest('.exportOverlay') as HTMLElement | null;
+      return {
+        parentTag: el.parentElement?.tagName ?? '',
+        className: el.getAttribute('class') ?? '',
+        styleAttr: el.getAttribute('style') ?? '',
+        overlayScrollTop: overlay ? overlay.scrollTop : 0,
+      };
+    });
+  }
+
+  /** body 直下の iframe 総数と html2canvas 由来 iframe 数を数える。 */
+  async countCaptureIframes(): Promise<{ bodyIframes: number; html2canvas: number }> {
+    return this.page.evaluate(() => ({
+      bodyIframes: document.querySelectorAll('body > iframe').length,
+      html2canvas: document.querySelectorAll('iframe.html2canvas-container').length,
+    }));
+  }
+
   // === サマリーカード値の取得 ===
   getStatCard(label: string): Locator {
     return this.statCards.filter({ hasText: label });
@@ -162,8 +203,8 @@ export class ExportPanelPage {
     const colCount = await cols.count();
     let boostCandy = '';
     let normalCandy = '';
-    let totalCandy = '';
-    let shards = '';
+    let totalCandy: string;
+    let shards: string;
 
     if (colCount >= 6) {
       // ブーストモード

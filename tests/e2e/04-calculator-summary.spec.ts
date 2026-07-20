@@ -90,6 +90,31 @@ test.describe('04-calculator B. ポケモン追加・基本操作', () => {
     await calc.expectRowCount(1);
   });
 
+  test('6b. BOXから追加しても押した詳細パネルの画面位置を維持する', async ({ page }) => {
+    const box = new BoxPanelPage(page);
+    const calc = new CalcPanelPage(page);
+    const scrollContainer = page.locator('.shell__scroll');
+
+    await page.setViewportSize({ width: 390, height: 700 });
+    await box.selectBoxTile(0);
+    await box.detailPanel.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    // iOS Safari の自動アンカーが効かない／別要素を選ぶ場合でもアプリ側で維持する。
+    await scrollContainer.evaluate((el) => {
+      (el as HTMLElement).style.overflowAnchor = 'none';
+    });
+
+    const beforeTop = await box.detailPanel.evaluate((el) => el.getBoundingClientRect().top);
+    await box.clickApplyToCalc();
+    await calc.expectRowCount(1);
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    }));
+    const afterTop = await box.detailPanel.evaluate((el) => el.getBoundingClientRect().top);
+
+    expect(await scrollContainer.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+    expect(Math.abs(afterTop - beforeTop), '追加ボタン付近が追加前後で動かない').toBeLessThanOrEqual(2);
+  });
+
   test('7. 計算機に行が追加されると空状態が消える', async ({ page }) => {
     const box = new BoxPanelPage(page);
     const calc = new CalcPanelPage(page);
@@ -110,6 +135,33 @@ test.describe('04-calculator B. ポケモン追加・基本操作', () => {
     const row = calc.getRow(0);
     await row.click();
     await calc.expectRowActive(row);
+  });
+
+  test('8b. 行の入力フォーカス中もstickyサマリーを前面に保つ', async ({ page }) => {
+    const box = new BoxPanelPage(page);
+    const calc = new CalcPanelPage(page);
+
+    await page.setViewportSize({ width: 390, height: 700 });
+    await box.selectBoxTile(0);
+    await box.clickApplyToCalc();
+    await calc.expectRowCount(1);
+
+    const row = calc.getRow(0);
+    await calc.getRowExpRemainingInput(row).focus();
+
+    const focusedLayers = await page.evaluate(() => ({
+      summary: Number.parseInt(getComputedStyle(document.querySelector<HTMLElement>('.calcSticky')!).zIndex, 10),
+      slot: Number.parseInt(getComputedStyle(document.querySelector<HTMLElement>('.calcSlotContainer')!).zIndex, 10),
+    }));
+    expect(focusedLayers.slot).toBeLessThan(focusedLayers.summary);
+
+    await calc.getRowSrcLevelButton(row).click();
+    await expect(row.getByTestId('level-picker-popover')).toBeVisible();
+    const popoverLayers = await page.evaluate(() => ({
+      summary: Number.parseInt(getComputedStyle(document.querySelector<HTMLElement>('.calcSticky')!).zIndex, 10),
+      slot: Number.parseInt(getComputedStyle(document.querySelector<HTMLElement>('.calcSlotContainer')!).zIndex, 10),
+    }));
+    expect(popoverLayers.slot).toBeGreaterThan(popoverLayers.summary);
   });
 
   test('9. 行の削除ができる', async ({ page }) => {
@@ -521,13 +573,11 @@ test.describe('04-calculator G. プログレスバー・サマリー表示', () 
   });
 
   test('37. サマリー（合計アメブ、合計かけら）が表示される', async ({ page }) => {
-    const calc = new CalcPanelPage(page);
     const summaryInline = page.locator('.calcSumInline:not(.calcSumInline--candy)');
     await expect(summaryInline.first()).toBeVisible();
   });
 
   test('38. 万能アメ使用率が表示される', async ({ page }) => {
-    const calc = new CalcPanelPage(page);
     const candyUsage = page.locator('.calcSumInline--candy');
     await expect(candyUsage.first()).toBeVisible();
   });
@@ -592,11 +642,10 @@ test.describe('04-calculator Gb. サマリー合計値の検証', () => {
     // 個数指定50
     await calc.getRowCandyTargetInput(rowSuicune).fill('50');
 
-    await page.waitForTimeout(300);
-
     // サマリー値の検証（実使用ベース）
     // アメブ合計: 50
     const boostTotal = page.locator('.calcSumInline:not(.calcSumInline--candy)').first();
+    await expect(boostTotal).toContainText('50', { timeout: 10000 });
     const boostTotalText = await boostTotal.textContent();
     expect(boostTotalText).toContain('50');
 
@@ -802,18 +851,20 @@ test.describe('04-calculator J. 設定反映テスト', () => {
     // 個数指定を設定
     const candyTargetInput = calc.getRowCandyTargetInput(row);
     await candyTargetInput.fill('10');
+    await calc.expandRow(row);
 
     // 睡眠時間を取得
     const sleepTime1 = await calc.getRowSleepTime(row);
+    expect(sleepTime1).not.toBe('');
 
     // 設定を変更
     await calc.clickSettings();
     await settings.setDailySleepHours(10);
     await settings.closeByButton();
+    await calc.expandRow(row);
 
     // 睡眠時間が変わることを確認
-    const sleepTime2 = await calc.getRowSleepTime(row);
-    expect(sleepTime1).not.toBe(sleepTime2);
+    await expect.poll(async () => calc.getRowSleepTime(row), { timeout: 10000 }).not.toBe(sleepTime1);
   });
 
   test('51. 睡眠EXPボーナスが計算に反映される', async ({ page }) => {
@@ -823,15 +874,17 @@ test.describe('04-calculator J. 設定反映テスト', () => {
 
     const candyTargetInput = calc.getRowCandyTargetInput(row);
     await candyTargetInput.fill('10');
+    await calc.expandRow(row);
 
     const sleepTime1 = await calc.getRowSleepTime(row);
+    expect(sleepTime1).not.toBe('');
 
     await calc.clickSettings();
     await settings.setSleepExpBonus(4);
     await settings.closeByButton();
+    await calc.expandRow(row);
 
-    const sleepTime2 = await calc.getRowSleepTime(row);
-    expect(sleepTime1).not.toBe(sleepTime2);
+    await expect.poll(async () => calc.getRowSleepTime(row), { timeout: 10000 }).not.toBe(sleepTime1);
   });
 
   test('52. GSDチェックが計算に反映される', async ({ page }) => {
@@ -841,19 +894,150 @@ test.describe('04-calculator J. 設定反映テスト', () => {
 
     const candyTargetInput = calc.getRowCandyTargetInput(row);
     await candyTargetInput.fill('10');
+    await calc.expandRow(row);
 
     const sleepTime1 = await calc.getRowSleepTime(row);
+    expect(sleepTime1).not.toBe('');
 
     await calc.clickSettings();
     await settings.toggleIncludeGSD();
     await settings.closeByButton();
+    await calc.expandRow(row);
 
-    const sleepTime2 = await calc.getRowSleepTime(row);
-    expect(sleepTime1).not.toBe(sleepTime2);
+    await expect.poll(async () => calc.getRowSleepTime(row), { timeout: 10000 }).not.toBe(sleepTime1);
   });
 });
 
 
+
+// ============================================================
+// K. スロットのコピー/ペースト
+// ============================================================
+test.describe('04-calculator K. スロットのコピー/ペースト', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+  });
+
+  test('53. 空状態ではコピー・ペーストが無効', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    await expect(calc.copySlotButton).toBeDisabled();
+    await expect(calc.pasteSlotButton).toBeDisabled();
+  });
+
+  test('54. コピーするとペーストが有効になる', async ({ page }) => {
+    const box = new BoxPanelPage(page);
+    const calc = new CalcPanelPage(page);
+
+    // スロット0にポケモンを追加
+    await box.openImportPanel();
+    await box.fillImportText(testConfig.importData.singlePokemon);
+    await box.clickImport();
+    await box.selectBoxTile(0);
+    await box.clickApplyToCalc();
+    await calc.expectRowCount(1);
+
+    // コピー前はペースト無効
+    await expect(calc.copySlotButton).toBeEnabled();
+    await expect(calc.pasteSlotButton).toBeDisabled();
+
+    // コピー後はペースト有効
+    await calc.clickCopySlot();
+    await expect(calc.pasteSlotButton).toBeEnabled();
+  });
+
+  test('54b. 別スロットへペーストすると行・アメブ種別が複製される', async ({ page }) => {
+    const box = new BoxPanelPage(page);
+    const calc = new CalcPanelPage(page);
+    const settings = new SettingsModalPage(page);
+
+    // スロット0にポケモンを追加し、スロット固有設定を既定値と異なる値にする
+    await box.openImportPanel();
+    await box.fillImportText(testConfig.importData.singlePokemon);
+    await box.clickImport();
+    await box.selectBoxTile(0);
+    await box.clickApplyToCalc();
+    await calc.setBoostKind('full');
+    await settings.openSettingsFromDesktop();
+    await settings.setBoostCandyRemaining('123');
+    await settings.setItemCompareMode('legacyImproved');
+    await settings.closeByButton();
+    await calc.expectRowCount(1);
+
+    const slot0Title = await calc.getRow(0).locator('.calcRow__title').textContent();
+
+    // コピー
+    await calc.clickCopySlot();
+
+    // スロット1（空・既定 mini）へ切り替え
+    await calc.clickSlotTab(1);
+    await calc.expectRowCount(0);
+    expect(await calc.getBoostKind()).toBe('mini');
+    await settings.openSettingsFromDesktop();
+    expect(await settings.getBoostCandyRemaining()).toBe('');
+    expect(await settings.getItemCompareMode()).toBe('surplusFirst');
+    await settings.closeByButton();
+
+    // ペースト
+    await calc.clickPasteSlot();
+
+    // 行とスロット固有設定が複製される
+    await calc.expectRowCount(1);
+    expect(await calc.getRow(0).locator('.calcRow__title').textContent()).toBe(slot0Title);
+    expect(await calc.getBoostKind()).toBe('full');
+    await settings.openSettingsFromDesktop();
+    expect(await settings.getBoostCandyRemaining()).toBe('123');
+    expect(await settings.getItemCompareMode()).toBe('legacyImproved');
+    await settings.closeByButton();
+  });
+
+  test('54c. ペーストは「元に戻す/やり直す」の対象', async ({ page }) => {
+    const box = new BoxPanelPage(page);
+    const calc = new CalcPanelPage(page);
+    const settings = new SettingsModalPage(page);
+
+    // スロット0にポケモンを追加してコピー
+    await box.openImportPanel();
+    await box.fillImportText(testConfig.importData.singlePokemon);
+    await box.clickImport();
+    await box.selectBoxTile(0);
+    await box.clickApplyToCalc();
+    await calc.setBoostKind('full');
+    await settings.openSettingsFromDesktop();
+    await settings.setBoostCandyRemaining('123');
+    await settings.setItemCompareMode('legacyImproved');
+    await settings.closeByButton();
+    await calc.clickCopySlot();
+
+    // スロット1へ切り替えてペースト
+    await calc.clickSlotTab(1);
+    await calc.expectRowCount(0);
+    await calc.clickPasteSlot();
+    await calc.expectRowCount(1);
+    expect(await calc.getBoostKind()).toBe('full');
+    await settings.openSettingsFromDesktop();
+    expect(await settings.getBoostCandyRemaining()).toBe('123');
+    expect(await settings.getItemCompareMode()).toBe('legacyImproved');
+    await settings.closeByButton();
+
+    // 元に戻す → ペースト前（空・mini・既定設定）に戻る
+    await calc.clickUndo();
+    await calc.expectRowCount(0);
+    expect(await calc.getBoostKind()).toBe('mini');
+    await settings.openSettingsFromDesktop();
+    expect(await settings.getBoostCandyRemaining()).toBe('');
+    expect(await settings.getItemCompareMode()).toBe('surplusFirst');
+    await settings.closeByButton();
+
+    // やり直す → 再度ペースト適用
+    await calc.clickRedo();
+    await calc.expectRowCount(1);
+    expect(await calc.getBoostKind()).toBe('full');
+    await settings.openSettingsFromDesktop();
+    expect(await settings.getBoostCandyRemaining()).toBe('123');
+    expect(await settings.getItemCompareMode()).toBe('legacyImproved');
+    await settings.closeByButton();
+  });
+});
 
 // ============================================================
 // L. ヒント表示
@@ -981,9 +1165,8 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     const candyTargetInput = calc.getRowCandyTargetInput(row);
     await candyTargetInput.fill('1500');
 
-    await page.waitForTimeout(200);
-
     // 目標まで行の検証
+    await calc.waitForRowResultValue(row, 'required', 'normal', '1584');
     const reqBoost = await calc.getRowResultValue(row, 'required', 'boost');
     const reqNormal = await calc.getRowResultValue(row, 'required', 'normal');
     const reqCandy = await calc.getRowResultValue(row, 'required', 'candy');
@@ -994,6 +1177,7 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     expect(reqCandy.replace(/,/g, '')).toBe('1584');
     expect(reqShards.replace(/,/g, '')).toBe('515860');
 
+    await calc.waitForRowRequiredItems(row, 'いわM 3');
     const reqItems = await calc.getRowRequiredItems(row);
     expect(reqItems).toContain('いわM 3');
     expect(reqItems).toContain('万能S 503');
@@ -1028,9 +1212,8 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     await calc.getRowBoostRatioSlider(row).fill('0');
     await calc.getRowCandyTargetInput(row).fill('1500');
 
-    await page.waitForTimeout(200);
-
     // 到達可能行を展開
+    await calc.waitForRowResultValue(row, 'required', 'normal', '1584');
     await calc.expandRow(row);
 
     // 到達可能行の検証
@@ -1103,9 +1286,8 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     // 個数指定50
     await calc.getRowCandyTargetInput(row).fill('50');
 
-    await page.waitForTimeout(200);
-
     // アメブ目標Lv61、アメブ割合44%を確認
+    await calc.waitForRowResultValue(row, 'required', 'boost', '350');
     const boostRatioText = calc.getRowBoostRatioText(row);
     const ratioText = await boostRatioText.textContent();
     expect(ratioText).toContain('44%');
@@ -1117,12 +1299,12 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     const reqShards = await calc.getRowResultValue(row, 'required', 'shards');
 
     expect(reqBoost).toBe('350');
-    expect(reqNormal.replace(/,/g, '')).toBe('880');
-    expect(reqCandy.replace(/,/g, '')).toBe('1230');
-    expect(reqShards.replace(/,/g, '')).toBe('1581800');
+    expect(reqNormal.replace(/,/g, '')).toBe('3172');
+    expect(reqCandy.replace(/,/g, '')).toBe('3522');
+    expect(reqShards.replace(/,/g, '')).toBe('1218406');
 
     const reqItems = await calc.getRowRequiredItems(row);
-    expect(reqItems).toContain('万能S 361');
+    expect(reqItems).toContain('万能S 1174');
   });
 
   test('64. スイクンの到達可能行が正しい', async ({ page }) => {
@@ -1167,9 +1349,8 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     await calc.getRowBoostCandyInput(row).fill('350');
     await calc.getRowCandyTargetInput(row).fill('50');
 
-    await page.waitForTimeout(200);
-
-    // 到達可能行を展開
+    // required は同期計算なので、Worker の到達可能結果が反映されるまで used を待つ。
+    await calc.waitForRowResultValue(row, 'used', 'candy', '50');
     await calc.expandRow(row);
 
     // 到達可能行の検証
