@@ -5,14 +5,12 @@ import type { BoostEvent, ExpGainNature, ExpType, SleepSettings } from "../domai
 import { calcExp, calcExpAndCandy, calcExpAndCandyMixed, calcLevelByCandy } from "../domain/pokesleep";
 import { boostRules, defaultBoostKind } from "../domain/pokesleep/boost-config";
 import type { CalcRowV1, CalcSaveSlotV1 } from "../persistence/calc";
-import { loadCalcSlots, loadTotalShards, saveCalcSlots, saveTotalShards, loadBoostCandyRemaining, saveBoostCandyRemaining, loadSleepSettings, saveSleepSettings } from "../persistence/calc";
+import { loadActiveSlot, loadCalcSlots, loadTotalShards, saveActiveSlot, saveCalcSlots, saveTotalShards, loadBoostCandyRemaining, saveBoostCandyRemaining, loadSleepSettings, saveSleepSettings } from "../persistence/calc";
 import { deferPersistUntilReleased, schedulePersist } from "../persistence/deferredPersist";
 import { cryptoRandomId } from "../persistence/box";
 import { useCandyStore } from "./useCandyStore";
 import { getPokemonType } from "../domain/pokesleep/pokemon-names";
 import { CANDY_VALUES } from "../domain/level-planner/constants";
-import { solveLevelPlanWithBudget } from "../domain/level-planner/core/solveLevelPlan";
-import { buildDebugExportTsv as formatDebugExportTsv } from "../domain/level-planner/debugExport";
 import type { DebugExportContext } from "../domain/level-planner/debugExport";
 import { buildPlannerInput as buildLevelPlannerInput } from "../domain/level-planner/buildPlannerInput";
 import type { CalculationMode, CalculationPolicy, ItemCompareMode, LevelPlannerInput, LevelPlannerResult, MixedCalculationMeta, PokemonPlanLine, PokemonPlanResult, StructuralProbeStatus } from "../domain/level-planner/types";
@@ -24,6 +22,19 @@ export type CalcRow = CalcRowV1;
 
 const PLAN_RESULT_PERF_ENABLED = isPerfEnabled();
 const PLAN_RESULT_EXACT_VERIFICATION_ENABLED = PLAN_RESULT_PERF_ENABLED;
+
+let plannerFallbackModulePromise: Promise<typeof import("../domain/level-planner/core/solveLevelPlan")> | null = null;
+let debugExportModulePromise: Promise<typeof import("../domain/level-planner/debugExport")> | null = null;
+
+function loadPlannerFallbackModule() {
+  plannerFallbackModulePromise ??= import("../domain/level-planner/core/solveLevelPlan");
+  return plannerFallbackModulePromise;
+}
+
+function loadDebugExportModule() {
+  debugExportModulePromise ??= import("../domain/level-planner/debugExport");
+  return debugExportModulePromise;
+}
 
 export type CalcRowView = CalcRow & {
   title: string;
@@ -131,6 +142,10 @@ export type CalcStore = {
   rows: Ref<CalcRow[]>;
   activeRowId: Ref<string | null>;
   activeSlotTab: Ref<number>;
+  getBackupSnapshot: () => {
+    activeSlotIndex: 0 | 1 | 2;
+    slots: [CalcSaveSlotV1 | null, CalcSaveSlotV1 | null, CalcSaveSlotV1 | null];
+  };
 
   // 睡眠育成設定
   sleepSettings: Ref<SleepSettings>;
@@ -222,7 +237,7 @@ export type CalcStore = {
   resetBoostCandyRemaining: () => void;
   openExport: () => void;
   closeExport: () => void;
-  buildDebugExportTsv: () => string;
+  buildDebugExportTsv: () => Promise<string>;
   copyDebugExportTsv: () => Promise<DebugExportResult>;
 
   beginUndo: () => void;
@@ -294,24 +309,7 @@ export function useCalcStore(opts: {
 
   const slots = ref<Array<CalcSaveSlotV1 | null>>(loadCalcSlots().map(slot => slot ? { ...slot, slotId: slot.slotId ?? cryptoRandomId() } : null));
 
-  // アクティブスロットをLocalStorageから読み込み
-  const SLOT_TAB_KEY = "candy-boost-planner:calc:activeSlot";
-  function loadActiveSlot(): number {
-    try {
-      const raw = localStorage.getItem(SLOT_TAB_KEY);
-      if (!raw) return 0;
-      const n = Number(raw);
-      if (n === 0 || n === 1 || n === 2) return n;
-      return 0;
-    } catch { return 0; }
-  }
-  function saveActiveSlot(n: number) {
-    try {
-      localStorage.setItem(SLOT_TAB_KEY, String(n));
-    } catch { /* ignore */ }
-  }
-
-  const activeSlotTab = ref(loadActiveSlot());
+  const activeSlotTab = ref<number>(loadActiveSlot());
 
   // 現在のスロットからデータを読み込む（cloneCalcRowsがまだ定義されていないのでlegacyの方法で）
   const slot0 = slots.value[activeSlotTab.value];
@@ -494,6 +492,33 @@ export function useCalcStore(opts: {
       itemCompareMode: itemCompareMode.value,
     };
     slots.value = slots.value.map((x, idx) => (idx === i ? slot : x));
+  }
+
+  function getBackupSnapshot() {
+    const snapshot = cloneCalcSlots(slots.value);
+    const index = activeSlotTab.value === 1 || activeSlotTab.value === 2 ? activeSlotTab.value : 0;
+    const current = snapshot[index];
+    const isEmptyDefault = !current
+      && rows.value.length === 0
+      && boostCandyRemaining.value === null
+      && itemCompareMode.value === "surplusFirst"
+      && boostKind.value === defaultBoostKind;
+    snapshot[index] = isEmptyDefault
+      ? null
+      : {
+          slotId: current?.slotId ?? cryptoRandomId(),
+          savedAt: current?.savedAt ?? new Date().toISOString(),
+          rows: cloneCalcRows(rows.value),
+          activeRowId: activeRowId.value,
+          boostKind: boostKind.value,
+          boostCandyRemaining: boostCandyRemaining.value,
+          itemCompareMode: itemCompareMode.value,
+        };
+    while (snapshot.length < 3) snapshot.push(null);
+    return {
+      activeSlotIndex: index as 0 | 1 | 2,
+      slots: snapshot.slice(0, 3) as [CalcSaveSlotV1 | null, CalcSaveSlotV1 | null, CalcSaveSlotV1 | null],
+    };
   }
 
   // スロット切り替え時の処理（データを切り替え）
@@ -1447,8 +1472,10 @@ export function useCalcStore(opts: {
     };
   }
 
-  function buildDebugExportTsv(): string {
-    return formatDebugExportTsv(buildDebugExportContext());
+  async function buildDebugExportTsv(): Promise<string> {
+    const context = buildDebugExportContext();
+    const { buildDebugExportTsv: formatDebugExportTsv } = await loadDebugExportModule();
+    return formatDebugExportTsv(context);
   }
 
   function downloadDebugExportTsv(text: string): boolean {
@@ -1472,7 +1499,7 @@ export function useCalcStore(opts: {
 
   async function copyDebugExportTsv(): Promise<DebugExportResult> {
     if (!debugExportEnabled) return "failed";
-    const text = buildDebugExportTsv();
+    const text = await buildDebugExportTsv();
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
@@ -1869,11 +1896,21 @@ export function useCalcStore(opts: {
   function runPlanResult(input: LevelPlannerInput, context: { slotId: string; inputSignature: string; input: LevelPlannerInput; generation: number; probe: boolean; calculationMode: CalculationMode }): void {
     activeAutoContext = context;
     if (typeof Worker === 'undefined') {
+      const requestId = planResultRequestId;
       const mixedPrefixCount = slotProfiles.get(context.slotId)?.mixedPrefixCount;
-      const outcome = solveLevelPlanWithBudget(input, { calculationMode: 'prefixLocalMixed', mixedPrefixCount });
-      if (outcome.kind === 'result') {
-        handleAutoResponse({ kind: 'result', slotId: context.slotId, requestId: planResultRequestId, lane: 'auto', inputSignature: context.inputSignature, calculationMode: 'prefixLocalMixed', result: outcome.result, durationMs: outcome.durationMs, mixedMeta: outcome.mixedMeta }, context);
-      }
+      void loadPlannerFallbackModule()
+        .then(({ solveLevelPlanWithBudget }) => {
+          const outcome = solveLevelPlanWithBudget(input, { calculationMode: 'prefixLocalMixed', mixedPrefixCount });
+          if (outcome.kind === 'result') {
+            handleAutoResponse({ kind: 'result', slotId: context.slotId, requestId, lane: 'auto', inputSignature: context.inputSignature, calculationMode: 'prefixLocalMixed', result: outcome.result, durationMs: outcome.durationMs, mixedMeta: outcome.mixedMeta }, context);
+          }
+        })
+        .catch((error: unknown) => {
+          if (requestId !== planResultRequestId) return;
+          planResultPending.value = false;
+          updateProfile({ structuralProbeStatus: 'aborted', exactResultStale: true }, context.slotId);
+          console.error('[level-planner] fallback load failed:', error);
+        });
       return;
     }
     const worker = ensurePlanResultWorker();
@@ -2147,6 +2184,7 @@ export function useCalcStore(opts: {
     rows,
     activeRowId,
     activeSlotTab,
+    getBackupSnapshot,
 
     sleepSettings,
     updateSleepSettings,

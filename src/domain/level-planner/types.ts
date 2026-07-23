@@ -112,6 +112,8 @@ export type FeasibilitySolverOptions = {
   maxRowSurplus?: number;
   /** 検索用の安全なゲート。指定時は全行合計の供給余りがこの値を超える状態を除外する。 */
   maxTotalSurplus?: number;
+  /** 検索用の安全なゲート。指定時は目標到達行の余り合計がこの値を超える状態を除外する。 */
+  maxReachedSurplus?: number;
 };
 
 export type FeasibilityWitness = {

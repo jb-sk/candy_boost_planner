@@ -23,6 +23,7 @@ export type ExactSupplyRow = {
   fixedSpecies?: number;
   speciesLexWeight?: number;
   legacyZeroSurplusPriority?: boolean;
+  targetReached?: boolean;
   selected: ExactSupplyUsage;
 };
 
@@ -32,6 +33,7 @@ export type ExactSupplyDemandRow = Omit<ExactSupplyRow, 'selected'> & {
 
 export type ExactSupplyObjective = {
   rawSurplus: number;
+  reachedSurplus: number;
   normalizedSurplus: number;
   speciesUsed: number;
   speciesLex: number;
@@ -166,12 +168,13 @@ export function exactSupplyUsageValue(usage: Omit<ExactSupplyUsage, 'supply' | '
 }
 
 function emptyExactSupplyObjective(): ExactSupplyObjective {
-  return { rawSurplus: 0, normalizedSurplus: 0, speciesUsed: 0, speciesLex: 0, zeroSurplusCount: 0, priority: [0, 0, 0, 0, 0], legacyPriority: [0, 0, 0, 0] };
+  return { rawSurplus: 0, reachedSurplus: 0, normalizedSurplus: 0, speciesUsed: 0, speciesLex: 0, zeroSurplusCount: 0, priority: [0, 0, 0, 0, 0], legacyPriority: [0, 0, 0, 0] };
 }
 
 function addExactSupplyObjective(a: ExactSupplyObjective, b: ExactSupplyObjective): ExactSupplyObjective {
   return {
     rawSurplus: a.rawSurplus + b.rawSurplus,
+    reachedSurplus: a.reachedSurplus + b.reachedSurplus,
     normalizedSurplus: a.normalizedSurplus + b.normalizedSurplus,
     speciesUsed: a.speciesUsed + b.speciesUsed,
     speciesLex: a.speciesLex + b.speciesLex,
@@ -181,9 +184,10 @@ function addExactSupplyObjective(a: ExactSupplyObjective, b: ExactSupplyObjectiv
   };
 }
 
-export function exactSupplyObjectiveFor(rows: ExactSupplyUsage[], sourceRows: Pick<ExactSupplyRow, 'legacyZeroSurplusPriority' | 'speciesLexWeight'>[] = []): ExactSupplyObjective {
+export function exactSupplyObjectiveFor(rows: ExactSupplyUsage[], sourceRows: Pick<ExactSupplyRow, 'legacyZeroSurplusPriority' | 'speciesLexWeight' | 'targetReached'>[] = []): ExactSupplyObjective {
   return rows.reduce<ExactSupplyObjective>((acc, row, index) => ({
     rawSurplus: acc.rawSurplus + row.surplus,
+    reachedSurplus: acc.reachedSurplus + (sourceRows[index]?.targetReached === false ? 0 : row.surplus),
     normalizedSurplus: acc.normalizedSurplus + (row.surplus <= 2 ? 0 : row.surplus),
     speciesUsed: acc.speciesUsed + row.species,
     speciesLex: acc.speciesLex + row.species * (sourceRows[index]?.speciesLexWeight ?? 0),
@@ -207,6 +211,8 @@ export function exactSupplyObjectiveFor(rows: ExactSupplyUsage[], sourceRows: Pi
 export function compareExactSupplyObjective(a: ExactSupplyObjective, b: ExactSupplyObjective, mode: ExactSupplyMode): number {
   if (a.speciesUsed !== b.speciesUsed) return a.speciesUsed > b.speciesUsed ? 1 : -1;
   if (mode === 'surplusFirst') {
+    if (a.reachedSurplus !== b.reachedSurplus) return a.reachedSurplus < b.reachedSurplus ? 1 : -1;
+    if (a.zeroSurplusCount !== b.zeroSurplusCount) return a.zeroSurplusCount > b.zeroSurplusCount ? 1 : -1;
     if (a.rawSurplus !== b.rawSurplus) return a.rawSurplus < b.rawSurplus ? 1 : -1;
   }
   if (isLegacyLikeMode(mode)) {

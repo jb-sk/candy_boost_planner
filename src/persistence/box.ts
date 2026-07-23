@@ -8,7 +8,7 @@ import type {
 import { toExpGainNature, toExpType, toInt } from "./shared";
 import { perfSpan } from "../utils/perf";
 
-const STORAGE_KEY = "candy-boost-planner:box:v1";
+export const BOX_STORAGE_KEY = "candy-boost-planner:box:v1";
 const SCHEMA_VERSION = 1 as const;
 
 type BoxStoreV1 = {
@@ -18,7 +18,7 @@ type BoxStoreV1 = {
 
 export function loadBox(): PokemonBoxEntryV1[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(BOX_STORAGE_KEY);
     if (!raw) return [];
     const json = JSON.parse(raw);
     // legacy: array of entries
@@ -40,12 +40,16 @@ export function loadBox(): PokemonBoxEntryV1[] {
 
 export function saveBox(entries: PokemonBoxEntryV1[]) {
   try {
-    const v: BoxStoreV1 = { schemaVersion: SCHEMA_VERSION, entries };
-    const serialized = perfSpan("persist.box.serialize", () => JSON.stringify(v));
-    perfSpan("persist.box.write", () => localStorage.setItem(STORAGE_KEY, serialized));
+    const serialized = perfSpan("persist.box.serialize", () => serializeBox(entries));
+    perfSpan("persist.box.write", () => localStorage.setItem(BOX_STORAGE_KEY, serialized));
   } catch {
     // localStorage can throw (quota exceeded / blocked). Persistence must not break UI.
   }
+}
+
+export function serializeBox(entries: PokemonBoxEntryV1[]): string {
+  const v: BoxStoreV1 = { schemaVersion: SCHEMA_VERSION, entries };
+  return JSON.stringify(v);
 }
 
 function normalizeEntry(x: Record<string, unknown>): PokemonBoxEntryV1 {

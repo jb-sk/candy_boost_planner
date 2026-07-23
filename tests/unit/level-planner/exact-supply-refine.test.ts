@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { exactSupplyObjectiveFor, refineExactSupply } from '../../../src/domain/level-planner/core/exactSupplyRefine';
+import { compareExactSupplyObjective, exactSupplyObjectiveFor, refineExactSupply } from '../../../src/domain/level-planner/core/exactSupplyRefine';
 import type { CandyInventory } from '../../../src/domain/level-planner/types';
 
 const inventory: CandyInventory = {
@@ -31,6 +31,19 @@ const rows = [
 ];
 
 describe('exactSupplyRefine', () => {
+  it('surplusFirstの固定需要refineでも同じ余り合計ならLvMAX余り0達成数を優先する', () => {
+    const surplusOne = { species: 0, typeS: 0, typeM: 0, universalS: 0, universalM: 0, universalL: 0, supply: 1, surplus: 1 };
+    const surplusZero = { ...surplusOne, supply: 0, surplus: 0 };
+    const sourceRows = [
+      { legacyZeroSurplusPriority: true, targetReached: true },
+      { legacyZeroSurplusPriority: false, targetReached: true },
+    ];
+    const lvMaxHasSurplus = exactSupplyObjectiveFor([surplusOne, surplusZero], sourceRows);
+    const lvMaxHasZero = exactSupplyObjectiveFor([surplusZero, surplusOne], sourceRows);
+
+    expect(compareExactSupplyObjective(lvMaxHasZero, lvMaxHasSurplus, 'surplusFirst')).toBeGreaterThan(0);
+  });
+
   it('selected行の供給値が不整合ならinvalid_selectedにする', () => {
     const result = refineExactSupply([{
       id: 'invalid-supply',

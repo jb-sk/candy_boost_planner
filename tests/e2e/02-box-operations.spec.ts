@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { BoxPanelPage } from './pages/BoxPanelPage';
+import { SettingsModalPage } from './pages/SettingsModalPage';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -64,6 +65,22 @@ test.describe('検索・フィルタ', () => {
     // 再度クリックでオフ
     await boxPanel.toggleFavoriteFilter();
     await expect(boxPanel.favoriteFilterButton).not.toHaveClass(/chipBtn--on/);
+  });
+
+  test('タイル右端のお気に入り操作は詳細を開かず、キーボードでも切り替えられる', async ({ page }) => {
+    const tile = boxPanel.boxTiles.first();
+    const favoriteZone = page.getByTestId('box-tile-fav-zone').first();
+    const before = await favoriteZone.getAttribute('aria-pressed');
+
+    // 選択ボタンの中に別の操作要素を入れない（nested interactive contentの防止）。
+    await expect(tile.locator('button, [role="button"]')).toHaveCount(0);
+    await favoriteZone.focus();
+    await favoriteZone.press('Space');
+
+    await expect(favoriteZone).toHaveAttribute('aria-pressed', before === 'true' ? 'false' : 'true');
+    await expect(boxPanel.detailPanel).toHaveCount(0);
+    await tile.click();
+    await expect(boxPanel.detailPanel).toBeVisible();
   });
 
   test('とくいフィルタ: きのみ、食材、スキル、オールが動作する', async () => {
@@ -224,8 +241,50 @@ test.describe('BOX詳細パネル', () => {
     await expect(boxPanel.detailFavoriteButton).toBeVisible();
     await boxPanel.toggleDetailFavorite();
 
-    // トグル状態が変わる
-    await expect(boxPanel.detailFavoriteButton).toHaveClass(/chipBtn--on/);
+    // 見た目のクラス名ではなく、操作状態としてお気に入りになったことを確認する。
+    await expect(boxPanel.detailFavoriteButton).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('狭い画面でもタイルのアイコンを右寄せし、長い名前を省略する', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await boxPanel.selectBoxTile(0);
+    await boxPanel.fillNickname('とても長いポケモンのニックネームがタイルの外へ飛び出さないことを確認');
+    await boxPanel.toggleDetailFavorite();
+    await boxPanel.clickApplyToCalc();
+
+    const tile = page.locator('.boxTile--active').getByTestId('box-tile');
+    const icons = tile.locator('.boxTile__iconRow');
+    await expect(icons.locator('.boxTile__calcMark')).toBeVisible();
+    await expect(icons.locator('.boxTile__fav')).toBeVisible();
+
+    const layout = await tile.evaluate((element) => {
+      const nameElement = element.querySelector<HTMLElement>('.boxTile__name')!;
+      const iconElement = element.querySelector<HTMLElement>('.boxTile__iconRow')!;
+      const tileRect = element.getBoundingClientRect();
+      const nameRect = nameElement.getBoundingClientRect();
+      const iconRect = iconElement.getBoundingClientRect();
+      const nameStyle = getComputedStyle(nameElement);
+      return {
+        tileRight: tileRect.right,
+        nameRight: nameRect.right,
+        iconRight: iconRect.right,
+        nameClientWidth: nameElement.clientWidth,
+        nameScrollWidth: nameElement.scrollWidth,
+        overflow: nameStyle.overflow,
+        textOverflow: nameStyle.textOverflow,
+        whiteSpace: nameStyle.whiteSpace,
+      };
+    });
+
+    expect(layout.tileRight - layout.iconRight).toBeGreaterThanOrEqual(11);
+    expect(layout.tileRight - layout.iconRight).toBeLessThanOrEqual(13);
+    expect(layout.nameRight).toBeLessThanOrEqual(layout.tileRight - 11);
+    expect(layout.nameScrollWidth).toBeGreaterThan(layout.nameClientWidth);
+    expect(layout).toMatchObject({
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+    });
   });
 
   test('レベルピッカーが使用できる', async () => {
@@ -287,6 +346,20 @@ test.describe('BOX詳細パネル', () => {
 
     const selectedValue = await lv10Select.inputValue();
     expect(selectedValue).not.toBe('');
+  });
+
+  test('睡眠計算ヒントの設定値リンクから設定を開ける', async ({ page }) => {
+    const settings = new SettingsModalPage(page);
+    await boxPanel.selectBoxTile(0);
+
+    await page.getByTestId('box-detail-sleep-calc-toggle').click();
+    await page.getByTestId('box-sleep-daily-hint').click();
+    await expect(page.locator('.hintPopover')).toContainText('13時間まで設定できます');
+    const hintSettings = page.getByTestId('box-sleep-hint-settings');
+    await expect(hintSettings).toHaveCSS('box-shadow', 'none');
+    await hintSettings.click();
+
+    await settings.expectModalVisible();
   });
 });
 

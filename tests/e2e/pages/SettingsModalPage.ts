@@ -38,8 +38,11 @@ export class SettingsModalPage {
   // === モーダル本体 ===
   readonly overlay: Locator;
   readonly modal: Locator;
-  readonly modalTitle: Locator;
   readonly closeButton: Locator;
+
+  // === タブ ===
+  readonly inventoryTab: Locator;
+  readonly backupTab: Locator;
 
   // === グローバル設定セクション ===
   readonly globalSection: Locator;
@@ -72,8 +75,11 @@ export class SettingsModalPage {
     // モーダル本体
     this.overlay = page.getByTestId('settings-overlay');
     this.modal = page.getByTestId('settings-modal');
-    this.modalTitle = page.getByTestId('settings-modal-title');
     this.closeButton = page.getByTestId('settings-modal-close');
+
+    // タブ
+    this.inventoryTab = page.getByTestId('settings-tab-inventory');
+    this.backupTab = page.getByTestId('settings-tab-backup');
 
     // グローバル設定
     this.globalSection = page.getByTestId('settings-global-section');
@@ -111,6 +117,11 @@ export class SettingsModalPage {
   async openSettingsFromMobile() {
     await this.mobileSettingsButton.click();
     await this.modal.waitFor({ state: 'visible' });
+  }
+
+  // === タブ切り替え ===
+  async switchToBackupTab() {
+    await this.backupTab.click();
   }
 
   // === 閉じる ===

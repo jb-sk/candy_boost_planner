@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import { CalcPanelPage } from './pages/CalcPanelPage';
 import { BoxPanelPage } from './pages/BoxPanelPage';
 import { SettingsModalPage } from './pages/SettingsModalPage';
+import { markForSleep } from '../../src/domain/pokesleep/sleep-growth';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -113,6 +114,38 @@ test.describe('04-calculator B. ポケモン追加・基本操作', () => {
 
     expect(await scrollContainer.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
     expect(Math.abs(afterTop - beforeTop), '追加ボタン付近が追加前後で動かない').toBeLessThanOrEqual(2);
+  });
+
+  test('6c. 繰り返しリロードしても表示位置が累積してずれない', async ({ page }) => {
+    const box = new BoxPanelPage(page);
+    const calc = new CalcPanelPage(page);
+    const scrollContainer = page.locator('.shell__scroll');
+    await page.setViewportSize({ width: 390, height: 700 });
+    await expect(scrollContainer).toBeVisible();
+
+    await box.selectBoxTile(0);
+    await box.clickApplyToCalc();
+    await calc.waitForPlannerResult();
+    const calcRow = page.getByTestId('calc-row').first();
+    await calcRow.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+    const beforeTop = await calcRow.evaluate((element) => element.getBoundingClientRect().top);
+    expect(await scrollContainer.evaluate((element) => (element as HTMLElement).scrollTop)).toBeGreaterThan(0);
+
+    try {
+      for (let reloadCount = 0; reloadCount < 3; reloadCount += 1) {
+        await page.reload();
+        await expect(page.locator('#neo-calc')).toBeVisible();
+        await calc.waitForPlannerResult();
+        await page.evaluate(() => new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        }));
+        const afterTop = await calcRow.evaluate((element) => element.getBoundingClientRect().top);
+        expect(Math.abs(afterTop - beforeTop), `${reloadCount + 1}回目のリロード後 (${beforeTop} -> ${afterTop})`).toBeLessThanOrEqual(2);
+      }
+    } finally {
+      await scrollContainer.evaluate((element) => { (element as HTMLElement).scrollTop = 0; });
+      await page.evaluate(() => sessionStorage.removeItem('candy-boost-planner:ui:scrollTop:v1'));
+    }
   });
 
   test('7. 計算機に行が追加されると空状態が消える', async ({ page }) => {
@@ -441,32 +474,127 @@ test.describe('04-calculator E. 行の入力操作', () => {
     await expect(usedRow).toBeVisible();
   });
 
-  test('27. 1000hボタンで個数指定が設定される', async ({ page }) => {
+  test('27. 1000hボタンは13h設定で77日以内に収まる最小個数を設定する', async ({ page }) => {
     const calc = new CalcPanelPage(page);
+    const settings = new SettingsModalPage(page);
     const row = calc.getRow(0);
     const btn1000h = calc.getRowSleepButton1000h(row);
     const candyTargetInput = calc.getRowCandyTargetInput(row);
 
     // 現在Lvを25に設定（Lv25→Lv60で十分な個数指定が発生するように）
     await calc.setRowSrcLevel(row, 25);
+    await calc.getRowSpeciesCandyInput(row).fill('2000');
+    await calc.clickSettings();
+    await settings.setTotalShards('2000000');
+    await settings.setDailySleepHours(13);
+    await settings.closeByButton();
 
     await btn1000h.click();
-    const value = await candyTargetInput.inputValue();
-    expect(parseInt(value)).toBe(1128);
+    const selected = Number(await candyTargetInput.inputValue());
+    expect(selected).toBeGreaterThan(0);
+
+    const mark = markForSleep({
+      targetSleepHours: 1000,
+      nature: 'down',
+      dailySleepHours: 13,
+      sleepExpBonus: 1,
+      includeGSD: true,
+    });
+    await expect.poll(async () =>
+      Number((await calc.getRowRemainingExp(row)).replace(/,/g, ''))
+    ).toBeLessThanOrEqual(mark.sleepExp);
+
+    const sleepTime = await calc.getRowSleepTime(row);
+    const displayedDays = Number(sleepTime.match(/約(\d+)日/)?.[1] ?? 0);
+    expect(displayedDays).toBeLessThanOrEqual(mark.requiredDays);
+    expect(sleepTime).not.toContain('1014時間');
+
+    await candyTargetInput.fill(String(selected - 1));
+    await expect.poll(async () =>
+      Number((await calc.getRowRemainingExp(row)).replace(/,/g, ''))
+    ).toBeGreaterThan(mark.sleepExp);
   });
 
   test('28. 2000hボタンで個数指定が設定される', async ({ page }) => {
     const calc = new CalcPanelPage(page);
+    const settings = new SettingsModalPage(page);
     const row = calc.getRow(0);
     const btn2000h = calc.getRowSleepButton2000h(row);
     const candyTargetInput = calc.getRowCandyTargetInput(row);
 
     // 現在Lvを25に設定（Lv25→Lv60で十分な個数指定が発生するように）
     await calc.setRowSrcLevel(row, 25);
+    await calc.getRowSpeciesCandyInput(row).fill('2000');
+    await calc.clickSettings();
+    await settings.setTotalShards('2000000');
+    await settings.closeByButton();
 
     await btn2000h.click();
-    const value = await candyTargetInput.inputValue();
-    expect(parseInt(value)).toBe(591);
+    const selected = Number(await candyTargetInput.inputValue());
+    expect(selected).toBeGreaterThan(0);
+
+    const mark = markForSleep({
+      targetSleepHours: 2000,
+      nature: 'down',
+      dailySleepHours: 8.5,
+      sleepExpBonus: 1,
+      includeGSD: true,
+    });
+    await expect.poll(async () =>
+      Number((await calc.getRowRemainingExp(row)).replace(/,/g, ''))
+    ).toBeLessThanOrEqual(mark.sleepExp);
+
+    await candyTargetInput.fill(String(selected - 1));
+    await expect.poll(async () =>
+      Number((await calc.getRowRemainingExp(row)).replace(/,/g, ''))
+    ).toBeGreaterThan(mark.sleepExp);
+  });
+
+  test('28b. 累計995h／999hは残りを1日へ切り上げ、1000h以上は0日を使用する', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const settings = new SettingsModalPage(page);
+    const row = calc.getRow(0);
+    await calc.setRowSrcLevel(row, 25);
+    await calc.getRowSpeciesCandyInput(row).fill('2000');
+    await calc.clickSettings();
+    await settings.setTotalShards('2000000');
+    await settings.closeByButton();
+
+    const roundedOneDay = markForSleep({
+      targetSleepHours: 1,
+      nature: 'down',
+      dailySleepHours: 8.5,
+      sleepExpBonus: 1,
+      includeGSD: true,
+    });
+    expect(roundedOneDay.requiredDays).toBe(1);
+
+    const candyTargets: number[] = [];
+    for (const currentHours of [995, 999]) {
+      await row.getByTestId('sleepHintBtn').click();
+      const input = page.locator('.sleepHintPopover__input');
+      await input.fill(String(currentHours));
+      await input.blur();
+      await page.locator('.hintOverlay').click({ position: { x: 5, y: 5 } });
+      await calc.getRowSleepButton1000h(row).click();
+
+      await expect.poll(async () =>
+        Number((await calc.getRowRemainingExp(row)).replace(/,/g, ''))
+      ).toBeLessThanOrEqual(roundedOneDay.sleepExp);
+      candyTargets.push(Number(await calc.getRowCandyTargetInput(row).inputValue()));
+    }
+    expect(candyTargets[0]).toBe(candyTargets[1]);
+
+    await row.getByTestId('sleepHintBtn').click();
+    const input = page.locator('.sleepHintPopover__input');
+    await input.fill('1000');
+    await input.blur();
+    await page.locator('.hintOverlay').click({ position: { x: 5, y: 5 } });
+    await calc.getRowSleepButton1000h(row).click();
+
+    const candyTargetAt1000 = Number(await calc.getRowCandyTargetInput(row).inputValue());
+    expect(candyTargetAt1000).toBeGreaterThan(candyTargets[1]);
+    await expect.poll(async () => calc.getRowSleepTime(row)).toBe('');
   });
 });
 
@@ -541,6 +669,29 @@ test.describe('04-calculator F. 計算結果表示', () => {
     const sleepTime = usedRow.locator('.calcRow__sleepTime');
     // 睡眠時間が表示されることを確認（残EXPがある場合）
     await expect(sleepTime).toBeVisible();
+  });
+
+  test('34b. 1回睡眠の時間幅と1日以内／長期の境界を表示する', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+    await calc.setRowDstLevel(row, 56);
+    await calc.getRowCandyTargetInput(row).fill('0');
+
+    await calc.setRowExpRemaining(row, 24);
+    await expect.poll(async () => calc.getRowSleepTime(row)).toBe('2時間31分 ～ 35分');
+
+    await calc.setRowExpRemaining(row, 82);
+    await expect.poll(async () => calc.getRowSleepTime(row)).toBe('8時間28分 ～ 30分');
+
+    await calc.setRowExpRemaining(row, 83);
+    await expect.poll(async () => calc.getRowSleepTime(row)).toBe('約2日（17時間）');
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const sleepTime = row.locator('.calcRow__sleepTime');
+    await expect(sleepTime).toBeVisible();
+    const sleepTimeBox = await sleepTime.boundingBox();
+    expect(sleepTimeBox).not.toBeNull();
+    expect(sleepTimeBox!.x + sleepTimeBox!.width).toBeLessThanOrEqual(390);
   });
 });
 
@@ -1060,6 +1211,20 @@ test.describe('04-calculator L. ヒント表示', () => {
 
     await hintBtn.click();
     await calc.expectHintVisible();
+    await expect(calc.hintPopover.locator('br')).toHaveCount(3);
+    await expect(calc.hintPopover.locator('button')).toHaveCount(1);
+  });
+
+  test('55b. ヒント内の基本設定リンクから設定を開ける', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const settings = new SettingsModalPage(page);
+    const row = calc.getRow(0);
+
+    await calc.getRowHintButton(row).click();
+    const hintSettings = page.getByTestId('calc-hint-settings');
+    await expect(hintSettings).toHaveCSS('box-shadow', 'none');
+    await hintSettings.click();
+    await settings.expectModalVisible();
   });
 
   test('56. ヒントをクリック外で閉じられる', async ({ page }) => {
@@ -1235,8 +1400,7 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     expect(reachedLv).toBe('59');
 
     const sleepTime = await calc.getRowSleepTime(row);
-    expect(sleepTime).toContain('21日');
-    expect(sleepTime).toContain('178.5時間');
+    expect(sleepTime).toBe('約21日（178時間30分）');
 
     const remainingExp = await calc.getRowRemainingExp(row);
     expect(remainingExp.replace(/,/g, '')).toBe('2083');
@@ -1287,7 +1451,7 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     await calc.getRowCandyTargetInput(row).fill('50');
 
     // アメブ目標Lv61、アメブ割合44%を確認
-    await calc.waitForRowResultValue(row, 'required', 'boost', '350');
+    await calc.waitForRowResultValue(row, 'required', 'normal', '880');
     const boostRatioText = calc.getRowBoostRatioText(row);
     const ratioText = await boostRatioText.textContent();
     expect(ratioText).toContain('44%');
@@ -1299,12 +1463,14 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     const reqShards = await calc.getRowResultValue(row, 'required', 'shards');
 
     expect(reqBoost).toBe('350');
-    expect(reqNormal.replace(/,/g, '')).toBe('3172');
-    expect(reqCandy.replace(/,/g, '')).toBe('3522');
-    expect(reqShards.replace(/,/g, '')).toBe('1218406');
+    // Lv58→65の残EXP33,178に対し、ミニブ350個で14,700 EXP、
+    // 残り18,478 EXPは下降補正の通常アメ（21 EXP）880個で満たす。
+    expect(reqNormal.replace(/,/g, '')).toBe('880');
+    expect(reqCandy.replace(/,/g, '')).toBe('1230');
+    expect(reqShards.replace(/,/g, '')).toBe('1581800');
 
     const reqItems = await calc.getRowRequiredItems(row);
-    expect(reqItems).toContain('万能S 1174');
+    expect(reqItems).toContain('万能S 394');
   });
 
   test('64. スイクンの到達可能行が正しい', async ({ page }) => {
@@ -1371,8 +1537,7 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     expect(remainingExp.replace(/,/g, '')).toBe('31078');
 
     const sleepTime = await calc.getRowSleepTime(row);
-    expect(sleepTime).toContain('326日');
-    expect(sleepTime).toContain('4238時間');
+    expect(sleepTime).toBe('約335日（4355時間）');
   });
 
   test('65. ドオーのラスイチ交換が自動最適化される', async ({ page }) => {

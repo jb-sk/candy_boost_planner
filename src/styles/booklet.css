@@ -54,7 +54,7 @@
   --pie-7: #9a9a9a;
 
   /* Semantic Accents */
-  --star-color: #d68758;
+  --star-color: #eab308;
   --nature-up: #2a7c6f;
   --nature-down: #6b8caf;
 
@@ -178,7 +178,8 @@
 
 /* ===== Calc — Sticky Summary ===== */
 .calcSticky {
-  background: var(--surface-alt);
+  --calc-sticky-background: var(--surface-alt);
+  --calc-sticky-tint: transparent;
 }
 
 .calcSticky__toggle {
@@ -234,9 +235,8 @@
 /* ===== Box Tiles ===== */
 .boxTile {
   background: var(--surface);
-  border: 1px solid var(--ink);
+  border: 1px solid var(--type-color);
   border-radius: 2px;
-  box-shadow: 2px 2px 0px var(--ink);
   transition: transform 0.1s, box-shadow 0.1s;
   position: relative;
 }
@@ -250,11 +250,12 @@
   height: 4px;
   background: rgba(31, 33, 34, 0.05);
   border-bottom: 1px solid rgba(31, 33, 34, 0.1);
+  pointer-events: none;
 }
 
 .boxTile.boxTile--hover {
   transform: translate(-1px, -1px);
-  box-shadow: 3px 3px 0px var(--ink);
+  box-shadow: var(--type-shadow);
 }
 
 /* ===== Chip Buttons ===== */
@@ -292,5 +293,3 @@
   border-top: 2px solid var(--ink);
   box-shadow: 0 -4px 0px rgba(31, 33, 34, 0.1);
 }
-
-

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick, ref } from "vue";
 import type { Composer } from "vue-i18n";
 import { useCalcStore } from "./useCalcStore";
@@ -90,6 +90,24 @@ describe("useCalcStore", () => {
     expect(localStorage.getItem("candy-boost-planner:calc:slots:v1")).toBeNull();
   });
 
+  it("returns a read-only backup snapshot with unflushed active-slot settings", async () => {
+    const t = ((key: string) => key) as unknown as Composer["t"];
+    const store = useCalcStore({ locale: ref("ja"), t });
+    store.upsertFromBox({ boxId: "live-row", srcLevel: 10, expType: 600, nature: "normal" });
+    store.onBoostCandyRemainingInput("321");
+    store.setItemCompareMode("legacyImproved");
+    await nextTick();
+
+    const snapshot = store.getBackupSnapshot();
+    expect(snapshot.activeSlotIndex).toBe(0);
+    expect(snapshot.slots[0]?.rows[0]?.boxId).toBe("live-row");
+    expect(snapshot.slots[0]?.activeRowId).toBe(store.activeRowId.value);
+    expect(snapshot.slots[0]?.boostCandyRemaining).toBe(321);
+    expect(snapshot.slots[0]?.itemCompareMode).toBe("legacyImproved");
+    snapshot.slots[0]!.rows[0]!.title = "changed-copy";
+    expect(store.rows.value[0]?.title).not.toBe("changed-copy");
+  });
+
   it("preserves the synchronized slot across a switch before the deferred flush", async () => {
     const t = ((key: string) => key) as unknown as Composer["t"];
     const store = useCalcStore({ locale: ref("ja"), t });
@@ -121,12 +139,28 @@ describe("useCalcStore", () => {
     expect(store.slots.value[0]?.activeRowId).toBe(store.rows.value[0]?.id);
   });
 
-  it("builds debug TSV from the reactive candy inventory without DataCloneError", () => {
+  it("builds debug TSV from the reactive candy inventory without DataCloneError", async () => {
     const t = ((key: string) => key) as unknown as Composer["t"];
     const store = useCalcStore({ locale: ref("ja"), t });
 
-    expect(() => store.buildDebugExportTsv()).not.toThrow();
-    expect(store.buildDebugExportTsv()).toMatch(/^index\tid\tname\t/);
+    await expect(store.buildDebugExportTsv()).resolves.toMatch(/^index\tid\tname\t/);
+  });
+
+  it("loads the exact planner only when the Worker fallback is required", async () => {
+    const t = ((key: string) => key) as unknown as Composer["t"];
+    const previousWorker = globalThis.Worker;
+    Object.defineProperty(globalThis, "Worker", { value: undefined, configurable: true, writable: true });
+    try {
+      const store = useCalcStore({ locale: ref("ja"), t });
+      store.upsertFromBox({ boxId: "fallback-1", pokedexId: 25, srcLevel: 10, dstLevelDefault: 11, expType: 600, nature: "normal" });
+
+      await vi.waitFor(() => {
+        expect(store.planResult.value?.pokemonResults).toHaveLength(1);
+      }, { timeout: 10_000 });
+      expect(store.calculationPerformanceProfile.value.lastCalculationMode).toBe("prefixLocalMixed");
+    } finally {
+      Object.defineProperty(globalThis, "Worker", { value: previousWorker, configurable: true, writable: true });
+    }
   });
 
   it("preserves sleepHours=0 in planner patch after row edit", () => {

@@ -24,7 +24,8 @@
     "test:level-planner:oracle-random": "vitest run tests/unit/level-planner/full-plan-oracle.test.ts --configLoader runner",
     "verify:level-planner": "node scripts/level-planner-verifier.mjs",
     "bench:level-planner": "vitest bench tests/bench/level-planner.bench.ts",
-    "perf:interaction": "playwright test --config playwright.perf.config.ts",
+    "perf:interaction": "playwright test tests/perf/interaction.perf.spec.ts --config playwright.perf.config.ts",
+    "perf:cls": "playwright test tests/perf/layout-shift.perf.spec.ts --config playwright.perf.config.ts",
     "verify:forms": "node scripts/verify-form-mapping.mjs",
     "check:ingredient-labels": "node scripts/check-ingredient-labels.mjs"
   },

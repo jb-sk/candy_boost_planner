@@ -12,7 +12,7 @@ import { calcExp, calcExpAndCandyMixed, calcExpPerCandy } from '../../pokesleep/
 import { dreamShardsPerCandy, maxLevel } from '../../pokesleep/tables';
 import { boostRules } from '../../pokesleep/boost-config';
 import { findBestItemAllocation } from './itemAllocation';
-import { createIndependentBoundaryFeasibilitySession, createPrefixDecisionSession, hasSingleRowSupplyWithinSurplus, refineFeasibilityWitness, solveFeasibilityDecisionForFixedRows, solveFeasibilityForFixedRows } from './feasibilityWitness';
+import { createIndependentBoundaryFeasibilitySession, createPrefixDecisionSession, fixedRowsFailFeasibilityRelaxation, hasSingleRowSupplyWithinSurplus, refineFeasibilityWitness, solveFeasibilityDecisionForFixedRows, solveFeasibilityForFixedRows } from './feasibilityWitness';
 import { createPlannerLossLedger, toPublicPlannerLossLedger } from './lossLedger';
 import type { InternalPlannerLossLedger } from './lossLedger';
 import type { FeasibilityDemandRow, FeasibilityResult, FeasibilitySolverOptions, FeasibilityWitness } from '../types';
@@ -56,7 +56,7 @@ type NormalizedInput = Omit<LevelPlannerInput, 'pokemonList' | 'options'> & {
   contentionKeys: ContentionKeys; speciesNeeds: Record<string, number>;
 };
 type Candidate = { p: NormalizedPokemon; line: PokemonPlanLine; usage: Usage; stableIndex: number };
-type StateMetrics = { zeroSurplusCount: number; speciesUsed: number; rawSurplus: number; normalizedSurplus: number; surplusExp: number; itemPriority: number[]; legacyItemPriority: number[] };
+type StateMetrics = { zeroSurplusCount: number; speciesUsed: number; rawSurplus: number; reachedSurplus: number; normalizedSurplus: number; surplusExp: number; itemPriority: number[]; legacyItemPriority: number[] };
 type State = { choices: Candidate[]; usage: Usage; reachedPrefixCount: number; boundary?: Candidate; metrics: StateMetrics };
 type SupplyOption = { supply: CandySupplyBreakdown; order: number };
 type SupplyCandidateCacheEntry = { candidates: CandySupplyBreakdown[]; cut?: PlannerLossLedger['supplyCandidateCuts'][number] };
@@ -388,6 +388,7 @@ function emptyStateMetrics(): StateMetrics {
     zeroSurplusCount: 0,
     speciesUsed: 0,
     rawSurplus: 0,
+    reachedSurplus: 0,
     normalizedSurplus: 0,
     surplusExp: 0,
     itemPriority: Array.from({ length: ITEM_PRIORITY_TUPLE_LENGTH }, () => 0),
@@ -396,7 +397,7 @@ function emptyStateMetrics(): StateMetrics {
 }
 function candidateUsesZeroSurplusPriority(candidate: Candidate, mode: PlannerOptions['itemCompareMode']): boolean {
   return Boolean(candidate.p.preferZeroSurplus)
-    || ((mode === 'legacyImproved' || mode === 'surplusGateFirst') && candidate.line.level >= maxLevel && candidate.line.expInLevel === 0);
+    || (usesZeroSurplusPriority(mode) && candidate.line.level >= maxLevel && candidate.line.expInLevel === 0);
 }
 function candidateAchievedZeroSurplusPriority(candidate: Candidate, mode: PlannerOptions['itemCompareMode']): boolean {
   return candidateUsesZeroSurplusPriority(candidate, mode) && candidate.line.surplusCandyValue === 0;
@@ -408,6 +409,7 @@ function appendStateMetrics(metrics: StateMetrics, candidate: Candidate, mode: P
     zeroSurplusCount: metrics.zeroSurplusCount + (candidateAchievedZeroSurplusPriority(candidate, mode) ? 1 : 0),
     speciesUsed: metrics.speciesUsed + candidate.line.candySupply.species,
     rawSurplus: metrics.rawSurplus + candidate.line.surplusCandyValue,
+    reachedSurplus: metrics.reachedSurplus + (candidate.line.targetReached ? candidate.line.surplusCandyValue : 0),
     normalizedSurplus: metrics.normalizedSurplus + (candidate.line.surplusCandyValue <= MAX_ACCEPTABLE_SURPLUS ? 0 : candidate.line.surplusCandyValue),
     surplusExp: metrics.surplusExp + candidate.line.surplusExp,
     itemPriority: metrics.itemPriority.map((value, index) => value + priority[index]),
@@ -979,8 +981,10 @@ function compareState(a: State, b: State, mode: PlannerOptions['itemCompareMode'
   const surplusA = a.metrics.rawSurplus; const surplusB = b.metrics.rawSurplus;
   if (mode === 'surplusFirst') {
     if (a.reachedPrefixCount !== b.reachedPrefixCount) return a.reachedPrefixCount > b.reachedPrefixCount ? 1 : -1;
+    if (a.metrics.reachedSurplus !== b.metrics.reachedSurplus) return a.metrics.reachedSurplus < b.metrics.reachedSurplus ? 1 : -1;
     const boundaryProgress = compareBoundaryProgress(a, b);
     if (boundaryProgress) return boundaryProgress;
+    if (a.metrics.zeroSurplusCount !== b.metrics.zeroSurplusCount) return a.metrics.zeroSurplusCount > b.metrics.zeroSurplusCount ? 1 : -1;
     if (surplusA !== surplusB) return surplusA < surplusB ? 1 : -1;
     const item = compareNumbers(a.metrics.itemPriority, b.metrics.itemPriority); if (item) return item;
     if (a.metrics.surplusExp !== b.metrics.surplusExp) return a.metrics.surplusExp < b.metrics.surplusExp ? 1 : -1;
@@ -1014,8 +1018,10 @@ function stateForWitness(witness: FeasibilityWitness, input: NormalizedInput): S
 }
 function compareSurplusFirstBoundaryState(a: State, b: State, includeStableOrder = true): number {
   if (a.reachedPrefixCount !== b.reachedPrefixCount) return a.reachedPrefixCount > b.reachedPrefixCount ? 1 : -1;
+  if (a.metrics.reachedSurplus !== b.metrics.reachedSurplus) return a.metrics.reachedSurplus < b.metrics.reachedSurplus ? 1 : -1;
   const boundaryProgress = compareBoundaryProgress(a, b);
   if (boundaryProgress) return boundaryProgress;
+  if (a.metrics.zeroSurplusCount !== b.metrics.zeroSurplusCount) return a.metrics.zeroSurplusCount > b.metrics.zeroSurplusCount ? 1 : -1;
   if (a.metrics.rawSurplus !== b.metrics.rawSurplus) return a.metrics.rawSurplus < b.metrics.rawSurplus ? 1 : -1;
   const item = compareNumbers(a.metrics.itemPriority, b.metrics.itemPriority);
   if (item) return item;
@@ -1149,7 +1155,7 @@ function feasibilityPreferZeroSurplus(
   expInLevel: number,
 ): boolean {
   return Boolean(pokemon.preferZeroSurplus)
-    || ((input.options.itemCompareMode === 'legacyImproved' || input.options.itemCompareMode === 'surplusGateFirst') && reachedLv >= maxLevel && expInLevel === 0);
+    || (usesZeroSurplusPriority(input.options.itemCompareMode) && reachedLv >= maxLevel && expInLevel === 0);
 }
 
 function targetDemandRowForPokemon(
@@ -1346,7 +1352,8 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
   let boundaryIndex: number | null = null;
   let shouldSearchBoundary = false;
   let boundarySearch: BoundarySearchSummary | undefined;
-  const normalizeLimits = (limits: { maxRowSurplus?: number; maxTotalSurplus?: number } = {}): { maxRowSurplus?: number; maxTotalSurplus?: number } => {
+  type SurplusLimits = { maxRowSurplus?: number; maxTotalSurplus?: number; maxReachedSurplus?: number };
+  const normalizeLimits = (limits: SurplusLimits = {}): SurplusLimits => {
     if (limits.maxTotalSurplus === undefined) return limits;
     const inheritedMaxRowSurplus = limits.maxRowSurplus ?? mainSearchMaxRowSurplus;
     return {
@@ -1380,10 +1387,10 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
       solved: number;
       rejected: number;
       inconclusive: number;
-      limits: { maxRowSurplus?: number; maxTotalSurplus?: number };
+      limits: SurplusLimits;
     };
     const findPrefix = (
-      rawLimits: { maxRowSurplus?: number; maxTotalSurplus?: number } = {},
+      rawLimits: SurplusLimits = {},
       restoreWitness = true,
     ): PrefixSearchResult => {
       const limits = normalizeLimits(rawLimits);
@@ -1391,6 +1398,7 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
         ...mainOptions(),
         ...(limits.maxRowSurplus === undefined ? {} : { maxRowSurplus: limits.maxRowSurplus }),
         ...(limits.maxTotalSurplus === undefined ? {} : { maxTotalSurplus: limits.maxTotalSurplus }),
+        ...(limits.maxReachedSurplus === undefined ? {} : { maxReachedSurplus: limits.maxReachedSurplus }),
       });
       let low = 0;
       let high = targetRows.length;
@@ -1424,47 +1432,39 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
       return { low: 0, witness: null, solved, rejected: rejected + 1, inconclusive, limits };
     };
 
-    const findSurplusFirstPrefix = (): PrefixSearchResult => {
-      const aggregate = { solved: 0, rejected: 0, inconclusive: 0 };
-      const probe = (limits: { maxRowSurplus?: number; maxTotalSurplus?: number } = {}, restoreWitness = true) => {
-        const result = findPrefix(limits, restoreWitness);
-        aggregate.solved += result.solved;
-        aggregate.rejected += result.rejected;
-        aggregate.inconclusive += result.inconclusive;
-        return result;
-      };
-      const withAggregate = (result: PrefixSearchResult): PrefixSearchResult => ({
-        ...result,
-        solved: aggregate.solved,
-        rejected: aggregate.rejected,
-        inconclusive: aggregate.inconclusive,
-      });
+    const findSurplusFirstPrefix = (): PrefixSearchResult => findPrefix({
+      maxRowSurplus: MAX_ACCEPTABLE_SURPLUS,
+    });
 
-      const baseline = probe();
-      if (baseline.low === 0 || !baseline.witness) return withAggregate(baseline);
-      const baselineSurplus = stateForWitness(baseline.witness, input).metrics.rawSurplus;
-      if (!Number.isFinite(baselineSurplus) || baselineSurplus <= 0) return withAggregate(baseline);
-
-      let minimumBudget = baselineSurplus;
-      let lowBudget = 0;
-      let highBudget = baselineSurplus - 1;
-      while (lowBudget <= highBudget) {
-        const midBudget = Math.floor((lowBudget + highBudget) / 2);
-        const candidate = probe({ maxTotalSurplus: midBudget }, false);
-        if (candidate.low === baseline.low) {
-          minimumBudget = midBudget;
-          highBudget = midBudget - 1;
-        } else {
-          lowBudget = midBudget + 1;
-        }
-      }
-      if (minimumBudget === baselineSurplus) return withAggregate(baseline);
-      return withAggregate(probe({ maxTotalSurplus: minimumBudget }));
+    const relaxationRejectsPrefix = (length: number): boolean => {
+      if (length <= 0 || length > targetRows.length) return false;
+      return fixedRowsFailFeasibilityRelaxation(
+        targetRows.slice(0, length),
+        input.candyInventory,
+        mainOptions(),
+      );
     };
-
-    const prefix = input.options.itemCompareMode === 'surplusFirst' && attemptMaxRowSurplus !== undefined
-      ? findSurplusFirstPrefix()
-      : findPrefix();
+    let prefix: PrefixSearchResult;
+    if (input.options.itemCompareMode === 'surplusFirst' && attemptMaxRowSurplus !== undefined) {
+      prefix = findSurplusFirstPrefix();
+    } else if (input.options.itemCompareMode === 'surplusGateFirst') {
+      const gatedPrefix = findPrefix({ maxRowSurplus: MAX_ACCEPTABLE_SURPLUS });
+      const gatedCountIsGloballyMaximal = gatedPrefix.low === targetRows.length
+        || relaxationRejectsPrefix(gatedPrefix.low + 1);
+      if (gatedCountIsGloballyMaximal) {
+        prefix = gatedPrefix;
+      } else {
+        const unrestrictedPrefix = findPrefix();
+        prefix = {
+          ...unrestrictedPrefix,
+          solved: gatedPrefix.solved + unrestrictedPrefix.solved,
+          rejected: gatedPrefix.rejected + unrestrictedPrefix.rejected,
+          inconclusive: gatedPrefix.inconclusive + unrestrictedPrefix.inconclusive,
+        };
+      }
+    } else {
+      prefix = findPrefix();
+    }
     solvedCandidates += prefix.solved;
     supplyRejectedCandidates += prefix.rejected;
     supplyInconclusiveCandidates += prefix.inconclusive;
@@ -1542,13 +1542,16 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
     const gatedBoundarySession = gateMaxRowSurplus === undefined
       ? null
       : createIndependentBoundaryFeasibilitySession(prefixRows, input.candyInventory, { ...boundaryOptions(), maxRowSurplus: gateMaxRowSurplus });
+    const minimumReachedSurplus = selectedWitness
+      ? stateForWitness(selectedWitness, input).metrics.reachedSurplus
+      : 0;
     const boundaryRowForTotal = (totalCandy: number): FeasibilityDemandRow => ({
         ...demandRowForCandyBudget(boundaryPokemon, input, totalCandy, remainingBoost, remainingShards),
         speciesLexWeight: input.pokemonList.length - currentBoundaryIndex,
     });
-    type BoundaryLimits = { maxRowSurplus?: number; maxTotalSurplus?: number };
+    type BoundaryLimits = SurplusLimits;
     const boundaryCacheKey = (totalCandy: number, limits: BoundaryLimits): string => (
-      `${totalCandy}|row:${limits.maxRowSurplus ?? ''}|total:${limits.maxTotalSurplus ?? ''}`
+      `${totalCandy}|row:${limits.maxRowSurplus ?? ''}|total:${limits.maxTotalSurplus ?? ''}|reached:${limits.maxReachedSurplus ?? ''}`
     );
     const boundaryDecisionCache = new Map<string, ReturnType<typeof solveFeasibilityDecisionForFixedRows>>();
     const boundarySolveCache = new Map<string, ReturnType<typeof solveFeasibilityForFixedRows>>();
@@ -1583,14 +1586,24 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
         boundaryDecisionCache.set(cacheKey, result);
         return result;
       }
-      const session = limits.maxRowSurplus !== undefined && gatedBoundarySession
+      const session = limits.maxReachedSurplus === minimumReachedSurplus
+        && limits.maxRowSurplus === MAX_ACCEPTABLE_SURPLUS
+        && limits.maxTotalSurplus === undefined
         ? gatedBoundarySession
-        : getIndependentBoundarySession();
-      const result = session?.canSolve(row, { maxTotalSurplus: limits.maxTotalSurplus })
+        : limits.maxReachedSurplus === undefined && limits.maxRowSurplus !== undefined && gatedBoundarySession
+          ? gatedBoundarySession
+          : limits.maxReachedSurplus === undefined
+            ? getIndependentBoundarySession()
+            : null;
+      const result = session?.canSolve(row, {
+        maxTotalSurplus: limits.maxTotalSurplus,
+        maxReachedSurplus: limits.maxReachedSurplus,
+      })
         ?? solveFeasibilityDecisionForFixedRows([...prefixRows, row], input.candyInventory, {
           ...boundaryOptions(),
           ...(limits.maxRowSurplus === undefined ? {} : { maxRowSurplus: limits.maxRowSurplus }),
           ...(limits.maxTotalSurplus === undefined ? {} : { maxTotalSurplus: limits.maxTotalSurplus }),
+          ...(limits.maxReachedSurplus === undefined ? {} : { maxReachedSurplus: limits.maxReachedSurplus }),
         });
       boundaryDecisionCache.set(cacheKey, result);
       return result;
@@ -1601,30 +1614,36 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
       const cached = boundarySolveCache.get(cacheKey);
       if (cached) return cached;
       const row = boundaryRowForTotal(totalCandy);
-      const session = limits.maxRowSurplus === undefined && limits.maxTotalSurplus === undefined
-        ? getIndependentBoundarySession()
-        : limits.maxRowSurplus !== undefined && limits.maxTotalSurplus === undefined
-          ? gatedBoundarySession
-          : null;
-      const result = session?.solve(row)
+      const session = limits.maxReachedSurplus === minimumReachedSurplus
+        && limits.maxRowSurplus === MAX_ACCEPTABLE_SURPLUS
+        && limits.maxTotalSurplus === undefined
+        ? gatedBoundarySession
+        : limits.maxReachedSurplus === undefined && limits.maxRowSurplus === undefined && limits.maxTotalSurplus === undefined
+          ? getIndependentBoundarySession()
+          : limits.maxReachedSurplus === undefined && limits.maxRowSurplus !== undefined && limits.maxTotalSurplus === undefined
+            ? gatedBoundarySession
+            : null;
+      const result = session?.solve(row, {
+        maxTotalSurplus: limits.maxTotalSurplus,
+        maxReachedSurplus: limits.maxReachedSurplus,
+      })
         ?? solveFeasibilityForFixedRows([...prefixRows, row], input.candyInventory, {
           ...boundaryOptions(),
           ...(limits.maxRowSurplus === undefined ? {} : { maxRowSurplus: limits.maxRowSurplus }),
           ...(limits.maxTotalSurplus === undefined ? {} : { maxTotalSurplus: limits.maxTotalSurplus }),
+          ...(limits.maxReachedSurplus === undefined ? {} : { maxReachedSurplus: limits.maxReachedSurplus }),
         });
       boundarySolveCache.set(cacheKey, result);
       if (result.status === 'feasible') boundaryDecisionCache.set(cacheKey, { status: 'feasible', stats: result.stats });
       else boundaryDecisionCache.set(cacheKey, result);
       return result;
     };
-    let directGatedSearchCompleted = false;
-    if (boundarySearchMode === 'surplusGateFirst' || boundarySearchMode === 'surplusFirst') {
+    if (boundarySearchMode === 'surplusGateFirst') {
       const result = gatedBoundarySession?.solveMaxBoundaryTotal(
         boundaryRowForTotal(targetTotalCandy),
         targetTotalCandy,
         boundaryRowForTotal,
       );
-      directGatedSearchCompleted = result !== null && result !== undefined;
       const directGatedMax = result?.status === 'feasible'
         ? result.witness.rows.at(-1)?.totalCandy
         : undefined;
@@ -1655,12 +1674,24 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
         appendBoundarySearchSample({ totalCandy: targetTotalCandy, status: 'inconclusive' });
       }
     }
-    if (boundarySearchMode === 'surplusFirst' && !directGatedSearchCompleted) {
-      // The boundary is still being raised. Keep every row inside the 0..2 hard
-      // gate, but maximize boundary progress before comparing total surplus.
-      for (let total = targetTotalCandy; total >= 0; total--) {
+    if (boundarySearchMode === 'surplusFirst' && !foundBoundary) {
+      // First fix the minimum surplus of the maximum reached prefix, then
+      // maximize the final boundary within its independent row-surplus gate.
+      const maximumBoundaryCandy = targetTotalCandy;
+      const gatedUpperResult = gatedBoundarySession?.solveMaxBoundaryTotal(
+        boundaryRowForTotal(maximumBoundaryCandy),
+        maximumBoundaryCandy,
+        boundaryRowForTotal,
+      );
+      const gatedUpper = gatedUpperResult?.status === 'feasible'
+        ? gatedUpperResult.witness.rows.at(-1)?.totalCandy ?? maximumBoundaryCandy
+        : maximumBoundaryCandy;
+      for (let total = gatedUpper; total >= 0; total--) {
         checkedLowerTotals++;
-        const limits = { maxRowSurplus: MAX_ACCEPTABLE_SURPLUS };
+        const limits = {
+          maxRowSurplus: MAX_ACCEPTABLE_SURPLUS,
+          maxReachedSurplus: minimumReachedSurplus,
+        };
         const decision = decideBoundaryTotal(total, limits);
         if (decision?.status === 'infeasible') {
           rejectedLowerTotals++;
@@ -2214,6 +2245,14 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
         boostLimit: input.boost.limit,
         dreamShards: input.dreamShards,
         itemCompareMode: input.options.itemCompareMode,
+        ...(input.options.itemCompareMode === 'surplusFirst' && mainSearchMaxRowSurplus !== undefined
+          ? {
+              maxRowSurplus: MAX_ACCEPTABLE_SURPLUS,
+              maxReachedSurplus: witness
+                ? stateForWitness(witness, input).metrics.reachedSurplus
+                : 0,
+            }
+          : {}),
         deadlineMs: FBL01D_FAST_REFINE_MS,
         logPerformance: isPerfEnabled(),
       })

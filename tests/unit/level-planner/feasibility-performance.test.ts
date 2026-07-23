@@ -391,16 +391,29 @@ describe('fbl01d feasibility performance fixture', () => {
     expect(lines[4]).toMatchObject({ targetReached: false, totalCandyUnitsUsed: 550 });
     expect(lines[0].candySupply.species).toBe(100);
     expect(lines[4].candySupply.species).toBe(0);
-    expect(lines[1].candySupply).toEqual({
-      species: 320,
-      type: { s: 2, m: 0 },
-      universal: { s: 1, m: 51, l: 6 },
-    });
-    expect(lines[2].candySupply).toEqual({
-      species: 656,
-      type: { s: 11, m: 0 },
-      universal: { s: 92, m: 51, l: 0 },
-    });
+    if (mode === 'surplusFirst') {
+      expect(lines[1].candySupply).toEqual({
+        species: 320,
+        type: { s: 13, m: 0 },
+        universal: { s: 13, m: 77, l: 0 },
+      });
+      expect(lines[2].candySupply).toEqual({
+        species: 656,
+        type: { s: 0, m: 0 },
+        universal: { s: 80, m: 25, l: 6 },
+      });
+    } else {
+      expect(lines[1].candySupply).toEqual({
+        species: 320,
+        type: { s: 2, m: 0 },
+        universal: { s: 1, m: 51, l: 6 },
+      });
+      expect(lines[2].candySupply).toEqual({
+        species: 656,
+        type: { s: 11, m: 0 },
+        universal: { s: 92, m: 51, l: 0 },
+      });
+    }
     expect(result.lossLedger.hasLoss).toBe(false);
     console.info('[level-planner-mini-shared-species-boundary-perf]', JSON.stringify({
       mode,
@@ -451,25 +464,19 @@ describe('fbl01d feasibility performance fixture', () => {
       expInLevel: 1_700,
       targetReached: false,
       totalCandyUnitsUsed: 1_535,
-      candySupply: {
-        species: 500,
-        type: { s: 18, m: 10 },
-        universal: { s: 11, m: 34, l: 0 },
-      },
     });
     expect(lines.slice(7).every(line => line.totalCandyUnitsUsed === 0)).toBe(true);
     if (mode === 'surplusFirst') {
-      expect(lines[0].candySupply).toEqual({
-        species: 100,
-        type: { s: 0, m: 0 },
-        universal: { s: 144, m: 0, l: 1 },
-      });
-      expect(lines[4].candySupply).toEqual({
-        species: 0,
-        type: { s: 0, m: 0 },
-        universal: { s: 108, m: 6, l: 6 },
-      });
+      const reachedSurplus = lines.slice(0, 6).reduce((sum, line) => sum + line.surplusCandyValue, 0);
+      expect(reachedSurplus).toBeLessThanOrEqual(2);
+      expect(lines[6].surplusCandyValue).toBeLessThanOrEqual(2);
+      expect(reachedSurplus + lines[6].surplusCandyValue).toBeLessThanOrEqual(4);
     } else {
+      expect(lines[6].candySupply).toEqual({
+        species: 500,
+        type: { s: 18, m: 10 },
+        universal: { s: 11, m: 34, l: 0 },
+      });
       expect(lines[0].candySupply).toEqual({
         species: 100,
         type: { s: 0, m: 0 },

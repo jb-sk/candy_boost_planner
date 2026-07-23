@@ -6,7 +6,7 @@
  */
 import { perfSpan } from "../utils/perf";
 
-const STORAGE_KEY = "candy-boost-planner:candy-inventory:v1";
+export const CANDY_STORAGE_KEY = "candy-boost-planner:candy-inventory:v1";
 const SCHEMA_VERSION = 1 as const;
 
 export type UniversalCandyInventory = {
@@ -41,7 +41,7 @@ function createEmptyInventory(): CandyInventoryV1 {
 
 export function loadCandyInventory(): CandyInventoryV1 {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(CANDY_STORAGE_KEY);
     if (!raw) return createEmptyInventory();
     const json = JSON.parse(raw);
     if (!json || typeof json !== "object") return createEmptyInventory();
@@ -53,11 +53,15 @@ export function loadCandyInventory(): CandyInventoryV1 {
 
 export function saveCandyInventory(inv: CandyInventoryV1): void {
   try {
-    const serialized = perfSpan("persist.candy.serialize", () => JSON.stringify(inv));
-    perfSpan("persist.candy.write", () => localStorage.setItem(STORAGE_KEY, serialized));
+    const serialized = perfSpan("persist.candy.serialize", () => serializeCandyInventory(inv));
+    perfSpan("persist.candy.write", () => localStorage.setItem(CANDY_STORAGE_KEY, serialized));
   } catch {
     // localStorage can throw (quota exceeded / blocked)
   }
+}
+
+export function serializeCandyInventory(inv: CandyInventoryV1): string {
+  return JSON.stringify(inv);
 }
 
 // --- 便利関数 ---

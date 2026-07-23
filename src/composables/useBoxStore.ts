@@ -1065,12 +1065,16 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     importStatus.value = t("status.specialtyUpdated");
   }
 
+  function toggleFavoriteById(id: string) {
+    const now = new Date().toISOString();
+    boxEntries.value = boxEntries.value.map((x) => (x.id === id ? { ...x, favorite: !x.favorite, updatedAt: now } : x));
+    importStatus.value = t("status.favoriteUpdated");
+  }
+
   function toggleSelectedFavorite() {
     const e = selectedBox.value;
     if (!e) return;
-    const now = new Date().toISOString();
-    boxEntries.value = boxEntries.value.map((x) => (x.id === e.id ? { ...x, favorite: !x.favorite, updatedAt: now } : x));
-    importStatus.value = t("status.favoriteUpdated");
+    toggleFavoriteById(e.id);
   }
 
   function subSkillEnFromLabel(label: string): string | null {
@@ -1433,6 +1437,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     toggleSubSkill,
     toggleFavoriteFilter,
     toggleSelectedFavorite,
+    toggleFavoriteById,
     onRelinkInput,
     pickRelinkName,
     onRelinkBlur,

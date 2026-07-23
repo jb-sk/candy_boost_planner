@@ -1,5 +1,5 @@
 <template>
-  <section id="neo-calc" class="panel panel--calc">
+  <section id="neo-calc" class="panel panel--calc" data-scroll-anchor="panel:calc">
     <div class="panel__head">
       <h2 class="panel__title">{{ t("calc.title") }}</h2>
     </div>
@@ -7,32 +7,43 @@
     <div class="calcSticky">
       <div class="calcSticky__summary" data-testid="calc-sticky-summary" @click="stickyExpanded = !stickyExpanded">
         <span class="calcSticky__toggle">{{ stickyExpanded ? '▼' : '▶' }}</span>
-        <div class="calcSticky__summaryBody">
-          <button v-if="showNoStockWarning" type="button" class="calcSticky__noStock" @click.stop="$emit('open-settings')">{{ t("calc.export.noStockWarning") }}</button>
-          <span class="calcSumInline" v-if="calc.boostKind.value !== 'none'" :class="{ 'calcSumInline--danger': calc.boostCandyOver.value > 0 }">
+        <div class="calcSticky__summaryBody" :aria-busy="calc.planResultPending.value ? 'true' : undefined">
+          <button v-if="showNoStockWarningOrPending" type="button" class="calcSticky__noStock" @click.stop="$emit('open-settings')">{{ t("calc.export.noStockWarning") }}</button>
+          <span
+            v-if="calc.boostKind.value !== 'none'"
+            class="calcSumInline calcSumInline--boostTotal"
+            :class="{
+              'calcSumInline--boostTotalMini': calc.boostKind.value === 'mini',
+              'calcSumInline--danger': calc.boostCandyOver.value > 0,
+            }"
+          >
             <span class="calcSumInline__k">{{ t("calc.export.sumBoostTotal") }}</span>
-            <span class="calcSumInline__v">{{ calc.fmtNum(calc.totalBoostCandyUsed.value) }}</span>
+            <span class="calcSumInline__v">{{ calc.planResult.value ? calc.fmtNum(calc.totalBoostCandyUsed.value) : '-' }}</span>
           </span>
-          <span class="calcSumInline calcSumInline--danger" v-if="calc.boostKind.value !== 'none' && calc.planResult.value && !calc.planResultPending.value && calc.boostCandyUnused.value > 0 && calc.rowsView.value.length > 0">
+          <span
+            v-if="calc.boostKind.value !== 'none' && calc.rowsView.value.length > 0 && (!calc.planResult.value || calc.boostCandyUnused.value > 0)"
+            class="calcSumInline calcSumInline--unused"
+            :class="{ 'calcSumInline--danger': calc.planResult.value && calc.boostCandyUnused.value > 0 }"
+          >
             <span class="calcSumInline__k">{{ t("calc.export.sumBoostUnused") }}</span>
-            <span class="calcSumInline__v">{{ calc.fmtNum(calc.boostCandyUnused.value) }}</span>
+            <span class="calcSumInline__v">{{ calc.planResult.value ? calc.fmtNum(calc.boostCandyUnused.value) : '-' }}</span>
           </span>
-          <span class="calcSumInline" :class="{ 'calcSumInline--danger': calc.shardsOver.value > 0 }">
+          <span class="calcSumInline calcSumInline--shards" :class="{ 'calcSumInline--danger': calc.shardsOver.value > 0 }">
             <span class="calcSumInline__k">{{ t("calc.shardsTotal") }}</span>
-            <span class="calcSumInline__v">{{ calc.fmtNum(calc.totalShardsUsed.value) }}</span>
+            <span class="calcSumInline__v">{{ calc.planResult.value ? calc.fmtNum(calc.totalShardsUsed.value) : '-' }}</span>
           </span>
-          <template v-if="calc.planResult.value">
-            <span class="calcSumInline calcSumInline--candy" :class="{ 'calcSumInline--danger': calc.universalCandyNeeded.value.s > candyStore.universalCandy.value.s }">
+          <template v-if="calc.rowsView.value.length > 0">
+            <span class="calcSumInline calcSumInline--candy calcSumInline--candyS" :class="{ 'calcSumInline--danger': calc.planResult.value && calc.universalCandyNeeded.value.s > candyStore.universalCandy.value.s }">
               <span class="calcSumInline__k">{{ t("calc.candy.universalSummaryS") }}</span>
-              <span class="calcSumInline__v">{{ calc.universalCandyNeeded.value.s }}/{{ candyStore.universalCandy.value.s }}</span>
+              <span class="calcSumInline__v">{{ calc.planResult.value ? calc.universalCandyNeeded.value.s : '-' }}/{{ candyStore.universalCandy.value.s }}</span>
             </span>
-            <span class="calcSumInline calcSumInline--candy" :class="{ 'calcSumInline--danger': calc.universalCandyNeeded.value.m > candyStore.universalCandy.value.m }">
+            <span class="calcSumInline calcSumInline--candy calcSumInline--candyM" :class="{ 'calcSumInline--danger': calc.planResult.value && calc.universalCandyNeeded.value.m > candyStore.universalCandy.value.m }">
               <span class="calcSumInline__k">M</span>
-              <span class="calcSumInline__v">{{ calc.universalCandyNeeded.value.m }}/{{ candyStore.universalCandy.value.m }}</span>
+              <span class="calcSumInline__v">{{ calc.planResult.value ? calc.universalCandyNeeded.value.m : '-' }}/{{ candyStore.universalCandy.value.m }}</span>
             </span>
-            <span class="calcSumInline calcSumInline--candy" :class="{ 'calcSumInline--danger': calc.universalCandyNeeded.value.l > candyStore.universalCandy.value.l }">
+            <span class="calcSumInline calcSumInline--candy calcSumInline--candyL" :class="{ 'calcSumInline--danger': calc.planResult.value && calc.universalCandyNeeded.value.l > candyStore.universalCandy.value.l }">
               <span class="calcSumInline__k">L</span>
-              <span class="calcSumInline__v">{{ calc.universalCandyNeeded.value.l }}/{{ candyStore.universalCandy.value.l }}</span>
+              <span class="calcSumInline__v">{{ calc.planResult.value ? calc.universalCandyNeeded.value.l : '-' }}/{{ candyStore.universalCandy.value.l }}</span>
             </span>
           </template>
         </div>
@@ -222,6 +233,7 @@
         :key="r.id"
         class="calcRow"
         data-testid="calc-row"
+        :data-scroll-anchor="`calc-row:${r.id}`"
         :class="{
           'calcRow--active': r.id === calc.activeRowId.value,
           'calcRow--dragOver': r.id === calc.dragOverRowId.value,
@@ -364,7 +376,7 @@
                 data-testid="hintBtn"
                 type="button"
                 class="hintIcon"
-                @click.stop.prevent="showHint($event, calc.boostKind.value === 'none' ? t('calc.row.boostCandyCountNormalHint') : t('calc.row.boostCandyCountHint'))"
+                @click.stop.prevent="showHint($event, calc.boostKind.value === 'none' ? 'normalCandyCount' : 'boostCandyCount')"
               >?</button>
               <button
                 data-testid="boostCandyReset"
@@ -639,7 +651,7 @@
                 </span>{{ ' ' }}<span class="calcRow__res">
                    <span class="calcRow__k calcRow__k--info">{{ t("calc.row.remainingExp") }}</span>
                    <span class="calcRow__num calcRow__num--info">475</span>
-                   <span class="calcRow__sleepTime">{{ t("calc.sleep.remainingDays", { days: 5, hours: 42.5 }) }}</span>
+                   <span class="calcRow__sleepTime">{{ onboardingSleepTimeText }}</span>
                 </span>
               </span>
             </div>
@@ -690,9 +702,17 @@
         class="hintPopover"
         data-testid="calc-hint-popover"
         :style="{ left: hintState.left + 'px', top: hintState.top + 'px' }"
-        @click.stop="handleHintClick"
-        v-html="hintState.message"
-      ></div>
+        @click.stop
+      >
+        <template v-if="hintState.kind === 'normalCandyCount'">
+          {{ t('calc.row.boostCandyCountNormalHint') }}
+        </template>
+        <template v-else>
+          {{ t('calc.row.boostCandyCountHintLine1') }}<br>
+          {{ t('calc.row.boostCandyCountHintLine2') }}<br><br>
+          {{ t('calc.row.boostCandyCountHintNotePrefix') }}<button type="button" class="hintLink" data-testid="calc-hint-settings" @click="openSettingsFromHint">{{ t('calc.row.boostCandyCountHintSettings') }}</button>{{ t('calc.row.boostCandyCountHintNoteSuffix') }}
+        </template>
+      </div>
     </Teleport>
 
     <Teleport to="body">
@@ -739,6 +759,10 @@ import { getPokemonType } from "../domain/pokesleep/pokemon-names";
 import { getTypeName } from "../domain/pokesleep/pokemon-types";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { markForSleep, calcCandyTargetFromSleepExp, calcSleepTimeForExp } from "../domain/pokesleep/sleep-growth";
+import {
+  formatSleepTimeResult,
+  type SleepTimeFormatTokens,
+} from "../domain/pokesleep/sleep-growth-format";
 import { calcExp, calcExpAndCandyMixed, calcLevelByCandy } from "../domain/pokesleep/exp";
 import { normalizeSleepHoursInput } from "../domain/box/sleep-milestones";
 import type { BoostEvent } from "../domain/types";
@@ -815,6 +839,19 @@ const showNoStockWarning = computed(() => {
   const t = calc.exportActualTotals.value;
   return calc.planResult.value != null && t.boostCandy + t.normalCandy === 0 && t.shards === 0;
 });
+
+const hasAnyCandyStock = computed(() => {
+  const inventory = candyStore.inventorySnapshot.value;
+  return inventory.universal.s + inventory.universal.m + inventory.universal.l > 0
+    || Object.values(inventory.typeCandy).some(value => value.s + value.m > 0)
+    || Object.values(inventory.species).some(value => value > 0);
+});
+
+const showNoStockWarningOrPending = computed(() => showNoStockWarning.value || (
+  calc.planResult.value == null
+  && calc.rowsView.value.length > 0
+  && !hasAnyCandyStock.value
+));
 
 /**
  * expRemaining の表示値。計算機では常に実際の数値を表示する。
@@ -1111,10 +1148,11 @@ function applySleepGrowth(rowId: string, targetHours: number) {
   // 累計睡眠時間を差し引いた残り時間を計算
   const currentSleepHours = row.sleepHours ?? 0;
   const remainingHours = Math.max(0, targetHours - currentSleepHours);
+  const remainingMinutes = Math.max(0, Math.round(remainingHours * 60));
 
   // remainingHours=0 も通常フローで処理し、sleepExp=0 相当の個数指定を出す。
   const result = markForSleep({
-    targetSleepHours: remainingHours,
+    targetSleepHours: remainingMinutes / 60,
     nature: row.nature,
     dailySleepHours: sleepSettings.dailySleepHours,
     sleepExpBonus,
@@ -1245,8 +1283,28 @@ function getSleepTimeText(rowId: string, expToTarget: number): string | null {
     includeGSD: sleepSettings.includeGSD,
   });
 
-  return t("calc.sleep.remainingDays", { days: result.requiredDays, hours: result.requiredHours });
+  return formatSleepTimeResult(result, getSleepTimeFormatTokens());
 }
+
+function getSleepTimeFormatTokens(): SleepTimeFormatTokens {
+  return {
+    hourUnit: t("calc.sleep.hourUnit"),
+    minuteUnit: t("calc.sleep.minuteUnit"),
+    dayUnit: t("calc.sleep.dayUnit"),
+    hourMinuteSeparator: t("calc.sleep.hourMinuteSeparator"),
+    rangeSeparator: t("calc.sleep.rangeSeparator"),
+    approximatePrefix: t("calc.sleep.approximatePrefix"),
+    estimateOpen: t("calc.sleep.estimateOpen"),
+    estimateClose: t("calc.sleep.estimateClose"),
+  };
+}
+
+const onboardingSleepTimeText = computed(() =>
+  formatSleepTimeResult(
+    { kind: "long-term-estimate", requiredDays: 5, totalMinutes: 5 * 8.5 * 60 },
+    getSleepTimeFormatTokens()
+  )
+);
 
 // モバイルでのキーボード閉じた後のスクロール位置修正
 // _navScrolling フラグ: MobileNav のスクロール直後は blur 補正を抑止するため
@@ -1514,15 +1572,17 @@ function getTheoreticalResources(r: CalcRowView): TheoreticalResources | null {
 
 // ヒントアイコン用
 // ヒントポップオーバーの状態
-const hintState = ref<{ visible: boolean; message: string; left: number; top: number }>({
+type CalcHintKind = "normalCandyCount" | "boostCandyCount";
+
+const hintState = ref<{ visible: boolean; kind: CalcHintKind; left: number; top: number }>({
   visible: false,
-  message: "",
+  kind: "normalCandyCount",
   left: 0,
   top: 0
 });
 const hintPopoverRef = ref<HTMLElement | null>(null);
 
-async function showHint(ev: MouseEvent, message: string) {
+async function showHint(ev: MouseEvent, kind: CalcHintKind) {
   const target = ev.target as HTMLElement;
   const rect = target.getBoundingClientRect();
   const gap = 4;
@@ -1540,7 +1600,7 @@ async function showHint(ev: MouseEvent, message: string) {
   // まず下に仮配置して描画
   hintState.value = {
     visible: true,
-    message,
+    kind,
     left,
     top: rect.bottom + gap,
   };
@@ -1560,18 +1620,9 @@ function closeHint() {
   hintState.value.visible = false;
 }
 
-/**
- * ツールチップ内のクリックを処理
- * data-action属性を持つボタンのアクションを実行
- */
-function handleHintClick(ev: MouseEvent) {
-  const target = ev.target as HTMLElement;
-  const action = target.dataset?.action;
-
-  if (action === 'open-settings') {
-    closeHint();
-    emit('open-settings');
-  }
+function openSettingsFromHint() {
+  closeHint();
+  emit('open-settings');
 }
 
 // ── 睡眠ヒント専用ポップオーバー ──

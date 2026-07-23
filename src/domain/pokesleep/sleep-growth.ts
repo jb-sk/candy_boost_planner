@@ -2,13 +2,14 @@
  * 睡眠育成機能
  *
  * アチーブメント達成（睡眠1000h/2000h）とレベルアップを同時に狙えるよう、
- * 「N時間の睡眠EXPでちょうど目標Lvに到達」するためのアメ個数を逆算する
+ * 「N時間を設定睡眠時間単位で切り上げた日数以内に目標Lvへ到達」するための
+ * アメ個数を逆算する
  *
- * @see .agent/DESIGN_SLEEP_GROWTH.md
+ * @see .agent/sessions/残EXP睡眠時間の端数表示設計.md
  */
 
 import type { BoostEvent, ExpGainNature, ExpType } from '../types';
-import { calcExp, calcExpPerCandy } from './exp';
+import { calcExp, calcExpAndCandy, calcLevelByCandy } from './exp';
 
 // ============================================================
 // 定数
@@ -17,8 +18,8 @@ import { calcExp, calcExpPerCandy } from './exp';
 /** 太陰月（日） */
 const LUNAR_CYCLE = 29.53;
 
-/** 1周期あたりのGSDボーナス（スコア相当） */
-const GSD_BONUS_PER_CYCLE = 400;
+/** 設定可能な1日の睡眠時間上限（13時間） */
+const MAX_DAILY_SLEEP_MINUTES = 13 * 60;
 
 // ============================================================
 // 型定義
@@ -31,30 +32,47 @@ export type MarkForSleepResult = {
   /** 睡眠で獲得予定のEXP（= アメ投入後に残すべき残EXP） */
   sleepExp: number;
 
-  /** 必要な日数（targetSleepHours / dailySleepHours） */
+  /** 目標時間を設定睡眠時間単位で切り上げた日数 */
   requiredDays: number;
 };
 
 /**
- * 残EXPを睡眠でカバーするのに必要な時間
+ * 次の通常睡眠1回で到達可能な場合の時間幅
  */
-export type SleepTimeResult = {
-  /** 必要な睡眠時間（時間単位） */
-  requiredHours: number;
-
-  /** 必要な日数 */
-  requiredDays: number;
+export type WithinOneSleepResult = {
+  kind: 'within-one-sleep';
+  requiredScore: number;
+  minutesMin: number;
+  minutesMax: number;
 };
+
+/**
+ * 1回の通常睡眠では到達不能な場合の日単位概算
+ */
+export type LongTermEstimateResult = {
+  kind: 'long-term-estimate';
+  requiredDays: number;
+  totalMinutes: number;
+};
+
+export type SleepTimeResult =
+  | WithinOneSleepResult
+  | LongTermEstimateResult
+  | { kind: 'none' }
+  | { kind: 'unavailable' };
 
 // ============================================================
 // 内部ヘルパー関数（export しない）
 // ============================================================
 
 /**
- * 性格倍率を取得
+ * 性格倍率を百分率の整数で取得
+ *
+ * 0.82を直接乗算すると300 × 0.82が245.999...になるため、
+ * 意図しない切り捨てを避けて82 / 100として計算する。
  */
-function getNatureMultiplier(nature: ExpGainNature): number {
-  return nature === 'up' ? 1.18 : nature === 'down' ? 0.82 : 1.0;
+function getNaturePercent(nature: ExpGainNature): number {
+  return nature === 'up' ? 118 : nature === 'down' ? 82 : 100;
 }
 
 /**
@@ -62,7 +80,8 @@ function getNatureMultiplier(nature: ExpGainNature): number {
  *
  * @see にとよんツール Score.ts
  */
-function calcScoreFromMinutes(minutes: number): number {
+export function calcScoreFromMinutes(minutes: number): number {
+  if (!Number.isFinite(minutes)) return 0;
   return Math.min(100, Math.max(0, Math.floor(minutes / 5.1 + 0.5)));
 }
 
@@ -74,44 +93,122 @@ function calcScoreFromMinutes(minutes: number): number {
  * 2. × イベントボーナス
  * 3. × 性格補正 → 切り捨て (floor)
  */
-function calcSleepExp(params: {
-  score: number;
+export function calcSleepExp(params: {
+  sleepMinutes: number;
   sleepExpBonus: number;
   nature: ExpGainNature;
   eventBonus?: number;
 }): number {
-  const { score, sleepExpBonus, nature, eventBonus = 1.0 } = params;
+  const { sleepMinutes, sleepExpBonus, nature, eventBonus = 1.0 } = params;
+  if (
+    !Number.isFinite(sleepMinutes)
+    || !Number.isFinite(sleepExpBonus)
+    || !Number.isFinite(eventBonus)
+    || sleepMinutes <= 0
+    || sleepExpBonus <= 0
+    || eventBonus <= 0
+  ) {
+    return 0;
+  }
+  const score = calcScoreFromMinutes(sleepMinutes);
   const step1 = Math.round(score * sleepExpBonus);
   const step2 = step1 * eventBonus;
-  const natureMultiplier = getNatureMultiplier(nature);
-  return Math.floor(step2 * natureMultiplier);
+  return Math.floor(step2 * getNaturePercent(nature) / 100);
 }
 
 /**
  * 1日の睡眠EXPを計算（共通ロジック）
  */
 function calcDailySleepExp(params: {
-  dailySleepHours: number;
+  dailySleepMinutes: number;
   sleepExpBonus: number;
   nature: ExpGainNature;
+  eventBonus?: number;
 }): number {
-  const minutes = params.dailySleepHours * 60;
-  const score = Math.min(100, calcScoreFromMinutes(minutes));
   return calcSleepExp({
-    score,
+    sleepMinutes: params.dailySleepMinutes,
     sleepExpBonus: params.sleepExpBonus,
     nature: params.nature,
+    eventBonus: params.eventBonus,
   });
 }
 
 /**
- * GSDボーナスを計算
- *
- * 月齢周期を使用した簡易計算
+ * GSD 1周期の追加EXPを計算する。
+ * 前後日（×2）2日と満月日（×3）1日から通常3日分を差し引く。
  */
-function calcGSDBonus(totalDays: number): number {
-  const gsdCycles = Math.floor(totalDays / LUNAR_CYCLE);
-  return gsdCycles * GSD_BONUS_PER_CYCLE;
+export function calcGsdExtraPerCycle(params: {
+  dailySleepMinutes: number;
+  sleepExpBonus: number;
+  nature: ExpGainNature;
+}): number {
+  const normalExp = calcDailySleepExp({ ...params, eventBonus: 1 });
+  const sideExp = calcDailySleepExp({ ...params, eventBonus: 2 });
+  const fullMoonExp = calcDailySleepExp({ ...params, eventBonus: 3 });
+  return sideExp * 2 + fullMoonExp - normalExp * 3;
+}
+
+/**
+ * 29.53日周期によるGSDの概算追加EXP
+ */
+export function calcApproximateGsdExtra(params: {
+  sessionDays: number;
+  dailySleepMinutes: number;
+  sleepExpBonus: number;
+  nature: ExpGainNature;
+}): number {
+  if (!Number.isFinite(params.sessionDays) || params.sessionDays <= 0) return 0;
+  const gsdCycles = Math.floor(params.sessionDays / LUNAR_CYCLE);
+  return gsdCycles * calcGsdExtraPerCycle(params);
+}
+
+/**
+ * 設定した1日分の睡眠を整数日数行った場合の累積EXP
+ */
+export function calcSleepExpForDays(params: {
+  days: number;
+  dailySleepMinutes: number;
+  sleepExpBonus: number;
+  nature: ExpGainNature;
+  includeGSD: boolean;
+}): number {
+  const days = Math.max(0, Math.floor(params.days));
+  const dailyExp = calcDailySleepExp(params);
+  const gsdExtra = params.includeGSD
+    ? calcApproximateGsdExtra({ ...params, sessionDays: days })
+    : 0;
+  return dailyExp * days + gsdExtra;
+}
+
+function normalizeDailySleepMinutes(dailySleepHours: number): number | null {
+  if (!Number.isFinite(dailySleepHours)) return null;
+  const minutes = Math.round(dailySleepHours * 60);
+  return minutes >= 1 && minutes <= MAX_DAILY_SLEEP_MINUTES ? minutes : null;
+}
+
+/**
+ * 現在地点から指定EXPだけ進んだ仮想目標を求める。
+ * 睡眠で賄うEXPを目標から差し引き、既存のアメ計算APIへ渡すために使う。
+ */
+function locateExpTarget(params: {
+  srcLevel: number;
+  dstLevel: number;
+  expType: ExpType;
+  expGot: number;
+  expToGain: number;
+}): { level: number; expInLevel: number } {
+  const { dstLevel, expType } = params;
+  let level = params.srcLevel;
+  let expInLevel = params.expGot + Math.max(0, params.expToGain);
+
+  while (level < dstLevel) {
+    const expToNextLevel = calcExp(level, level + 1, expType);
+    if (expInLevel < expToNextLevel) break;
+    expInLevel -= expToNextLevel;
+    level++;
+  }
+
+  return { level, expInLevel };
 }
 
 // ============================================================
@@ -121,7 +218,7 @@ function calcGSDBonus(totalDays: number): number {
 /**
  * 睡眠育成のマーク地点を計算
  *
- * 「N時間の睡眠EXPで目標到達」するための区切り点を算出
+ * 目標時間を設定睡眠時間単位で切り上げ、その整数日数ぶんの睡眠EXPを算出する
  */
 export function markForSleep(params: {
   /** 目標睡眠時間（1000, 2000, etc. 単位：時間） */
@@ -147,20 +244,20 @@ export function markForSleep(params: {
     includeGSD = true,
   } = params;
 
-  // 1日の睡眠EXP
-  const dailyExp = calcDailySleepExp({
-    dailySleepHours,
+  const dailySleepMinutes = normalizeDailySleepMinutes(dailySleepHours);
+  if (dailySleepMinutes === null || !Number.isFinite(targetSleepHours) || targetSleepHours <= 0) {
+    return { sleepExp: 0, requiredDays: 0 };
+  }
+
+  const targetSleepMinutes = Math.max(0, Math.round(targetSleepHours * 60));
+  const requiredDays = Math.ceil(targetSleepMinutes / dailySleepMinutes);
+  const sleepExp = calcSleepExpForDays({
+    days: requiredDays,
+    dailySleepMinutes,
     sleepExpBonus,
     nature,
+    includeGSD,
   });
-
-  // 必要日数（切り上げ）
-  const requiredDays = Math.ceil(targetSleepHours / dailySleepHours);
-
-  // 総睡眠EXP = 1日EXP × 日数 + GSDボーナス
-  const baseExp = dailyExp * requiredDays;
-  const gsdBonus = includeGSD ? calcGSDBonus(requiredDays) : 0;
-  const sleepExp = baseExp + gsdBonus;
 
   return {
     sleepExp,
@@ -197,32 +294,61 @@ export function calcSleepTimeForExp(params: {
     includeGSD = true,
   } = params;
 
-  if (expToTarget <= 0) {
-    return { requiredHours: 0, requiredDays: 0 };
+  if (!Number.isFinite(expToTarget)) return { kind: 'unavailable' };
+  if (expToTarget <= 0) return { kind: 'none' };
+
+  const dailySleepMinutes = normalizeDailySleepMinutes(dailySleepHours);
+  if (
+    dailySleepMinutes === null
+    || !Number.isFinite(sleepExpBonus)
+    || sleepExpBonus <= 0
+  ) {
+    return { kind: 'unavailable' };
   }
 
-  // 1日の睡眠EXP
-  const dailyExp = calcDailySleepExp({
-    dailySleepHours,
-    sleepExpBonus,
-    nature,
-  });
+  const dailyExp = calcDailySleepExp({ dailySleepMinutes, sleepExpBonus, nature });
+  if (dailyExp <= 0) return { kind: 'unavailable' };
 
-  if (dailyExp <= 0) {
-    // 睡眠EXPが0の場合は無限日必要（実質不可能）
-    return { requiredHours: Infinity, requiredDays: Infinity };
+  if (expToTarget <= dailyExp) {
+    let minutesMin = 0;
+    while (
+      minutesMin <= dailySleepMinutes
+      && calcSleepExp({ sleepMinutes: minutesMin, sleepExpBonus, nature }) < expToTarget
+    ) {
+      minutesMin++;
+    }
+    if (minutesMin > dailySleepMinutes) return { kind: 'unavailable' };
+
+    const requiredScore = calcScoreFromMinutes(minutesMin);
+    let minutesMax = minutesMin;
+    while (
+      minutesMax < dailySleepMinutes
+      && calcScoreFromMinutes(minutesMax + 1) === requiredScore
+    ) {
+      minutesMax++;
+    }
+    return {
+      kind: 'within-one-sleep',
+      requiredScore,
+      minutesMin,
+      minutesMax,
+    };
   }
 
-  // 二分探索でmarkForSleepと整合する日数を求める
-  // 「何日あればexpToTarget以上のEXPを稼げるか」を計算
+  // GSDを無視した日数は必ず到達可能な上限になる。
   let lo = 1;
-  let hi = Math.ceil(expToTarget / dailyExp) + 1000; // 十分大きな上限
+  let hi = Math.ceil(expToTarget / dailyExp);
+  if (!Number.isFinite(hi) || !Number.isSafeInteger(hi)) return { kind: 'unavailable' };
 
   while (lo < hi) {
     const mid = Math.floor((lo + hi) / 2);
-    const baseExp = dailyExp * mid;
-    const gsdBonus = includeGSD ? calcGSDBonus(mid) : 0;
-    const totalExp = baseExp + gsdBonus;
+    const totalExp = calcSleepExpForDays({
+      days: mid,
+      dailySleepMinutes,
+      sleepExpBonus,
+      nature,
+      includeGSD,
+    });
 
     if (totalExp >= expToTarget) {
       hi = mid;
@@ -232,12 +358,9 @@ export function calcSleepTimeForExp(params: {
   }
 
   const requiredDays = lo;
-  const requiredHours = requiredDays * dailySleepHours;
-
-  return {
-    requiredHours,
-    requiredDays,
-  };
+  const totalMinutes = requiredDays * dailySleepMinutes;
+  if (!Number.isFinite(totalMinutes)) return { kind: 'unavailable' };
+  return { kind: 'long-term-estimate', requiredDays, totalMinutes };
 }
 
 /**
@@ -253,7 +376,7 @@ export function calcSleepTimeForExp(params: {
  * @param boostKind アメブ種別（none, mini, full）
  * @param targetBoostCandy 目標まで行のアメブ数
  * @param targetNormalCandy 目標まで行の通常アメ数
- * @param sleepExp markForSleepの出力（睡眠で得られるEXP）
+ * @param sleepExp 目標時間を整数日へ切り上げた日数ぶんの睡眠EXP
  * @param expGot 現在の獲得済みEXP（デフォルト: 0）
  * @param dstExpInLevel 目標Lv内のEXP（デフォルト: 0）
  * @returns candyTarget（個数指定に設定すべき値）
@@ -286,152 +409,54 @@ export function calcCandyTargetFromSleepExp(params: {
   // 目標までの必要EXP（目標Lv内のEXPも含む）
   const expNeed = calcExp(srcLevel, dstLevel, expType) + dstExpInLevel - expGot;
 
-  // 目標まで行の合計アメ数
-  const maxCandy = targetBoostCandy + targetNormalCandy;
+  const targetSleepExp = Math.max(0, Math.floor(sleepExp));
+  const expToGainWithCandy = Math.max(0, expNeed - targetSleepExp);
+  if (expToGainWithCandy === 0) return 0;
 
-  // sleepExp >= expNeed なら candyTarget = 0（アメ不要）
-  if (sleepExp >= expNeed) {
-    return 0;
-  }
+  const candyExpTarget = locateExpTarget({
+    srcLevel,
+    dstLevel,
+    expType,
+    expGot,
+    expToGain: expToGainWithCandy,
+  });
+  const boostLimit = boostKind === 'none'
+    ? 0
+    : Math.max(0, Math.floor(targetBoostCandy));
+  const maxCandy = boostLimit + Math.max(0, Math.floor(targetNormalCandy));
 
-  // 二分探索で「(expNeed - sleepExp)以上のEXPを稼げる最小のcandyTarget」を求める
-  // candyTarget が小さいほど残EXPが大きい
-  // candyTarget=0 → 残EXP=expNeed
-  // candyTarget=maxCandy → 残EXP=0
+  // 仮想目標までアメブだけで届くなら、その最小個数が個数指定になる。
+  const boostOnly = calcExpAndCandy({
+    srcLevel,
+    dstLevel: candyExpTarget.level,
+    dstExpInLevel: candyExpTarget.expInLevel,
+    expType,
+    nature,
+    boost: boostKind,
+    expGot,
+  }).candy;
+  if (boostOnly <= boostLimit) return boostOnly;
 
-  let lo = 0;
-  let hi = maxCandy;
+  // アメブ上限を使い切った地点から、残りを通常アメで埋める。
+  const afterBoost = calcLevelByCandy({
+    srcLevel,
+    dstLevel: candyExpTarget.level,
+    dstExpInLevel: candyExpTarget.expInLevel,
+    expType,
+    nature,
+    boost: boostKind,
+    candy: boostLimit,
+    expGot,
+  });
+  const normalCandy = calcExpAndCandy({
+    srcLevel: afterBoost.level,
+    dstLevel: candyExpTarget.level,
+    dstExpInLevel: candyExpTarget.expInLevel,
+    expType,
+    nature,
+    boost: 'none',
+    expGot: afterBoost.expGot,
+  }).candy;
 
-  while (lo < hi) {
-    const mid = Math.floor((lo + hi) / 2);
-
-    // mid個のアメで得られるEXPを計算
-    const expFromCandy = calcExpFromCandyTarget(
-      srcLevel,
-      dstLevel,
-      expType,
-      nature,
-      boostKind,
-      targetBoostCandy,
-      targetNormalCandy,
-      mid,
-      expGot
-    );
-
-    // 残EXP = expNeed - expFromCandy
-    const remainingExp = expNeed - expFromCandy;
-
-    if (remainingExp <= sleepExp) {
-      // mid個で足りる（sleepExpでカバー可能な残EXPになる）
-      // より少ない個数でも可能か探る
-      hi = mid;
-    } else {
-      // mid個では足りない
-      lo = mid + 1;
-    }
-  }
-
-  return lo;
-}
-
-/**
- * candyTarget個のアメで得られるEXPを計算
- *
- * アメブ → 通常アメの順で投入し、candyTarget個分のEXPを計算
- */
-function calcExpFromCandyTarget(
-  srcLevel: number,
-  dstLevel: number,
-  expType: ExpType,
-  nature: ExpGainNature,
-  boostKind: BoostEvent,
-  targetBoostCandy: number,
-  targetNormalCandy: number,
-  candyTarget: number,
-  expGot: number
-): number {
-  if (candyTarget <= 0) {
-    return 0;
-  }
-
-  // candyTarget をアメブと通常アメに分配
-  // アメブ優先で使用
-  const boostToUse = Math.min(targetBoostCandy, candyTarget);
-  const normalToUse = Math.min(targetNormalCandy, candyTarget - boostToUse);
-
-  let totalExp = 0;
-  let level = srcLevel;
-  let carry = expGot;
-
-  // アメブを投入
-  if (boostToUse > 0 && boostKind !== 'none') {
-    let remaining = boostToUse;
-    while (remaining > 0 && level < dstLevel) {
-      const expPerCandy = calcExpPerCandy(level, nature, boostKind);
-      const requiredExp = calcExp(level, level + 1, expType) - carry;
-
-      if (requiredExp <= 0) {
-        carry = -requiredExp;
-        level++;
-        continue;
-      }
-
-      const requiredCandy = Math.ceil(requiredExp / expPerCandy);
-      const toUse = Math.min(requiredCandy, remaining);
-
-      totalExp += expPerCandy * toUse;
-      remaining -= toUse;
-
-      if (toUse >= requiredCandy) {
-        carry = expPerCandy * toUse - requiredExp;
-        level++;
-      } else {
-        carry += expPerCandy * toUse;
-        break;
-      }
-    }
-
-    // レベル上限到達後も残りがあれば加算
-    if (remaining > 0 && level >= dstLevel) {
-      const expPerCandy = calcExpPerCandy(dstLevel, nature, boostKind);
-      totalExp += expPerCandy * remaining;
-      carry += expPerCandy * remaining;
-    }
-  }
-
-  // 通常アメを投入
-  if (normalToUse > 0) {
-    let remaining = normalToUse;
-    while (remaining > 0 && level < dstLevel) {
-      const expPerCandy = calcExpPerCandy(level, nature, 'none');
-      const requiredExp = calcExp(level, level + 1, expType) - carry;
-
-      if (requiredExp <= 0) {
-        carry = -requiredExp;
-        level++;
-        continue;
-      }
-
-      const requiredCandy = Math.ceil(requiredExp / expPerCandy);
-      const toUse = Math.min(requiredCandy, remaining);
-
-      totalExp += expPerCandy * toUse;
-      remaining -= toUse;
-
-      if (toUse >= requiredCandy) {
-        carry = expPerCandy * toUse - requiredExp;
-        level++;
-      } else {
-        break;
-      }
-    }
-
-    // レベル上限到達後も残りがあれば加算
-    if (remaining > 0 && level >= dstLevel) {
-      const expPerCandy = calcExpPerCandy(dstLevel, nature, 'none');
-      totalExp += expPerCandy * remaining;
-    }
-  }
-
-  return totalExp;
+  return Math.min(maxCandy, boostLimit + normalCandy);
 }
