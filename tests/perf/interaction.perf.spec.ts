@@ -373,6 +373,20 @@ test('collects local fbl04 interaction timings', async ({ page }, testInfo) => {
   for (let iteration = 1; iteration <= REPEAT_COUNT; iteration++) {
     await measureAction(page, samples, 'calc-10x3', 'three-digit-species-candy-input', iteration, () => replaceWithThreeDigits(calc.getRowSpeciesCandyInput(firstRow), 300 + iteration));
   }
+  await collectPerfLogs(page, perfLogs);
+
+  // Cloudflare Web Analyticsで遅延が観測された直接input要素。
+  // 通常モードではなく実際のアメブ個数入力として測るため、計測外でミニブへ切り替える。
+  await calc.setBoostKind('mini');
+  await calc.waitForPlannerResult(60_000);
+  await clearBrowserMetrics(page);
+  for (let iteration = 1; iteration <= REPEAT_COUNT; iteration++) {
+    await measureAction(page, samples, 'calc-10x3-mini', 'three-digit-boost-candy-input', iteration, () => replaceWithThreeDigits(calc.getRowBoostCandyInput(firstRow), 100 + iteration));
+  }
+  await collectPerfLogs(page, perfLogs);
+  await calc.setBoostKind('none');
+  await calc.waitForPlannerResult(60_000);
+  await clearBrowserMetrics(page);
   for (let iteration = 1; iteration <= REPEAT_COUNT; iteration++) {
     const slot = iteration % 3;
     await measureAction(page, samples, 'calc-10x3', 'slot-switch', iteration, () => calc.clickSlotTab(slot));

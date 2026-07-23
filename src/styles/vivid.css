@@ -157,17 +157,15 @@ input:focus, select:focus, textarea:focus {
 /* ===== Box Tiles ===== */
 .boxTile {
   background-color: var(--surface);
-  border: 2px solid transparent;
+  border: 2px solid var(--type-color);
   border-radius: var(--radius-md);
-  transition: all 0.2s;
+  transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.2s;
 }
 
 .boxTile.boxTile--hover {
   background-color: var(--surface-alt);
-  border-color: var(--ring);
   transform: scale(1.05) rotate(-2deg);
   z-index: 10;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
 }
 
 /* ===== Chip Buttons ===== */
@@ -205,6 +203,12 @@ input:focus, select:focus, textarea:focus {
   background-color: rgba(16, 16, 16, 0.95);
   border-top: 4px solid var(--border);
   backdrop-filter: blur(8px);
+}
+
+/* ===== Box Detail ===== */
+.boxDetail__favBtn--on {
+  border-color: var(--star-color);
+  background: rgba(var(--accent-rgb), 0.08);
 }
 
 /* ===== Scrollbar ===== */

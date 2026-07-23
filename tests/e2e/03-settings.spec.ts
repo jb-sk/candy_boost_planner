@@ -5,6 +5,72 @@
 import { test, expect } from '@playwright/test';
 import { SettingsModalPage } from './pages/SettingsModalPage';
 import { CalcPanelPage } from './pages/CalcPanelPage';
+import { readFile } from 'node:fs/promises';
+
+function makeBackup(totalShards = 12345) {
+  return {
+    format: 'candy-boost-planner-backup',
+    schemaVersion: 1,
+    exportedAt: '2026-07-22T07:30:00.000Z',
+    data: {
+      box: { entries: [] },
+      globalSettings: {
+        totalShards,
+        sleepSettings: { dailySleepHours: 7.5, sleepExpBonusCount: 2, includeGSD: false },
+        candyInventory: { schemaVersion: 1, universal: { s: 5, m: 6, l: 7 }, typeCandy: {}, species: {} },
+      },
+      calculator: { activeSlotIndex: 2, slots: [null, null, null] },
+    },
+  };
+}
+
+function makeFullBackup() {
+  const value = makeBackup(777777);
+  const timestamp = '2026-07-22T07:30:00.000Z';
+  const types = ['Electric', 'Electric', 'Ground'];
+  value.data.box.entries = [0, 1, 2].map((index) => ({
+    id: `box-${index}`,
+    rawText: '',
+    label: `Backup Box ${index}`,
+    favorite: index === 0,
+    derived: { pokedexId: 25 + index, form: 0, level: 10 + index, expType: 600, expGainNature: 'normal', natureName: '' },
+    planner: { level: 10 + index, expRemaining: 100 + index, sleepHours: index * 10, expType: 600, expGainNature: 'normal' },
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  })) as never[];
+  value.data.globalSettings.candyInventory = {
+    schemaVersion: 1,
+    universal: { s: 11, m: 22, l: 33 },
+    typeCandy: { Electric: { s: 44, m: 55 }, Ground: { s: 66, m: 77 } },
+    species: { '25': 88, '26': 99, '27': 111 },
+  };
+  value.data.calculator.activeSlotIndex = 1;
+  value.data.calculator.slots = [0, 1, 2].map((index) => ({
+    slotId: `slot-${index}`,
+    savedAt: timestamp,
+    rows: [{
+      id: `row-${index}`,
+      boxId: `box-${index}`,
+      pokedexId: 25 + index,
+      pokemonType: types[index],
+      title: `Backup Slot ${index}`,
+      srcLevel: 10 + index,
+      dstLevel: 11 + index,
+      expRemaining: 100 + index,
+      expType: 600,
+      nature: 'normal',
+      boostReachLevel: 11 + index,
+      boostRatioPct: 100,
+      mode: 'targetLevel',
+      sleepHours: index * 10,
+    }],
+    activeRowId: `row-${index}`,
+    boostKind: (['full', 'mini', 'none'] as const)[index],
+    boostCandyRemaining: index === 2 ? null : 100 + index,
+    itemCompareMode: (['surplusFirst', 'surplusGateFirst', 'legacyImproved'] as const)[index],
+  })) as never[];
+  return value;
+}
 
 // ============================================================
 // デスクトップ版テスト
@@ -24,7 +90,7 @@ test.describe('03-settings デスクトップ', () => {
 
     await settings.openSettingsFromDesktop();
     await settings.expectModalVisible();
-    await expect(settings.modalTitle).toContainText('設定');
+    await expect(settings.inventoryTab).toContainText('設定');
   });
 
   test('2. [PC] ×ボタンでモーダルが閉じる', async ({ page }) => {
@@ -381,6 +447,146 @@ test.describe('03-settings デスクトップ', () => {
     // input[type="number"] min="0" により負の値は無効
     expect(value).toBeGreaterThanOrEqual(0);
   });
+
+  test('30. データのバックアップは在庫・睡眠設定と並列のタブになっており、タブ切替で表示できる', async ({ page }) => {
+    const settings = new SettingsModalPage(page);
+    await settings.openSettingsFromDesktop();
+    const section = page.getByTestId('data-backup-section');
+    await expect(settings.globalSection).toBeVisible();
+    await expect(section).not.toBeVisible();
+    await expect(settings.inventoryTab).toHaveAttribute('aria-selected', 'true');
+    await settings.inventoryTab.focus();
+    await settings.inventoryTab.press('ArrowRight');
+    await expect(section).toBeVisible();
+    await expect(settings.globalSection).not.toBeVisible();
+    await expect(settings.backupTab).toHaveAttribute('aria-selected', 'true');
+    await expect(settings.backupTab).toBeFocused();
+    await expect(page.getByTestId('data-backup-copy')).toBeVisible();
+  });
+
+  test('31. 通常貼り付けのプレビューとキャンセルは既存データを変更しない', async ({ page }) => {
+    const settings = new SettingsModalPage(page);
+    await settings.openSettingsFromDesktop();
+    await settings.switchToBackupTab();
+    const before = await page.evaluate(() => JSON.stringify(localStorage));
+    await page.getByTestId('data-backup-input').fill(JSON.stringify(makeBackup()));
+    await page.getByTestId('data-backup-import').click();
+    await expect(page.getByTestId('data-backup-preview')).toContainText('12345'.replace('12345', '0'));
+    await expect(page.getByTestId('data-backup-preview')).toContainText('0 / 0 / 0');
+    await page.getByTestId('data-backup-input').fill(JSON.stringify(makeBackup(999)));
+    await expect(page.getByTestId('data-backup-preview')).toHaveCount(0);
+    expect(await page.evaluate(() => JSON.stringify(localStorage))).toBe(before);
+
+    await page.getByTestId('data-backup-import').click();
+    await page.getByTestId('data-backup-cancel').click();
+    await expect(page.getByTestId('data-backup-preview')).toHaveCount(0);
+    expect(await page.evaluate(() => JSON.stringify(localStorage))).toBe(before);
+  });
+
+  test('32. Clipboard読取とファイル選択が同じvalidatorへ入り、確定後reloadして復元される', async ({ page }) => {
+    const settings = new SettingsModalPage(page);
+    await settings.openSettingsFromDesktop();
+    await settings.switchToBackupTab();
+    const text = JSON.stringify(makeBackup(24680));
+    await page.evaluate((clipboardText) => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { readText: async () => clipboardText, writeText: async () => undefined },
+      });
+    }, text);
+    await page.getByTestId('data-backup-paste').click();
+    await page.getByTestId('data-backup-import').click();
+    await expect(page.getByTestId('data-backup-preview')).toBeVisible();
+    await page.getByTestId('data-backup-cancel').click();
+
+    await page.getByTestId('data-backup-file').setInputFiles({ name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(text) });
+    await page.getByTestId('data-backup-import').click();
+    await expect(page.getByTestId('data-backup-preview')).toBeVisible();
+    await page.getByTestId('data-backup-restore').click();
+    await page.waitForLoadState('domcontentloaded');
+
+    await settings.openSettingsFromDesktop();
+    expect((await settings.getTotalShards()).replace(/,/g, '')).toBe('24680');
+    expect(await settings.getUniversalCandy('S')).toBe(5);
+    expect(await settings.getDailySleepHours()).toBe(7.5);
+  });
+
+  test('33. Clipboardコピーとファイル保存は同じ意味内容を出力する', async ({ page }) => {
+    const settings = new SettingsModalPage(page);
+    await settings.openSettingsFromDesktop();
+    await settings.switchToBackupTab();
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: async (text: string) => { (window as Window & { copiedBackup?: string }).copiedBackup = text; },
+          readText: async () => '',
+        },
+      });
+    });
+    await page.getByTestId('data-backup-copy').click();
+    const copied = await page.evaluate(() => (window as Window & { copiedBackup?: string }).copiedBackup ?? '');
+    await expect(page.getByTestId('data-backup-manual-copy')).toHaveCount(0);
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByTestId('data-backup-download').click();
+    const download = await downloadPromise;
+    const path = await download.path();
+    expect(path).not.toBeNull();
+    const downloaded = await readFile(path!, 'utf8');
+    expect(JSON.parse(downloaded).data).toEqual(JSON.parse(copied).data);
+  });
+
+  test('35. Clipboard拒否時だけ手動コピー欄を表示する', async ({ page }) => {
+    const settings = new SettingsModalPage(page);
+    await settings.openSettingsFromDesktop();
+    await settings.switchToBackupTab();
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: async () => { throw new Error('denied'); }, readText: async () => '' },
+      });
+    });
+    await page.getByTestId('data-backup-copy').click();
+    await expect(page.getByTestId('data-backup-manual-copy')).toBeVisible();
+    await expect(page.getByTestId('data-backup-manual-copy')).toHaveAttribute('readonly', '');
+  });
+
+  test('36. Box・全設定・異なる3スロットを復元し、各スロットが通常計算を完了して再エクスポートできる', async ({ page }) => {
+    const settings = new SettingsModalPage(page);
+    const expected = makeFullBackup();
+    await settings.openSettingsFromDesktop();
+    await settings.switchToBackupTab();
+    await page.getByTestId('data-backup-input').fill(JSON.stringify(expected));
+    await page.getByTestId('data-backup-import').click();
+    await page.getByTestId('data-backup-restore').click();
+    await page.waitForLoadState('domcontentloaded');
+
+    const calc = new CalcPanelPage(page);
+    for (let index = 0; index < 3; index++) {
+      await calc.clickSlotTab(index);
+      await expect(page.getByTestId('calc-row')).toContainText(`Backup Box ${index}`);
+      await expect(page.getByTestId('calc-export-button')).toBeEnabled({ timeout: 10_000 });
+    }
+
+    await settings.openSettingsFromDesktop();
+    await settings.switchToBackupTab();
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: async (text: string) => { (window as Window & { copiedFullBackup?: string }).copiedFullBackup = text; },
+          readText: async () => '',
+        },
+      });
+    });
+    await page.getByTestId('data-backup-copy').click();
+    const restored = JSON.parse(await page.evaluate(() => (window as Window & { copiedFullBackup?: string }).copiedFullBackup ?? '{}'));
+    expect(restored.data.box).toEqual(expected.data.box);
+    expect(restored.data.globalSettings).toEqual(expected.data.globalSettings);
+    const withoutSavedAt = (slots: Array<Record<string, unknown>>) => slots.map(({ savedAt: _savedAt, ...slot }) => slot);
+    expect(withoutSavedAt(restored.data.calculator.slots)).toEqual(withoutSavedAt(expected.data.calculator.slots as never[]));
+    expect(restored.data.calculator.activeSlotIndex).toBe(2);
+  });
 });
 
 // ============================================================
@@ -401,7 +607,7 @@ test.describe('03-settings モバイル', () => {
 
     await settings.openSettingsFromMobile();
     await settings.expectModalVisible();
-    await expect(settings.modalTitle).toContainText('設定');
+    await expect(settings.inventoryTab).toContainText('設定');
   });
 
   test('[Mobile] ESCキーでモーダルが閉じる', async ({ page }) => {
@@ -465,5 +671,17 @@ test.describe('03-settings モバイル', () => {
 
     // スクロールが発生したことを確認
     expect(afterScroll).toBeGreaterThan(initialScroll);
+  });
+
+  test('34. [Mobile] バックアップ操作領域がモーダル幅からはみ出さない', async ({ page }) => {
+    const settings = new SettingsModalPage(page);
+    await settings.openSettingsFromMobile();
+    await settings.switchToBackupTab();
+    const modalBox = await settings.modal.boundingBox();
+    const sectionBox = await page.getByTestId('data-backup-section').boundingBox();
+    expect(modalBox).not.toBeNull();
+    expect(sectionBox).not.toBeNull();
+    expect(sectionBox!.x).toBeGreaterThanOrEqual(modalBox!.x);
+    expect(sectionBox!.x + sectionBox!.width).toBeLessThanOrEqual(modalBox!.x + modalBox!.width + 1);
   });
 });

@@ -35,6 +35,7 @@ type OracleMetrics = {
   zeroSurplusCount: number;
   speciesUsed: number;
   rawSurplus: number;
+  reachedSurplus: number;
   normalizedSurplus: number;
   surplusExp: number;
   speciesLex: number;
@@ -117,6 +118,7 @@ function emptyMetrics(): OracleMetrics {
     zeroSurplusCount: 0,
     speciesUsed: 0,
     rawSurplus: 0,
+    reachedSurplus: 0,
     normalizedSurplus: 0,
     surplusExp: 0,
     speciesLex: 0,
@@ -174,7 +176,7 @@ function canConsume(usage: OracleUsage, input: LevelPlannerInput): boolean {
 
 function candidateUsesZeroSurplusPriority(candidate: OracleCandidate, mode: SolverItemCompareMode): boolean {
   return Boolean(candidate.pokemon.preferZeroSurplus)
-    || ((mode === 'legacyImproved' || mode === 'surplusGateFirst') && candidate.line.level >= maxLevel && candidate.line.expInLevel === 0);
+    || (usesZeroSurplusPriority(mode) && candidate.line.level >= maxLevel && candidate.line.expInLevel === 0);
 }
 function candidateAchievedZeroSurplusPriority(candidate: OracleCandidate, mode: SolverItemCompareMode): boolean {
   return candidateUsesZeroSurplusPriority(candidate, mode) && candidate.line.surplusCandyValue === 0;
@@ -187,6 +189,7 @@ function appendMetrics(metrics: OracleMetrics, candidate: OracleCandidate, mode:
     zeroSurplusCount: metrics.zeroSurplusCount + (candidateAchievedZeroSurplusPriority(candidate, mode) ? 1 : 0),
     speciesUsed: metrics.speciesUsed + candidate.line.candySupply.species,
     rawSurplus: metrics.rawSurplus + candidate.line.surplusCandyValue,
+    reachedSurplus: metrics.reachedSurplus + (candidate.line.targetReached ? candidate.line.surplusCandyValue : 0),
     normalizedSurplus: metrics.normalizedSurplus + (candidate.line.surplusCandyValue <= MAX_ACCEPTABLE_SURPLUS ? 0 : candidate.line.surplusCandyValue),
     surplusExp: metrics.surplusExp + candidate.line.surplusExp,
     speciesLex: metrics.speciesLex - candidate.line.candySupply.species * candidate.pokemon.priorityIndex,
@@ -209,6 +212,12 @@ function buildPlan(choices: OracleCandidate[], mode: SolverItemCompareMode): Ora
   return { choices, usage, reachedPrefixCount, boundary, metrics };
 }
 
+function satisfiesSurplusFirstGate(plan: OraclePlan): boolean {
+  return plan.choices
+    .slice(0, Math.min(plan.choices.length, plan.reachedPrefixCount + (plan.boundary ? 1 : 0)))
+    .every(choice => choice.line.surplusCandyValue <= MAX_ACCEPTABLE_SURPLUS);
+}
+
 function compareLevel(a: { level: number; expInLevel: number }, b: { level: number; expInLevel: number }): number {
   return a.level - b.level || a.expInLevel - b.expInLevel;
 }
@@ -216,11 +225,13 @@ function compareLevel(a: { level: number; expInLevel: number }, b: { level: numb
 function compareCoreAllocationPlan(a: OraclePlan, b: OraclePlan, mode: SolverItemCompareMode): number {
   if (mode === 'surplusFirst') {
     if (a.reachedPrefixCount !== b.reachedPrefixCount) return a.reachedPrefixCount > b.reachedPrefixCount ? 1 : -1;
+    if (a.metrics.reachedSurplus !== b.metrics.reachedSurplus) return a.metrics.reachedSurplus < b.metrics.reachedSurplus ? 1 : -1;
     if (a.boundary && b.boundary) {
       const boundary = compareLevel(a.boundary.line, b.boundary.line);
       if (boundary) return boundary > 0 ? 1 : -1;
     } else if (!a.boundary && b.boundary) return 1;
     else if (a.boundary && !b.boundary) return -1;
+    if (a.metrics.zeroSurplusCount !== b.metrics.zeroSurplusCount) return a.metrics.zeroSurplusCount > b.metrics.zeroSurplusCount ? 1 : -1;
     if (a.metrics.rawSurplus !== b.metrics.rawSurplus) return a.metrics.rawSurplus < b.metrics.rawSurplus ? 1 : -1;
     const item = compareNumbers(a.metrics.itemPriority, b.metrics.itemPriority);
     if (item) return item;
@@ -256,11 +267,13 @@ function compareCoreAllocationPlan(a: OraclePlan, b: OraclePlan, mode: SolverIte
 function compareFeasibilityPlan(a: OraclePlan, b: OraclePlan, mode: SolverItemCompareMode): number {
   if (mode === 'surplusFirst') {
     if (a.reachedPrefixCount !== b.reachedPrefixCount) return a.reachedPrefixCount > b.reachedPrefixCount ? 1 : -1;
+    if (a.metrics.reachedSurplus !== b.metrics.reachedSurplus) return a.metrics.reachedSurplus < b.metrics.reachedSurplus ? 1 : -1;
     if (a.boundary && b.boundary) {
       const boundary = compareLevel(a.boundary.line, b.boundary.line);
       if (boundary) return boundary > 0 ? 1 : -1;
     } else if (!a.boundary && b.boundary) return 1;
     else if (a.boundary && !b.boundary) return -1;
+    if (a.metrics.zeroSurplusCount !== b.metrics.zeroSurplusCount) return a.metrics.zeroSurplusCount > b.metrics.zeroSurplusCount ? 1 : -1;
     if (a.metrics.rawSurplus !== b.metrics.rawSurplus) return a.metrics.rawSurplus < b.metrics.rawSurplus ? 1 : -1;
     return 0;
   }
@@ -273,8 +286,10 @@ function compareFeasibilityPlan(a: OraclePlan, b: OraclePlan, mode: SolverItemCo
 
 function compareFixedDemandSupplyPlan(a: OraclePlan, b: OraclePlan, mode: SolverItemCompareMode): number {
   if (a.metrics.speciesUsed !== b.metrics.speciesUsed) return a.metrics.speciesUsed > b.metrics.speciesUsed ? 1 : -1;
-  if (mode === 'surplusFirst' && a.metrics.rawSurplus !== b.metrics.rawSurplus) {
-    return a.metrics.rawSurplus < b.metrics.rawSurplus ? 1 : -1;
+  if (mode === 'surplusFirst') {
+    if (a.metrics.reachedSurplus !== b.metrics.reachedSurplus) return a.metrics.reachedSurplus < b.metrics.reachedSurplus ? 1 : -1;
+    if (a.metrics.zeroSurplusCount !== b.metrics.zeroSurplusCount) return a.metrics.zeroSurplusCount > b.metrics.zeroSurplusCount ? 1 : -1;
+    if (a.metrics.rawSurplus !== b.metrics.rawSurplus) return a.metrics.rawSurplus < b.metrics.rawSurplus ? 1 : -1;
   }
   if (isLegacyLikeMode(mode)) {
     if (a.metrics.zeroSurplusCount !== b.metrics.zeroSurplusCount) return a.metrics.zeroSurplusCount > b.metrics.zeroSurplusCount ? 1 : -1;
@@ -659,9 +674,7 @@ function solveByCoreAllocationOracle(rawInput: LevelPlannerInput, mode: SolverIt
   const visit = (index: number, choices: OracleCandidate[], usage: OracleUsage): void => {
     if (index === pokemonList.length) {
       const plan = buildPlan(choices, mode);
-      if (mode === 'surplusFirst' && choices
-        .slice(0, Math.min(choices.length, plan.reachedPrefixCount + 1))
-        .some(choice => choice.line.surplusCandyValue > MAX_ACCEPTABLE_SURPLUS)) return;
+      if (mode === 'surplusFirst' && !satisfiesSurplusFirstGate(plan)) return;
       planCount++;
       if (!best || compareCoreAllocationPlan(plan, best, mode) > 0) best = plan;
       return;
@@ -693,9 +706,7 @@ function solveByFeasibilityOracle(rawInput: LevelPlannerInput, mode: SolverItemC
   const visit = (index: number, choices: OracleCandidate[], usage: OracleUsage): void => {
     if (index === pokemonList.length) {
       const plan = buildPlan(choices, mode);
-      if (mode === 'surplusFirst' && choices
-        .slice(0, Math.min(choices.length, plan.reachedPrefixCount + 1))
-        .some(choice => choice.line.surplusCandyValue > MAX_ACCEPTABLE_SURPLUS)) return;
+      if (mode === 'surplusFirst' && !satisfiesSurplusFirstGate(plan)) return;
       planCount++;
       if (!best || compareFeasibilityPlan(plan, best, mode) > 0) best = plan;
       return;
@@ -742,6 +753,7 @@ function solveByFixedDemandSupplyOracle(rawInput: LevelPlannerInput, mode: Solve
     if (index === pokemonList.length) {
       const plan = buildPlan(choices, mode);
       if (!sameFixedDemandShape(plan, fixedDemand)) return;
+      if (mode === 'surplusFirst' && !satisfiesSurplusFirstGate(plan)) return;
       planCount++;
       if (!best || compareFixedDemandSupplyPlan(plan, best, mode) > 0) best = plan;
       return;

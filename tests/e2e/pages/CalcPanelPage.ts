@@ -315,13 +315,16 @@ export class CalcPanelPage {
 
   async getRowRemainingExp(row: Locator): Promise<string> {
     const usedRow = this.getRowUsedRow(row);
-    const res = usedRow.locator('.calcRow__res').filter({ hasText: '残EXP' });
-    if (await res.count() === 0) {
-      const text = await usedRow.textContent();
-      return text?.match(/あとEXP\s*([0-9,]+)/)?.[1]?.trim() ?? '';
+    const remainingRes = usedRow.locator(
+      'xpath=.//span[contains(concat(" ", normalize-space(@class), " "), " calcRow__k ")][normalize-space()="残EXP"]/parent::span'
+    ).first();
+    if (await remainingRes.count() > 0) {
+      const numText = await remainingRes.locator('.calcRow__num').first().textContent();
+      return numText?.trim() ?? '';
     }
-    const numText = await res.locator('.calcRow__num').first().textContent();
-    return numText?.trim() ?? '';
+    const text = await usedRow.textContent();
+    return text?.match(/あとEXP\s*([0-9,]+)/)?.[1]?.trim()
+      ?? '';
   }
 
   async getRowSleepTime(row: Locator): Promise<string> {

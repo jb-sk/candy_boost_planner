@@ -410,7 +410,7 @@
   gap: 8px;
 }
 
-.boxAdvanced__section > .btn {
+.boxAdvanced__section>.btn {
   align-self: start;
 }
 
@@ -514,161 +514,241 @@
 .boxTile {
   position: relative;
   background: var(--paper);
-  border: 1px solid var(--border);
+  --type-color: var(--border);
+  --type-shadow: 0 0 transparent;
+  border: 1px solid var(--type-color);
   border-radius: var(--radius-md);
-  padding: 10px 12px;
-  box-shadow: var(--shadow-sm);
-  cursor: pointer;
+  box-shadow: var(--type-shadow);
   transition: border-color 0.1s, box-shadow 0.1s;
-  text-align: left;
-  /* reset button styles */
-  -webkit-appearance: none;
-  appearance: none;
-  font: inherit;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   color: var(--ink);
-  /* 2-col grid: name left (2 rows), fav top-right, lv bottom-right */
-  display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-rows: auto auto;
-  gap: 0 8px;
-  align-items: start;
   /* 数百〜1000体時: 画面外タイルのレイアウト/描画をブラウザが省略しやすくする（高さは概算） */
   content-visibility: auto;
   contain-intrinsic-size: auto 64px;
 }
 
-.boxTile.boxTile--hover {
-  border-color: rgba(var(--accent-rgb), 0.4);
+.boxTile__select {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 7px 12px 11px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  box-shadow: none;
+  -webkit-appearance: none;
+  appearance: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  overflow: hidden;
+  /* 1行目: Lv（左）とアイコン行（右）。2行目: 名前（1行、はみ出しは省略）。
+     .boxListはalign-items省略＝既定のstretchのため、同じグリッド行の他タイルに
+     高さを引き伸ばされることがある。justify-content:centerで余白を上下均等に配分する。 */
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
 }
 
-.boxTile--active {
-  border-color: var(--accent);
-  border-width: 2px;
-  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.25), var(--shadow-md);
-  transform: scale(1.02);
-  z-index: 10;
+.boxTile__select:active {
+  transform: none;
+  box-shadow: none;
+}
+
+.boxTile__select:focus-visible,
+.boxTile__favZone:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.boxTile__topRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* ☑（計算機登録）と★（お気に入り）。どちらも無ければ空のまま高さ0に潰れる。 */
+.boxTile__iconRow {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: 8px;
+}
+
+.boxTile__iconRow > * + * {
+  margin-left: 4px;
 }
 
 .boxTile__name {
-  grid-row: 1 / -1;
-  grid-column: 1;
-  margin: 0;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 4px 0 0;
   font-family: var(--font-heading);
   font-weight: 700;
   font-size: 14px;
   line-height: 1.3;
   min-width: 0;
-  /* Allow 2-line wrap, then ellipsis */
+  /* 1行のみ表示し、はみ出した分は省略記号にする */
   overflow: hidden;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  align-self: center;
-}
-
-.boxTile__fav {
-  grid-row: 1;
-  grid-column: 2;
-  display: inline-flex;
-  justify-self: end;
-  width: 16px;
-  height: 16px;
-  color: var(--star-color);
-}
-
-.boxTile__fav svg {
-  width: 100%;
-  height: 100%;
-  display: block;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .boxTile__lv {
-  grid-row: 2;
-  grid-column: 2;
-  justify-self: end;
+  flex-shrink: 0;
   white-space: nowrap;
   font-family: var(--font-body);
   font-size: 12px;
   color: rgba(var(--ink-rgb), 0.72);
 }
 
-/* No star → Lv spans both rows and centers vertically */
-.boxTile:not(:has(.boxTile__fav)) .boxTile__lv {
-  grid-row: 1 / -1;
-  align-self: center;
+/* ★お気に入り／☑計算機登録: 色以外は共通の小アイコン */
+.boxTile__fav,
+.boxTile__calcMark {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
 }
 
-/* ===== Type colours (18 types) ===== */
+.boxTile__fav svg,
+.boxTile__calcMark svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.boxTile__fav {
+  color: var(--star-color);
+}
+
+.boxTile__calcMark {
+  color: var(--type-color);
+}
+
+/* Right-quarter tap/click zone toggles favorite without opening the detail panel */
+.boxTile__favZone {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 25%;
+  z-index: 1;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  -webkit-appearance: none;
+  appearance: none;
+  transform: none;
+  cursor: pointer;
+}
+
+.boxTile__favZone:active {
+  transform: none;
+  box-shadow: none;
+}
+
+/* ===== Type colours (18 types) =====
+   --type-color drives both the border and the drop shadow below;
+   each type only needs to set this one variable. */
+.boxTile[data-type]:not([data-type="unknown"]) {
+  --type-shadow: 2px 3px 0 1px var(--type-color);
+}
+
 .boxTile[data-type="Normal"] {
-  border-left: 5px solid #a8a77a;
+  --type-color: #ababac;
 }
 
 .boxTile[data-type="Fire"] {
-  border-left: 5px solid #ee8130;
+  --type-color: #ec703f;
 }
 
 .boxTile[data-type="Water"] {
-  border-left: 5px solid #6390f0;
+  --type-color: #4e98f6;
 }
 
 .boxTile[data-type="Electric"] {
-  border-left: 5px solid #f7d02c;
+  --type-color: #f9df4a;
 }
 
 .boxTile[data-type="Grass"] {
-  border-left: 5px solid #7ac74c;
+  --type-color: #6dc545;
 }
 
 .boxTile[data-type="Ice"] {
-  border-left: 5px solid #96d9d6;
+  --type-color: #75dcfa;
 }
 
 .boxTile[data-type="Fighting"] {
-  border-left: 5px solid #c22e28;
+  --type-color: #f2ad3e;
 }
 
 .boxTile[data-type="Poison"] {
-  border-left: 5px solid #a33ea1;
+  --type-color: #9353cf;
 }
 
 .boxTile[data-type="Ground"] {
-  border-left: 5px solid #e2bf65;
+  --type-color: #a87e46;
 }
 
 .boxTile[data-type="Flying"] {
-  border-left: 5px solid #a98ff3;
+  --type-color: #a6d1fa;
 }
 
 .boxTile[data-type="Psychic"] {
-  border-left: 5px solid #f95587;
+  --type-color: #ec7187;
 }
 
 .boxTile[data-type="Bug"] {
-  border-left: 5px solid #a6b91a;
+  --type-color: #aaaf44;
 }
 
 .boxTile[data-type="Rock"] {
-  border-left: 5px solid #b6a136;
+  --type-color: #c3c099;
 }
 
 .boxTile[data-type="Ghost"] {
-  border-left: 5px solid #735797;
+  --type-color: #6d4972;
 }
 
 .boxTile[data-type="Dragon"] {
-  border-left: 5px solid #6f35fc;
+  --type-color: #5b68da;
 }
 
 .boxTile[data-type="Dark"] {
-  border-left: 5px solid #705746;
+  --type-color: #514a4b;
 }
 
 .boxTile[data-type="Steel"] {
-  border-left: 5px solid #b7b7ce;
+  --type-color: #80b6d9;
 }
 
 .boxTile[data-type="Fairy"] {
-  border-left: 5px solid #d685ad;
+  --type-color: #f3b7fa;
+}
+
+/* box-shadowは指定しない: .boxTile本体が既にvar(--type-shadow)を持つため不要。
+   選択中タイルは常にboxTile--hoverも同時に付与される。各テーマの.boxTile--hoverは
+   @importの都合でこのルールよりソース順が後になるため、box-shadow/transform等を
+   上書きすることがある（例: cyberpunkのinsetグロー、vividのscale+rotate）。 */
+.boxTile.boxTile--active {
+  border-width: 3px;
+  z-index: 10;
 }
 
 /* ===== Detail Panel (inline within grid) ===== */
@@ -815,6 +895,35 @@
   min-width: 0;
 }
 
+.boxDetail__favBtn {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.boxDetail__favBtn svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.boxDetail__favBtn:hover {
+  border-color: rgba(var(--ink-rgb), 0.35);
+}
+
+.boxDetail__favBtn--on {
+  color: var(--star-color);
+}
+
 /* --- Specs: flatten into parent grid --- */
 .boxDetail__specs {
   display: contents;
@@ -944,6 +1053,7 @@
     padding-top: 0;
     padding-bottom: 0;
   }
+
   to {
     max-height: 300px;
     opacity: 1;

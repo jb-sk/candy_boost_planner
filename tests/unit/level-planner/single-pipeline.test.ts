@@ -995,13 +995,13 @@ describe('単一最適化パイプライン', () => {
     expect(line.surplusCandyValue).toBe(0);
   });
 
-  it('バッグ圧縮はLvMAX到達行へ余り0優先を自動適用する', () => {
+  it.each(['surplusFirst', 'surplusGateFirst', 'legacyImproved'] as const)('%sはLvMAX到達行で余り0を選べる場合は余り0にする', itemCompareMode => {
     const result = solveLevelPlan({
       pokemonList: [{ pokemonId: 'auto-lvmax-zero-mode', pokedexId: 1014, name: 'LvMAX自動余り0', type: 'dragon' as const, currentLevel: 69, currentExpInLevel: 0, targetLevel: 70, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 0 }],
       dreamShards: Infinity,
       boost: { kind: 'none' as const, limit: 0 },
       candyInventory: { species: { '1014': 0 }, typeCandy: { dragon: { s: 0, m: 0 } }, universal: { s: 44, m: 1, l: 0 } },
-      options: { itemCompareMode: 'legacyImproved' as const },
+      options: { itemCompareMode },
     });
 
     const line = result.pokemonResults[0].reachableLine;
@@ -1232,7 +1232,7 @@ describe('単一最適化パイプライン', () => {
     expect(result.summary.boundaryPokemonId).toBe('surplus-drop-3');
   });
 
-  it('余り最小は各行余り1なら全体余り0の短いprefixより到達数を優先する', () => {
+  it('余り最小は各行余り2以内なら到達数を守って上位余りを最小化する', () => {
     const basePokemon = { type: 'normal' as const, currentLevel: 10, currentExpInLevel: 0, targetLevel: 11, targetExpInLevel: 0, expType: 600 as const, nature: 'normal' as const, candyTarget: { totalCandyUnits: 19 }, requestedBoostCandy: 0, boostAllowed: true };
     const result = solveLevelPlan({
       pokemonList: [

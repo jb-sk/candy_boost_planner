@@ -12,7 +12,7 @@ pnpm run perf:interaction
 
 - 280→300件Box: AddPokemonModalの追加ボタンでBox・計算機へ追加
 - 300件Box: お気に入り、3桁入力、削除、undo、redo
-- 10行×3スロット: 3桁入力、種族アメ入力、スロット切替、削除、undo
+- 10行×3スロット: 残りEXP・種族アメの3桁入力、ミニブのアメブ個数3桁入力、スロット切替、削除、undo
 - アメ在庫: 万能アメ、タイプアメの3桁入力
 
 結果は `_local/fbl04-interaction-perf/<timestamp>/summary.tsv` と `detail.json` に保存されます。閾値超過でテストを失敗させず、変更前後の比較資料として使用します。
@@ -28,3 +28,15 @@ Remove-Item Env:FBL04_PERF_REPEAT
 ```
 
 `eventDurationP75UpperBoundMs` はEvent Timingのp75です。16ms未満で記録されなかった操作は、過小評価を避けて16msとして集計します。`automationWallMs` はPlaywrightとの通信と待機を含むため、INPとして扱いません。
+
+## モバイル初期表示のCLS再現
+
+Cloudflare Web Analyticsで外れ値が観測された、保存済み10行の初期表示と計算結果反映を、アメブ・ミニブ・通常モードと在庫あり・在庫なし・未使用0の条件で自動計測します。
+360×780のviewportでLayout Instability APIを監視し、CLS、シフト元要素、計算ログ、計算機コンテナの寸法変化を同じ時系列で保存します。
+
+```powershell
+pnpm run perf:cls
+```
+
+結果は `_local/fbl04-cls-perf/<timestamp>/detail.json` に保存されます。通常のE2EおよびCIからは実行されません。
+幅を変える場合は `FBL04_CLS_WIDTH`（280以上）を指定できます。

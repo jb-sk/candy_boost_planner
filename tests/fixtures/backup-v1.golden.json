@@ -1,0 +1,26 @@
+{
+  "format": "candy-boost-planner-backup",
+  "schemaVersion": 1,
+  "exportedAt": "2026-07-22T07:30:00.000Z",
+  "data": {
+    "box": { "entries": [] },
+    "globalSettings": {
+      "totalShards": 4306572,
+      "sleepSettings": {
+        "dailySleepHours": 8.5,
+        "sleepExpBonusCount": 0,
+        "includeGSD": true
+      },
+      "candyInventory": {
+        "schemaVersion": 1,
+        "universal": { "s": 50, "m": 102, "l": 9 },
+        "typeCandy": {},
+        "species": {}
+      }
+    },
+    "calculator": {
+      "activeSlotIndex": 0,
+      "slots": [null, null, null]
+    }
+  }
+}

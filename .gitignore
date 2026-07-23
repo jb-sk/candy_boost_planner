@@ -42,7 +42,7 @@ Thumbs.db
 nul
 
 # VS Code workspace noise (keep shareable configs)
-.vscode/*
+.vscode/
 
 # Python
 .ruff_cache/

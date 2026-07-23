@@ -1,180 +1,228 @@
 <template>
   <div class="modal-overlay settings-overlay" data-testid="settings-overlay" @click.self="$emit('close')">
-    <div class="modal" data-testid="settings-modal">
+    <div class="modal" role="dialog" aria-modal="true" :aria-label="t('common.settings')" data-testid="settings-modal">
       <header class="modal__header">
-        <h2 class="modal__title" data-testid="settings-modal-title">{{ t("common.settings") }}</h2>
+        <div class="settingsTabs" role="tablist" :aria-label="t('common.settings')" data-testid="settings-tabs">
+          <button
+            class="settingsTab"
+            :class="{ 'settingsTab--active': activeTab === 'inventory' }"
+            id="settings-tab-inventory"
+            role="tab"
+            :aria-selected="activeTab === 'inventory'"
+            aria-controls="settings-panel-inventory"
+            :tabindex="activeTab === 'inventory' ? 0 : -1"
+            ref="inventoryTabRef"
+            data-testid="settings-tab-inventory"
+            type="button"
+            @click="activeTab = 'inventory'"
+            @keydown="onTabKeydown"
+          >{{ t("common.settings") }}</button>
+          <button
+            class="settingsTab"
+            :class="{ 'settingsTab--active': activeTab === 'backup' }"
+            id="settings-tab-backup"
+            role="tab"
+            :aria-selected="activeTab === 'backup'"
+            aria-controls="settings-panel-backup"
+            :tabindex="activeTab === 'backup' ? 0 : -1"
+            ref="backupTabRef"
+            data-testid="settings-tab-backup"
+            type="button"
+            @click="activeTab = 'backup'"
+            @keydown="onTabKeydown"
+          >{{ t("backup.title") }}</button>
+        </div>
         <button class="modal__close" data-testid="settings-modal-close" type="button" @click="$emit('close')" :aria-label="t('common.close')">×</button>
       </header>
+
       <div class="modal__body">
 
-        <!-- グローバル設定 -->
-        <section class="section" data-testid="settings-global-section">
-          <h3>{{ t("settings.globalTitle") }}</h3>
-          <div class="settingsRow">
-            <label class="settingsField settingsField--inline settingsField--aligned">
-              <span class="settingsField__label">{{ t("calc.boostRemainingLabel") }}</span>
-              <input
-                data-testid="settings-boost-remaining-input"
-                :value="calc.boostCandyRemainingText.value"
-                type="text"
-                inputmode="numeric"
-                autocomplete="off"
-                class="field__input field__input--sm"
-                :placeholder="t('calc.boostRemainingPlaceholder', { cap: calc.fmtNum(calc.boostCandyDefaultCap.value) })"
-                :title="t('calc.boostRemainingHelp')"
-                @input="calc.onBoostCandyRemainingInput(($event.target as HTMLInputElement).value)"
-                :disabled="calc.boostKind.value === 'none'"
-              />
-            </label>
-          </div>
-          <div class="settingsRow">
-            <label class="settingsField settingsField--inline settingsField--aligned">
-              <span class="settingsField__label">{{ t("settings.itemCompareModeLabel") }}</span>
-              <select
-                class="field__input field__input--sm"
-                data-testid="settings-item-compare-mode-select"
-                :value="calc.itemCompareMode.value"
-                @change="setItemCompareModeFromEvent($event)"
-              >
-                <option value="surplusFirst">{{ t("settings.itemCompareModeSurplusFirst") }}</option>
-                <option value="surplusGateFirst">{{ t("settings.itemCompareModeSurplusGateFirst") }}</option>
-                <option value="legacyImproved">{{ t("settings.itemCompareModeLegacyImproved") }}</option>
-              </select>
-            </label>
-          </div>
-          <p v-if="calc.itemCompareMode.value === 'surplusFirst'" class="settingsHelp" data-testid="settings-item-compare-mode-help">{{ t("settings.itemCompareModeSurplusFirstHelp") }}</p>
-          <p v-else-if="calc.itemCompareMode.value === 'surplusGateFirst'" class="settingsHelp" data-testid="settings-item-compare-mode-help">{{ t("settings.itemCompareModeSurplusGateFirstHelp") }}</p>
-          <p v-else class="settingsHelp" data-testid="settings-item-compare-mode-help">{{ t("settings.itemCompareModeLegacyImprovedHelp") }}</p>
-          <div class="settingsRow">
-            <label class="settingsField settingsField--inline settingsField--aligned">
-              <span class="settingsField__label">{{ t("calc.maxShardsLabel") }}</span>
-              <input
-                data-testid="settings-total-shards-input"
-                :value="calc.totalShardsText.value"
-                type="text"
-                inputmode="numeric"
-                autocomplete="off"
-                class="field__input field__input--sm"
-                @input="calc.onTotalShardsInput(($event.target as HTMLInputElement).value)"
-              />
-            </label>
-          </div>
-          <div class="settingsRow settingsRow--handy">
-            <div class="settingsField settingsField--inline settingsField--aligned">
-              <span class="settingsField__label">{{ t("calc.candy.universalLabel") }}</span>
-              <div class="candyInputs">
+        <div
+          v-show="activeTab === 'inventory'"
+          id="settings-panel-inventory"
+          role="tabpanel"
+          aria-labelledby="settings-tab-inventory"
+          data-testid="settings-panel-inventory"
+        >
+          <!-- グローバル設定 -->
+          <section class="section" data-testid="settings-global-section">
+            <h3>{{ t("settings.globalTitle") }}</h3>
+            <div class="settingsRow">
+              <label class="settingsField settingsField--inline settingsField--aligned">
+                <span class="settingsField__label">{{ t("calc.boostRemainingLabel") }}</span>
+                <input
+                  data-testid="settings-boost-remaining-input"
+                  :value="calc.boostCandyRemainingText.value"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  class="field__input field__input--sm"
+                  :placeholder="t('calc.boostRemainingPlaceholder', { cap: calc.fmtNum(calc.boostCandyDefaultCap.value) })"
+                  :title="t('calc.boostRemainingHelp')"
+                  @input="calc.onBoostCandyRemainingInput(($event.target as HTMLInputElement).value)"
+                  :disabled="calc.boostKind.value === 'none'"
+                />
+              </label>
+            </div>
+            <div class="settingsRow">
+              <label class="settingsField settingsField--inline settingsField--aligned">
+                <span class="settingsField__label">{{ t("settings.itemCompareModeLabel") }}</span>
+                <select
+                  class="field__input field__input--sm"
+                  data-testid="settings-item-compare-mode-select"
+                  :value="calc.itemCompareMode.value"
+                  @change="setItemCompareModeFromEvent($event)"
+                >
+                  <option value="surplusFirst">{{ t("settings.itemCompareModeSurplusFirst") }}</option>
+                  <option value="surplusGateFirst">{{ t("settings.itemCompareModeSurplusGateFirst") }}</option>
+                  <option value="legacyImproved">{{ t("settings.itemCompareModeLegacyImproved") }}</option>
+                </select>
+              </label>
+            </div>
+            <p v-if="calc.itemCompareMode.value === 'surplusFirst'" class="settingsHelp" data-testid="settings-item-compare-mode-help">{{ t("settings.itemCompareModeSurplusFirstHelp") }}</p>
+            <p v-else-if="calc.itemCompareMode.value === 'surplusGateFirst'" class="settingsHelp" data-testid="settings-item-compare-mode-help">{{ t("settings.itemCompareModeSurplusGateFirstHelp") }}</p>
+            <p v-else class="settingsHelp" data-testid="settings-item-compare-mode-help">{{ t("settings.itemCompareModeLegacyImprovedHelp") }}</p>
+            <div class="settingsRow">
+              <label class="settingsField settingsField--inline settingsField--aligned">
+                <span class="settingsField__label">{{ t("calc.maxShardsLabel") }}</span>
+                <input
+                  data-testid="settings-total-shards-input"
+                  :value="calc.totalShardsText.value"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  class="field__input field__input--sm"
+                  @input="calc.onTotalShardsInput(($event.target as HTMLInputElement).value)"
+                />
+              </label>
+            </div>
+            <div class="settingsRow settingsRow--handy">
+              <div class="settingsField settingsField--inline settingsField--aligned">
+                <span class="settingsField__label">{{ t("calc.candy.universalLabel") }}</span>
+                <div class="candyInputs">
+                  <label class="candyInput">
+                    <span class="candyInput__label">{{ t("calc.candy.universalS") }}</span>
+                    <input
+                      data-testid="settings-universal-candy-s-input"
+                      type="number"
+                      min="0"
+                      class="field__input field__input--xs"
+                      :value="candyStore.universalCandy.value.s"
+                      @input="candyStore.updateUniversalCandy({ s: parseInt(($event.target as HTMLInputElement).value) || 0 })"
+                    />
+                  </label>
+                  <label class="candyInput">
+                    <span class="candyInput__label">{{ t("calc.candy.universalM") }}</span>
+                    <input
+                      data-testid="settings-universal-candy-m-input"
+                      type="number"
+                      min="0"
+                      class="field__input field__input--xs"
+                      :value="candyStore.universalCandy.value.m"
+                      @input="candyStore.updateUniversalCandy({ m: parseInt(($event.target as HTMLInputElement).value) || 0 })"
+                    />
+                  </label>
+                  <label class="candyInput">
+                    <span class="candyInput__label">{{ t("calc.candy.universalL") }}</span>
+                    <input
+                      data-testid="settings-universal-candy-l-input"
+                      type="number"
+                      min="0"
+                      class="field__input field__input--xs"
+                      :value="candyStore.universalCandy.value.l"
+                      @input="candyStore.updateUniversalCandy({ l: parseInt(($event.target as HTMLInputElement).value) || 0 })"
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 睡眠設定 -->
+          <section class="section" data-testid="settings-sleep-section">
+            <h3>{{ t("settings.sleepTitle") }}</h3>
+            <div class="settingsRow">
+              <label class="settingsField settingsField--inline settingsField--aligned">
+                <span class="settingsField__label">{{ t("calc.sleep.dailySleepLabel") }}</span>
+                <input
+                  data-testid="settings-daily-sleep-hours-input"
+                  type="number"
+                  min="1"
+                  max="13"
+                  step="0.5"
+                  class="field__input field__input--xs"
+                  :value="dailySleepHoursInputValue"
+                  @focus="onDailySleepHoursFocus"
+                  @input="onDailySleepHoursInput(($event.target as HTMLInputElement).value)"
+                  @blur="onDailySleepHoursBlur"
+                  @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
+                />
+              </label>
+              <label class="settingsField settingsField--inline settingsField--aligned">
+                <span class="settingsField__label">{{ t("calc.sleep.sleepExpBonusLabel") }}</span>
+                <select
+                  class="field__input field__input--xs"
+                  data-testid="settings-sleep-exp-bonus-select"
+                  :value="calc.sleepSettings.value.sleepExpBonusCount"
+                  @change="calc.updateSleepSettings({ sleepExpBonusCount: parseInt(($event.target as HTMLSelectElement).value) || 0 })"
+                >
+                  <option v-for="n in 6" :key="n - 1" :value="n - 1">{{ n - 1 }}</option>
+                </select>
+              </label>
+              <label class="settingsField settingsField--inline settingsField--checkbox settingsField--aligned" :title="t('calc.sleep.includeGSDTitle')">
+                <span class="settingsField__label">{{ t("calc.sleep.includeGSDLabel") }}</span>
+                <input
+                  type="checkbox"
+                  data-testid="settings-include-gsd-checkbox"
+                  :checked="calc.sleepSettings.value.includeGSD"
+                  @change="calc.updateSleepSettings({ includeGSD: ($event.target as HTMLInputElement).checked })"
+                />
+              </label>
+            </div>
+          </section>
+
+          <!-- タイプアメ設定 -->
+          <section class="section" data-testid="settings-type-candy-section">
+            <h3>{{ t("settings.typeCandyTitle") }}</h3>
+            <div class="typeCandyGrid" data-testid="settings-type-candy-grid">
+              <div v-for="typeName in pokemonTypes" :key="typeName" class="typeRow" :data-testid="'settings-type-row-' + typeName">
+                <span class="typeRow__name">{{ getTypeName(typeName, locale.value) }}</span>
                 <label class="candyInput">
-                  <span class="candyInput__label">{{ t("calc.candy.universalS") }}</span>
+                  <span class="candyInput__label">{{ t("calc.candy.typeS") }}</span>
                   <input
-                    data-testid="settings-universal-candy-s-input"
+                    :data-testid="'settings-type-candy-' + typeName + '-s-input'"
                     type="number"
                     min="0"
-                    class="field__input field__input--xs"
-                    :value="candyStore.universalCandy.value.s"
-                    @input="candyStore.updateUniversalCandy({ s: parseInt(($event.target as HTMLInputElement).value) || 0 })"
+                    class="field__input field__input--xs field__input--compact"
+                    :value="candyStore.getTypeCandyFor(typeName).s"
+                    @input="candyStore.updateTypeCandy(typeName, { s: parseInt(($event.target as HTMLInputElement).value) || 0 })"
                   />
                 </label>
                 <label class="candyInput">
-                  <span class="candyInput__label">{{ t("calc.candy.universalM") }}</span>
+                  <span class="candyInput__label">{{ t("calc.candy.typeM") }}</span>
                   <input
-                    data-testid="settings-universal-candy-m-input"
+                    :data-testid="'settings-type-candy-' + typeName + '-m-input'"
                     type="number"
                     min="0"
-                    class="field__input field__input--xs"
-                    :value="candyStore.universalCandy.value.m"
-                    @input="candyStore.updateUniversalCandy({ m: parseInt(($event.target as HTMLInputElement).value) || 0 })"
-                  />
-                </label>
-                <label class="candyInput">
-                  <span class="candyInput__label">{{ t("calc.candy.universalL") }}</span>
-                  <input
-                    data-testid="settings-universal-candy-l-input"
-                    type="number"
-                    min="0"
-                    class="field__input field__input--xs"
-                    :value="candyStore.universalCandy.value.l"
-                    @input="candyStore.updateUniversalCandy({ l: parseInt(($event.target as HTMLInputElement).value) || 0 })"
+                    class="field__input field__input--xs field__input--compact"
+                    :value="candyStore.getTypeCandyFor(typeName).m"
+                    @input="candyStore.updateTypeCandy(typeName, { m: parseInt(($event.target as HTMLInputElement).value) || 0 })"
                   />
                 </label>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+        </div>
 
-        <!-- 睡眠設定 -->
-        <section class="section" data-testid="settings-sleep-section">
-          <h3>{{ t("settings.sleepTitle") }}</h3>
-          <div class="settingsRow">
-            <label class="settingsField settingsField--inline settingsField--aligned">
-              <span class="settingsField__label">{{ t("calc.sleep.dailySleepLabel") }}</span>
-              <input
-                data-testid="settings-daily-sleep-hours-input"
-                type="number"
-                min="1"
-                max="13"
-                step="0.5"
-                class="field__input field__input--xs"
-                :value="dailySleepHoursInputValue"
-                @focus="onDailySleepHoursFocus"
-                @input="onDailySleepHoursInput(($event.target as HTMLInputElement).value)"
-                @blur="onDailySleepHoursBlur"
-                @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
-              />
-            </label>
-            <label class="settingsField settingsField--inline settingsField--aligned">
-              <span class="settingsField__label">{{ t("calc.sleep.sleepExpBonusLabel") }}</span>
-              <select
-                class="field__input field__input--xs"
-                data-testid="settings-sleep-exp-bonus-select"
-                :value="calc.sleepSettings.value.sleepExpBonusCount"
-                @change="calc.updateSleepSettings({ sleepExpBonusCount: parseInt(($event.target as HTMLSelectElement).value) || 0 })"
-              >
-                <option v-for="n in 6" :key="n - 1" :value="n - 1">{{ n - 1 }}</option>
-              </select>
-            </label>
-            <label class="settingsField settingsField--inline settingsField--checkbox settingsField--aligned" :title="t('calc.sleep.includeGSDTitle')">
-              <span class="settingsField__label">{{ t("calc.sleep.includeGSDLabel") }}</span>
-              <input
-                type="checkbox"
-                data-testid="settings-include-gsd-checkbox"
-                :checked="calc.sleepSettings.value.includeGSD"
-                @change="calc.updateSleepSettings({ includeGSD: ($event.target as HTMLInputElement).checked })"
-              />
-            </label>
-          </div>
-        </section>
-
-        <!-- タイプアメ設定 -->
-        <section class="section" data-testid="settings-type-candy-section">
-          <h3>{{ t("settings.typeCandyTitle") }}</h3>
-          <div class="typeCandyGrid" data-testid="settings-type-candy-grid">
-            <div v-for="typeName in pokemonTypes" :key="typeName" class="typeRow" :data-testid="'settings-type-row-' + typeName">
-              <span class="typeRow__name">{{ getTypeName(typeName, locale.value) }}</span>
-              <label class="candyInput">
-                <span class="candyInput__label">{{ t("calc.candy.typeS") }}</span>
-                <input
-                  :data-testid="'settings-type-candy-' + typeName + '-s-input'"
-                  type="number"
-                  min="0"
-                  class="field__input field__input--xs field__input--compact"
-                  :value="candyStore.getTypeCandyFor(typeName).s"
-                  @input="candyStore.updateTypeCandy(typeName, { s: parseInt(($event.target as HTMLInputElement).value) || 0 })"
-                />
-              </label>
-              <label class="candyInput">
-                <span class="candyInput__label">{{ t("calc.candy.typeM") }}</span>
-                <input
-                  :data-testid="'settings-type-candy-' + typeName + '-m-input'"
-                  type="number"
-                  min="0"
-                  class="field__input field__input--xs field__input--compact"
-                  :value="candyStore.getTypeCandyFor(typeName).m"
-                  @input="candyStore.updateTypeCandy(typeName, { m: parseInt(($event.target as HTMLInputElement).value) || 0 })"
-                />
-              </label>
-            </div>
-          </div>
-        </section>
+        <div
+          v-show="activeTab === 'backup'"
+          id="settings-panel-backup"
+          role="tabpanel"
+          aria-labelledby="settings-tab-backup"
+          data-testid="settings-panel-backup"
+        >
+          <DataBackupSection :calc="calc" :box="box" />
+        </div>
 
       </div>
     </div>
@@ -182,21 +230,45 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import type { CalcStore } from "../composables/useCalcStore";
+import type { BoxStore } from "../composables/useBoxStore";
 import type { ItemCompareMode } from "../domain/level-planner/types";
 import { useCandyStore } from "../composables/useCandyStore";
 import { PokemonTypes, getTypeName } from "../domain/pokesleep/pokemon-types";
+import DataBackupSection from "./DataBackupSection.vue";
 
 const props = defineProps<{
   calc: CalcStore;
+  box: BoxStore;
 }>();
 
 const { t, locale } = useI18n();
 const candyStore = useCandyStore();
 const pokemonTypes = PokemonTypes;
 const calc = props.calc;
+
+const activeTab = ref<"inventory" | "backup">("inventory");
+const inventoryTabRef = ref<HTMLButtonElement | null>(null);
+const backupTabRef = ref<HTMLButtonElement | null>(null);
+
+function onTabKeydown(event: KeyboardEvent) {
+  let next: "inventory" | "backup" | null = null;
+  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+    next = activeTab.value === "inventory" ? "backup" : "inventory";
+  } else if (event.key === "Home") {
+    next = "inventory";
+  } else if (event.key === "End") {
+    next = "backup";
+  }
+  if (!next) return;
+  event.preventDefault();
+  activeTab.value = next;
+  void nextTick(() => {
+    (next === "inventory" ? inventoryTabRef.value : backupTabRef.value)?.focus();
+  });
+}
 
 const dailySleepHoursDraft = ref<string | null>(null);
 const dailySleepHoursInputValue = computed(() => dailySleepHoursDraft.value ?? String(calc.sleepSettings.value.dailySleepHours));

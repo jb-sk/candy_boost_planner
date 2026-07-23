@@ -60,6 +60,41 @@ function expectFeasible(
 }
 
 describe('fbl01d feasibility witness', () => {
+  it('目標到達行の余り合計上限を未達境界の余りと分けて検証する', () => {
+    const inventory: CandyInventory = {
+      species: {},
+      typeCandy: {},
+      universal: { s: 0, m: 3, l: 0 },
+    };
+    const twoReachedAndBoundary = [
+      demandRow('upper-a', 1, 'normal', 19),
+      demandRow('upper-b', 2, 'normal', 19),
+      demandRow('boundary', 3, 'normal', 18, { targetReached: false }),
+    ];
+    const valid = solveFeasibilityForFixedRows(twoReachedAndBoundary, inventory, {
+      ...noBoost,
+      itemCompareMode: 'surplusFirst',
+      maxRowSurplus: 2,
+      maxReachedSurplus: 2,
+      maxTotalSurplus: 4,
+    });
+    expectFeasible(valid);
+    expect(valid.witness.rows.map(row => row.supply.universalM)).toEqual([1, 1, 1]);
+
+    const threeReached = solveFeasibilityForFixedRows(
+      twoReachedAndBoundary.map(row => ({ ...row, targetReached: true })),
+      inventory,
+      {
+        ...noBoost,
+        itemCompareMode: 'surplusFirst',
+        maxRowSurplus: 2,
+        maxReachedSurplus: 2,
+        maxTotalSurplus: 4,
+      },
+    );
+    expect(threeReached.status).toBe('infeasible');
+  });
+
   it('prefix decision sessionは通常solverとprefixごとの可否が一致する', () => {
     const rows = [
       demandRow('p1', 1, 'alpha', 13),
@@ -109,6 +144,18 @@ describe('fbl01d feasibility witness', () => {
       { targetReached: true, level: 20, expInLevel: 0, totalCandyUnitsUsed: 4, species: 0 },
     ], 'surplusFirst');
     expect(compare).toBe(0);
+  });
+
+  it('余り最小は上位余り合計と進捗が同じならLvMAX余り0達成数を優先する', () => {
+    const compare = __levelPlannerTestHooks.compareSyntheticStatesForTest([
+      { targetReached: true, level: 70, expInLevel: 0, totalCandyUnitsUsed: 0, surplusCandyValue: 1 },
+      { targetReached: true, level: 60, expInLevel: 0, totalCandyUnitsUsed: 0, surplusCandyValue: 0 },
+    ], [
+      { targetReached: true, level: 70, expInLevel: 0, totalCandyUnitsUsed: 0, surplusCandyValue: 0 },
+      { targetReached: true, level: 60, expInLevel: 0, totalCandyUnitsUsed: 0, surplusCandyValue: 1 },
+    ], 'surplusFirst');
+
+    expect(compare).toBeLessThan(0);
   });
 
   it('validatorは供給値・余り・共有在庫・remainingを独立に検証する', () => {
@@ -303,6 +350,31 @@ describe('fbl01d feasibility witness', () => {
     const feasibleSession = createIndependentBoundaryFeasibilitySession(prefixRows, feasibleInventory, noBoost);
     expect(feasibleSession?.canSolve(boundaryRow).status).toBe('feasible');
     expectFeasible(solveFeasibilityForFixedRows([...prefixRows, boundaryRow], feasibleInventory, noBoost));
+  });
+
+  it('独立境界セッションは再構築せず上位余り上限を適用してfull solveと一致する', () => {
+    const prefixRows = [demandRow('reached-prefix', 20, 'alpha', 2, { targetReached: true })];
+    const boundaryRow = demandRow('unreached-boundary', 21, 'beta', 3, { targetReached: false, reachedLv: 20, expInLevel: 1 });
+    const inventory: CandyInventory = {
+      species: {},
+      typeCandy: { alpha: { s: 0, m: 0 }, beta: { s: 0, m: 0 } },
+      universal: { s: 2, m: 0, l: 0 },
+    };
+    const options = { ...noBoost, itemCompareMode: 'surplusFirst' as const, maxRowSurplus: 2 };
+    const session = createIndependentBoundaryFeasibilitySession(prefixRows, inventory, options);
+
+    expect(session?.canSolve(boundaryRow, { maxReachedSurplus: 0 }).status).toBe('infeasible');
+    expect(solveFeasibilityForFixedRows([...prefixRows, boundaryRow], inventory, {
+      ...options,
+      maxReachedSurplus: 0,
+    }).status).toBe('infeasible');
+
+    const reused = session?.solve(boundaryRow, { maxReachedSurplus: 1 });
+    expectFeasible(reused!);
+    expectFeasible(solveFeasibilityForFixedRows([...prefixRows, boundaryRow], inventory, {
+      ...options,
+      maxReachedSurplus: 1,
+    }));
   });
 
   it('緩和上界が不可行と判定したprefixをsolverがfeasibleにしない', () => {
@@ -890,6 +962,7 @@ type OracleQuality = {
   normalizedSurplus: number;
   maxSurplus: number;
   rawSurplus: number;
+  reachedSurplus: number;
   speciesLex: number;
   priority: [number, number, number, number, number];
   legacyPriority: [number, number, number, number];
@@ -910,6 +983,7 @@ function emptyOracleQuality(): OracleQuality {
     normalizedSurplus: 0,
     maxSurplus: 0,
     rawSurplus: 0,
+    reachedSurplus: 0,
     speciesLex: 0,
     priority: [0, 0, 0, 0, 0],
     legacyPriority: [0, 0, 0, 0],
@@ -924,6 +998,7 @@ function oracleQualityForSupply(supply: OracleSupply, row: FeasibilityDemandRow)
     normalizedSurplus: surplus <= 2 ? 0 : surplus,
     maxSurplus: surplus,
     rawSurplus: surplus,
+    reachedSurplus: row.targetReached === false ? 0 : surplus,
     speciesLex: supply.species * speciesLexWeight,
     priority: [supply.typeS, supply.typeM, supply.universalS, supply.universalM, supply.universalL],
     legacyPriority: [-supply.universalL, -supply.universalM, supply.typeS, supply.typeM],
@@ -936,6 +1011,7 @@ function addOracleQuality(a: OracleQuality, b: OracleQuality): OracleQuality {
     normalizedSurplus: a.normalizedSurplus + b.normalizedSurplus,
     maxSurplus: Math.max(a.maxSurplus, b.maxSurplus),
     rawSurplus: a.rawSurplus + b.rawSurplus,
+    reachedSurplus: a.reachedSurplus + b.reachedSurplus,
     speciesLex: a.speciesLex + b.speciesLex,
     priority: a.priority.map((value, index) => value + b.priority[index]) as OracleQuality['priority'],
     legacyPriority: a.legacyPriority.map((value, index) => value + b.legacyPriority[index]) as OracleQuality['legacyPriority'],
@@ -944,6 +1020,8 @@ function addOracleQuality(a: OracleQuality, b: OracleQuality): OracleQuality {
 
 function compareOracleQuality(a: OracleQuality, b: OracleQuality, mode?: SolverItemCompareMode): number {
   if (mode === 'surplusFirst') {
+    if (a.reachedSurplus !== b.reachedSurplus) return a.reachedSurplus < b.reachedSurplus ? 1 : -1;
+    if (a.zeroSurplusCount !== b.zeroSurplusCount) return a.zeroSurplusCount > b.zeroSurplusCount ? 1 : -1;
     if (a.rawSurplus !== b.rawSurplus) return a.rawSurplus < b.rawSurplus ? 1 : -1;
     if (a.speciesLex !== b.speciesLex) return a.speciesLex > b.speciesLex ? 1 : -1;
     for (let index = 0; index < a.priority.length; index++) {

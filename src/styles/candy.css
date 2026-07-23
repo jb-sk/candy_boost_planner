@@ -54,7 +54,7 @@
   --pie-7: #94a3b8;
 
   /* Semantic Accents */
-  --star-color: #fbbf24;
+  --star-color: #FFD600;
   --nature-up: #10b981;
   --nature-down: #f43f5e;
 
@@ -179,15 +179,13 @@
 /* ===== Box Tiles ===== */
 .boxTile {
   background: var(--paper);
-  border: 2px solid var(--surface-alt);
+  border: 2px solid var(--type-color);
   border-radius: var(--radius-md);
   transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
 }
 
 .boxTile.boxTile--hover {
   transform: translateY(-4px);
-  box-shadow: var(--shadow-md);
-  border-color: var(--accent);
 }
 
 /* ===== Chip Buttons ===== */

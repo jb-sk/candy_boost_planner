@@ -121,14 +121,14 @@ body {
 /* ===== Box Tiles ===== */
 .boxTile {
   background: #ffffff;
-  border: 1px solid #d7ccc8;
-  border-bottom: 3px solid #d7ccc8;
+  border: 1px solid var(--type-color);
+  border-bottom: 3px solid var(--type-color);
+  border-radius: 8px;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
 }
 
 .boxTile.boxTile--hover {
-  border-color: var(--accent);
-  border-bottom-color: var(--accent);
-  transform: translateY(-1px);
+  transform: translateY(-4px);
 }
 
 /* ===== Chip Buttons ===== */

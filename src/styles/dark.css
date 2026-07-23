@@ -121,6 +121,11 @@
   box-shadow: inset 0 2px 4px rgba(0,0,0,0.3), 0 0 0 2px rgba(201, 168, 76, 0.25);
 }
 
+.boxDetail__favBtn--on {
+  border-color: var(--star-color);
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
 /* ===== Box Disclosure ===== */
 .boxDisclosure__head {
   color: var(--ink);
@@ -137,15 +142,13 @@
 /* ===== Box Tiles ===== */
 .boxTile {
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-top: 2px solid var(--accent);
-  box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.2s, transform 0.15s;
+  border: 1px solid var(--type-color);
+  transition: background 0.2s, box-shadow 0.2s, transform 0.15s;
 }
 
 .boxTile.boxTile--hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
+  background: var(--surface-alt);
+  transform: translateY(-4px);
 }
 
 /* ===== Chip Buttons ===== */
@@ -184,4 +187,19 @@
     border-bottom: none;
     box-shadow: none;
   }
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-decor);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
 }

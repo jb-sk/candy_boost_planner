@@ -77,7 +77,7 @@
 
     <HelpOverlay v-if="showHelp" @close="showHelp = false" />
 
-    <SettingsOverlay v-if="showSettings" :calc="calc" @close="showSettings = false" />
+    <SettingsOverlay v-if="showSettings" :calc="calc" :box="box" @close="showSettings = false" />
 
     <AddPokemonModal v-if="showAddModal" :box="box" @close="showAddModal = false" @added="onAddModalAdded($event)" />
 
@@ -86,7 +86,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, onMounted, provide, ref, watch } from "vue";
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from "vue";
 import type { Component } from "vue";
 import { useI18n } from "vue-i18n";
 import { ensureLocaleMessagesLoaded } from "./i18n";
@@ -166,6 +166,67 @@ const themeSwitching = ref(false);
 const onboarding = useOnboarding();
 
 const scrollContainerRef = ref<HTMLElement | null>(null);
+const SCROLL_POSITION_KEY = "candy-boost-planner:ui:scrollTop:v1";
+
+type SavedScrollPosition = {
+  scrollTop: number;
+  anchorKey?: string;
+  anchorOffset?: number;
+};
+
+function readReloadScrollPosition(): SavedScrollPosition | null {
+  try {
+    const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+    const raw = sessionStorage.getItem(SCROLL_POSITION_KEY);
+    sessionStorage.removeItem(SCROLL_POSITION_KEY);
+    if (navigation?.type !== "reload" || raw === null) return null;
+
+    // v1 の数値だけの保存値も読み取り、既存セッションからのリロードを壊さない。
+    if (!raw.startsWith("{")) {
+      const value = Number(raw);
+      return Number.isFinite(value) && value >= 0 ? { scrollTop: value } : null;
+    }
+
+    const saved = JSON.parse(raw) as Partial<SavedScrollPosition>;
+    if (!Number.isFinite(saved.scrollTop) || Number(saved.scrollTop) < 0) return null;
+    return {
+      scrollTop: Number(saved.scrollTop),
+      anchorKey: typeof saved.anchorKey === "string" ? saved.anchorKey : undefined,
+      anchorOffset: Number.isFinite(saved.anchorOffset) ? Number(saved.anchorOffset) : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+const reloadScrollPosition = readReloadScrollPosition();
+
+function saveScrollPosition(): void {
+  const container = scrollContainerRef.value;
+  if (!container) return;
+  try {
+    const containerTop = container.getBoundingClientRect().top;
+    const anchors = Array.from(container.querySelectorAll<HTMLElement>("[data-scroll-anchor]"));
+    const anchor = anchors
+      .filter((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.top <= containerTop + 1 && rect.bottom > containerTop + 1;
+      })
+      .sort((a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().top)[0];
+    const saved: SavedScrollPosition = { scrollTop: container.scrollTop };
+    if (anchor) {
+      saved.anchorKey = anchor.dataset.scrollAnchor;
+      saved.anchorOffset = anchor.getBoundingClientRect().top - containerTop;
+    }
+    sessionStorage.setItem(SCROLL_POSITION_KEY, JSON.stringify(saved));
+  } catch {
+    // sessionStorage can be blocked (private mode / policy).
+  }
+}
+
+function saveScrollPositionWhenHidden(): void {
+  if (document.visibilityState === "hidden") saveScrollPosition();
+}
 
 // provide scroll container for child components that need programmatic scrolling
 provide('scrollContainer', scrollContainerRef);
@@ -249,6 +310,87 @@ const calc = useCalcStore({
 
 function nextAnimationFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+function restoreReloadScrollPosition(saved: SavedScrollPosition): void {
+  const container = scrollContainerRef.value;
+  if (!container) return;
+  container.scrollTop = saved.scrollTop;
+
+  if (saved.anchorKey === undefined || saved.anchorOffset === undefined) return;
+  const anchor = Array.from(container.querySelectorAll<HTMLElement>("[data-scroll-anchor]"))
+    .find((element) => element.dataset.scrollAnchor === saved.anchorKey);
+  if (!anchor) return;
+
+  const previousOverflowAnchor = container.style.getPropertyValue("overflow-anchor");
+  const previousPriority = container.style.getPropertyPriority("overflow-anchor");
+  const calcPanel = document.getElementById("neo-calc");
+  let finished = false;
+  let stopPendingWatch: (() => void) | null = null;
+  let resolvePendingWait: (() => void) | null = null;
+
+  const adjust = () => {
+    if (finished || !anchor.isConnected) return;
+    const currentOffset = anchor.getBoundingClientRect().top - container.getBoundingClientRect().top;
+    const movedBy = currentOffset - saved.anchorOffset!;
+    if (Math.abs(movedBy) >= 0.5) container.scrollTop += movedBy;
+  };
+  const restoreOverflowAnchor = () => {
+    if (previousOverflowAnchor) {
+      container.style.setProperty("overflow-anchor", previousOverflowAnchor, previousPriority);
+    } else {
+      container.style.removeProperty("overflow-anchor");
+    }
+  };
+  const stop = () => {
+    if (finished) return;
+    finished = true;
+    observer?.disconnect();
+    stopPendingWatch?.();
+    resolvePendingWait?.();
+    resolvePendingWait = null;
+    container.removeEventListener("pointerdown", stop);
+    container.removeEventListener("wheel", stop);
+    restoreOverflowAnchor();
+  };
+  const observer = typeof ResizeObserver !== "undefined" && calcPanel
+    ? new ResizeObserver(adjust)
+    : null;
+
+  // 計算結果で上側の行高が変わっても、保存した表示位置を次のリロードへ累積させない。
+  container.style.setProperty("overflow-anchor", "none");
+  observer?.observe(calcPanel!);
+  container.addEventListener("pointerdown", stop, { passive: true });
+  container.addEventListener("wheel", stop, { passive: true });
+  adjust();
+
+  void (async () => {
+    try {
+      // 初期化直後に計算がスケジュールされる場合も拾う。
+      await nextAnimationFrame();
+      await nextAnimationFrame();
+      adjust();
+      if (calc.planResultPending.value) {
+        await new Promise<void>((resolve) => {
+          resolvePendingWait = resolve;
+          stopPendingWatch = watch(calc.planResultPending, (pending) => {
+            if (!pending) {
+              stopPendingWatch?.();
+              stopPendingWatch = null;
+              resolvePendingWait = null;
+              resolve();
+            }
+          });
+        });
+      }
+      await nextTick();
+      await nextAnimationFrame();
+      await nextAnimationFrame();
+      adjust();
+    } finally {
+      stop();
+    }
+  })();
 }
 
 function preserveBoxDetailPosition(update: () => void): void {
@@ -468,11 +610,18 @@ async function onDesignChange(ev: Event) {
 }
 
 onMounted(async () => {
+  window.addEventListener("pagehide", saveScrollPosition);
+  document.addEventListener("visibilitychange", saveScrollPositionWhenHidden);
+
   await nextTick();
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   mountBoxPanel.value = true;
   await nextTick();
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  if (reloadScrollPosition !== null && scrollContainerRef.value) {
+    restoreReloadScrollPosition(reloadScrollPosition);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  }
   const scheduleIdle =
     typeof requestIdleCallback !== "undefined"
       ? (cb: () => void) => requestIdleCallback(cb)
@@ -484,5 +633,10 @@ onMounted(async () => {
   if (!onboarding.isDone.value) {
     setTimeout(() => onboarding.start(), 600);
   }
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("pagehide", saveScrollPosition);
+  document.removeEventListener("visibilitychange", saveScrollPositionWhenHidden);
 });
 </script>

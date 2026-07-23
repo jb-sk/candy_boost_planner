@@ -62,12 +62,15 @@ type CalcSlotsStoreV1 = {
   slots: Array<CalcSaveSlotV1 | null>;
 };
 
-const SLOTS_KEY = "candy-boost-planner:calc:slots:v1";
-const TOTAL_SHARDS_KEY = "candy-boost-planner:calc:totalShards";
+export const CALC_SLOTS_STORAGE_KEY = "candy-boost-planner:calc:slots:v1";
+export const TOTAL_SHARDS_KEY = "candy-boost-planner:calc:totalShards";
+export const ACTIVE_SLOT_STORAGE_KEY = "candy-boost-planner:calc:activeSlot";
+export const BOOST_CANDY_REMAINING_KEY = "candy-boost-planner:calc:boostCandyRemaining";
+export const SLEEP_SETTINGS_KEY = "candy-boost-planner:calc:sleepSettings";
 
 export function loadCalcSlots(): Array<CalcSaveSlotV1 | null> {
   try {
-    const raw = localStorage.getItem(SLOTS_KEY);
+    const raw = localStorage.getItem(CALC_SLOTS_STORAGE_KEY);
     if (!raw) return [null, null, null];
     const json = JSON.parse(raw);
     const arr: unknown[] | null = Array.isArray(json)
@@ -87,12 +90,33 @@ export function loadCalcSlots(): Array<CalcSaveSlotV1 | null> {
 }
 
 export function saveCalcSlots(v: Array<CalcSaveSlotV1 | null>) {
+  try {
+    const serialized = perfSpan("persist.calc.serialize", () => serializeCalcSlots(v));
+    perfSpan("persist.calc.write", () => localStorage.setItem(CALC_SLOTS_STORAGE_KEY, serialized));
+  } catch {
+    // localStorage can throw (quota exceeded / blocked). Persistence must not break UI.
+  }
+}
+
+export function serializeCalcSlots(v: Array<CalcSaveSlotV1 | null>): string {
   const a = Array.isArray(v) ? v.slice(0, 3) : [];
   while (a.length < 3) a.push(null);
   const store: CalcSlotsStoreV1 = { schemaVersion: 1, slots: a };
+  return JSON.stringify(store);
+}
+
+export function loadActiveSlot(): 0 | 1 | 2 {
   try {
-    const serialized = perfSpan("persist.calc.serialize", () => JSON.stringify(store));
-    perfSpan("persist.calc.write", () => localStorage.setItem(SLOTS_KEY, serialized));
+    const value = Number(localStorage.getItem(ACTIVE_SLOT_STORAGE_KEY));
+    return value === 1 || value === 2 ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function saveActiveSlot(value: number): void {
+  try {
+    localStorage.setItem(ACTIVE_SLOT_STORAGE_KEY, String(value === 1 || value === 2 ? value : 0));
   } catch {
     // localStorage can throw (quota exceeded / blocked). Persistence must not break UI.
   }
@@ -117,8 +141,6 @@ export function saveTotalShards(v: number): void {
   }
 }
 
-const BOOST_CANDY_REMAINING_KEY = "candy-boost-planner:calc:boostCandyRemaining";
-
 export function loadBoostCandyRemaining(): number | null {
   try {
     const raw = localStorage.getItem(BOOST_CANDY_REMAINING_KEY);
@@ -141,8 +163,6 @@ export function saveBoostCandyRemaining(v: number | null): void {
     // localStorage can throw (quota exceeded / blocked). Persistence must not break UI.
   }
 }
-
-const SLEEP_SETTINGS_KEY = "candy-boost-planner:calc:sleepSettings";
 
 /** デフォルトの睡眠設定 */
 export const DEFAULT_SLEEP_SETTINGS: SleepSettings = {

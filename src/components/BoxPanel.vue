@@ -1,5 +1,5 @@
 <template>
-  <section id="neo-box" class="panel panel--box">
+  <section id="neo-box" class="panel panel--box" data-scroll-anchor="panel:box">
     <div class="panel__head">
       <h2 class="panel__title">{{ t("box.title") }}</h2>
     </div>
@@ -447,21 +447,34 @@
 
         <div class="boxList" ref="boxListRef" v-if="sortedBoxEntries.length">
           <template v-for="(e, idx) in sortedBoxEntries" :key="e.id">
-            <button
-              type="button"
+            <div
               class="boxTile"
-              data-testid="box-tile"
               :class="[boxTileClassById.get(e.id) ?? 'boxTile--type-unknown', { 'boxTile--active': e.id === selectedBoxId, 'boxTile--hover': hoveredTileId === e.id || e.id === selectedBoxId }]"
               :data-type="e.derived ? getPokemonType(e.derived.pokedexId, e.derived.form) : 'unknown'"
               @mouseenter="onTileMouseEnter(e.id)"
               @mouseleave="onTileMouseLeave"
               @touchstart="onTileTouchStart"
-              @click="box.onSelectBox(e.id)"
             >
-              <div class="boxTile__name">{{ boxDisplayTitleById.get(e.id) ?? box.displayBoxTitle(e) }}</div>
-              <span v-if="e.favorite" class="boxTile__fav" :aria-label="t('box.list.favorite')" :title="t('box.list.favorite')" v-html="iconStarSvg"></span>
-              <span class="boxTile__lv">Lv{{ e.planner?.level ?? e.derived?.level ?? "-" }}</span>
-            </button>
+              <button type="button" class="boxTile__select" data-testid="box-tile" @click="box.onSelectBox(e.id)">
+                <div class="boxTile__topRow">
+                  <span class="boxTile__lv">Lv{{ e.planner?.level ?? e.derived?.level ?? "-" }}</span>
+                  <div class="boxTile__iconRow">
+                    <span v-if="calcLinkedBoxIds.has(e.id)" class="boxTile__calcMark" :aria-label="t('box.list.inCalculator')" :title="t('box.list.inCalculator')" v-html="iconCheckSvg"></span>
+                    <span v-if="e.favorite" class="boxTile__fav" :aria-label="t('box.list.favorite')" :title="t('box.list.favorite')" v-html="iconStarSvg"></span>
+                  </div>
+                </div>
+                <span class="boxTile__name">{{ boxDisplayTitleById.get(e.id) ?? box.displayBoxTitle(e) }}</span>
+              </button>
+              <button
+                type="button"
+                class="boxTile__favZone"
+                data-testid="box-tile-fav-zone"
+                :aria-label="t('box.list.favorite')"
+                :aria-pressed="!!e.favorite"
+                :title="t('box.list.favorite')"
+                @click="box.toggleFavoriteById(e.id)"
+              ></button>
+            </div>
 
             <div v-if="idx === detailInsertAfterIndex && selectedBox && selectedDetail" class="boxDetail boxDetail--inline" data-testid="box-detail-panel">
               <div class="boxDetail__head">
@@ -550,15 +563,16 @@
                           <div class="boxDetail__minor">{{ t("box.detail.nicknameClearHint") }}</div>
                         </div>
                         <button
-                          class="chipBtn chipBtn--iconOnly"
-                          :class="{ 'chipBtn--on': !!selectedBox.favorite }"
+                          class="boxDetail__favBtn"
+                          :class="{ 'boxDetail__favBtn--on': !!selectedBox.favorite }"
                           type="button"
                           data-testid="box-detail-favorite"
                           @click="box.toggleSelectedFavorite"
+                          :aria-pressed="!!selectedBox.favorite"
+                          :aria-label="t('box.list.favorite')"
                           :title="t('box.list.favorite')"
-                        >
-                          <span class="chipBtn__icon" v-html="iconStarSvg" aria-hidden="true"></span>
-                        </button>
+                          v-html="iconStarSvg"
+                        ></button>
                       </div>
                     </div>
                   </div>
@@ -716,6 +730,7 @@
                       <button
                         type="button"
                         class="btn btn--sleepCalc"
+                        data-testid="box-detail-sleep-calc-toggle"
                         :class="{ 'btn--sleepCalc--open': showSleepCalc }"
                         :aria-expanded="showSleepCalc"
                         :aria-label="t('box.detail.sleepCalcButton')"
@@ -740,8 +755,9 @@
                         <button
                           type="button"
                           class="hintIcon"
+                          data-testid="box-sleep-daily-hint"
                           style="margin-left: 4px;"
-                          @click.stop="showHint($event, t('box.detail.sleepCalcDailyHint'))"
+                          @click.stop="showHint($event, { kind: 'sleepDaily' })"
                         >?</button>
                       </label>
                       <input
@@ -830,9 +846,15 @@
         ref="hintPopoverRef"
         class="hintPopover"
         :style="{ left: hintState.left + 'px', top: hintState.top + 'px' }"
-        @click="handleHintClick"
-        v-html="hintState.message"
-      ></div>
+        @click.stop
+      >
+        <template v-if="hintState.content.kind === 'text'">
+          {{ hintState.content.text }}
+        </template>
+        <template v-else>
+          {{ t('box.detail.sleepCalcDailyHintPrefix') }}<button type="button" class="link-settings" data-testid="box-sleep-hint-settings" @click="openSettingsFromHint">{{ t('box.detail.sleepCalcDailyHintSettings') }}</button>{{ t('box.detail.sleepCalcDailyHintSuffix') }}
+        </template>
+      </div>
     </Teleport>
   </section>
 </template>
@@ -858,6 +880,7 @@ import iconSkillsSvg from "../assets/icons/skills.svg?raw";
 import iconAllSvg from "../assets/icons/all.svg?raw";
 import iconStarSvg from "../assets/icons/star.svg?raw";
 import iconCalculatorSvg from "../assets/icons/calculator.svg?raw";
+import iconCheckSvg from "../assets/icons/check.svg?raw";
 import {
   calcSleepMilestones,
   normalizeDailySleepInput,
@@ -1059,6 +1082,14 @@ const boxDisplayTitleById = computed(() => {
   }
   return m;
 });
+/** 計算機（表示中スロット）に登録されているboxIdの集合。ボックス一覧タイルの強調表示に使う */
+const calcLinkedBoxIds = computed(() => {
+  const s = new Set<string>();
+  for (const r of calc.rows.value) {
+    if (r.boxId) s.add(r.boxId);
+  }
+  return s;
+});
 
 const importText = box.importText;
 const importStatus = box.importStatus;
@@ -1241,12 +1272,16 @@ async function onPasteImport() {
 }
 
 /* ===== Hint tooltip ===== */
-const hintState = ref<{ visible: boolean; message: string; left: number; top: number }>({
-  visible: false, message: "", left: 0, top: 0,
+type BoxHintContent =
+  | { kind: "text"; text: string }
+  | { kind: "sleepDaily" };
+
+const hintState = ref<{ visible: boolean; content: BoxHintContent; left: number; top: number }>({
+  visible: false, content: { kind: "text", text: "" }, left: 0, top: 0,
 });
 const hintPopoverRef = ref<HTMLElement | null>(null);
 
-async function showHint(ev: MouseEvent, message: string) {
+async function showHint(ev: MouseEvent, content: BoxHintContent | string) {
   const target = ev.target as HTMLElement;
   const rect = target.getBoundingClientRect();
   const viewportWidth = window.innerWidth;
@@ -1258,7 +1293,12 @@ async function showHint(ev: MouseEvent, message: string) {
   if (left < 8) left = 8;
 
   // まず下に仮配置して描画
-  hintState.value = { visible: true, message, left, top: rect.bottom + gap };
+  hintState.value = {
+    visible: true,
+    content: typeof content === "string" ? { kind: "text", text: content } : content,
+    left,
+    top: rect.bottom + gap,
+  };
 
   // 描画後に実測して、下に収まらなければ上にフリップ
   await nextTick();
@@ -1275,13 +1315,9 @@ function closeHint() {
   hintState.value.visible = false;
 }
 
-function handleHintClick(ev: MouseEvent) {
-  const target = ev.target as HTMLElement;
-  if (target.matches('.link-settings')) {
-    ev.preventDefault();
-    emit("open-settings");
-    closeHint();
-  }
+function openSettingsFromHint() {
+  emit("open-settings");
+  closeHint();
 }
 
 </script>
