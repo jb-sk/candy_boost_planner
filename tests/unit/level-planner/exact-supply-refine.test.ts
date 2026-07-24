@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { compareExactSupplyObjective, exactSupplyObjectiveFor, refineExactSupply } from '../../../src/domain/level-planner/core/exactSupplyRefine';
+import { compareExactSupplyObjective, exactSupplyObjectiveFor, refineExactSupply as refineExactSupplyImpl } from '../../../src/domain/level-planner/core/exactSupplyRefine';
+import type { ExactSupplyMode, ExactSupplyRow } from '../../../src/domain/level-planner/core/exactSupplyRefine';
 import type { CandyInventory } from '../../../src/domain/level-planner/types';
+
+type TestExactSupplyRow = Omit<ExactSupplyRow, 'candyFamilyKey'> & { candyFamilyKey?: string };
+
+function refineExactSupply(rows: TestExactSupplyRow[], stock: CandyInventory, mode: ExactSupplyMode) {
+  return refineExactSupplyImpl(
+    rows.map(row => ({ ...row, candyFamilyKey: row.candyFamilyKey ?? String(row.pokedexId) })),
+    stock,
+    mode,
+  );
+}
 
 const inventory: CandyInventory = {
   species: {},
@@ -90,6 +101,35 @@ describe('exactSupplyRefine', () => {
     expect(result.status).toBe('invalid_selected');
     if (result.status === 'ok') return;
     expect(result.reason).toBe('universal_s_stock_exceeded');
+  });
+
+  it('異なる図鑑番号でも同じfamilyの種族アメを二重使用できない', () => {
+    const result = refineExactSupply([
+      {
+        id: 'pichu',
+        name: 'ピチュー',
+        pokedexId: 172,
+        candyFamilyKey: '25',
+        type: 'electric',
+        totalCandyCount: 4,
+        selected: { species: 4, typeS: 0, typeM: 0, universalS: 0, universalM: 0, universalL: 0, supply: 4, surplus: 0 },
+      },
+      {
+        id: 'pikachu',
+        name: 'ピカチュウ',
+        pokedexId: 25,
+        candyFamilyKey: '25',
+        type: 'electric',
+        totalCandyCount: 4,
+        selected: { species: 4, typeS: 0, typeM: 0, universalS: 0, universalM: 0, universalL: 0, supply: 4, surplus: 0 },
+      },
+    ], {
+      species: { '25': 4 },
+      typeCandy: { electric: { s: 0, m: 0 } },
+      universal: { s: 0, m: 0, l: 0 },
+    }, 'surplusFirst');
+
+    expect(result).toMatchObject({ status: 'invalid_selected', reason: 'species_stock_exceeded:25' });
   });
 
   it('種族アメ使用量を優先するため、余り0の非種族候補より余り1の種族候補をbestにする', () => {

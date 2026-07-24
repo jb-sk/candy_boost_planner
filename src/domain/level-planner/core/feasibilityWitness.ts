@@ -78,6 +78,7 @@ type InternalFeasibilitySolverOptions = FeasibilitySolverOptions & {
   globalPrefixCache?: Map<string, BlockState[]>;
   rowFrontierCache?: Map<string, CachedRowFrontier>;
   decisionOnly?: boolean;
+  sharedSpeciesStrategy?: 'complete' | 'topDownCandidate';
 };
 
 type GroupFrontier = ResourceState[];
@@ -889,6 +890,36 @@ function rowOptionsForSpecies(
   });
 }
 
+function buildRowFrontierForSpecies(
+  rowIndex: number,
+  row: FeasibilityDemandRow,
+  species: number,
+  inventory: CandyInventory,
+  context: SolverContext,
+): { frontier: GroupFrontier; optionCount: number } {
+  const options = rowOptionsForSpecies(row, species, inventory, context);
+  const states: ResourceState[] = [];
+  for (const option of options) {
+    checkpoint(context);
+    const quality = qualityForOption(option, row.totalCandy, row.preferZeroSurplus, row.speciesLexWeight, row.targetReached);
+    if (!withinTotalSurplusBudget(quality, context)) continue;
+    const state: ResourceState = {
+      typeS: option.typeS > 0 ? { [row.type]: option.typeS } : {},
+      typeM: option.typeM > 0 ? { [row.type]: option.typeM } : {},
+      universalS: option.universalS,
+      universalM: option.universalM,
+      universalL: option.universalL,
+      quality,
+      path: { rowIndex, option, previous: null },
+    };
+    if (resourceWithinInventory(state, inventory)) states.push(state);
+  }
+  return {
+    frontier: pruneResourceStates(states, false, context),
+    optionCount: options.length,
+  };
+}
+
 function buildUniqueGroupFrontier(
   rowIndex: number,
   row: FeasibilityDemandRow,
@@ -911,42 +942,94 @@ function buildUniqueGroupFrontier(
     context.stats.rowFrontierCounts[rowIndex] = cached.rowFrontierCount;
     return cached.frontier;
   }
-  const species = Math.min(inventory.species[String(row.pokedexId)] ?? 0, row.totalCandy);
-  const options = rowOptionsForSpecies(row, species, inventory, context);
-  context.stats.rowOptionCounts[rowIndex] = options.length;
-  const states: ResourceState[] = [];
-  for (const option of options) {
-    checkpoint(context);
-    const quality = qualityForOption(option, row.totalCandy, row.preferZeroSurplus, row.speciesLexWeight, row.targetReached);
-    if (!withinTotalSurplusBudget(quality, context)) continue;
-    if (resourceWithinInventory({
-      typeS: { [row.type]: option.typeS },
-      typeM: { [row.type]: option.typeM },
-      universalS: option.universalS,
-      universalM: option.universalM,
-      universalL: option.universalL,
-      quality,
-      path: null,
-    }, inventory)) {
-      states.push({
-        typeS: { [row.type]: option.typeS },
-        typeM: { [row.type]: option.typeM },
-        universalS: option.universalS,
-        universalM: option.universalM,
-        universalL: option.universalL,
-        quality,
-        path: { rowIndex, option, previous: null },
-      });
-    }
-  }
-  const frontier = pruneResourceStates(states, false, context);
-  context.stats.rowFrontierCounts[rowIndex] = frontier.length;
+  const species = Math.min(inventory.species[row.candyFamilyKey] ?? 0, row.totalCandy);
+  const built = buildRowFrontierForSpecies(rowIndex, row, species, inventory, context);
+  context.stats.rowOptionCounts[rowIndex] = built.optionCount;
+  context.stats.rowFrontierCounts[rowIndex] = built.frontier.length;
   context.options.rowFrontierCache?.set(cacheKey, {
-    frontier,
-    optionCount: options.length,
-    rowFrontierCount: frontier.length,
+    frontier: built.frontier,
+    optionCount: built.optionCount,
+    rowFrontierCount: built.frontier.length,
   });
-  return frontier;
+  return built.frontier;
+}
+
+/**
+ * A shared family normally needs species-distribution search because a lower
+ * row may require species candy while an upper row is covered by indivisible
+ * type/universal items. There is one important exact fast path: when every row
+ * belongs to this family, the greedy top-down distribution itself can realize
+ * zero surplus and its strictly descending lexicographic weights prove that no
+ * alternative distribution can improve any earlier quality axis.
+ */
+function buildCertifiedTopDownSharedGroupFrontier(
+  rowIndexes: number[],
+  rows: FeasibilityDemandRow[],
+  inventory: CandyInventory,
+  context: SolverContext,
+  targetSpecies: number,
+): GroupFrontier | null {
+  const isGlobalCandidate = context.options.sharedSpeciesStrategy === 'topDownCandidate';
+  if (!isGlobalCandidate && rowIndexes.length !== rows.length) return null;
+
+  let remainingSpecies = targetSpecies;
+  const speciesByRow = rowIndexes.map(rowIndex => {
+    const species = Math.min(rows[rowIndex].totalCandy, remainingSpecies);
+    remainingSpecies -= species;
+    return species;
+  });
+  if (remainingSpecies !== 0) return null;
+
+  const totalDemand = rowIndexes.reduce((sum, rowIndex) => sum + rows[rowIndex].totalCandy, 0);
+  const weights = rowIndexes.map(rowIndex => rows[rowIndex].speciesLexWeight ?? 0);
+  const hasUniqueTopDownLexMaximum = targetSpecies === 0
+    || targetSpecies === totalDemand
+    || weights.every((weight, index) => index === weights.length - 1 || weight > weights[index + 1]);
+  if (!context.options.decisionOnly && !hasUniqueTopDownLexMaximum) return null;
+
+  let states: ResourceState[] = [{
+    typeS: {},
+    typeM: {},
+    universalS: 0,
+    universalM: 0,
+    universalL: 0,
+    quality: emptyQuality(),
+    path: null,
+  }];
+  for (let index = 0; index < rowIndexes.length; index++) {
+    const rowIndex = rowIndexes[index];
+    const built = buildRowFrontierForSpecies(
+      rowIndex,
+      rows[rowIndex],
+      speciesByRow[index],
+      inventory,
+      context,
+    );
+    context.stats.rowOptionCounts[rowIndex] = built.optionCount;
+    context.stats.rowFrontierCounts[rowIndex] = built.frontier.length;
+    if (built.frontier.length === 0) return null;
+    states = combineResourceFrontierWithGroup(states, built.frontier, inventory, context);
+    if (states.length === 0) return null;
+  }
+
+  // A decision query only asks whether at least one valid allocation exists.
+  if (context.options.decisionOnly) return states;
+
+  const expectedSpeciesLex = speciesByRow.reduce(
+    (sum, species, index) => sum + species * weights[index],
+    0,
+  );
+  const expectedZeroSurplusCount = rowIndexes.reduce(
+    (sum, rowIndex) => sum + (rows[rowIndex].preferZeroSurplus ? 1 : 0),
+    0,
+  );
+  const hasOptimalityCertificate = states.some(state => (
+    state.quality.rawSurplus === 0
+    && state.quality.reachedSurplus === 0
+    && state.quality.zeroSurplusCount === expectedZeroSurplusCount
+    && state.quality.speciesLex === expectedSpeciesLex
+  ));
+  return hasOptimalityCertificate || isGlobalCandidate ? states : null;
 }
 
 function buildSharedGroupFrontier(
@@ -956,11 +1039,21 @@ function buildSharedGroupFrontier(
   context: SolverContext,
 ): GroupFrontier {
   const STREAM_PRUNE_THRESHOLD = 65_536;
-  const speciesKey = String(rows[rowIndexes[0]].pokedexId);
+  const speciesKey = rows[rowIndexes[0]].candyFamilyKey;
   const targetSpecies = Math.min(
     inventory.species[speciesKey] ?? 0,
     rowIndexes.reduce((sum, rowIndex) => sum + rows[rowIndex].totalCandy, 0),
   );
+  const certifiedTopDown = buildCertifiedTopDownSharedGroupFrontier(
+    rowIndexes,
+    rows,
+    inventory,
+    context,
+    targetSpecies,
+  );
+  if (certifiedTopDown) return certifiedTopDown;
+  if (context.options.sharedSpeciesStrategy === 'topDownCandidate') return [];
+
   const sharedType = rowIndexes.every(rowIndex => rows[rowIndex].type === rows[rowIndexes[0]].type)
     ? rows[rowIndexes[0]].type
     : null;
@@ -1431,7 +1524,7 @@ function buildTypeBlockResourceStates(
   const groups: number[][] = [];
   const groupBySpecies = new Map<string, number[]>();
   for (const rowIndex of rowIndexes) {
-    const key = String(rows[rowIndex].pokedexId);
+    const key = rows[rowIndex].candyFamilyKey;
     const group = groupBySpecies.get(key);
     if (group) group.push(rowIndex);
     else {
@@ -1494,6 +1587,7 @@ function demandRowCacheKey(row: FeasibilityDemandRow): string {
   return [
     row.pokemonId,
     row.pokedexId,
+    row.candyFamilyKey,
     row.type,
     row.totalCandy,
     row.boostCandy,
@@ -1525,7 +1619,7 @@ function rowFrontierCacheKey(
     maxTotalSurplus: maxTotalSurplus ?? '',
     maxReachedSurplus: maxReachedSurplus ?? '',
     decisionOnly: decisionOnly ? 1 : 0,
-    species: inventory.species[String(row.pokedexId)] ?? 0,
+    species: inventory.species[row.candyFamilyKey] ?? 0,
     type: inventoryType(inventory, row.type),
     universal: inventory.universal,
   });
@@ -1542,7 +1636,7 @@ function typeBlockFrontierCacheKey(
   decisionOnly?: boolean,
 ): string {
   const typeKeys = [...new Set(rowIndexes.map(index => rows[index].type))].sort();
-  const speciesKeys = [...new Set(rowIndexes.map(index => String(rows[index].pokedexId)))].sort();
+  const speciesKeys = [...new Set(rowIndexes.map(index => rows[index].candyFamilyKey))].sort();
   return JSON.stringify({
     mode: mode ?? '',
     maxRowSurplus: maxRowSurplus ?? '',
@@ -1577,9 +1671,9 @@ function buildTypeBlockComponents(rows: FeasibilityDemandRow[]): number[][] {
   const speciesTypes = new Map<string, string[]>();
   rows.forEach(row => {
     find(row.type);
-    const types = speciesTypes.get(String(row.pokedexId));
+    const types = speciesTypes.get(row.candyFamilyKey);
     if (types) types.push(row.type);
-    else speciesTypes.set(String(row.pokedexId), [row.type]);
+    else speciesTypes.set(row.candyFamilyKey, [row.type]);
   });
   for (const types of speciesTypes.values()) for (let index = 1; index < types.length; index++) union(types[0], types[index]);
 
@@ -1597,7 +1691,7 @@ function relaxationInfeasible(rows: FeasibilityDemandRow[], inventory: CandyInve
   const residualByType: Record<string, number> = {};
   const speciesRows = new Map<string, FeasibilityDemandRow[]>();
   for (const row of rows) {
-    const key = String(row.pokedexId);
+    const key = row.candyFamilyKey;
     const group = speciesRows.get(key);
     if (group) group.push(row);
     else speciesRows.set(key, [row]);
@@ -1631,6 +1725,7 @@ function validateDemandRows(
   let boostUsed = 0;
   let shardsUsed = 0;
   for (const row of rows) {
+    if (!/^[1-9]\d*$/.test(row.candyFamilyKey)) return `invalid_candy_family_key:${row.pokemonId}`;
     const values = [row.totalCandy, row.boostCandy, row.normalCandy, row.shards, row.reachedLv, row.expInLevel];
     if (!values.every(isNonNegativeInteger)) return `invalid_row_values:${row.pokemonId}`;
     if (row.boostCandy + row.normalCandy !== row.totalCandy) return `candy_split_mismatch:${row.pokemonId}`;
@@ -1668,7 +1763,7 @@ function expectedRemaining(
   let universalM = 0;
   let universalL = 0;
   for (const row of rows) {
-    const speciesKey = String(row.pokedexId);
+    const speciesKey = row.candyFamilyKey;
     speciesUsed[speciesKey] = (speciesUsed[speciesKey] ?? 0) + row.supply.species;
     const type = typeUsed[row.type] ?? { s: 0, m: 0 };
     type.s += row.supply.typeS;
@@ -1773,7 +1868,7 @@ function validateSupplyAndInventory(
   for (const row of rows) {
     if (!Object.values(row.supply).every(isNonNegativeInteger)) return `invalid_supply_values:${row.pokemonId}`;
     if (supplyValue(row.supply) < row.totalCandy) return `row_supply_short:${row.pokemonId}`;
-    const key = String(row.pokedexId);
+    const key = row.candyFamilyKey;
     speciesUsed[key] = (speciesUsed[key] ?? 0) + row.supply.species;
     typeSUsed[row.type] = (typeSUsed[row.type] ?? 0) + row.supply.typeS;
     typeMUsed[row.type] = (typeMUsed[row.type] ?? 0) + row.supply.typeM;
@@ -1794,7 +1889,7 @@ function validateSpeciesNormalForm(rows: FeasiblePlanRow[], inventory: CandyInve
   const errors: string[] = [];
   const groups = new Map<string, number[]>();
   rows.forEach((row, index) => {
-    const key = String(row.pokedexId);
+    const key = row.candyFamilyKey;
     const group = groups.get(key);
     if (group) group.push(index);
     else groups.set(key, [index]);
@@ -1853,7 +1948,7 @@ function validateFeasibilityWitnessInternal(
   for (let index = 0; index < rowCount; index++) {
     const expected = demandRows[index];
     const actual = witness.rows[index];
-    for (const key of ['pokemonId', 'pokedexId', 'type', 'totalCandy', 'boostCandy', 'normalCandy', 'shards', 'reachedLv', 'expInLevel', 'targetReached'] as const) {
+    for (const key of ['pokemonId', 'pokedexId', 'candyFamilyKey', 'type', 'totalCandy', 'boostCandy', 'normalCandy', 'shards', 'reachedLv', 'expInLevel', 'targetReached'] as const) {
       if (actual[key] !== expected[key]) errors.push(`row_field_mismatch:${index}:${key}`);
     }
     if (validateSupplyAndInventory([actual], {
@@ -1901,10 +1996,91 @@ export function validateFeasibilityWitness(
   return validateFeasibilityWitnessInternal(witness, demandRows, inventory, options, true);
 }
 
-export function solveFeasibilityForFixedRows(
+function hasSharedCandyFamily(rows: FeasibilityDemandRow[]): boolean {
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (seen.has(row.candyFamilyKey)) return true;
+    seen.add(row.candyFamilyKey);
+  }
+  return false;
+}
+
+/**
+ * The candidate pass fixes each shared family's species candy in strict
+ * priority order. It is globally exact only when the restored plan reaches
+ * every surplus axis that precedes speciesLex in the active mode, and the
+ * species distribution is the unique lexicographic maximum for every shared
+ * family.
+ */
+function hasGlobalTopDownOptimalityCertificate(
+  result: FeasibilityResult,
   rows: FeasibilityDemandRow[],
   inventory: CandyInventory,
-  options: FeasibilitySolverOptions = {},
+  mode?: SolverItemCompareMode,
+): boolean {
+  if (result.status !== 'feasible' || result.witness.rows.length !== rows.length) return false;
+  const surpluses = result.witness.rows.map(row => supplyValue(row.supply) - row.totalCandy);
+  const hasOptimalSurplusPrefix = mode === 'legacyImproved' || mode === 'surplusGateFirst'
+    ? surpluses.every((surplus, index) => surplus <= 2 && (!rows[index].preferZeroSurplus || surplus === 0))
+    : surpluses.every(surplus => surplus === 0);
+  if (!hasOptimalSurplusPrefix) return false;
+
+  const indexesByFamily = new Map<string, number[]>();
+  rows.forEach((row, index) => {
+    const indexes = indexesByFamily.get(row.candyFamilyKey);
+    if (indexes) indexes.push(index);
+    else indexesByFamily.set(row.candyFamilyKey, [index]);
+  });
+  for (const [familyKey, rowIndexes] of indexesByFamily) {
+    if (rowIndexes.length < 2) continue;
+    const totalDemand = rowIndexes.reduce((sum, rowIndex) => sum + rows[rowIndex].totalCandy, 0);
+    const targetSpecies = Math.min(inventory.species[familyKey] ?? 0, totalDemand);
+    const weights = rowIndexes.map(rowIndex => rows[rowIndex].speciesLexWeight ?? 0);
+    const hasUniqueTopDownLexMaximum = targetSpecies === 0
+      || targetSpecies === totalDemand
+      || weights.every((weight, index) => index === weights.length - 1 || weight > weights[index + 1]);
+    if (!hasUniqueTopDownLexMaximum) return false;
+
+    let remainingSpecies = targetSpecies;
+    for (const rowIndex of rowIndexes) {
+      const expectedSpecies = Math.min(rows[rowIndex].totalCandy, remainingSpecies);
+      if (result.witness.rows[rowIndex].supply.species !== expectedSpecies) return false;
+      remainingSpecies -= expectedSpecies;
+    }
+    if (remainingSpecies !== 0) return false;
+  }
+  return true;
+}
+
+function candidateSolverOptions(
+  options: InternalFeasibilitySolverOptions,
+): InternalFeasibilitySolverOptions {
+  return {
+    ...options,
+    // Restricted block/global frontiers must not share a cache key with the
+    // complete search. Fixed-species row frontiers remain safe to reuse.
+    frontierCache: undefined,
+    globalPrefixCache: undefined,
+    sharedSpeciesStrategy: 'topDownCandidate',
+  };
+}
+
+function completeSolverOptionsAfter(
+  options: InternalFeasibilitySolverOptions,
+  startedAt: number,
+): InternalFeasibilitySolverOptions {
+  if (options.deadlineMs === undefined) return { ...options, sharedSpeciesStrategy: 'complete' };
+  return {
+    ...options,
+    deadlineMs: Math.max(0, options.deadlineMs - (performance.now() - startedAt)),
+    sharedSpeciesStrategy: 'complete',
+  };
+}
+
+function solveFeasibilityForFixedRowsOnce(
+  rows: FeasibilityDemandRow[],
+  inventory: CandyInventory,
+  options: InternalFeasibilitySolverOptions,
 ): FeasibilityResult {
   const context = createContext(options);
   const demandError = validateDemandRows(rows, options);
@@ -1929,10 +2105,37 @@ export function solveFeasibilityForFixedRows(
   }
 }
 
-export function solveFeasibilityDecisionForFixedRows(
+export function solveFeasibilityForFixedRows(
   rows: FeasibilityDemandRow[],
   inventory: CandyInventory,
   options: FeasibilitySolverOptions = {},
+): FeasibilityResult {
+  const internal = options as InternalFeasibilitySolverOptions;
+  const shouldTryTopDownCandidate = internal.sharedSpeciesStrategy === undefined
+    && internal.abortAfterTransitions === undefined
+    && hasSharedCandyFamily(rows);
+  if (!shouldTryTopDownCandidate) {
+    return solveFeasibilityForFixedRowsOnce(rows, inventory, {
+      ...internal,
+      sharedSpeciesStrategy: internal.sharedSpeciesStrategy ?? 'complete',
+    });
+  }
+
+  const startedAt = performance.now();
+  const candidate = solveFeasibilityForFixedRowsOnce(rows, inventory, candidateSolverOptions(internal));
+  const candidateCertified = candidate.status === 'feasible'
+    && hasGlobalTopDownOptimalityCertificate(candidate, rows, inventory, internal.itemCompareMode);
+  if (candidateCertified) {
+    return candidate;
+  }
+  if (candidate.status === 'inconclusive') return candidate;
+  return solveFeasibilityForFixedRowsOnce(rows, inventory, completeSolverOptionsAfter(internal, startedAt));
+}
+
+function solveFeasibilityDecisionForFixedRowsOnce(
+  rows: FeasibilityDemandRow[],
+  inventory: CandyInventory,
+  options: InternalFeasibilitySolverOptions,
 ): FeasibilityDecisionResult {
   const context = createContext({ ...options, decisionOnly: true });
   const demandError = validateDemandRows(rows, options);
@@ -1954,6 +2157,28 @@ export function solveFeasibilityDecisionForFixedRows(
     if (error instanceof FeasibilityAbort) return finishDecision(context, { status: 'inconclusive', reason: error.reason });
     throw error;
   }
+}
+
+export function solveFeasibilityDecisionForFixedRows(
+  rows: FeasibilityDemandRow[],
+  inventory: CandyInventory,
+  options: FeasibilitySolverOptions = {},
+): FeasibilityDecisionResult {
+  const internal = options as InternalFeasibilitySolverOptions;
+  const shouldTryTopDownCandidate = internal.sharedSpeciesStrategy === undefined
+    && internal.abortAfterTransitions === undefined
+    && hasSharedCandyFamily(rows);
+  if (!shouldTryTopDownCandidate) {
+    return solveFeasibilityDecisionForFixedRowsOnce(rows, inventory, {
+      ...internal,
+      sharedSpeciesStrategy: internal.sharedSpeciesStrategy ?? 'complete',
+    });
+  }
+
+  const startedAt = performance.now();
+  const candidate = solveFeasibilityDecisionForFixedRowsOnce(rows, inventory, candidateSolverOptions(internal));
+  if (candidate.status === 'feasible' || candidate.status === 'inconclusive') return candidate;
+  return solveFeasibilityDecisionForFixedRowsOnce(rows, inventory, completeSolverOptionsAfter(internal, startedAt));
 }
 
 export function createPrefixDecisionSession(
@@ -1992,7 +2217,7 @@ export function createPrefixDecisionSession(
       || sessionOptions.maxTotalSurplus !== undefined
       || sessionOptions.maxReachedSurplus !== undefined) return null;
     const searchRows = rows.slice(0, length);
-    if (new Set(searchRows.map(row => String(row.pokedexId))).size !== searchRows.length) return null;
+    if (new Set(searchRows.map(row => row.candyFamilyKey)).size !== searchRows.length) return null;
     const searchContext = createContext({ ...sessionOptions, logPerformance: false });
     const demandError = validateDemandRows(searchRows, searchContext.options);
     if (demandError) return finishDecision(searchContext, { status: 'infeasible', reason: demandError });
@@ -2154,7 +2379,7 @@ export function createPrefixDecisionSession(
       checkpoint(context);
       const rowIndex = builtLength;
       const row = rows[rowIndex];
-      const speciesKey = String(row.pokedexId);
+      const speciesKey = row.candyFamilyKey;
       if (speciesSeen.has(speciesKey)) {
         complexFrom = rowIndex + 1;
         return;
@@ -2191,7 +2416,17 @@ export function createPrefixDecisionSession(
         decisions.set(0, result);
         return result;
       }
-      const independentDecision = tryIndependentDecisionSearch(clamped);
+      let independentDecision: FeasibilityDecisionResult | null;
+      try {
+        independentDecision = tryIndependentDecisionSearch(clamped);
+      } catch (error) {
+        if (error instanceof FeasibilityAbort) {
+          const result = finishDecision(context, { status: 'inconclusive', reason: error.reason });
+          decisions.set(clamped, result);
+          return result;
+        }
+        throw error;
+      }
       if (independentDecision) {
         decisions.set(clamped, independentDecision);
         return independentDecision;
@@ -2299,7 +2534,7 @@ export function solveFeasibilityForIndependentBoundary(
   inventory: CandyInventory,
   options: FeasibilitySolverOptions = {},
 ): FeasibilityResult | null {
-  if (prefixRows.some(row => row.type === boundaryRow.type || row.pokedexId === boundaryRow.pokedexId)) return null;
+  if (prefixRows.some(row => row.type === boundaryRow.type || row.candyFamilyKey === boundaryRow.candyFamilyKey)) return null;
   const rows = [...prefixRows, boundaryRow];
   const context = createContext(options);
   const demandError = validateDemandRows(rows, options);
@@ -2366,7 +2601,7 @@ export function createIndependentBoundaryFeasibilitySession(
   maxBoundaryUniversalS: (boundaryRow: FeasibilityDemandRow, universalM: number, universalL: number, limits?: { maxTotalSurplus?: number }) => number | null;
 } | null {
   const prefixTypes = new Set(prefixRows.map(row => row.type));
-  const prefixSpecies = new Set(prefixRows.map(row => row.pokedexId));
+  const prefixSpecies = new Set(prefixRows.map(row => row.candyFamilyKey));
   const context = createContext(options);
   const demandError = validateDemandRows(prefixRows, options);
   if (demandError) return null;
@@ -2393,7 +2628,7 @@ export function createIndependentBoundaryFeasibilitySession(
       return states;
     };
     const sameTypeBoundaryComponentIndex = (boundaryRow: FeasibilityDemandRow): number | null => {
-      if (!prefixTypes.has(boundaryRow.type) || prefixSpecies.has(boundaryRow.pokedexId)) return null;
+      if (!prefixTypes.has(boundaryRow.type) || prefixSpecies.has(boundaryRow.candyFamilyKey)) return null;
       const stock = inventoryType(inventory, boundaryRow.type);
       if (
         (context.options.itemCompareMode === 'surplusGateFirst'
@@ -2443,7 +2678,7 @@ export function createIndependentBoundaryFeasibilitySession(
         const envelope = unaffectedDecisionEnvelopeFor(componentIndex);
         if (!envelope) return finishDecision(context, { status: 'infeasible', reason: 'no_global_feasible_state' });
         const boundaryRowIndex = prefixRows.length;
-        const species = Math.min(inventory.species[String(boundaryRow.pokedexId)] ?? 0, boundaryRow.totalCandy);
+        const species = Math.min(inventory.species[boundaryRow.candyFamilyKey] ?? 0, boundaryRow.totalCandy);
         const boundaryOptions = rowOptionsForSpecies(boundaryRow, species, inventory, context);
         context.stats.rowOptionCounts[boundaryRowIndex] = boundaryOptions.length;
         context.stats.rowFrontierCounts[boundaryRowIndex] = boundaryOptions.length;
@@ -2523,7 +2758,7 @@ export function createIndependentBoundaryFeasibilitySession(
       universalL: number,
       limits: { maxTotalSurplus?: number } = {},
     ): number | null => {
-      if (sameTypeBoundaryComponentIndex(boundaryRow) !== null || prefixSpecies.has(boundaryRow.pokedexId)) return null;
+      if (sameTypeBoundaryComponentIndex(boundaryRow) !== null || prefixSpecies.has(boundaryRow.candyFamilyKey)) return null;
       const maxTotalSurplus = limits.maxTotalSurplus ?? context.options.maxTotalSurplus;
       const envelope = maxTotalSurplus === undefined
         ? decisionEnvelope
@@ -2547,7 +2782,7 @@ export function createIndependentBoundaryFeasibilitySession(
       const stock = inventoryType(inventory, boundaryRow.type);
       const maxTotal = Math.max(0, Math.floor(maxTotalCandy));
       const rowSurplusLimit = context.options.maxRowSurplus;
-      const speciesStock = inventory.species[String(boundaryRow.pokedexId)] ?? 0;
+      const speciesStock = inventory.species[boundaryRow.candyFamilyKey] ?? 0;
       let best = -1;
 
       for (const state of affectedStates) {
@@ -2622,9 +2857,9 @@ export function createIndependentBoundaryFeasibilitySession(
       return best;
     };
     const findMaxBoundaryTotal = (boundaryRow: FeasibilityDemandRow, maxTotalCandy: number): number | null => {
-      if (sameTypeBoundaryComponentIndex(boundaryRow) !== null || prefixSpecies.has(boundaryRow.pokedexId)) return null;
+      if (sameTypeBoundaryComponentIndex(boundaryRow) !== null || prefixSpecies.has(boundaryRow.candyFamilyKey)) return null;
       const cappedTotal = Math.max(0, Math.floor(maxTotalCandy));
-      const species = Math.min(inventory.species[String(boundaryRow.pokedexId)] ?? 0, cappedTotal);
+      const species = Math.min(inventory.species[boundaryRow.candyFamilyKey] ?? 0, cappedTotal);
       const typeStock = inventoryType(inventory, boundaryRow.type);
       const rowSurplusAllowed = (supply: Supply, totalCandy: number): boolean => (
         context.options.maxRowSurplus === undefined
@@ -2702,7 +2937,7 @@ export function createIndependentBoundaryFeasibilitySession(
         if (rowError) return finishDecision(context, { status: 'infeasible', reason: rowError });
         const rowRelaxationError = relaxationInfeasible(rows, inventory);
         if (rowRelaxationError) return finishDecision(context, { status: 'infeasible', reason: rowRelaxationError });
-        if (prefixSpecies.has(boundaryRow.pokedexId)) return null;
+        if (prefixSpecies.has(boundaryRow.candyFamilyKey)) return null;
         if (context.options.maxTotalSurplus !== undefined) return null;
         if (limits.maxTotalSurplus !== undefined && limits.maxTotalSurplus !== context.options.maxTotalSurplus) return null;
         // Type candy stock is shared with the prefix in every policy. Treating
@@ -2744,7 +2979,7 @@ export function createIndependentBoundaryFeasibilitySession(
         }
       },
       canSolveSupply(boundaryRow: FeasibilityDemandRow, supply: Supply, limits: { maxTotalSurplus?: number; maxReachedSurplus?: number } = {}): FeasibilityDecisionResult | null {
-        if (sameTypeBoundaryComponentIndex(boundaryRow) !== null || prefixSpecies.has(boundaryRow.pokedexId)) return null;
+        if (sameTypeBoundaryComponentIndex(boundaryRow) !== null || prefixSpecies.has(boundaryRow.candyFamilyKey)) return null;
         const rows = [...prefixRows, boundaryRow];
         const rowError = validateDemandRows(rows, options);
         if (rowError) return finishDecision(context, { status: 'infeasible', reason: rowError });
@@ -2817,7 +3052,7 @@ export function createIndependentBoundaryFeasibilitySession(
         if (maxTotal === null) return null;
         if (maxTotal < 0) return finish(context, { status: 'infeasible', reason: 'no_global_feasible_state' });
         const row = boundaryRowForTotal(maxTotal);
-        if (sameTypeBoundaryComponentIndex(row) !== null || prefixSpecies.has(row.pokedexId)) return null;
+        if (sameTypeBoundaryComponentIndex(row) !== null || prefixSpecies.has(row.candyFamilyKey)) return null;
         const rows = [...prefixRows, row];
         const rowError = validateDemandRows(rows, options);
         if (rowError) return finish(context, { status: 'infeasible', reason: rowError });
@@ -2844,7 +3079,7 @@ export function createIndependentBoundaryFeasibilitySession(
         if (rowError) return finish(context, { status: 'infeasible', reason: rowError });
         const rowRelaxationError = relaxationInfeasible(rows, inventory);
         if (rowRelaxationError) return finish(context, { status: 'infeasible', reason: rowRelaxationError });
-        if (prefixSpecies.has(boundaryRow.pokedexId)) return null;
+        if (prefixSpecies.has(boundaryRow.candyFamilyKey)) return null;
         if (sameTypeBoundaryComponentIndex(boundaryRow) !== null) {
           if (limits.maxTotalSurplus !== undefined || limits.maxReachedSurplus !== undefined) return null;
           return sameTypeBoundarySolve(boundaryRow, rows);
@@ -2874,7 +3109,7 @@ export function hasSingleRowSupplyWithinSurplus(
   maxRowSurplus: number,
 ): boolean {
   const context = createContext({ maxRowSurplus });
-  const species = Math.min(inventory.species[String(row.pokedexId)] ?? 0, row.totalCandy);
+  const species = Math.min(inventory.species[row.candyFamilyKey] ?? 0, row.totalCandy);
   const options = rowOptionsForSpecies(row, species, inventory, context);
   return options.some(option => resourceWithinInventory({
     typeS: { [row.type]: option.typeS },
@@ -2895,6 +3130,7 @@ function refinedSupplyRow(row: FeasiblePlanRow): {
   id: string;
   name: string;
   pokedexId: number;
+  candyFamilyKey: string;
   type: string;
   totalCandyCount: number;
   fixedSpecies: number;
@@ -2917,6 +3153,7 @@ function refinedSupplyRow(row: FeasiblePlanRow): {
     id: row.pokemonId,
     name: row.pokemonId,
     pokedexId: row.pokedexId,
+    candyFamilyKey: row.candyFamilyKey,
     type: row.type,
     totalCandyCount: row.totalCandy,
     fixedSpecies: row.supply.species,

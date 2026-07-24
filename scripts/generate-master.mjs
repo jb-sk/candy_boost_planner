@@ -34,6 +34,8 @@ function main() {
   const forceInteractive = hasArg("--interactive");
   const forceNonInteractive = hasArg("--non-interactive");
   const dryRun = hasArg("--dry-run");
+  const pokesleepToolArgIndex = process.argv.indexOf("--pokesleep-tool");
+  const pokesleepTool = pokesleepToolArgIndex >= 0 ? process.argv[pokesleepToolArgIndex + 1] : null;
 
   const interactive = forceNonInteractive ? false : forceInteractive ? true : Boolean(process.stdin.isTTY);
   const masterArgs = interactive ? ["scripts/generate-pokemon-master.mjs", "--interactive"] : ["scripts/generate-pokemon-master.mjs", "--non-interactive"];
@@ -61,6 +63,13 @@ function main() {
   // Step 2: intermediate -> master + indices
   if (tmpJsonOut) masterArgs.push("--db", tmpJsonOut);
   run(process.execPath, masterArgs);
+
+  // Step 3: master -> candy family map. A dry-run master is written only to a
+  // temporary DB, so current generated-family completeness is checked separately.
+  const familyArgs = ["scripts/generate-candy-families.mjs"];
+  if (dryRun) familyArgs.push("--verify");
+  if (pokesleepTool) familyArgs.push("--pokesleep-tool", pokesleepTool);
+  run(process.execPath, familyArgs);
 }
 
 main();

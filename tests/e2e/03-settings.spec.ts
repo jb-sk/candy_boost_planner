@@ -38,6 +38,8 @@ function makeFullBackup() {
     createdAt: timestamp,
     updatedAt: timestamp,
   })) as never[];
+  // テスト36はV1バックアップの移行テスト。入力は意図的にV1（種族別キー）のまま保持する。
+  // インポート時にV2（進化系統別・競合は系統内最大値）へ移行される様子を比較側で検証する。
   value.data.globalSettings.candyInventory = {
     schemaVersion: 1,
     universal: { s: 11, m: 22, l: 33 },
@@ -551,7 +553,7 @@ test.describe('03-settings デスクトップ', () => {
     await expect(page.getByTestId('data-backup-manual-copy')).toHaveAttribute('readonly', '');
   });
 
-  test('36. Box・全設定・異なる3スロットを復元し、各スロットが通常計算を完了して再エクスポートできる', async ({ page }) => {
+  test('36. V1のBox・全設定・異なる3スロットを復元し、V2へ移行して再エクスポートできる', async ({ page }) => {
     const settings = new SettingsModalPage(page);
     const expected = makeFullBackup();
     await settings.openSettingsFromDesktop();
@@ -581,8 +583,19 @@ test.describe('03-settings デスクトップ', () => {
     });
     await page.getByTestId('data-backup-copy').click();
     const restored = JSON.parse(await page.evaluate(() => (window as Window & { copiedFullBackup?: string }).copiedFullBackup ?? '{}'));
+    // V1入力がV2へ移行されて再エクスポートされることを検証する。
+    // 25(ピカチュウ)と26(ライチュウ)は同一系統キー"25"へ集約され、値は系統内最大値max(88,99)=99。
+    expect(restored.schemaVersion).toBe(2);
     expect(restored.data.box).toEqual(expected.data.box);
-    expect(restored.data.globalSettings).toEqual(expected.data.globalSettings);
+    expect(restored.data.globalSettings).toEqual({
+      ...expected.data.globalSettings,
+      candyInventory: {
+        schemaVersion: 2,
+        universal: { s: 11, m: 22, l: 33 },
+        typeCandy: { Electric: { s: 44, m: 55 }, Ground: { s: 66, m: 77 } },
+        species: { '25': 99, '27': 111 },
+      },
+    });
     const withoutSavedAt = (slots: Array<Record<string, unknown>>) => slots.map(({ savedAt: _savedAt, ...slot }) => slot);
     expect(withoutSavedAt(restored.data.calculator.slots)).toEqual(withoutSavedAt(expected.data.calculator.slots as never[]));
     expect(restored.data.calculator.activeSlotIndex).toBe(2);

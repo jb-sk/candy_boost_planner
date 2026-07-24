@@ -86,8 +86,8 @@ function supplyValue(supply: CandySupplyBreakdown): number {
     + supply.universal.l * CANDY_VALUES.universal.l;
 }
 
-function speciesKey(pokemon: Pick<PokemonPlanInput, 'pokedexId'>): string {
-  return String(pokemon.pokedexId);
+function speciesKey(pokemon: Pick<PokemonPlanInput, 'candyFamilyKey'>): string {
+  return pokemon.candyFamilyKey;
 }
 
 function compareNumbers(a: number[], b: number[]): number {
@@ -538,13 +538,21 @@ function makeCandyTargetLine(
   };
 }
 
-function enumerateSupplies(total: number, pokemon: PokemonPlanInput, inventory: CandyInventory): CandySupplyBreakdown[] {
-  if (total === 0) return [emptySupply()];
+function enumerateSupplies(
+  total: number,
+  pokemon: PokemonPlanInput,
+  inventory: CandyInventory,
+  fixedSpecies?: number,
+): CandySupplyBreakdown[] {
+  if (total === 0) return fixedSpecies === undefined || fixedSpecies === 0 ? [emptySupply()] : [];
   const type = inventory.typeCandy[pokemon.type] ?? { s: 0, m: 0 };
   const universal = inventory.universal;
   const result: CandySupplyBreakdown[] = [];
   const speciesMax = Math.min(inventory.species[speciesKey(pokemon)] ?? 0, total);
-  for (const species of [speciesMax]) {
+  // 種族アメはfamily単位の残在庫を、優先順位順に各行で先に使い切る。
+  const speciesValues = fixedSpecies === undefined ? [speciesMax] : [fixedSpecies];
+  for (const species of speciesValues) {
+    if (species < 0 || species > speciesMax) continue;
     for (let typeS = 0; typeS <= type.s; typeS++) {
       for (let typeM = 0; typeM <= type.m; typeM++) {
         for (let universalS = 0; universalS <= universal.s; universalS++) {
@@ -561,7 +569,12 @@ function enumerateSupplies(total: number, pokemon: PokemonPlanInput, inventory: 
   return result;
 }
 
-function enumerateCandidates(pokemon: OracleCandidate['pokemon'], input: LevelPlannerInput, usage: OracleUsage): OracleCandidate[] {
+function enumerateCandidates(
+  pokemon: OracleCandidate['pokemon'],
+  input: LevelPlannerInput,
+  usage: OracleUsage,
+  fixedSpecies?: number,
+): OracleCandidate[] {
   const inventory = remainingInventory(input, usage);
   const remainingBoost = Math.max(0, input.boost.limit - usage.boost);
   const remainingShards = Math.max(0, input.dreamShards - usage.shards);
@@ -573,7 +586,7 @@ function enumerateCandidates(pokemon: OracleCandidate['pokemon'], input: LevelPl
       const requestedBoost = Math.min(boostBudget, totalBudget);
       const reached = simulateCandyBudget(pokemon, requestedBoost, totalBudget, remainingShards, input.boost.kind, hasFixedCandyTargetBoost(pokemon));
       const total = reached.boostUsed + reached.normalUsed;
-      for (const supply of enumerateSupplies(total, pokemon, inventory)) {
+      for (const supply of enumerateSupplies(total, pokemon, inventory, fixedSpecies)) {
         candidates.push({
           pokemon,
           line: makeCandyTargetLine(pokemon, input, requestedBoost, totalBudget, remainingShards, supply),
@@ -598,7 +611,7 @@ function enumerateCandidates(pokemon: OracleCandidate['pokemon'], input: LevelPl
   const candidates: OracleCandidate[] = [];
   for (const option of byUse.values()) {
     if (pokemon.candyTarget && option.total > pokemon.candyTarget.totalCandyUnits) continue;
-    for (const supply of enumerateSupplies(option.total, pokemon, inventory)) {
+    for (const supply of enumerateSupplies(option.total, pokemon, inventory, fixedSpecies)) {
       candidates.push({ pokemon, line: makeLine(pokemon, input, option.boostBudget, option.normalBudget, remainingShards, supply) });
     }
   }
@@ -758,7 +771,12 @@ function solveByFixedDemandSupplyOracle(rawInput: LevelPlannerInput, mode: Solve
       if (!best || compareFixedDemandSupplyPlan(plan, best, mode) > 0) best = plan;
       return;
     }
-    const candidates = enumerateCandidates(pokemonList[index], input, usage);
+    const candidates = enumerateCandidates(
+      pokemonList[index],
+      input,
+      usage,
+      fixedDemand.choices[index]?.line.candySupply.species,
+    );
     candidateCounts[index] = Math.max(candidateCounts[index], candidates.length);
     for (const candidate of candidates) {
       const nextUsage = mergeUsage(usage, usageFrom(candidate.pokemon, candidate.line));
@@ -906,9 +924,10 @@ function describePlan(plan: OraclePlan): string {
 }
 
 function pokemon(index: number, overrides: Partial<PokemonPlanInput> = {}): PokemonPlanInput {
-  return {
+  const result: PokemonPlanInput = {
     pokemonId: `oracle-${index}`,
     pokedexId: 9000 + index,
+    candyFamilyKey: String(9000 + index),
     name: `Oracle ${index}`,
     type: `oracle_type_${index}`,
     currentLevel: 2,
@@ -922,6 +941,8 @@ function pokemon(index: number, overrides: Partial<PokemonPlanInput> = {}): Poke
     priorityIndex: index,
     ...overrides,
   };
+  if (overrides.candyFamilyKey === undefined) result.candyFamilyKey = String(result.pokedexId);
+  return result;
 }
 
 function caseInput(overrides: Partial<LevelPlannerInput> = {}): LevelPlannerInput {
@@ -973,8 +994,10 @@ function smallRandomCase(seed: number): LevelPlannerInput {
     const targetLevel = currentLevel + 1;
     const targetExpInLevel = int(rng, 0, Math.floor(calcExp(targetLevel, targetLevel + 1, expType) * 0.25));
     const requestedBoostCandy = boostKind === 'none' ? 0 : int(rng, 0, 3);
+    const pokedexId = 10_100 + seed * 10 + index;
     const row = pokemon(index, {
-      pokedexId: sharedSpecies && index > 0 ? 10_100 + seed : 10_100 + seed * 10 + index,
+      pokedexId,
+      candyFamilyKey: sharedSpecies ? String(10_100 + seed * 10) : String(pokedexId),
       type: sharedType && index > 0 ? `oracle_shared_type_${seed}` : `oracle_type_${seed}_${index}`,
       currentLevel,
       currentExpInLevel,
@@ -1042,8 +1065,10 @@ function tinyThreePokemonCase(seed: number): LevelPlannerInput {
     const totalCandyUnits = int(rng, 1, 4);
     const requestedBoostCandy = int(rng, 0, 4);
     const boostedCandyUnits = int(rng, 0, Math.min(totalCandyUnits, requestedBoostCandy));
+    const pokedexId = 20_000 + seed * 10 + index;
     const row = pokemon(index, {
-      pokedexId: sharedSpecies && index > 0 ? 20_000 + seed : 20_000 + seed * 10 + index,
+      pokedexId,
+      candyFamilyKey: sharedSpecies ? String(20_000 + seed * 10) : String(pokedexId),
       type: sharedType && index > 0 ? `oracle_three_shared_${seed}` : `oracle_three_${seed}_${index}`,
       currentLevel: 2 + (seed + index) % 2,
       currentExpInLevel: int(rng, 0, 10),
@@ -1123,9 +1148,29 @@ describe('level planner full-plan oracle', () => {
       caseInput({
         pokemonList: [
           pokemon(0, { pokedexId: 4, type: 'grass', candyTarget: { totalCandyUnits: 2, boostedCandyUnits: 0 } }),
-          pokemon(1, { pokedexId: 4, type: 'fire', candyTarget: { totalCandyUnits: 2, boostedCandyUnits: 0 } }),
+          pokemon(1, { pokedexId: 5, candyFamilyKey: '4', type: 'fire', candyTarget: { totalCandyUnits: 2, boostedCandyUnits: 0 } }),
         ],
         candyInventory: { species: { '4': 3 }, typeCandy: { grass: { s: 1, m: 0 }, fire: { s: 1, m: 0 } }, universal: { s: 2, m: 0, l: 0 } },
+      }),
+      caseInput({
+        pokemonList: [
+          pokemon(0, { pokedexId: 172, candyFamilyKey: '25', type: 'electric', candyTarget: { totalCandyUnits: 2, boostedCandyUnits: 0 } }),
+          pokemon(1, { pokedexId: 25, candyFamilyKey: '25', type: 'electric', candyTarget: { totalCandyUnits: 2, boostedCandyUnits: 0 } }),
+          pokemon(2, { pokedexId: 26, candyFamilyKey: '25', type: 'electric', candyTarget: { totalCandyUnits: 2, boostedCandyUnits: 0 } }),
+        ],
+        candyInventory: { species: { '25': 4 }, typeCandy: { electric: { s: 1, m: 0 } }, universal: { s: 1, m: 0, l: 0 } },
+      }),
+      caseInput({
+        pokemonList: [
+          pokemon(0, { pokedexId: 133, candyFamilyKey: '133', type: 'normal', candyTarget: { totalCandyUnits: 2, boostedCandyUnits: 0 } }),
+          pokemon(1, { pokedexId: 134, candyFamilyKey: '133', type: 'water', candyTarget: { totalCandyUnits: 2, boostedCandyUnits: 0 } }),
+          pokemon(2, { pokedexId: 135, candyFamilyKey: '133', type: 'electric', candyTarget: { totalCandyUnits: 2, boostedCandyUnits: 0 } }),
+        ],
+        candyInventory: {
+          species: { '133': 3 },
+          typeCandy: { normal: { s: 1, m: 0 }, water: { s: 1, m: 0 }, electric: { s: 1, m: 0 } },
+          universal: { s: 2, m: 0, l: 0 },
+        },
       }),
     ];
 
@@ -1149,6 +1194,9 @@ describe('level planner full-plan oracle', () => {
 
   it('検出されたseed 300で余り1の万能S候補を落とさない', () => {
     const input = smallRandomCase(300);
+    const targetRow = input.pokemonList[1];
+    targetRow.candyFamilyKey = String(targetRow.pokedexId);
+    input.candyInventory.species[targetRow.candyFamilyKey] = 0;
     const candidates = __levelPlannerTestHooks.supplyCandidatesForTest(
       { ...input, options: { itemCompareMode: 'surplusFirst' } },
       1,

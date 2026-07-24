@@ -20,6 +20,7 @@ export class BoxPanelPage {
   readonly levelPopover: Locator;
   readonly levelPlusButton: Locator;
   readonly natureField: Locator;
+  readonly speciesCandyInput: Locator;
   readonly natureTrigger: Locator;
   readonly natureDropdown: Locator;
   readonly natureOptions: Locator;
@@ -96,6 +97,7 @@ export class BoxPanelPage {
 
     // 性格選択（新規追加用）
     this.natureField = page.getByTestId('box-add-nature-field');
+    this.speciesCandyInput = page.getByTestId('box-add-species-candy');
     this.natureTrigger = page.getByTestId('nature-select-trigger').first();
     this.natureDropdown = page.getByTestId('nature-select-dropdown');
     this.natureOptions = this.natureDropdown.getByTestId('nature-select-option');

@@ -1,11 +1,13 @@
 import { bench, describe } from 'vitest';
 import { solveLevelPlan } from '../../src/domain/level-planner/core';
+import { getCandyFamilyKey } from '../../src/domain/pokesleep/candy-family';
 import type { LevelPlannerInput, PokemonPlanInput } from '../../src/domain/level-planner/types';
 
 function fixture(count: number, contended: boolean): LevelPlannerInput {
   const pokemonList: PokemonPlanInput[] = Array.from({ length: count }, (_, index) => ({
     pokemonId: `bench-${index}`,
     pokedexId: 25 + (index % 4),
+    candyFamilyKey: getCandyFamilyKey(25 + (index % 4)),
     name: `bench-${index}`,
     type: 'electric',
     currentLevel: 10,
@@ -23,7 +25,7 @@ function fixture(count: number, contended: boolean): LevelPlannerInput {
     dreamShards: contended ? 100 : 1_000_000,
     boost: { kind: 'full', limit: contended ? 20 : 10_000 },
     candyInventory: {
-      species: Object.fromEntries(pokemonList.map(pokemon => [String(pokemon.pokedexId), stock])),
+      species: Object.fromEntries(pokemonList.map(pokemon => [pokemon.candyFamilyKey, stock])),
       typeCandy: { electric: { s: stock, m: stock } },
       universal: { s: stock, m: stock, l: stock },
     },
@@ -36,6 +38,7 @@ function highLevelFixture(): LevelPlannerInput {
       {
         pokemonId: 'latias',
         pokedexId: 380,
+        candyFamilyKey: getCandyFamilyKey(380),
         name: 'Latias',
         type: 'dragon',
         currentLevel: 55,
@@ -51,6 +54,7 @@ function highLevelFixture(): LevelPlannerInput {
       {
         pokemonId: 'jolteon',
         pokedexId: 135,
+        candyFamilyKey: getCandyFamilyKey(135),
         name: 'Jolteon',
         type: 'electric',
         currentLevel: 25,
@@ -65,6 +69,7 @@ function highLevelFixture(): LevelPlannerInput {
       {
         pokemonId: 'suicune',
         pokedexId: 245,
+        candyFamilyKey: getCandyFamilyKey(245),
         name: 'Suicune',
         type: 'water',
         currentLevel: 61,
@@ -80,7 +85,7 @@ function highLevelFixture(): LevelPlannerInput {
     dreamShards: 4_200_000,
     boost: { kind: 'full', limit: 350 },
     candyInventory: {
-      species: { '380': 319, '135': 656, '245': 478 },
+      species: { '380': 319, '133': 656, '245': 478 },
       typeCandy: {
         dragon: { s: 13, m: 0 },
         electric: { s: 380, m: 0 },

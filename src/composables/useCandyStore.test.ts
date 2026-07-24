@@ -45,10 +45,20 @@ describe("useCandyStore", () => {
     store.updateSpeciesCandy(245, 12);
     await nextTick();
 
-    expect(localStorage.getItem("candy-boost-planner:candy-inventory:v1")).toBeNull();
+    expect(localStorage.getItem("candy-boost-planner:candy-inventory:v2")).toBeNull();
     flushPersist("candy");
-    const saved = JSON.parse(localStorage.getItem("candy-boost-planner:candy-inventory:v1") ?? "null");
+    const saved = JSON.parse(localStorage.getItem("candy-boost-planner:candy-inventory:v2") ?? "null");
     expect(saved.universal).toEqual({ s: 3, m: 4, l: 0 });
     expect(saved.species["245"]).toBe(12);
+  });
+
+  it("shares one value across different pokedex IDs in the same family", () => {
+    const store = useCandyStore();
+    store.updateSpeciesCandy(172, 100);
+    expect(store.getSpeciesCandyFor(25)).toBe(100);
+    expect(store.getSpeciesCandyFor(26)).toBe(100);
+
+    store.updateSpeciesCandy(26, 40);
+    expect(store.getSpeciesCandyFor(172)).toBe(40);
   });
 });
