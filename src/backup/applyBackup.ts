@@ -1,5 +1,9 @@
 import { BOX_STORAGE_KEY, serializeBox } from "../persistence/box";
-import { CANDY_STORAGE_KEY, serializeCandyInventory } from "../persistence/candy";
+import {
+  CANDY_STORAGE_KEY,
+  CANDY_STORAGE_KEY_V1,
+  serializeCandyInventory,
+} from "../persistence/candy";
 import {
   ACTIVE_SLOT_STORAGE_KEY,
   BOOST_CANDY_REMAINING_KEY,
@@ -9,7 +13,7 @@ import {
   serializeCalcSlots,
 } from "../persistence/calc";
 import { cancelPersist, flushPersist } from "../persistence/deferredPersist";
-import type { CandyBoostPlannerBackupV1 } from "./types";
+import type { CandyBoostPlannerBackupV2 } from "./types";
 
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -20,14 +24,14 @@ export type ApplyBackupOptions = {
   reload?: () => void;
 };
 
-function restoreInternalBoxEntries(backup: CandyBoostPlannerBackupV1) {
+function restoreInternalBoxEntries(backup: CandyBoostPlannerBackupV2) {
   return backup.data.box.entries.map((entry) => ({
     ...entry,
     source: entry.rawText.trim() ? "nitoyon" as const : "manual" as const,
   }));
 }
 
-export function applyBackup(backup: CandyBoostPlannerBackupV1, options: ApplyBackupOptions = {}): void {
+export function applyBackup(backup: CandyBoostPlannerBackupV2, options: ApplyBackupOptions = {}): void {
   const storage = options.storage ?? localStorage;
   const flush = options.flush ?? (() => flushPersist());
   const cancelPending = options.cancelPending ?? (() => cancelPersist());
@@ -35,6 +39,7 @@ export function applyBackup(backup: CandyBoostPlannerBackupV1, options: ApplyBac
   const writes = new Map<string, string | null>([
     [BOX_STORAGE_KEY, serializeBox(restoreInternalBoxEntries(backup))],
     [CANDY_STORAGE_KEY, serializeCandyInventory(backup.data.globalSettings.candyInventory)],
+    [CANDY_STORAGE_KEY_V1, null],
     [CALC_SLOTS_STORAGE_KEY, serializeCalcSlots(backup.data.calculator.slots)],
     [TOTAL_SHARDS_KEY, String(backup.data.globalSettings.totalShards)],
     [SLEEP_SETTINGS_KEY, JSON.stringify(backup.data.globalSettings.sleepSettings)],

@@ -57,6 +57,31 @@ test.describe('AddPokemonModal - 基本動作', () => {
     await expect(modal.submitButton).toBeEnabled();
   });
 
+  test('進化系のどのポケモンから編集してもモーダル・計算機・BOXで同じ種族アメを共有する', async ({ page }) => {
+    const box = new BoxPanelPage(page);
+
+    await modal.fillAndPickName('ピカチュウ');
+    await modal.speciesCandyInput.fill('123');
+    await modal.submitButton.click();
+
+    await modal.close();
+    await modal.open();
+    await modal.nameInput.fill('ライチュウ');
+    await expect(modal.speciesCandyInput).toHaveValue('123');
+    await modal.speciesCandyInput.fill('77');
+    await modal.submitButton.click();
+
+    const calcSpeciesInputs = page.getByTestId('calc-row').getByTestId('speciesCandy');
+    await expect(calcSpeciesInputs).toHaveCount(2);
+    await expect(calcSpeciesInputs.nth(0)).toHaveValue('77');
+    await expect(calcSpeciesInputs.nth(1)).toHaveValue('77');
+
+    await modal.close();
+    await box.openAddNewPanel();
+    await box.fillPokemonName('ピチュー');
+    await expect(box.speciesCandyInput).toHaveValue('77');
+  });
+
   test('レベルピッカーのタイトルに現在選択中のLvが表示される', async () => {
     await modal.srcLevelChevron.click();
     await expect(modal.modal.locator('.levelPick__title')).toHaveText('現在Lv Lv1');

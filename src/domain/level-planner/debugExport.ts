@@ -1,5 +1,6 @@
 import { CANDY_VALUES } from './constants';
 import { validateFeasibilityWitness } from './core/feasibilityWitness';
+import { getCandyFamilyKey } from '../pokesleep/candy-family';
 import type {
   BoostKind,
   CalculationMode,
@@ -21,6 +22,7 @@ export type DebugExportRow = {
   id: string;
   name: string;
   pokedexId?: number;
+  candyFamilyKey?: string;
   type: string;
   nature: string;
   mode: string;
@@ -139,13 +141,14 @@ function appendSupplyRows(
   label: 'selected' | 'best',
   rows: Array<DebugExportRow & { plan: PokemonPlanResult }>,
 ): void {
-  lines.push(`${label}Rows\tindex\tname\tspecies\ttypeS\ttypeM\tuniversalS\tuniversalM\tuniversalL\tsupply\tsurplus`);
+  lines.push(`${label}Rows\tindex\tname\tcandyFamilyKey\tspecies\ttypeS\ttypeM\tuniversalS\tuniversalM\tuniversalL\tsupply\tsurplus`);
   rows.forEach((row, index) => {
     const option = debugOptionFromLine(row.plan.reachableLine);
     lines.push([
       label,
       index + 1,
       row.name,
+      row.candyFamilyKey ?? getCandyFamilyKey(row.plan.pokedexId),
       option.species,
       option.typeS,
       option.typeM,
@@ -220,6 +223,7 @@ function feasibilityDemandRow(row: DebugExportRow & { plan: PokemonPlanResult })
   return {
     pokemonId: row.plan.pokemonId,
     pokedexId: row.plan.pokedexId,
+    candyFamilyKey: row.candyFamilyKey ?? getCandyFamilyKey(row.plan.pokedexId),
     type: row.type,
     totalCandy: line.totalCandyUnitsUsed,
     boostCandy: line.boostedCandyUnits,
@@ -245,7 +249,7 @@ function subtractRemaining(
   let dreamShards = options.dreamShards ?? Number.POSITIVE_INFINITY;
 
   for (const row of rows) {
-    const speciesKey = String(row.pokedexId);
+    const speciesKey = row.candyFamilyKey;
     species[speciesKey] = (species[speciesKey] ?? 0) - row.supply.species;
     const stock = typeCandy[row.type] ?? { s: 0, m: 0 };
     typeCandy[row.type] = { s: stock.s - row.supply.typeS, m: stock.m - row.supply.typeM };
@@ -304,7 +308,7 @@ function buildFeasibilityTsv(context: DebugExportContext): string[] {
     lines.push('selectedValidation\terrors');
     lines.push(['invalid', validation.errors.join(',')].map(tsvCell).join('\t'));
   }
-  lines.push('selectedRows\tindex\tname\ttotalCandy\tboostCandy\tnormalCandy\tshards\treachedLv\texpInLevel\ttargetReached\tspecies\ttypeS\ttypeM\tuniversalS\tuniversalM\tuniversalL\tsupply\tsurplus');
+  lines.push('selectedRows\tindex\tname\tcandyFamilyKey\ttotalCandy\tboostCandy\tnormalCandy\tshards\treachedLv\texpInLevel\ttargetReached\tspecies\ttypeS\ttypeM\tuniversalS\tuniversalM\tuniversalL\tsupply\tsurplus');
   witness.rows.forEach((row, index) => {
     const supply = row.supply.species
       + row.supply.typeS * CANDY_VALUES.type.s
@@ -313,7 +317,7 @@ function buildFeasibilityTsv(context: DebugExportContext): string[] {
       + row.supply.universalM * CANDY_VALUES.universal.m
       + row.supply.universalL * CANDY_VALUES.universal.l;
     lines.push([
-      'selected', index + 1, rows[index].name, row.totalCandy, row.boostCandy,
+      'selected', index + 1, rows[index].name, row.candyFamilyKey, row.totalCandy, row.boostCandy,
       row.normalCandy, row.shards, row.reachedLv, row.expInLevel, row.targetReached,
       row.supply.species, row.supply.typeS, row.supply.typeM, row.supply.universalS,
       row.supply.universalM, row.supply.universalL, supply, supply - row.totalCandy,
@@ -336,9 +340,9 @@ function buildLossLedgerTsv(context: DebugExportContext): string[] {
     ['ok', ledger.hasLoss, ledger.supplyCandidateCuts.length, ledger.frontierCuts.length, ledger.stateCaps.length, ledger.expansionCapReductions.length].map(tsvCell).join('\t'),
   ];
   if (ledger.supplyCandidateCuts.length) {
-    lines.push('supplyCandidateCuts\tpokemonId\tname\tpokedexId\ttotalCandyUnits\tlimit\tkept\tselectedBeforeTrim\tstoppedAtSurplus\tmaxSurplus\tsharedSpecies\titemCompareMode');
+    lines.push('supplyCandidateCuts\tpokemonId\tname\tpokedexId\tcandyFamilyKey\ttotalCandyUnits\tlimit\tkept\tselectedBeforeTrim\tstoppedAtSurplus\tmaxSurplus\tsharedSpecies\titemCompareMode');
     for (const cut of ledger.supplyCandidateCuts) {
-      lines.push(['supply', cut.pokemonId, cut.name, cut.pokedexId, cut.totalCandyUnits, cut.limit, cut.kept, cut.selectedBeforeTrim, cut.stoppedAtSurplus, cut.maxSurplus, cut.sharedSpecies, cut.itemCompareMode].map(tsvCell).join('\t'));
+      lines.push(['supply', cut.pokemonId, cut.name, cut.pokedexId, getCandyFamilyKey(cut.pokedexId), cut.totalCandyUnits, cut.limit, cut.kept, cut.selectedBeforeTrim, cut.stoppedAtSurplus, cut.maxSurplus, cut.sharedSpecies, cut.itemCompareMode].map(tsvCell).join('\t'));
     }
   }
   if (ledger.frontierCuts.length) {
@@ -412,7 +416,7 @@ function buildBoundarySearchTsv(context: DebugExportContext): string[] {
 
 export function buildDebugExportTsv(context: DebugExportContext): string {
   const headers = [
-    'index', 'id', 'name', 'pokedexId', 'type', 'nature', 'mode',
+    'index', 'id', 'name', 'pokedexId', 'candyFamilyKey', 'type', 'nature', 'mode',
     'currentLv', 'currentExpInLevel', 'expRemaining', 'targetLv', 'targetExpInLevel', 'candyTarget',
     'boostKind', 'itemCompareMode', 'calculationScope', 'reachedLv', 'targetReached', 'role', 'expToNext', 'expToTarget',
     'shortageCandy', 'shortageBoost', 'shortageShards', 'limitingFactor', 'initialSpeciesStock',
@@ -432,7 +436,7 @@ export function buildDebugExportTsv(context: DebugExportContext): string {
   context.rows.forEach((row, index) => {
     const plan = row.plan;
     if (!plan) {
-      lines.push([index + 1, row.id, row.name, row.pokedexId ?? '', row.type, row.nature, row.mode, row.currentLevel, row.currentExpInLevel, row.expRemaining, row.targetLevel, row.targetExpInLevel ?? '', row.candyTarget ?? '', context.boost.kind, context.itemCompareMode, calculationScopeForRow(context, index)].map(tsvCell).join('\t'));
+      lines.push([index + 1, row.id, row.name, row.pokedexId ?? '', row.candyFamilyKey ?? (row.pokedexId ? getCandyFamilyKey(row.pokedexId) : ''), row.type, row.nature, row.mode, row.currentLevel, row.currentExpInLevel, row.expRemaining, row.targetLevel, row.targetExpInLevel ?? '', row.candyTarget ?? '', context.boost.kind, context.itemCompareMode, calculationScopeForRow(context, index)].map(tsvCell).join('\t'));
       return;
     }
     const reachable = plan.reachableLine;
@@ -443,11 +447,11 @@ export function buildDebugExportTsv(context: DebugExportContext): string {
     const limitNormal = limit?.nonBoostCandyUnits ?? '';
     const limitTotal = limit ? limit.boostedCandyUnits + limit.nonBoostCandyUnits : '';
     lines.push([
-      index + 1, row.id, row.name, plan.pokedexId, row.type, row.nature, row.mode,
+      index + 1, row.id, row.name, plan.pokedexId, row.candyFamilyKey ?? getCandyFamilyKey(plan.pokedexId), row.type, row.nature, row.mode,
       row.currentLevel, row.currentExpInLevel, row.expRemaining, row.targetLevel, plan.targetExpInLevel, row.candyTarget ?? '',
       context.boost.kind, context.itemCompareMode, calculationScopeForRow(context, index), reachable.level, reachable.targetReached, plan.role,
       reachable.expToNextLevel, plan.shortage.expToTarget, plan.shortage.candyToTarget, plan.shortage.boostCandyUnavailable,
-      plan.shortage.dreamShardShortage, plan.constraintDiagnosis.limitingFactor ?? '', context.inventorySnapshot.species[String(plan.pokedexId)] ?? 0,
+      plan.shortage.dreamShardShortage, plan.constraintDiagnosis.limitingFactor ?? '', context.inventorySnapshot.species[row.candyFamilyKey ?? getCandyFamilyKey(plan.pokedexId)] ?? 0,
       reachable.boostedCandyUnits, reachable.nonBoostCandyUnits, reachable.totalCandyUnitsUsed, reachable.dreamShardsUsed,
       reachable.candySupply.species, reachable.candySupply.type.s, reachable.candySupply.type.m, reachable.candySupply.universal.s, reachable.candySupply.universal.m, reachable.candySupply.universal.l,
       lineItemValue(reachable), lineItemValue(reachable), lineNonSpeciesItemValue(reachable), lineSurplus(reachable),

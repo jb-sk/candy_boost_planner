@@ -36,6 +36,7 @@ export function buildPlannerStructureSignature(input: LevelPlannerInput): string
     rows: input.pokemonList.map(pokemon => ({
       pokemonId: pokemon.pokemonId,
       pokedexId: pokemon.pokedexId,
+      candyFamilyKey: pokemon.candyFamilyKey,
       type: pokemon.type,
       nature: pokemon.nature,
       mode: pokemon.mode ?? null,

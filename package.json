@@ -16,6 +16,7 @@
     "generate:pokemon-master": "pnpm run generate:master -- --interactive",
     "generate:pokemon-names": "pnpm run generate:master -- --non-interactive",
     "generate:pokemon-en-names": "node scripts/generate-pokemon-en-names.mjs",
+    "generate:candy-families": "node scripts/generate-candy-families.mjs",
     "generate:pokemon-all": "pnpm run generate:master",
     "set:boost": "node scripts/set-boost-config.mjs",
     "update:all": "pnpm run generate:master -- --interactive && pnpm run generate:pokemon-en-names && pnpm run build",
@@ -27,6 +28,7 @@
     "perf:interaction": "playwright test tests/perf/interaction.perf.spec.ts --config playwright.perf.config.ts",
     "perf:cls": "playwright test tests/perf/layout-shift.perf.spec.ts --config playwright.perf.config.ts",
     "verify:forms": "node scripts/verify-form-mapping.mjs",
+    "verify:candy-families": "node scripts/generate-candy-families.mjs --verify",
     "check:ingredient-labels": "node scripts/check-ingredient-labels.mjs"
   },
   "dependencies": {

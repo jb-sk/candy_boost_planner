@@ -6,6 +6,7 @@
  */
 
 import type { ExpType, ExpGainNature } from '../types';
+import type { CandyFamilyKey } from '../pokesleep/candy-family';
 
 // ============================================================
 // 定数型
@@ -45,7 +46,7 @@ export type UniversalCandyStock = {
  * アメ在庫
  */
 export type CandyInventory = {
-  /** 種族アメ（pokedexId → 個数） */
+  /** 種族アメ（CandyFamilyKey → 個数） */
   species: Record<string, number>;
 
   /** タイプアメ（タイプ名 → 個数） */
@@ -63,6 +64,7 @@ export type CandyInventory = {
 export type FeasibilityDemandRow = {
   pokemonId: string;
   pokedexId: number;
+  candyFamilyKey: CandyFamilyKey;
   type: PokemonType;
   totalCandy: number;
   boostCandy: number;
@@ -215,6 +217,8 @@ export type PlannerOptions = {
 export type PokemonPlanInput = {
   pokemonId: string;
   pokedexId: number;
+  /** 種族アメの共有資源キー。pokedexIdを資源キーへ流用しない。 */
+  candyFamilyKey: CandyFamilyKey;
   name: string;
   /** UIの入力モード。solver計算自体では使わないが、signatureの構造情報に含める。 */
   mode?: 'targetLevel' | 'peak';

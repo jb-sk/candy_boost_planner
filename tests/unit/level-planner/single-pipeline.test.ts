@@ -1,9 +1,48 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CANDY_VALUES, MAX_ACCEPTABLE_SURPLUS } from '../../../src/domain/level-planner/constants';
-import { __levelPlannerTestHooks, solveLevelPlan, solveLevelPlanWithBudget } from '../../../src/domain/level-planner/core/solveLevelPlan';
+import {
+  __levelPlannerTestHooks as rawLevelPlannerTestHooks,
+  solveLevelPlan as solveLevelPlanCore,
+  solveLevelPlanWithBudget as solveLevelPlanWithBudgetCore,
+} from '../../../src/domain/level-planner/core/solveLevelPlan';
 import type { CandySupplyBreakdown, LevelPlannerInput, SolverItemCompareMode } from '../../../src/domain/level-planner/types';
 import { calcExp } from '../../../src/domain/pokesleep/exp';
 import { setPerfEnabled } from '../../../src/utils/perf';
+
+function withTestCandyFamilyKeys(input: LevelPlannerInput): LevelPlannerInput {
+  return {
+    ...input,
+    pokemonList: input.pokemonList.map(row => ({
+      ...row,
+      candyFamilyKey: row.candyFamilyKey ?? String(row.pokedexId),
+    })),
+  };
+}
+
+function solveLevelPlan(input: LevelPlannerInput) {
+  return solveLevelPlanCore(withTestCandyFamilyKeys(input));
+}
+
+function solveLevelPlanWithBudget(
+  input: LevelPlannerInput,
+  budget: Parameters<typeof solveLevelPlanWithBudgetCore>[1],
+) {
+  return solveLevelPlanWithBudgetCore(withTestCandyFamilyKeys(input), budget);
+}
+
+const __levelPlannerTestHooks = {
+  ...rawLevelPlannerTestHooks,
+  speciesNeedsForTest(input: LevelPlannerInput) {
+    return rawLevelPlannerTestHooks.speciesNeedsForTest(withTestCandyFamilyKeys(input));
+  },
+  supplyCandidatesForTest(input: LevelPlannerInput, pokemonIndex: number, totalCandy: number) {
+    return rawLevelPlannerTestHooks.supplyCandidatesForTest(
+      withTestCandyFamilyKeys(input),
+      pokemonIndex,
+      totalCandy,
+    );
+  },
+};
 
 const inventory = {
   species: { '25': 1000 },

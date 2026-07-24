@@ -1,6 +1,7 @@
 import type { ExpGainNature, ExpType } from '../types';
 import { calcExp, calcLevelByCandy } from '../pokesleep';
 import { getPokemonType } from '../pokesleep/pokemon-names';
+import { getCandyFamilyKey, normalizeSpeciesCandyByFamily } from '../pokesleep/candy-family';
 import { maxLevel as MAX_LEVEL } from '../pokesleep/tables';
 import type {
   BoostKind,
@@ -50,7 +51,7 @@ export type PlannerInputSnapshotDto = {
 function cloneCandyInventory(inventory: PlannerCandyInventorySnapshotDto): CandyInventory {
   return {
     ...inventory,
-    species: { ...inventory.species },
+    species: normalizeSpeciesCandyByFamily(inventory.species),
     typeCandy: Object.fromEntries(
       Object.entries(inventory.typeCandy).map(([type, stock]) => [type, { ...stock }]),
     ),
@@ -120,6 +121,7 @@ export function buildPlannerInput(
     pokemonList.push({
       pokemonId: row.id,
       pokedexId,
+      candyFamilyKey: getCandyFamilyKey(pokedexId),
       name: row.title,
       mode: row.mode,
       type: pokemonType,

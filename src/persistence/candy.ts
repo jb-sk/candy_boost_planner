@@ -2,12 +2,14 @@
  * アメ在庫の永続化
  * - 万能アメ（S/M/L）
  * - タイプアメ（タイプ別 S/M）
- * - ポケモンのアメ（種族別）
+ * - ポケモンのアメ（進化系family別）
  */
+import { getCandyFamilyKey, normalizeSpeciesCandyByFamily } from "../domain/pokesleep/candy-family";
 import { perfSpan } from "../utils/perf";
 
-export const CANDY_STORAGE_KEY = "candy-boost-planner:candy-inventory:v1";
-const SCHEMA_VERSION = 1 as const;
+export const CANDY_STORAGE_KEY_V1 = "candy-boost-planner:candy-inventory:v1";
+export const CANDY_STORAGE_KEY = "candy-boost-planner:candy-inventory:v2";
+const SCHEMA_VERSION = 2 as const;
 
 export type UniversalCandyInventory = {
   s: number;
@@ -20,17 +22,23 @@ export type TypeCandyInventory = {
   m: number;
 };
 
+/** 互換読取専用。speciesキーは旧String(pokedexId)。 */
 export type CandyInventoryV1 = {
-  schemaVersion: typeof SCHEMA_VERSION;
-  /** 万能アメ（全ポケモン共通） */
+  schemaVersion: 1;
   universal: UniversalCandyInventory;
-  /** タイプアメ（タイプ名ごと） */
   typeCandy: Record<string, TypeCandyInventory>;
-  /** ポケモンのアメ（pokedexId ごと） */
   species: Record<string, number>;
 };
 
-function createEmptyInventory(): CandyInventoryV1 {
+/** 現行形式。speciesキーは進化系を表すCandyFamilyKey。 */
+export type CandyInventoryV2 = {
+  schemaVersion: typeof SCHEMA_VERSION;
+  universal: UniversalCandyInventory;
+  typeCandy: Record<string, TypeCandyInventory>;
+  species: Record<string, number>;
+};
+
+export function createEmptyCandyInventory(): CandyInventoryV2 {
   return {
     schemaVersion: SCHEMA_VERSION,
     universal: { s: 0, m: 0, l: 0 },
@@ -39,57 +47,97 @@ function createEmptyInventory(): CandyInventoryV1 {
   };
 }
 
-export function loadCandyInventory(): CandyInventoryV1 {
+export function loadCandyInventory(): CandyInventoryV2 {
   try {
-    const raw = localStorage.getItem(CANDY_STORAGE_KEY);
-    if (!raw) return createEmptyInventory();
-    const json = JSON.parse(raw);
-    if (!json || typeof json !== "object") return createEmptyInventory();
-    return normalizeInventory(json);
+    const rawV2 = localStorage.getItem(CANDY_STORAGE_KEY);
+    if (rawV2 !== null) {
+      const json = JSON.parse(rawV2);
+      if (!json || typeof json !== "object" || json.schemaVersion !== SCHEMA_VERSION) {
+        return createEmptyCandyInventory();
+      }
+      return normalizeCandyInventoryV2(json);
+    }
+
+    const rawV1 = localStorage.getItem(CANDY_STORAGE_KEY_V1);
+    if (rawV1 === null) return createEmptyCandyInventory();
+    const migrated = migrateCandyInventoryV1(JSON.parse(rawV1));
+    if (saveCandyInventory(migrated)) {
+      try {
+        localStorage.removeItem(CANDY_STORAGE_KEY_V1);
+      } catch {
+        // V2への移行は完了しているため、旧キーの削除失敗だけで読込を失敗させない。
+      }
+    }
+    return migrated;
   } catch {
-    return createEmptyInventory();
+    // V2が存在する場合も、古いV1を最新値として復活させない。
+    return createEmptyCandyInventory();
   }
 }
 
-export function saveCandyInventory(inv: CandyInventoryV1): void {
+export function saveCandyInventory(inv: CandyInventoryV2): boolean {
   try {
     const serialized = perfSpan("persist.candy.serialize", () => serializeCandyInventory(inv));
     perfSpan("persist.candy.write", () => localStorage.setItem(CANDY_STORAGE_KEY, serialized));
+    return true;
   } catch {
     // localStorage can throw (quota exceeded / blocked)
+    return false;
   }
 }
 
-export function serializeCandyInventory(inv: CandyInventoryV1): string {
-  return JSON.stringify(inv);
+export function serializeCandyInventory(inv: CandyInventoryV2): string {
+  return JSON.stringify(normalizeCandyInventoryV2(inv));
+}
+
+function normalizeCandyInventoryValue(value: unknown): CandyInventoryV2 {
+  const record = asRecord(value);
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    universal: normalizeUniversal(record.universal),
+    typeCandy: normalizeTypeCandy(record.typeCandy),
+    species: normalizeSpeciesCandyByFamily(normalizeSpecies(record.species)),
+  };
+}
+
+export function migrateCandyInventoryV1(value: unknown): CandyInventoryV2 {
+  return normalizeCandyInventoryValue(value);
+}
+
+/**
+ * family表更新で代表IDが変わった場合にも同じV2を再正規化する。
+ * 同一familyに複数キーがあれば、V1移行と同じく最大値を採用する。
+ */
+export function normalizeCandyInventoryV2(value: unknown): CandyInventoryV2 {
+  return normalizeCandyInventoryValue(value);
 }
 
 // --- 便利関数 ---
 
-export function getSpeciesCandy(inv: CandyInventoryV1, pokedexId: number): number {
-  return inv.species[String(pokedexId)] ?? 0;
+export function getSpeciesCandy(inv: CandyInventoryV2, pokedexId: number): number {
+  return inv.species[getCandyFamilyKey(pokedexId)] ?? 0;
 }
 
-export function setSpeciesCandy(inv: CandyInventoryV1, pokedexId: number, count: number): void {
-  inv.species[String(pokedexId)] = Math.max(0, Math.floor(count));
+export function setSpeciesCandy(inv: CandyInventoryV2, pokedexId: number, count: number): void {
+  inv.species[getCandyFamilyKey(pokedexId)] = Math.max(0, Math.floor(count));
 }
 
-export function getTypeCandy(inv: CandyInventoryV1, typeName: string): TypeCandyInventory {
+export function getTypeCandy(inv: CandyInventoryV2, typeName: string): TypeCandyInventory {
   return inv.typeCandy[typeName] ?? { s: 0, m: 0 };
 }
 
-export function setTypeCandy(inv: CandyInventoryV1, typeName: string, candy: TypeCandyInventory): void {
+export function setTypeCandy(inv: CandyInventoryV2, typeName: string, candy: TypeCandyInventory): void {
   inv.typeCandy[typeName] = {
     s: Math.max(0, Math.floor(candy.s)),
     m: Math.max(0, Math.floor(candy.m)),
   };
 }
 
-export function getUniversalCandy(inv: CandyInventoryV1): UniversalCandyInventory {
+export function getUniversalCandy(inv: CandyInventoryV2): UniversalCandyInventory {
   return { ...inv.universal };
 }
 
-export function setUniversalCandy(inv: CandyInventoryV1, candy: UniversalCandyInventory): void {
+export function setUniversalCandy(inv: CandyInventoryV2, candy: UniversalCandyInventory): void {
   inv.universal = {
     s: Math.max(0, Math.floor(candy.s)),
     m: Math.max(0, Math.floor(candy.m)),
@@ -97,57 +145,44 @@ export function setUniversalCandy(inv: CandyInventoryV1, candy: UniversalCandyIn
   };
 }
 
-// --- 正規化 ---
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
 
-function normalizeInventory(x: unknown): CandyInventoryV1 {
-  const r = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
-  const universal = normalizeUniversal(r.universal);
-  const typeCandy = normalizeTypeCandy(r.typeCandy);
-  const species = normalizeSpecies(r.species);
+function normalizeUniversal(value: unknown): UniversalCandyInventory {
+  const record = asRecord(value);
   return {
-    schemaVersion: SCHEMA_VERSION,
-    universal,
-    typeCandy,
-    species,
+    s: toNonNegativeInt(record.s, 0),
+    m: toNonNegativeInt(record.m, 0),
+    l: toNonNegativeInt(record.l, 0),
   };
 }
 
-function normalizeUniversal(x: unknown): UniversalCandyInventory {
-  if (!x || typeof x !== "object") return { s: 0, m: 0, l: 0 };
-  const r = x as Record<string, unknown>;
-  return {
-    s: toNonNegativeInt(r.s, 0),
-    m: toNonNegativeInt(r.m, 0),
-    l: toNonNegativeInt(r.l, 0),
-  };
-}
-
-function normalizeTypeCandy(x: unknown): Record<string, TypeCandyInventory> {
-  if (!x || typeof x !== "object") return {};
+function normalizeTypeCandy(value: unknown): Record<string, TypeCandyInventory> {
   const out: Record<string, TypeCandyInventory> = {};
-  for (const [key, val] of Object.entries(x as Record<string, unknown>)) {
-    if (!val || typeof val !== "object") continue;
-    const v = val as Record<string, unknown>;
+  for (const [key, item] of Object.entries(asRecord(value))) {
+    const record = asRecord(item);
     out[key] = {
-      s: toNonNegativeInt(v.s, 0),
-      m: toNonNegativeInt(v.m, 0),
+      s: toNonNegativeInt(record.s, 0),
+      m: toNonNegativeInt(record.m, 0),
     };
   }
   return out;
 }
 
-function normalizeSpecies(x: unknown): Record<string, number> {
-  if (!x || typeof x !== "object") return {};
+function normalizeSpecies(value: unknown): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const [key, val] of Object.entries(x as Record<string, unknown>)) {
-    const n = toNonNegativeInt(val, 0);
-    if (n > 0) out[key] = n;
+  for (const [key, item] of Object.entries(asRecord(value))) {
+    const count = toNonNegativeInt(item, 0);
+    if (count > 0) out[key] = count;
   }
   return out;
 }
 
-function toNonNegativeInt(v: unknown, fallback: number): number {
-  const n = typeof v === "number" ? v : Number(v);
-  if (!Number.isFinite(n) || n < 0) return fallback;
-  return Math.floor(n);
+function toNonNegativeInt(value: unknown, fallback: number): number {
+  const number = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(number) || number < 0) return fallback;
+  return Math.floor(number);
 }

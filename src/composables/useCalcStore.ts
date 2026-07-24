@@ -10,6 +10,7 @@ import { deferPersistUntilReleased, schedulePersist } from "../persistence/defer
 import { cryptoRandomId } from "../persistence/box";
 import { useCandyStore } from "./useCandyStore";
 import { getPokemonType } from "../domain/pokesleep/pokemon-names";
+import { getCandyFamilyKey } from "../domain/pokesleep/candy-family";
 import { CANDY_VALUES } from "../domain/level-planner/constants";
 import type { DebugExportContext } from "../domain/level-planner/debugExport";
 import { buildPlannerInput as buildLevelPlannerInput } from "../domain/level-planner/buildPlannerInput";
@@ -1432,6 +1433,7 @@ export function useCalcStore(opts: {
           id: row.id,
           name: row.title,
           pokedexId,
+          candyFamilyKey: pokedexId ? getCandyFamilyKey(pokedexId) : undefined,
           type: row.pokemonType || (pokedexId ? getPokemonType(pokedexId) : ""),
           nature: row.nature,
           mode: row.mode,

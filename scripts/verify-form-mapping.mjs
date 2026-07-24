@@ -14,7 +14,8 @@
  *   - generate-pokemon-names.mjs: formNameToNumber への新エントリ追加
  *
  * Usage:
- *   node scripts/verify-form-mapping.mjs [--pokesleep-tool <path>] [--dry-run]
+ *   POKESLEEP_TOOL_PATH=<path> node scripts/verify-form-mapping.mjs [--dry-run]
+ *   node scripts/verify-form-mapping.mjs --pokesleep-tool <path> [--dry-run]
  *
  * Exit codes:
  *   0 = 不整合なし or 自動修正完了
@@ -32,7 +33,7 @@ const __dirname = path.dirname(__filename);
 // ---------------------------------------------------------------------------
 function parseArgs(argv) {
   const out = {
-    pokesleepTool: path.resolve("D:/Dev/Projects/External/pokesleep-tool"),
+    pokesleepTool: process.env.POKESLEEP_TOOL_PATH ?? null,
     dryRun: false,
   };
   for (let i = 2; i < argv.length; i++) {
@@ -48,6 +49,11 @@ function parseArgs(argv) {
 }
 
 const args = parseArgs(process.argv);
+if (!args.pokesleepTool) {
+  console.error("[ERROR] pokesleep-tool path is required.");
+  console.error("  POKESLEEP_TOOL_PATH または --pokesleep-tool で指定してください");
+  process.exit(1);
+}
 const toolRoot = path.resolve(args.pokesleepTool);
 
 // ---------------------------------------------------------------------------

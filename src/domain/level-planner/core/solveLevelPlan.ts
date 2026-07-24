@@ -188,7 +188,7 @@ function copyUsage(usage: Usage): Usage {
     universal: { s: usage.universal.s, m: usage.universal.m, l: usage.universal.l },
   };
 }
-const speciesKey = (pokemon: Pick<PokemonPlanInput, 'pokedexId'>) => String(pokemon.pokedexId);
+const speciesKey = (pokemon: Pick<PokemonPlanInput, 'candyFamilyKey'>) => pokemon.candyFamilyKey;
 const supplyValue = (supply: CandySupplyBreakdown): number => supply.species
   + supply.type.s * CANDY_VALUES.type.s + supply.type.m * CANDY_VALUES.type.m
   + supply.universal.s * CANDY_VALUES.universal.s + supply.universal.m * CANDY_VALUES.universal.m + supply.universal.l * CANDY_VALUES.universal.l;
@@ -1177,6 +1177,7 @@ function targetDemandRowForPokemon(
     return {
       pokemonId: pokemon.pokemonId,
       pokedexId: pokemon.pokedexId,
+      candyFamilyKey: pokemon.candyFamilyKey,
       type: pokemon.type,
       totalCandy: candyTargetReached ? totalCandy : used,
       boostCandy: reached.boostUsed,
@@ -1195,6 +1196,7 @@ function targetDemandRowForPokemon(
   return {
     pokemonId: pokemon.pokemonId,
     pokedexId: pokemon.pokedexId,
+    candyFamilyKey: pokemon.candyFamilyKey,
     type: pokemon.type,
     totalCandy: reached.boostUsed + reached.normalUsed,
     boostCandy: reached.boostUsed,
@@ -1226,6 +1228,7 @@ function demandRowForCandyBudget(
     return {
       pokemonId: pokemon.pokemonId,
       pokedexId: pokemon.pokedexId,
+      candyFamilyKey: pokemon.candyFamilyKey,
       type: pokemon.type,
       totalCandy: used,
       boostCandy: reached.boostUsed,
@@ -1242,6 +1245,7 @@ function demandRowForCandyBudget(
   return {
     pokemonId: pokemon.pokemonId,
     pokedexId: pokemon.pokedexId,
+    candyFamilyKey: pokemon.candyFamilyKey,
     type: pokemon.type,
     totalCandy: reached.boostUsed + reached.normalUsed,
     boostCandy: reached.boostUsed,

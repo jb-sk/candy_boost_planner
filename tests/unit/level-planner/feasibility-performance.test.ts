@@ -33,6 +33,7 @@ function demandRow(
   return {
     pokemonId,
     pokedexId,
+    candyFamilyKey: String(pokedexId),
     type,
     totalCandy,
     boostCandy: 0,
@@ -80,6 +81,7 @@ function fullPlanFixture(mode: SolverItemCompareMode): LevelPlannerInput {
     pokemonList: rows.map((row, index) => ({
       pokemonId: row.pokemonId,
       pokedexId: row.pokedexId,
+      candyFamilyKey: row.candyFamilyKey,
       name: row.pokemonId,
       type: row.type,
       currentLevel: 10,
@@ -116,6 +118,7 @@ function reportedLegacyTenRowFixture(mode: ItemCompareMode = 'legacyImproved'): 
     pokemonList: rows.map(([pokemonId, pokedexId, type, currentLevel, currentExpInLevel, targetLevel, expType, nature, requestedBoostCandy], priorityIndex) => ({
       pokemonId,
       pokedexId,
+      candyFamilyKey: String(pokedexId),
       name: pokemonId,
       type,
       currentLevel,
@@ -212,7 +215,8 @@ function reportedSharedSpeciesBoundaryFixture(mode: ItemCompareMode, boostKind: 
       update('latias', {}),
       update('drampa', {}),
       update('suicune', {}),
-      update('dedenne-boundary', { requestedBoostCandy: 522 }),
+      // 実マスター外のIDを明示familyへ寄せ、pokedexId一致へ偶然依存しない性能fixtureにする。
+      update('dedenne-boundary', { pokedexId: 1_702, candyFamilyKey: '702', requestedBoostCandy: 522 }),
       update('spiritomb', {}),
       update('cresselia', {}),
       update('heracross', {}),
@@ -363,7 +367,7 @@ describe('fbl01d feasibility performance fixture', () => {
     }));
   });
 
-  it.each(allModes)('keeps the shared-species boundary exact and bounded: %s', mode => {
+  it.each(allModes)('keeps the cross-pokedex family boundary exact and bounded: %s', mode => {
     const startedAt = performance.now();
     const result = solveLevelPlan(reportedSharedSpeciesBoundaryFixture(mode));
     const durationMs = performance.now() - startedAt;
@@ -381,7 +385,7 @@ describe('fbl01d feasibility performance fixture', () => {
     }));
   });
 
-  it.each(allModes)('keeps the mini-boost shared-species boundary exact and bounded: %s', mode => {
+  it.each(allModes)('keeps the mini-boost cross-pokedex family boundary exact and bounded: %s', mode => {
     const startedAt = performance.now();
     const result = solveLevelPlan(reportedSharedSpeciesBoundaryFixture(mode, 'mini'));
     const durationMs = performance.now() - startedAt;

@@ -18,6 +18,7 @@ export type ExactSupplyRow = {
   id: string;
   name: string;
   pokedexId: number;
+  candyFamilyKey: string;
   type: string;
   totalCandyCount: number;
   fixedSpecies?: number;
@@ -135,7 +136,7 @@ function buildExactSupplyComponents(rows: Array<ExactSupplyRow | ExactSupplyDema
   const bySpecies = new Map<string, number>();
   const byType = new Map<string, number>();
   rows.forEach((row, index) => {
-    const speciesKey = String(row.pokedexId);
+    const speciesKey = row.candyFamilyKey;
     const previousSpecies = bySpecies.get(speciesKey);
     if (previousSpecies === undefined) bySpecies.set(speciesKey, index);
     else unite(previousSpecies, index);
@@ -236,7 +237,7 @@ export function compareExactSupplyObjective(a: ExactSupplyObjective, b: ExactSup
 function maxSpeciesPotential(rows: ExactSupplyRow[], inventory: CandyInventory): number {
   const needBySpecies: Record<string, number> = {};
   for (const row of rows) {
-    const key = String(row.pokedexId);
+    const key = row.candyFamilyKey;
     needBySpecies[key] = (needBySpecies[key] ?? 0) + row.totalCandyCount;
   }
   return Object.entries(needBySpecies).reduce(
@@ -296,7 +297,7 @@ function validateSelectedRows(
     if (value !== selected.supply) return { ok: false, reason: `supply_mismatch:${row.id}` };
     if (selected.supply - row.totalCandyCount !== selected.surplus) return { ok: false, reason: `surplus_mismatch:${row.id}` };
 
-    const speciesKey = String(row.pokedexId);
+    const speciesKey = row.candyFamilyKey;
     speciesUsed[speciesKey] = (speciesUsed[speciesKey] ?? 0) + selected.species;
     typeSUsed[row.type] = (typeSUsed[row.type] ?? 0) + selected.typeS;
     typeMUsed[row.type] = (typeMUsed[row.type] ?? 0) + selected.typeM;
@@ -322,7 +323,7 @@ function validateSelectedRows(
 }
 
 function enumerateRowOptions(
-  row: Pick<ExactSupplyRow, 'pokedexId' | 'type' | 'totalCandyCount' | 'fixedSpecies' | 'id' | 'legacyZeroSurplusPriority'>,
+  row: Pick<ExactSupplyRow, 'candyFamilyKey' | 'type' | 'totalCandyCount' | 'fixedSpecies' | 'id' | 'legacyZeroSurplusPriority'>,
   inventory: CandyInventory,
   maxSurplus: number,
   allowSpeciesSplit: boolean,
@@ -331,7 +332,7 @@ function enumerateRowOptions(
   checkpoint?: ExactSupplyCheckpoint,
 ): ExactSupplyUsage[] | 'too_many_options' | 'too_many_visits' {
   const need = row.totalCandyCount;
-  const speciesStock = inventory.species[String(row.pokedexId)] ?? 0;
+  const speciesStock = inventory.species[row.candyFamilyKey] ?? 0;
   const typeStock = inventory.typeCandy[row.type] ?? { s: 0, m: 0 };
   const universalStock = inventory.universal;
   const bestByResource = new Map<string, ExactSupplyUsage>();
@@ -454,7 +455,7 @@ function solveExactSupplyRowsDirect(
   maxSurplus: number = CANDY_VALUES.universal.l,
   checkpoint?: ExactSupplyCheckpoint,
 ): ExactSupplyRefineResult {
-  const hasSharedSpecies = hasDuplicate(rows.map(row => String(row.pokedexId)));
+  const hasSharedSpecies = hasDuplicate(rows.map(row => row.candyFamilyKey));
   const hasSharedType = hasDuplicate(rows.map(row => row.type));
   const needsSharedStockTracking = hasSharedSpecies || hasSharedType;
   const localOptions: ExactSupplyUsage[][] = [];
@@ -506,7 +507,7 @@ function solveExactSupplyRowsDirect(
 
   for (let rowIndex = 0; rowIndex < workItems.length; rowIndex++) {
     const row = workItems[rowIndex].row;
-    const rowSpeciesKey = String(row.pokedexId);
+    const rowSpeciesKey = row.candyFamilyKey;
     const next = new Map<string, ExactState>();
     for (const state of states.values()) {
       for (const option of workItems[rowIndex].options) {
@@ -588,7 +589,7 @@ function solveExactSupplyComponentFrontier(
   checkpoint?: ExactSupplyCheckpoint,
 ): ExactComponentFrontierResult {
   const rows = component.rows;
-  const hasSharedSpecies = hasDuplicate(rows.map(row => String(row.pokedexId)));
+  const hasSharedSpecies = hasDuplicate(rows.map(row => row.candyFamilyKey));
   const hasSharedType = hasDuplicate(rows.map(row => row.type));
   const needsSharedStockTracking = hasSharedSpecies || hasSharedType;
   const localOptions: ExactSupplyUsage[][] = [];
@@ -643,7 +644,7 @@ function solveExactSupplyComponentFrontier(
 
   for (let rowIndex = 0; rowIndex < workItems.length; rowIndex++) {
     const row = workItems[rowIndex].row;
-    const rowSpeciesKey = String(row.pokedexId);
+    const rowSpeciesKey = row.candyFamilyKey;
     const next = new Map<string, ExactState>();
     for (const state of states.values()) {
       for (const option of workItems[rowIndex].options) {
@@ -888,7 +889,7 @@ export function solveExactSupplyForFixedRows(
   let totalResidual = 0;
   const residualByType: Record<string, number> = {};
   for (const row of rows) {
-    const key = String(row.pokedexId);
+    const key = row.candyFamilyKey;
     speciesUsed[key] = (speciesUsed[key] ?? 0) + row.fixedSpecies;
     if (speciesUsed[key] > (inventory.species[key] ?? 0)) return { status: 'no_feasible_combination', reason: `species_stock_exceeded:${key}` };
     const residual = Math.max(0, row.totalCandyCount - row.fixedSpecies);

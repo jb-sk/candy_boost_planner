@@ -33,6 +33,7 @@ function demandRow(
   return {
     pokemonId,
     pokedexId,
+    candyFamilyKey: String(pokedexId),
     type,
     totalCandy,
     boostCandy: 0,
@@ -118,10 +119,32 @@ describe('fbl01d feasibility witness', () => {
     }
   });
 
+  it('prefix独立探索の締切超過は例外ではなくinconclusiveとして返す', () => {
+    const rows = [
+      demandRow('p1', 1, 'alpha', 13),
+      demandRow('p2', 2, 'beta', 21),
+      demandRow('p3', 3, 'gamma', 19),
+    ];
+    const inventory: CandyInventory = {
+      species: {},
+      typeCandy: {},
+      universal: { s: 32, m: 8, l: 2 },
+    };
+    const session = createPrefixDecisionSession(rows, inventory, {
+      ...noBoost,
+      deadlineMs: 0,
+    });
+
+    expect(session.canSolvePrefix(3)).toMatchObject({
+      status: 'inconclusive',
+      reason: 'deadline_exceeded',
+    });
+  });
+
   it('prefix decision sessionは共有種族を含むprefixでは安全に通常solverへ退避する', () => {
     const rows = [
       demandRow('p1', 1, 'alpha', 13),
-      demandRow('p2', 1, 'alpha', 21),
+      demandRow('p2', 11, 'alpha', 21, { candyFamilyKey: '1' }),
       demandRow('p3', 2, 'beta', 19),
     ];
     const inventory: CandyInventory = {
@@ -242,8 +265,8 @@ describe('fbl01d feasibility witness', () => {
 
   it('共有種族は総量最大を守り、実行可能な分配の中でトップダウン正規形へ復元する', () => {
     const rows = [
-      demandRow('upper', 1, 'alpha', 25),
-      demandRow('lower', 1, 'alpha', 4),
+      demandRow('upper', 1, 'alpha', 25, { speciesLexWeight: 2 }),
+      demandRow('lower', 1, 'alpha', 4, { speciesLexWeight: 1 }),
     ];
     const inventory: CandyInventory = {
       species: { '1': 4 },
@@ -260,8 +283,8 @@ describe('fbl01d feasibility witness', () => {
 
   it('共有種族が別タイプの行へまたがっても、連結タイプブロック内で解く', () => {
     const rows = [
-      demandRow('upper', 1, 'alpha', 25),
-      demandRow('lower', 1, 'beta', 4),
+      demandRow('upper', 1, 'alpha', 25, { speciesLexWeight: 2 }),
+      demandRow('lower', 11, 'beta', 4, { candyFamilyKey: '1', speciesLexWeight: 1 }),
     ];
     const inventory: CandyInventory = {
       species: { '1': 4 },
@@ -273,6 +296,56 @@ describe('fbl01d feasibility witness', () => {
     expect(result.witness.rows.map(row => row.supply.species)).toEqual([0, 4]);
     expect(result.witness.rows[0].supply.typeM).toBe(1);
     expect(validateFeasibilityWitness(result.witness, rows, inventory, noBoost)).toMatchObject({ valid: true });
+  });
+
+  it('多グループのトップダウン候補が余る場合は、完全探索で余り0の共有種族配分を選ぶ', () => {
+    const rows = [
+      demandRow('shared-upper', 1, 'alpha', 4, { speciesLexWeight: 3 }),
+      demandRow('shared-lower', 11, 'beta', 4, { candyFamilyKey: '1', speciesLexWeight: 2 }),
+      demandRow('independent', 2, 'gamma', 3, { speciesLexWeight: 1 }),
+    ];
+    const inventory: CandyInventory = {
+      species: { '1': 4, '2': 0 },
+      typeCandy: {
+        alpha: { s: 1, m: 0 },
+        beta: { s: 0, m: 0 },
+        gamma: { s: 0, m: 0 },
+      },
+      universal: { s: 3, m: 0, l: 0 },
+    };
+    const result = solveFeasibilityForFixedRows(rows, inventory, {
+      ...noBoost,
+      itemCompareMode: 'surplusFirst',
+    });
+    expectFeasible(result);
+
+    expect(result.witness.rows.map(row => row.supply.species)).toEqual([0, 4, 0]);
+    expect(result.witness.rows[0].supply).toMatchObject({ typeS: 1 });
+    expect(result.witness.rows[1].supply).toMatchObject({ species: 4 });
+    expect(result.witness.rows[2].supply).toMatchObject({ universalS: 1 });
+    expect(validateFeasibilityWitness(result.witness, rows, inventory, noBoost)).toMatchObject({ valid: true });
+  });
+
+  it('validatorは異なる図鑑番号によるfamily在庫の二重使用を拒否する', () => {
+    const rows = [
+      demandRow('pichu', 172, 'electric', 4, { candyFamilyKey: '25' }),
+      demandRow('pikachu', 25, 'electric', 4, { candyFamilyKey: '25' }),
+    ];
+    const inventory: CandyInventory = {
+      species: { '25': 4 },
+      typeCandy: { electric: { s: 1, m: 0 } },
+      universal: { s: 0, m: 0, l: 0 },
+    };
+    const result = solveFeasibilityForFixedRows(rows, inventory, noBoost);
+    expectFeasible(result);
+
+    const invalid = structuredClone(result.witness);
+    invalid.rows[0].supply = { species: 4, typeS: 0, typeM: 0, universalS: 0, universalM: 0, universalL: 0 };
+    invalid.rows[1].supply = { species: 4, typeS: 0, typeM: 0, universalS: 0, universalM: 0, universalL: 0 };
+    invalid.remaining.species['25'] = 0;
+    invalid.remaining.typeCandy.electric = { s: 1, m: 0 };
+
+    expect(validateFeasibilityWitness(invalid, rows, inventory, noBoost)).toMatchObject({ valid: false });
   });
 
   it('同タイプ複数行ではタイプ在庫をタイプブロック内だけで共有する', () => {
@@ -514,7 +587,7 @@ describe('fbl01d feasibility witness', () => {
         supply: { species: 0, typeS: 0, typeM: 0, universalS: 0, universalM: 5, universalL: 0 },
       })),
       remaining: {
-        species: Object.fromEntries(failureRows.map(row => [String(row.pokedexId), 0])),
+        species: Object.fromEntries(failureRows.map(row => [row.candyFamilyKey, 0])),
         typeCandy: { shared: { s: 500, m: 120 } },
         universal: { s: 500, m: 90, l: 0 },
         boostCandy: 0,
@@ -733,9 +806,9 @@ describe('fbl01d feasibility witness', () => {
   it('feasibility witnessの出力を固定需要行へ変換し、合同solverとrefineを検証できる', () => {
     const input: LevelPlannerInput = {
       pokemonList: [
-        { pokemonId: 'upper', pokedexId: 501, name: '上位', type: 'alpha', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 4 }, priorityIndex: 0 },
-        { pokemonId: 'second', pokedexId: 502, name: '二体目', type: 'alpha', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 25 }, priorityIndex: 1 },
-        { pokemonId: 'boundary', pokedexId: 503, name: '境界', type: 'alpha', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 4 }, priorityIndex: 2 },
+        { pokemonId: 'upper', pokedexId: 501, candyFamilyKey: '501', name: '上位', type: 'alpha', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 4 }, priorityIndex: 0 },
+        { pokemonId: 'second', pokedexId: 502, candyFamilyKey: '502', name: '二体目', type: 'alpha', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 25 }, priorityIndex: 1 },
+        { pokemonId: 'boundary', pokedexId: 503, candyFamilyKey: '503', name: '境界', type: 'alpha', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 4 }, priorityIndex: 2 },
       ],
       dreamShards: Infinity,
       boost: { kind: 'none', limit: 0 },
@@ -750,6 +823,7 @@ describe('fbl01d feasibility witness', () => {
     const fixedRows = baseline.pokemonResults.map((pokemon, index): FeasibilityDemandRow => ({
       pokemonId: pokemon.pokemonId,
       pokedexId: pokemon.pokedexId,
+      candyFamilyKey: input.pokemonList[index].candyFamilyKey,
       type: input.pokemonList[index].type,
       totalCandy: pokemon.reachableLine.totalCandyUnitsUsed,
       boostCandy: pokemon.reachableLine.boostedCandyUnits,
@@ -780,6 +854,7 @@ describe('fbl01d feasibility witness', () => {
         id: row.pokemonId,
         name: input.pokemonList[index].name,
         pokedexId: row.pokedexId,
+        candyFamilyKey: row.candyFamilyKey,
         type: row.type,
         totalCandyCount: row.totalCandy,
         fixedSpecies: row.supply.species,
@@ -925,6 +1000,7 @@ describe('fbl01d feasibility witness', () => {
         id: row.pokemonId,
         name: row.pokemonId,
         pokedexId: row.pokedexId,
+        candyFamilyKey: row.candyFamilyKey,
         type: row.type,
         totalCandyCount: row.totalCandy,
         fixedSpecies: row.supply.species,
@@ -1057,7 +1133,7 @@ function qualityFromWitness(witness: FeasibilityWitness, rows: FeasibilityDemand
 function bruteForceBestQuality(rows: FeasibilityDemandRow[], inventory: CandyInventory, mode?: SolverItemCompareMode): OracleQuality | null {
   const options = rows.map(row => {
     const typeStock = inventory.typeCandy[row.type] ?? { s: 0, m: 0 };
-    const speciesStock = inventory.species[String(row.pokedexId)] ?? 0;
+    const speciesStock = inventory.species[row.candyFamilyKey] ?? 0;
     const result: OracleSupply[] = [];
     for (let species = 0; species <= speciesStock; species++) {
       for (let typeS = 0; typeS <= typeStock.s; typeS++) {
@@ -1117,7 +1193,7 @@ function bruteForceBestQuality(rows: FeasibilityDemandRow[], inventory: CandyInv
 function bruteForceFeasible(rows: FeasibilityDemandRow[], inventory: CandyInventory): boolean {
   const options = rows.map(row => {
     const typeStock = inventory.typeCandy[row.type] ?? { s: 0, m: 0 };
-    const speciesStock = inventory.species[String(row.pokedexId)] ?? 0;
+    const speciesStock = inventory.species[row.candyFamilyKey] ?? 0;
     const result: OracleSupply[] = [];
     for (let species = 0; species <= speciesStock; species++) {
       for (let typeS = 0; typeS <= typeStock.s; typeS++) {
@@ -1146,7 +1222,7 @@ function bruteForceFeasible(rows: FeasibilityDemandRow[], inventory: CandyInvent
       let universalL = 0;
       rows.forEach((row, rowIndex) => {
         const supply = selected[rowIndex];
-        const speciesKey = String(row.pokedexId);
+        const speciesKey = row.candyFamilyKey;
         speciesUsed.set(speciesKey, (speciesUsed.get(speciesKey) ?? 0) + supply.species);
         typeSUsed.set(row.type, (typeSUsed.get(row.type) ?? 0) + supply.typeS);
         typeMUsed.set(row.type, (typeMUsed.get(row.type) ?? 0) + supply.typeM);
@@ -1155,7 +1231,7 @@ function bruteForceFeasible(rows: FeasibilityDemandRow[], inventory: CandyInvent
         universalL += supply.universalL;
       });
       for (const [key, amount] of speciesUsed) {
-        if (amount !== Math.min(inventory.species[key] ?? 0, rows.filter(row => String(row.pokedexId) === key).reduce((sum, row) => sum + row.totalCandy, 0))) return false;
+        if (amount !== Math.min(inventory.species[key] ?? 0, rows.filter(row => row.candyFamilyKey === key).reduce((sum, row) => sum + row.totalCandy, 0))) return false;
       }
       for (const [type, amount] of typeSUsed) if (amount > (inventory.typeCandy[type]?.s ?? 0)) return false;
       for (const [type, amount] of typeMUsed) if (amount > (inventory.typeCandy[type]?.m ?? 0)) return false;

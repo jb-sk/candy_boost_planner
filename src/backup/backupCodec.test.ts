@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { CalcRowV1, CalcSaveSlotV1 } from "../persistence/calc";
 import { parseBackup, stringifyBackup } from "./backupCodec";
 import { createBackup } from "./createBackup";
-import { BACKUP_MAX_BYTES, BackupValidationError, type BackupBoxEntryV1, type CandyBoostPlannerBackupV1 } from "./types";
+import { BACKUP_MAX_BYTES, BackupValidationError, type BackupBoxEntryV1, type CandyBoostPlannerBackupV2 } from "./types";
 
 function row(id: string, boxId?: string, pokedexId = 25): CalcRowV1 {
   return {
@@ -48,12 +48,12 @@ function entry(id: string, pokedexId = 25): BackupBoxEntryV1 {
   };
 }
 
-function backup(): CandyBoostPlannerBackupV1 {
+function backup(): CandyBoostPlannerBackupV2 {
   return createBackup({
     boxEntries: [],
     totalShards: 0,
     sleepSettings: { dailySleepHours: 8.5, sleepExpBonusCount: 0, includeGSD: true },
-    candyInventory: { schemaVersion: 1, universal: { s: 0, m: 0, l: 0 }, typeCandy: {}, species: {} },
+    candyInventory: { schemaVersion: 2, universal: { s: 0, m: 0, l: 0 }, typeCandy: {}, species: {} },
     calculator: { activeSlotIndex: 0, slots: [null, null, null] },
   }, new Date("2026-07-22T07:30:00.000Z"));
 }
@@ -63,6 +63,34 @@ describe("backup codec", () => {
     const text = readFileSync(new URL("../../tests/fixtures/backup-v1.golden.json", import.meta.url), "utf8");
     const parsed = parseBackup(text);
     expect(parseBackup(stringifyBackup(parsed.backup)).backup).toEqual(parsed.backup);
+  });
+
+  it("round-trips the V2 family-key golden fixture", () => {
+    const text = readFileSync(new URL("../../tests/fixtures/backup-v2.golden.json", import.meta.url), "utf8");
+    const parsed = parseBackup(text);
+    expect(parsed.backup.schemaVersion).toBe(2);
+    expect(parsed.backup.data.globalSettings.candyInventory.species).toEqual({ "25": 100, "133": 240 });
+    expect(parseBackup(stringifyBackup(parsed.backup)).backup).toEqual(parsed.backup);
+  });
+
+  it("migrates V1 candy keys by family maximum and exports only V2", () => {
+    const legacy = JSON.parse(
+      readFileSync(new URL("../../tests/fixtures/backup-v1.golden.json", import.meta.url), "utf8"),
+    );
+    legacy.data.globalSettings.candyInventory.species = {
+      "172": 30,
+      "25": 100,
+      "26": 50,
+    };
+    const parsed = parseBackup(JSON.stringify(legacy)).backup;
+    expect(parsed.schemaVersion).toBe(2);
+    expect(parsed.data.globalSettings.candyInventory).toEqual({
+      schemaVersion: 2,
+      universal: legacy.data.globalSettings.candyInventory.universal,
+      typeCandy: legacy.data.globalSettings.candyInventory.typeCandy,
+      species: { "25": 100 },
+    });
+    expect(JSON.parse(stringifyBackup(parsed)).schemaVersion).toBe(2);
   });
 
   it("accepts the box and slot maximums while preserving order and settings", () => {
@@ -80,7 +108,7 @@ describe("backup codec", () => {
   it.each([
     ["broken JSON", "{"],
     ["other format", JSON.stringify({ ...backup(), format: "other" })],
-    ["future schema", JSON.stringify({ ...backup(), schemaVersion: 2 })],
+    ["future schema", JSON.stringify({ ...backup(), schemaVersion: 3 })],
   ])("rejects %s with an item path", (_name, text) => {
     expect(() => parseBackup(text)).toThrow(BackupValidationError);
     try { parseBackup(text); } catch (error) { expect((error as Error).message).toContain("$"); }
@@ -145,7 +173,7 @@ describe("backup codec", () => {
       boxEntries: [{ ...entry("manual-entry"), source: "manual" }],
       totalShards: 0,
       sleepSettings: { dailySleepHours: 8.5, sleepExpBonusCount: 0, includeGSD: true },
-      candyInventory: { schemaVersion: 1, universal: { s: 0, m: 0, l: 0 }, typeCandy: {}, species: {} },
+      candyInventory: { schemaVersion: 2, universal: { s: 0, m: 0, l: 0 }, typeCandy: {}, species: {} },
       calculator: { activeSlotIndex: 0, slots: [null, null, null] },
     });
     expect(value.data.box.entries[0]).not.toHaveProperty("source");

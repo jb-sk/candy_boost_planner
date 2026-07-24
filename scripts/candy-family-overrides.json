@@ -1,0 +1,21 @@
+{
+  "_comment": "Wikiの育成/進化欄を一意に解析できない分岐進化だけを明示する。ancestorIdはPokémon Sleepで同じ名前のアメを共有する系統の基点。",
+  "ancestorByPokedexId": {
+    "79": { "ancestorId": 79, "reason": "ヤドンからヤドラン／ヤドキングへ分岐するため", "source": "https://wikiwiki.jp/poke_sleep/ヤドン" },
+    "80": { "ancestorId": 79, "reason": "ヤドンからヤドラン／ヤドキングへ分岐するため", "source": "https://wikiwiki.jp/poke_sleep/ヤドラン" },
+    "199": { "ancestorId": 79, "reason": "ヤドンからヤドラン／ヤドキングへ分岐するため", "source": "https://wikiwiki.jp/poke_sleep/ヤドキング" },
+    "133": { "ancestorId": 133, "reason": "イーブイから複数の進化先へ分岐するため", "source": "https://wikiwiki.jp/poke_sleep/イーブイ" },
+    "134": { "ancestorId": 133, "reason": "イーブイから複数の進化先へ分岐するため", "source": "https://wikiwiki.jp/poke_sleep/シャワーズ" },
+    "135": { "ancestorId": 133, "reason": "イーブイから複数の進化先へ分岐するため", "source": "https://wikiwiki.jp/poke_sleep/サンダース" },
+    "136": { "ancestorId": 133, "reason": "イーブイから複数の進化先へ分岐するため", "source": "https://wikiwiki.jp/poke_sleep/ブースター" },
+    "196": { "ancestorId": 133, "reason": "イーブイから複数の進化先へ分岐するため", "source": "https://wikiwiki.jp/poke_sleep/エーフィ" },
+    "197": { "ancestorId": 133, "reason": "イーブイから複数の進化先へ分岐するため", "source": "https://wikiwiki.jp/poke_sleep/ブラッキー" },
+    "470": { "ancestorId": 133, "reason": "イーブイから複数の進化先へ分岐するため", "source": "https://wikiwiki.jp/poke_sleep/リーフィア" },
+    "471": { "ancestorId": 133, "reason": "イーブイから複数の進化先へ分岐するため", "source": "https://wikiwiki.jp/poke_sleep/グレイシア" },
+    "700": { "ancestorId": 133, "reason": "イーブイから複数の進化先へ分岐するため", "source": "https://wikiwiki.jp/poke_sleep/ニンフィア" },
+    "280": { "ancestorId": 280, "reason": "キルリアからサーナイト／エルレイドへ分岐するため", "source": "https://wikiwiki.jp/poke_sleep/ラルトス" },
+    "281": { "ancestorId": 280, "reason": "キルリアからサーナイト／エルレイドへ分岐するため", "source": "https://wikiwiki.jp/poke_sleep/キルリア" },
+    "282": { "ancestorId": 280, "reason": "キルリアからサーナイト／エルレイドへ分岐するため", "source": "https://wikiwiki.jp/poke_sleep/サーナイト" },
+    "475": { "ancestorId": 280, "reason": "キルリアからサーナイト／エルレイドへ分岐するため", "source": "https://wikiwiki.jp/poke_sleep/エルレイド" }
+  }
+}

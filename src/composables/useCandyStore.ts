@@ -11,16 +11,17 @@ import {
   setTypeCandy,
   getUniversalCandy,
   setUniversalCandy,
-  type CandyInventoryV1,
+  createEmptyCandyInventory,
+  type CandyInventoryV2,
   type TypeCandyInventory,
   type UniversalCandyInventory,
 } from "../persistence/candy";
 import { schedulePersist } from "../persistence/deferredPersist";
 
 // シングルトンで管理
-const inventory = ref<CandyInventoryV1>(loadCandyInventory());
+const inventory = ref<CandyInventoryV2>(loadCandyInventory());
 
-function cloneInventory(): CandyInventoryV1 {
+function cloneInventory(): CandyInventoryV2 {
   return JSON.parse(JSON.stringify(inventory.value));
 }
 
@@ -88,17 +89,12 @@ export function useCandyStore() {
   }
 
   // --- インベントリ全体 ---
-  function getInventory(): CandyInventoryV1 {
+  function getInventory(): CandyInventoryV2 {
     return JSON.parse(JSON.stringify(inventory.value));
   }
 
   function resetInventory() {
-    inventory.value = {
-      schemaVersion: 1,
-      universal: { s: 0, m: 0, l: 0 },
-      typeCandy: {},
-      species: {},
-    };
+    inventory.value = createEmptyCandyInventory();
   }
 
   return {

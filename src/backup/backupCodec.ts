@@ -3,7 +3,12 @@ import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { pokemonMaster } from "../domain/pokesleep/pokemon-master";
 import { PokemonTypes } from "../domain/pokesleep/pokemon-types";
 import type { CalcRowV1, CalcSaveSlotV1 } from "../persistence/calc";
-import type { CandyInventoryV1 } from "../persistence/candy";
+import {
+  migrateCandyInventoryV1,
+  normalizeCandyInventoryV2,
+  type CandyInventoryV1,
+  type CandyInventoryV2,
+} from "../persistence/candy";
 import {
   BACKUP_FORMAT,
   BACKUP_MAX_BOX_ENTRIES,
@@ -13,7 +18,7 @@ import {
   BackupValidationError,
   type BackupBoxEntryV1,
   type BackupWarning,
-  type CandyBoostPlannerBackupV1,
+  type CandyBoostPlannerBackupV2,
   type ValidatedBackup,
 } from "./types";
 
@@ -194,9 +199,13 @@ function validateSlot(value: unknown, path: string): CalcSaveSlotV1 | null {
   };
 }
 
-function validateCandy(value: unknown, path: string): CandyInventoryV1 {
+function validateCandy(
+  value: unknown,
+  path: string,
+  schemaVersion: 1 | 2,
+): CandyInventoryV2 {
   const candy = objectAt(value, path);
-  if (candy.schemaVersion !== 1) fail(`${path}.schemaVersion`, "must be 1");
+  if (candy.schemaVersion !== schemaVersion) fail(`${path}.schemaVersion`, `must be ${schemaVersion}`);
   const universal = objectAt(candy.universal, `${path}.universal`);
   const typeCandyObject = objectAt(candy.typeCandy, `${path}.typeCandy`);
   const typeCandy: CandyInventoryV1["typeCandy"] = {};
@@ -216,8 +225,7 @@ function validateCandy(value: unknown, path: string): CandyInventoryV1 {
     }
     species[id] = numberAt(count, `${path}.species.${id}`, 0);
   }
-  return {
-    schemaVersion: 1,
+  const common = {
     universal: {
       s: numberAt(universal.s, `${path}.universal.s`, 0),
       m: numberAt(universal.m, `${path}.universal.m`, 0),
@@ -226,6 +234,9 @@ function validateCandy(value: unknown, path: string): CandyInventoryV1 {
     typeCandy,
     species,
   };
+  return schemaVersion === 1
+    ? migrateCandyInventoryV1({ schemaVersion: 1, ...common })
+    : normalizeCandyInventoryV2({ schemaVersion: 2, ...common });
 }
 
 export function parseBackup(text: string): ValidatedBackup {
@@ -240,7 +251,8 @@ export function parseBackup(text: string): ValidatedBackup {
   if (root.format !== BACKUP_FORMAT) fail("$.format", `must be ${BACKUP_FORMAT}`);
   if (typeof root.schemaVersion !== "number") fail("$.schemaVersion", "number is required");
   if (root.schemaVersion > BACKUP_SCHEMA_VERSION) fail("$.schemaVersion", "future schema version is not supported");
-  if (root.schemaVersion !== BACKUP_SCHEMA_VERSION) fail("$.schemaVersion", "schema version is not supported");
+  if (root.schemaVersion !== 1 && root.schemaVersion !== BACKUP_SCHEMA_VERSION) fail("$.schemaVersion", "schema version is not supported");
+  const sourceSchemaVersion = root.schemaVersion as 1 | 2;
   const data = objectAt(root.data, "$.data");
   const box = objectAt(data.box, "$.data.box");
   const rawEntries = arrayAt(box.entries, "$.data.box.entries");
@@ -263,7 +275,7 @@ export function parseBackup(text: string): ValidatedBackup {
     if (slotIds.has(slot.slotId)) fail(`$.data.calculator.slots[${index}].slotId`, "duplicate id");
     slotIds.add(slot.slotId);
   });
-  const backup: CandyBoostPlannerBackupV1 = {
+  const backup: CandyBoostPlannerBackupV2 = {
     format: BACKUP_FORMAT,
     schemaVersion: BACKUP_SCHEMA_VERSION,
     exportedAt: validateIso(root.exportedAt, "$.exportedAt"),
@@ -276,7 +288,11 @@ export function parseBackup(text: string): ValidatedBackup {
           sleepExpBonusCount: numberAt(sleep.sleepExpBonusCount, "$.data.globalSettings.sleepSettings.sleepExpBonusCount", 0, 5),
           includeGSD: booleanAt(sleep.includeGSD, "$.data.globalSettings.sleepSettings.includeGSD"),
         },
-        candyInventory: validateCandy(globals.candyInventory, "$.data.globalSettings.candyInventory"),
+        candyInventory: validateCandy(
+          globals.candyInventory,
+          "$.data.globalSettings.candyInventory",
+          sourceSchemaVersion,
+        ),
       },
       calculator: {
         activeSlotIndex: numberAt(calculator.activeSlotIndex, "$.data.calculator.activeSlotIndex", 0, 2) as 0 | 1 | 2,
@@ -300,6 +316,6 @@ export function parseBackup(text: string): ValidatedBackup {
   return { backup, warnings };
 }
 
-export function stringifyBackup(backup: CandyBoostPlannerBackupV1): string {
+export function stringifyBackup(backup: CandyBoostPlannerBackupV2): string {
   return JSON.stringify(backup, null, 2);
 }

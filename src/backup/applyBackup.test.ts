@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { BOOST_CANDY_REMAINING_KEY } from "../persistence/calc";
+import { CANDY_STORAGE_KEY, CANDY_STORAGE_KEY_V1 } from "../persistence/candy";
 import { applyBackup } from "./applyBackup";
 import { createBackup } from "./createBackup";
 
@@ -8,7 +9,7 @@ function backup() {
     boxEntries: [],
     totalShards: 9876,
     sleepSettings: { dailySleepHours: 7.5, sleepExpBonusCount: 2, includeGSD: false },
-    candyInventory: { schemaVersion: 1, universal: { s: 1, m: 2, l: 3 }, typeCandy: {}, species: {} },
+    candyInventory: { schemaVersion: 2, universal: { s: 1, m: 2, l: 3 }, typeCandy: {}, species: {} },
     calculator: { activeSlotIndex: 2, slots: [null, null, null] },
   }, new Date("2026-07-22T07:30:00.000Z"));
 }
@@ -31,8 +32,12 @@ function storageMock(initial: Record<string, string> = {}, failSetAt?: number) {
 }
 
 describe("applyBackup", () => {
-  it("flushes first, replaces every target, removes the compatibility mirror, then reloads", () => {
-    const mock = storageMock({ [BOOST_CANDY_REMAINING_KEY]: "999" });
+  it("flushes first, replaces every target, removes obsolete compatibility keys, then reloads", () => {
+    const oldV1 = "leave-this-v1-value-untouched";
+    const mock = storageMock({
+      [BOOST_CANDY_REMAINING_KEY]: "999",
+      [CANDY_STORAGE_KEY_V1]: oldV1,
+    });
     const order: string[] = [];
     applyBackup(backup(), {
       storage: mock.storage,
@@ -44,6 +49,8 @@ describe("applyBackup", () => {
     expect(mock.values.get("candy-boost-planner:calc:totalShards")).toBe("9876");
     expect(mock.values.get("candy-boost-planner:calc:activeSlot")).toBe("2");
     expect(mock.values.has(BOOST_CANDY_REMAINING_KEY)).toBe(false);
+    expect(JSON.parse(mock.values.get(CANDY_STORAGE_KEY) ?? "null").schemaVersion).toBe(2);
+    expect(mock.values.has(CANDY_STORAGE_KEY_V1)).toBe(false);
   });
 
   it("reconstructs the internal source without exposing it in the backup DTO", () => {
@@ -62,7 +69,8 @@ describe("applyBackup", () => {
   it("rolls every key back and does not reload after a partial write failure", () => {
     const initial = {
       "candy-boost-planner:box:v1": "old-box",
-      "candy-boost-planner:candy-inventory:v1": "old-candy",
+      "candy-boost-planner:candy-inventory:v2": "old-candy",
+      [CANDY_STORAGE_KEY_V1]: "old-candy-v1",
       "candy-boost-planner:calc:slots:v1": "old-slots",
       "candy-boost-planner:calc:totalShards": "old-shards",
       "candy-boost-planner:calc:sleepSettings": "old-sleep",

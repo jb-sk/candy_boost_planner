@@ -68,6 +68,7 @@ describe('buildPlannerInput', () => {
 
     expect(input).not.toBeNull();
     expect(input?.pokemonList[0]).toMatchObject({
+      candyFamilyKey: '25',
       currentExpInLevel,
       targetLevel: peakResult.level,
       targetExpInLevel: 0,
@@ -170,5 +171,20 @@ describe('buildPlannerInput', () => {
     expect(input?.candyInventory.universal).not.toBe(snapshot.candyInventory.universal);
     expect(input?.boost).not.toBe(snapshot.boost);
     expect(input?.pokemonList[0].candyTarget).toEqual({ totalCandyUnits: 0 });
+  });
+
+  it('異なる図鑑番号の同じ進化系を共有familyへ正規化する', () => {
+    const snapshot = baseSnapshot('none');
+    snapshot.candyInventory.species = { '25': 12, '26': 8, '172': 20 };
+    const rows = [
+      baseRow({ id: 'pichu', pokedexId: 172 }),
+      baseRow({ id: 'pikachu', pokedexId: 25 }),
+      baseRow({ id: 'raichu', pokedexId: 26 }),
+    ];
+
+    const input = buildPlannerInput(rows, snapshot);
+
+    expect(input?.pokemonList.map(row => row.candyFamilyKey)).toEqual(['25', '25', '25']);
+    expect(input?.candyInventory.species).toEqual({ '25': 20 });
   });
 });

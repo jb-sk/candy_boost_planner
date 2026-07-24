@@ -106,6 +106,7 @@ function context(): DebugExportContext {
       id: 'row\t1',
       name: 'Pika\tChu\nLine',
       pokedexId: 25,
+      candyFamilyKey: '25',
       type: 'electric',
       nature: 'normal',
       mode: 'target\nLevel',
@@ -144,7 +145,7 @@ function context(): DebugExportContext {
 }
 
 const mainColumns = [
-  'index', 'id', 'name', 'pokedexId', 'type', 'nature', 'mode',
+  'index', 'id', 'name', 'pokedexId', 'candyFamilyKey', 'type', 'nature', 'mode',
   'currentLv', 'currentExpInLevel', 'expRemaining', 'targetLv', 'targetExpInLevel', 'candyTarget',
   'boostKind', 'itemCompareMode', 'calculationScope', 'reachedLv', 'targetReached', 'role', 'expToNext', 'expToTarget',
   'shortageCandy', 'shortageBoost', 'shortageShards', 'limitingFactor', 'initialSpeciesStock',
