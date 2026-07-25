@@ -690,13 +690,18 @@ function enumerateCandySupplyCandidates(total: number, pokemon: NormalizedPokemo
   recordSupplyCandidateCut(key, cut);
   return result;
 }
+/** 配分方針「余り最小」では、表示用の理論配分でも余り最小を優先する。 */
+function prefersMinSurplusDisplay(input: NormalizedInput): boolean {
+  return input.options.itemCompareMode === 'surplusFirst';
+}
+
 /** 表示用。理論値行だけは不足分を万能Sで補填する。 */
-function resolveDisplayCandySupply(total: number, pokemon: NormalizedPokemon, inventory: CandyInventory, allowUniversalSFill: boolean): CandySupplyBreakdown {
+function resolveDisplayCandySupply(total: number, pokemon: NormalizedPokemon, inventory: CandyInventory, allowUniversalSFill: boolean, preferMinSurplus: boolean): CandySupplyBreakdown {
   if (total === 0) return emptySupply();
   const type = inventory.typeCandy[pokemon.type] ?? { s: 0, m: 0 };
   const species = Math.min(inventory.species[speciesKey(pokemon)] ?? 0, total);
   const remaining = total - species;
-  const allocation = findBestItemAllocation(remaining, type, inventory.universal);
+  const allocation = findBestItemAllocation(remaining, type, inventory.universal, preferMinSurplus);
   const missing = Math.max(0, remaining - allocation.supplied);
   return {
     species,
@@ -709,11 +714,20 @@ function resolveDisplayCandySupply(total: number, pokemon: NormalizedPokemon, in
   };
 }
 
-/** 実配分を正本にし、目標まで行では不足分だけを理論上の万能Sで補う。 */
-function addTheoreticalUniversalSFill(supply: CandySupplyBreakdown, total: number): CandySupplyBreakdown {
-  const missing = Math.max(0, total - supplyValue(supply));
+/**
+ * 実配分を正本にし、理論値行では不足分を「在庫に残る種族アメ → 理論上の万能S」の順で補う。
+ *
+ * 種族アメは価値1で余りを生まないため、仕様どおり常に先に使い切る。
+ * 実配分がかけら・アメブ律速で在庫の種族アメを使い切っていない場合、
+ * 万能Sだけで補うと理論値行が「まだ持っている種族アメ」を無視した必要量になる。
+ */
+function addTheoreticalSupplyFill(supply: CandySupplyBreakdown, total: number, pokemon: NormalizedPokemon, inventory: CandyInventory): CandySupplyBreakdown {
+  const shortfall = Math.max(0, total - supplyValue(supply));
+  const speciesLeft = Math.max(0, (inventory.species[speciesKey(pokemon)] ?? 0) - supply.species);
+  const speciesFill = Math.min(speciesLeft, shortfall);
+  const missing = shortfall - speciesFill;
   return {
-    species: supply.species,
+    species: supply.species + speciesFill,
     type: { ...supply.type },
     universal: { ...supply.universal, s: supply.universal.s + Math.ceil(missing / CANDY_VALUES.universal.s) },
   };
@@ -2303,13 +2317,28 @@ function zeroLine(pokemon: NormalizedPokemon): PokemonPlanLine {
     : cmpLevel({ level: pokemon.currentLevel, expInLevel: pokemon.currentExpInLevel }, { level: pokemon.targetLevel, expInLevel: pokemon.targetExpInLevel }) >= 0;
   return { level: pokemon.currentLevel, expInLevel: pokemon.currentExpInLevel, expToNextLevel: Math.max(0, calcExp(pokemon.currentLevel, pokemon.currentLevel + 1, pokemon.expType) - pokemon.currentExpInLevel), expToTarget: Math.max(0, calcExp(pokemon.currentLevel, pokemon.targetLevel, pokemon.expType) + pokemon.targetExpInLevel - pokemon.currentExpInLevel), totalCandyUnitsUsed: 0, boostedCandyUnits: 0, nonBoostCandyUnits: 0, candySupply: emptySupply(), dreamShardsUsed: 0, expGained: 0, surplusExp: 0, surplusCandyValue: 0, targetReached };
 }
-function displayLine(pokemon: NormalizedPokemon, input: NormalizedInput, inventory: CandyInventory, total: number, requestedBoost: number, reachableSupply?: CandySupplyBreakdown): PokemonPlanLine {
+/**
+ * 目標まで行が既存の配分（到達可能行・個数指定行）を正本として流用できるか。
+ *
+ * 流用できるのは、その配分が「目標到達に必要なアメ数ちょうど」に対して作られている場合だけ。
+ * 補填は万能Sを足すことしかできないため、需要が食い違う土台を使うと内訳がそのまま漏れ出す。
+ * - 個数指定は「このポケモンに何個まで使うか」というユーザーの自己制約であり、目標到達に必要な量ではない。
+ *   これを土台にすると、目標まで行が個数指定に左右されてしまう。
+ * - かけら・アメブ・在庫律速で目標需要に届かない実配分も、残りを万能Sだけで補うと
+ *   実際には使える在庫（種族アメ・万能M/L・タイプアメ）を無視した内訳になる。
+ *
+ * 需要が一致しない場合は、その行の時点の在庫から目標需要ぶんを組み直す。
+ */
+function canReuseDisplaySupplyBase(baseTotalCandy: number | undefined, targetTotalCandy: number): boolean {
+  return baseTotalCandy === targetTotalCandy;
+}
+function displayLine(pokemon: NormalizedPokemon, input: NormalizedInput, inventory: CandyInventory, total: number, requestedBoost: number, baseSupply?: CandySupplyBreakdown, baseTotalCandy?: number): PokemonPlanLine {
   const boost = input.boost.kind === 'none' ? 0 : Math.min(Math.max(0, requestedBoost), total);
   const reached = simulate(pokemon, boost, Math.max(0, total - boost), Infinity, pokemon.targetLevel, pokemon.targetExpInLevel, input.boost.kind);
   const used = reached.boostUsed + reached.normalUsed;
-  const supply = reachableSupply
-    ? addTheoreticalUniversalSFill(reachableSupply, used)
-    : resolveDisplayCandySupply(used, pokemon, inventory, true);
+  const supply = baseSupply && canReuseDisplaySupplyBase(baseTotalCandy, used)
+    ? addTheoreticalSupplyFill(baseSupply, used, pokemon, inventory)
+    : resolveDisplayCandySupply(used, pokemon, inventory, true, prefersMinSurplusDisplay(input));
   return {
     level: reached.level, expInLevel: reached.expInLevel,
     expToNextLevel: Math.max(0, calcExp(reached.level, reached.level + 1, pokemon.expType) - reached.expInLevel),
@@ -2324,12 +2353,12 @@ function displayCandyTargetLine(pokemon: NormalizedPokemon, input: NormalizedInp
   if (!pokemon.candyTarget) return candidate.line;
   const total = pokemon.candyTarget.totalCandyUnits;
   if (candidate.line.targetReached) {
-    const supply = addTheoreticalUniversalSFill(candidate.line.candySupply, total);
+    const supply = addTheoreticalSupplyFill(candidate.line.candySupply, total, pokemon, inventory);
     return { ...candidate.line, candySupply: supply, surplusCandyValue: Math.max(0, supplyValue(supply) - total) };
   }
   const boost = Math.min(candyTargetBoostCap(pokemon, pokemon.requestedBoostCandy, input.boost.kind), total);
   const reached = simulateCandyBudget(pokemon, boost, total, Infinity, input.boost.kind, hasFixedCandyTargetBoost(pokemon));
-  const supply = resolveDisplayCandySupply(total, pokemon, inventory, true);
+  const supply = resolveDisplayCandySupply(total, pokemon, inventory, true, prefersMinSurplusDisplay(input));
   return {
     level: reached.level, expInLevel: reached.expInLevel,
     expToNextLevel: Math.max(0, calcExp(reached.level, reached.level + 1, pokemon.expType) - reached.expInLevel),
@@ -2424,7 +2453,7 @@ export function solveLevelPlan(rawInput: LevelPlannerInput): LevelPlannerResult 
   const pokemonResults: PokemonPlanResult[] = choices.map((candidate, index) => {
     const pokemon = candidate.p; const mixed = calcExpAndCandyMixed({ srcLevel: pokemon.currentLevel, dstLevel: pokemon.targetLevel, dstExpInLevel: pokemon.targetExpInLevel, expType: pokemon.expType, nature: pokemon.nature, boost: input.boost.kind, boostCandy: pokemon.requestedBoostCandy, expGot: pokemon.currentExpInLevel });
     const candyTargetLine = pokemon.candyTarget ? displayCandyTargetLine(pokemon, input, candidate, inventory) : undefined;
-    const targetLine = displayLine(pokemon, input, inventory, mixed.boostCandy + mixed.normalCandy, mixed.boostCandy, candyTargetLine?.candySupply ?? candidate.line.candySupply);
+    const targetLine = displayLine(pokemon, input, inventory, mixed.boostCandy + mixed.normalCandy, mixed.boostCandy, candyTargetLine?.candySupply ?? candidate.line.candySupply, pokemon.candyTarget?.totalCandyUnits ?? candidate.line.totalCandyUnitsUsed);
     const diagnostic = calcDiagnosis(pokemon, candidate.line, snapshot, input);
     const role = boundaryIndex === null || index < boundaryIndex ? 'upper' : index === boundaryIndex ? 'boundary' : 'lower';
     consumeInventory(inventory, pokemon, candidate.line); snapshot = mergeUsage(snapshot, candidate.usage);
@@ -2490,7 +2519,7 @@ function renderMixedResult(input: NormalizedInput, choices: Candidate[], lossLed
     const pokemon = candidate.p;
     const mixed = calcExpAndCandyMixed({ srcLevel: pokemon.currentLevel, dstLevel: pokemon.targetLevel, dstExpInLevel: pokemon.targetExpInLevel, expType: pokemon.expType, nature: pokemon.nature, boost: input.boost.kind, boostCandy: pokemon.requestedBoostCandy, expGot: pokemon.currentExpInLevel });
     const candyTargetLine = pokemon.candyTarget ? displayCandyTargetLine(pokemon, input, candidate, inventory) : undefined;
-    const targetLine = displayLine(pokemon, input, inventory, mixed.boostCandy + mixed.normalCandy, mixed.boostCandy, candyTargetLine?.candySupply ?? candidate.line.candySupply);
+    const targetLine = displayLine(pokemon, input, inventory, mixed.boostCandy + mixed.normalCandy, mixed.boostCandy, candyTargetLine?.candySupply ?? candidate.line.candySupply, pokemon.candyTarget?.totalCandyUnits ?? candidate.line.totalCandyUnitsUsed);
     const diagnostic = calcDiagnosis(pokemon, candidate.line, snapshot, input);
     const role = boundaryIndex === null || index < boundaryIndex ? 'upper' : index === boundaryIndex ? 'boundary' : 'lower';
     consumeInventory(inventory, pokemon, candidate.line);

@@ -539,8 +539,8 @@ describe('単一最適化パイプライン', () => {
     expect(p.targetLine.candySupply.universal.s).toBe(503);
   });
 
-  it('個数指定ありの目標まで行は到達可能行の種族アメ実配分を引き継いで不足分だけ万能Sで補填する', () => {
-    const result = solveLevelPlan({
+  it('目標まで行の理論値補填は在庫に残る種族アメを先に使い、個数指定に左右されない', () => {
+    const suicune = (candyTarget?: number): LevelPlannerInput => ({
       pokemonList: [{
         pokemonId: 'suicune-target-display',
         pokedexId: 245,
@@ -553,7 +553,7 @@ describe('単一最適化パイプライン', () => {
         nature: 'down',
         requestedBoostCandy: 350,
         boostAllowed: true,
-        candyTarget: { totalCandyUnits: 50 },
+        ...(candyTarget === undefined ? {} : { candyTarget: { totalCandyUnits: candyTarget } }),
         priorityIndex: 0,
       }],
       dreamShards: 0,
@@ -561,10 +561,55 @@ describe('単一最適化パイプライン', () => {
       candyInventory: { species: { '245': 147 }, typeCandy: { Water: { s: 0, m: 0 } }, universal: { s: 0, m: 0, l: 0 } },
       options: { itemCompareMode: 'legacyImproved' },
     });
-    const p = result.pokemonResults[0];
-    expect(p.candyTargetLine?.candySupply.species).toBe(50);
-    expect(p.targetLine.candySupply.species).toBe(50);
-    expect(p.targetLine.candySupply.universal.s).toBe(394);
+    const withTarget = solveLevelPlan(suicune(50)).pokemonResults[0];
+    const withoutTarget = solveLevelPlan(suicune()).pokemonResults[0];
+    // 個数指定行は指定どおり50個ぶんだけを種族アメで賄う
+    expect(withTarget.candyTargetLine?.candySupply.species).toBe(50);
+    // 目標まで行は在庫の種族アメ147を先に使い切ってから万能Sで補填する（1230 = 147 + 361 * 3）
+    expect(withTarget.targetLine.totalCandyUnitsUsed).toBe(1_230);
+    expect(withTarget.targetLine.candySupply.species).toBe(147);
+    expect(withTarget.targetLine.candySupply.universal.s).toBe(361);
+    expect(withTarget.targetLine.surplusCandyValue).toBe(0);
+    // 個数指定の有無で目標まで行は変わらない
+    expect(withTarget.targetLine.candySupply).toEqual(withoutTarget.targetLine.candySupply);
+  });
+
+  it('目標まで行はアメ個数指定の値に左右されない', () => {
+    // 報告ケース: 個数指定を1個下げただけで「目標まで」の必要アイテムと余りが変わっていた
+    const row = (candyTarget?: number): LevelPlannerInput => ({
+      pokemonList: [{
+        pokemonId: 'cramorant',
+        pokedexId: 845,
+        name: '70ウッウ',
+        type: 'water',
+        currentLevel: 68,
+        currentExpInLevel: calcExp(68, 69, 1080) - 2_991,
+        targetLevel: 70,
+        targetExpInLevel: 0,
+        expType: 1080,
+        nature: 'normal',
+        requestedBoostCandy: 1_000,
+        boostAllowed: true,
+        ...(candyTarget === undefined ? {} : { candyTarget: { totalCandyUnits: candyTarget } }),
+        priorityIndex: 0,
+      }],
+      dreamShards: 5_000_000,
+      boost: { kind: 'full', limit: 1_000 },
+      candyInventory: { species: { '845': 0 }, typeCandy: { water: { s: 0, m: 0 } }, universal: { s: 60, m: 5, l: 1 } },
+      options: { itemCompareMode: 'surplusFirst' },
+    });
+    const base = solveLevelPlan(row()).pokemonResults[0].targetLine;
+    expect(base.surplusCandyValue).toBe(0);
+    expect(base.candySupply.universal.s).toBeGreaterThan(0);
+    const need = base.totalCandyUnitsUsed;
+    // 指定なし / 目標需要ちょうど / 未満 / 超過 のいずれでも目標まで行は同一
+    for (const candyTarget of [1, need - 10, need - 1, need, need + 1, need + 200]) {
+      const line = solveLevelPlan(row(candyTarget)).pokemonResults[0].targetLine;
+      expect(line.totalCandyUnitsUsed).toBe(need);
+      expect(line.dreamShardsUsed).toBe(base.dreamShardsUsed);
+      expect(line.candySupply).toEqual(base.candySupply);
+      expect(line.surplusCandyValue).toBe(base.surplusCandyValue);
+    }
   });
 
   it('個数指定がある場合も、サマリ集計は個数指定行ではなく到達可能行を使う', () => {

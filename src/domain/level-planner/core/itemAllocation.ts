@@ -17,18 +17,22 @@ import type { ItemAllocationResult, UniversalAllocationResult } from '../types';
  *
  * 探索の優先順位:
  * 1. 余り ≤ 2 を達成する組み合わせを優先
- * 2. タイプS > タイプM > 万能S > 万能M > 万能L の順で多く使う
- * 3. 余りが同じなら優先順位順
+ * 2. 余り ≤ 2 同士の比較は配分方針で分かれる
+ *    - 余り最小 (`preferMinSurplus`): 余り小 > タイプS多 > タイプM多 > 万能S多 > 万能M多 > 万能L多
+ *    - バランス / EXP最大: 万能L少 > 万能M少 > タイプS多 > タイプM多
+ * 3. 余り3以上同士なら余りが小さい方、供給不足同士なら供給が多い方
  *
  * @param targetValue 目標価値
  * @param typeStock タイプアメ在庫 { s, m }
  * @param universalStock 万能アメ在庫 { s, m, l }
+ * @param preferMinSurplus 配分方針「余り最小」(`surplusFirst`) 用。余り0-2の中でも余りが小さい方を優先する
  * @returns 最適な配分結果
  */
 export function findBestItemAllocation(
   targetValue: number,
   typeStock: { s: number; m: number },
-  universalStock: { s: number; m: number; l: number }
+  universalStock: { s: number; m: number; l: number },
+  preferMinSurplus = false
 ): ItemAllocationResult {
   if (targetValue <= 0) {
     return { typeS: 0, typeM: 0, universalS: 0, universalM: 0, universalL: 0, supplied: 0 };
@@ -60,7 +64,7 @@ export function findBestItemAllocation(
           universalL: 0,
           supplied: typeValue,
         };
-        if (!best || isBetterAllocation(candidate, best, targetValue)) {
+        if (!best || isBetterAllocation(candidate, best, targetValue, preferMinSurplus)) {
           best = candidate;
         }
         continue;
@@ -80,7 +84,7 @@ export function findBestItemAllocation(
             universalL: uniL,
             supplied,
           };
-          if (!best || isBetterAllocation(candidate, best, targetValue)) best = candidate;
+          if (!best || isBetterAllocation(candidate, best, targetValue, preferMinSurplus)) best = candidate;
           continue;
         }
 
@@ -117,7 +121,7 @@ export function findBestItemAllocation(
             supplied,
           };
 
-          if (!best || isBetterAllocation(candidate, best, targetValue)) {
+          if (!best || isBetterAllocation(candidate, best, targetValue, preferMinSurplus)) {
             best = candidate;
           }
         }
@@ -217,13 +221,15 @@ function findBestWithL(
  * 比較順序:
  * 1. 余り 0-2 を達成している方が優先（余り0-2は同等扱い）
  * 2. 余り0-2同士の場合: 優先順位（万能L少 > 万能M少 > タイプS多 > タイプM多）で選ぶ
+ *    ただし `preferMinSurplus`（配分方針「余り最小」）では、先に余りが小さい方を選ぶ
  * 3. 余りが負の場合: 余りが大きい方（0に近い方 = より多く供給）を優先
  * 4. 余り3以上の場合: 余りが小さい方を優先
  */
 function isBetterAllocation(
   a: ItemAllocationResult,
   b: ItemAllocationResult,
-  targetValue: number
+  targetValue: number,
+  preferMinSurplus = false
 ): boolean {
   const surplusA = a.supplied - targetValue;
   const surplusB = b.supplied - targetValue;
@@ -234,8 +240,21 @@ function isBetterAllocation(
   if (within2A && !within2B) return true;
   if (!within2A && within2B) return false;
 
-  // 両方が余り 0-2 を満たす場合: 優先順位で選ぶ（余りは比較しない）
+  // 両方が余り 0-2 を満たす場合: 優先順位で選ぶ
   if (within2A && within2B) {
+    // 配分方針「余り最小」(surplusFirst) は仕様の比較順
+    // 「余り小 > タイプS多 > タイプM多 > 万能S多 > 万能M多 > 万能L多」に従う。
+    // ソルバー本体と同じ順序にしないと、同じ需要でも表示だけ別の内訳になる。
+    if (preferMinSurplus) {
+      if (surplusA !== surplusB) return surplusA < surplusB;
+      if (a.typeS !== b.typeS) return a.typeS > b.typeS;
+      if (a.typeM !== b.typeM) return a.typeM > b.typeM;
+      if (a.universalS !== b.universalS) return a.universalS > b.universalS;
+      if (a.universalM !== b.universalM) return a.universalM > b.universalM;
+      if (a.universalL !== b.universalL) return a.universalL > b.universalL;
+      return false;
+    }
+    // バランス / EXP最大は余り0-2を同等扱いし、大きい万能アメを温存する
     if (a.universalL !== b.universalL) return a.universalL < b.universalL;  // L節約
     if (a.universalM !== b.universalM) return a.universalM < b.universalM;  // M節約
     if (a.typeS !== b.typeS) return a.typeS > b.typeS;  // タイプS使い切り
