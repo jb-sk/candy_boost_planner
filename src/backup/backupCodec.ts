@@ -1,4 +1,5 @@
 import type { BoxSubSkillSlotV1, IngredientType, PokemonSpecialty } from "../domain/types";
+import { calcExp } from "../domain/pokesleep/exp";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { pokemonMaster } from "../domain/pokesleep/pokemon-master";
 import { PokemonTypes } from "../domain/pokesleep/pokemon-types";
@@ -150,6 +151,23 @@ function validateRow(value: unknown, path: string): CalcRowV1 {
   const row = objectAt(value, path);
   const srcLevel = numberAt(row.srcLevel, `${path}.srcLevel`, 1, MAX_LEVEL);
   const dstLevel = numberAt(row.dstLevel, `${path}.dstLevel`, srcLevel, MAX_LEVEL);
+  const expType = enumAt(row.expType, `${path}.expType`, expTypes) as 600 | 900 | 1080 | 1320;
+  const maxTargetExp = dstLevel >= MAX_LEVEL
+    ? 0
+    : Math.max(0, calcExp(dstLevel, dstLevel + 1, expType) - 1);
+  const dstExpInLevel = optionalNumber(row.dstExpInLevel, `${path}.dstExpInLevel`, 0, maxTargetExp);
+  // 旧 mode:"peak" 行は candyTarget へ移行する（設計書§6.1）。
+  // mode / candyPeak / boostRatioPct は V3 で廃止したため、あっても読み捨てる。
+  const storedCandyTarget = optionalNumber(row.candyTarget, `${path}.candyTarget`, 0) ?? migrateLegacyPeakCandyTarget(row);
+  const sleepTargetHours = row.sleepTargetHours === undefined
+    ? undefined
+    : enumAt(row.sleepTargetHours, `${path}.sleepTargetHours`, sleepTargetHoursValues);
+  // V3初期版には sleepTargetHours だけ保存されたデータがあるため、0個指定へ正規化して不変条件を満たす。
+  const candyTarget = storedCandyTarget ?? (sleepTargetHours === undefined ? undefined : 0);
+  const rawBoost = optionalNumber(row.boostOrExpAdjustment, `${path}.boostOrExpAdjustment`, 0);
+  const boostOrExpAdjustment = rawBoost === undefined
+    ? undefined
+    : candyTarget === undefined ? rawBoost : Math.min(rawBoost, candyTarget);
   return {
     id: stringAt(row.id, `${path}.id`, false),
     boxId: optionalString(row.boxId, `${path}.boxId`),
@@ -158,19 +176,16 @@ function validateRow(value: unknown, path: string): CalcRowV1 {
     title: stringAt(row.title, `${path}.title`),
     srcLevel,
     dstLevel,
+    dstExpInLevel,
     dstLevelText: row.dstLevelText === undefined ? undefined : stringAt(row.dstLevelText, `${path}.dstLevelText`),
     expRemaining: numberAt(row.expRemaining, `${path}.expRemaining`, 0, 999999),
-    expType: enumAt(row.expType, `${path}.expType`, expTypes) as 600 | 900 | 1080 | 1320,
+    expType,
     nature: enumAt(row.nature, `${path}.nature`, natures) as "down" | "normal" | "up",
-    boostReachLevel: numberAt(row.boostReachLevel, `${path}.boostReachLevel`, srcLevel, dstLevel),
-    boostOrExpAdjustment: optionalNumber(row.boostOrExpAdjustment, `${path}.boostOrExpAdjustment`, 0),
-    // 旧 mode:"peak" 行は candyTarget へ移行する（設計書§6.1）。
-    // mode / candyPeak / boostRatioPct は V3 で廃止したため、あっても読み捨てる。
-    candyTarget: optionalNumber(row.candyTarget, `${path}.candyTarget`, 0) ?? migrateLegacyPeakCandyTarget(row),
+    boostReachLevel: numberAt(row.boostReachLevel, `${path}.boostReachLevel`, srcLevel, MAX_LEVEL),
+    boostOrExpAdjustment,
+    candyTarget,
     sleepHours: optionalNumber(row.sleepHours, `${path}.sleepHours`, 0),
-    sleepTargetHours: row.sleepTargetHours === undefined
-      ? undefined
-      : enumAt(row.sleepTargetHours, `${path}.sleepTargetHours`, sleepTargetHoursValues),
+    sleepTargetHours,
   };
 }
 
@@ -256,7 +271,7 @@ export function parseBackup(text: string): ValidatedBackup {
   if (root.schemaVersion > BACKUP_SCHEMA_VERSION) fail("$.schemaVersion", "future schema version is not supported");
   if (root.schemaVersion !== 1 && root.schemaVersion !== 2 && root.schemaVersion !== BACKUP_SCHEMA_VERSION) fail("$.schemaVersion", "schema version is not supported");
   const sourceSchemaVersion = root.schemaVersion as 1 | 2 | 3;
-  // candyInventory 自体のスキーマは V2 のまま（V3での変更は CalcRowV1.sleepTargetHours の追加のみ）。
+  // candyInventory 自体のスキーマは V2 のまま（V3では計算行の睡眠目標と正確な最終目標を追加）。
   const candyInventorySchemaVersion: 1 | 2 = sourceSchemaVersion === 1 ? 1 : 2;
   const data = objectAt(root.data, "$.data");
   const box = objectAt(data.box, "$.data.box");

@@ -37,7 +37,10 @@ export type CandyBoostPlannerBackupV2 = {
   data: CandyBoostPlannerBackupData<CandyInventoryV2>;
 };
 
-/** V3での変更点は CalcRowV1.sleepTargetHours の追加のみ。candyInventory のスキーマは V2 のまま。 */
+/**
+ * V3では睡眠目標と正確な最終目標（CalcRowV1.dstExpInLevel）を保存する。
+ * candyInventory のスキーマは V2 のまま。sleepTargetHours は candyTarget と同時にだけ存在する。
+ */
 export type CandyBoostPlannerBackupV3 = {
   format: typeof BACKUP_FORMAT;
   schemaVersion: typeof BACKUP_SCHEMA_VERSION;

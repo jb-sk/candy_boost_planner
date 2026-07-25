@@ -99,7 +99,7 @@ import BoxPanel from "./components/BoxPanel.vue";
 import MobileNav from "./components/MobileNav.vue";
 import SettingsOverlay from "./components/SettingsOverlay.vue";
 import { useBoxStore } from "./composables/useBoxStore";
-import { useCalcStore } from "./composables/useCalcStore";
+import { useCalcStore } from "./composables/useExactTargetCalcStore";
 import { useOnboarding } from "./composables/useOnboarding";
 import { buildThemeList, DEFAULT_THEME_ID, DESIGN_STORAGE_KEY } from "./config/themes";
 

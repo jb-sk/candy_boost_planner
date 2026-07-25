@@ -1,4 +1,5 @@
 import type { BoostEvent, ExpGainNature, ExpType, SleepSettings } from "../domain/types";
+import { calcExp } from "../domain/pokesleep/exp";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { defaultBoostKind } from "../domain/pokesleep/boost-config";
 import type { ItemCompareMode } from "../domain/level-planner/types";
@@ -16,7 +17,10 @@ export type CalcRowV1 = {
   /** 表示名 */
   title: string;
   srcLevel: number;
+  /** 唯一の保存済み最終目標Lv。 */
   dstLevel: number;
+  /** 唯一の保存済み最終目標のLv内EXP。旧データでは未設定。 */
+  dstExpInLevel?: number;
   /** 目標Lvの入力中テキスト（datalist表示用。確定はblurでdstLevelへ反映） */
   dstLevelText?: string;
   expRemaining: number; // ゲーム画面の「あとEXP（次Lvまで）」
@@ -32,7 +36,7 @@ export type CalcRowV1 = {
   candyTarget?: number;
   /** 累計睡眠時間（時間単位、ポケモンごと） */
   sleepHours?: number;
-  /** 睡眠目標時間（時間単位）。未設定=睡眠を考慮しない。SLEEP_TARGET_HOURS_OPTIONS のいずれかのみ許可。 */
+  /** 睡眠目標時間。必ず candyTarget と同時に存在する。 */
   sleepTargetHours?: number;
 };
 
@@ -230,6 +234,13 @@ function normalizeItemCompareMode(value: unknown): ItemCompareMode {
   return "surplusFirst";
 }
 
+function normalizeStoredTargetExp(value: unknown, dstLevel: number, expType: ExpType): number | undefined {
+  // 旧保存データでは未設定のまま返し、store 初期化時に従来の個数到達点から移行する。
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  if (dstLevel >= MAX_LEVEL) return 0;
+  const toNext = Math.max(0, calcExp(dstLevel, dstLevel + 1, expType));
+  return clampInt(value, 0, Math.max(0, toNext - 1), 0);
+}
 
 function toRows(v: unknown): CalcRowV1[] {
   if (!Array.isArray(v)) return [];
@@ -243,31 +254,39 @@ function toRows(v: unknown): CalcRowV1[] {
     const expType = toExpType(o.expType, 600);
     const srcLevel = clampInt(o.srcLevel, 1, MAX_LEVEL, 1);
     const dstLevel = clampInt(o.dstLevel, srcLevel, MAX_LEVEL, srcLevel);
+    const dstExpInLevel = normalizeStoredTargetExp(o.dstExpInLevel, dstLevel, expType);
     // expRemaining: 0 は論理矛盾（次Lvまで0 = 既にレベルアップ済み）なので
     // 0 は保存データ上もそのまま読み込み、calcRowExpGot 側で toNext に補正する。
     // ただし undefined / null / NaN は安全なフォールバックとして 0 を設定（calcRowExpGot が toNext に補正）。
     const expRemaining = clampInt(o.expRemaining, 0, 999999, 0);
     const nature = toExpGainNature(o.nature, "normal");
-    const boostReachLevel = clampInt(o.boostReachLevel, srcLevel, dstLevel, dstLevel);
+    const boostReachLevel = clampInt(o.boostReachLevel, srcLevel, MAX_LEVEL, dstLevel);
     const boxId = typeof o.boxId === "string" && o.boxId.trim() ? o.boxId : undefined;
     const dstLevelText = typeof o.dstLevelText === "string" ? o.dstLevelText : undefined;
     const pokedexId = typeof o.pokedexId === "number" && o.pokedexId > 0 ? o.pokedexId : undefined;
     const pokemonType = typeof o.pokemonType === "string" && o.pokemonType.trim() ? o.pokemonType : undefined;
-    // boostOrExpAdjustment: 入力されたアメブ個数（真実のソース）
-    const boostOrExpAdjustment = typeof o.boostOrExpAdjustment === "number" ? Math.max(0, Math.floor(o.boostOrExpAdjustment)) : undefined;
     // candyTarget: undefined = 個数指定なし（目標Lvが anchor）、0以上 = 個数指定あり
     const storedCandyTarget = typeof o.candyTarget === "number" && o.candyTarget >= 0 ? Math.floor(o.candyTarget) : undefined;
-    const candyTarget = storedCandyTarget ?? migrateLegacyPeakCandyTarget(o);
+    const legacyCandyTarget = migrateLegacyPeakCandyTarget(o);
+    const validSleepTargetHours =
+      typeof o.sleepTargetHours === "number"
+      && (SLEEP_TARGET_HOURS_OPTIONS as readonly number[]).includes(o.sleepTargetHours)
+        ? o.sleepTargetHours
+        : undefined;
+    // V3初期版の sleepTargetHours 単独データは、0個指定へ正規化して不変条件を満たす。
+    const candyTarget = storedCandyTarget ?? legacyCandyTarget ?? (validSleepTargetHours === undefined ? undefined : 0);
+    // boostOrExpAdjustment は candyTarget がある場合、その内数へ正規化する。
+    const rawBoost = typeof o.boostOrExpAdjustment === "number" ? Math.max(0, Math.floor(o.boostOrExpAdjustment)) : undefined;
+    const boostOrExpAdjustment = rawBoost === undefined
+      ? undefined
+      : candyTarget === undefined ? rawBoost : Math.min(rawBoost, candyTarget);
     // sleepHours: 累計睡眠時間（後方互換: 未設定 = undefined = 0h扱い）
     const sleepHours =
       typeof o.sleepHours === "number" && Number.isFinite(o.sleepHours)
         ? Math.max(0, Math.floor(o.sleepHours))
         : undefined;
-    // sleepTargetHours: 睡眠目標時間。ドロップダウンの選択肢のみ許可（任意値は保存データが壊れていても無視する）
-    const sleepTargetHours =
-      typeof o.sleepTargetHours === "number" && (SLEEP_TARGET_HOURS_OPTIONS as readonly number[]).includes(o.sleepTargetHours)
-        ? o.sleepTargetHours
-        : undefined;
+    // 不変条件 sleepTargetHours ⇒ candyTarget は上の0個指定移行を含め常に成立する。
+    const sleepTargetHours = candyTarget === undefined ? undefined : validSleepTargetHours;
     out.push({
       id,
       boxId,
@@ -276,6 +295,7 @@ function toRows(v: unknown): CalcRowV1[] {
       title,
       srcLevel,
       dstLevel,
+      dstExpInLevel,
       dstLevelText,
       expRemaining,
       expType,

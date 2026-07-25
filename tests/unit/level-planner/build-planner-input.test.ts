@@ -1,11 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   buildPlannerInput,
   type PlannerInputRowDto,
   type PlannerInputSnapshotDto,
 } from '../../../src/domain/level-planner/buildPlannerInput';
+import {
+  clearExactLevelTargets,
+  setExactLevelTarget,
+} from '../../../src/domain/level-planner/exactTargetRegistry';
 import { calcExp } from '../../../src/domain/pokesleep';
-import { simulateCandyBudget } from '../../../src/domain/pokesleep/simulateCandyBudget';
 
 const baseSnapshot = (kind: PlannerInputSnapshotDto['boost']['kind']): PlannerInputSnapshotDto => ({
   candyInventory: {
@@ -25,12 +28,11 @@ const baseRow = (patch: Partial<PlannerInputRowDto> = {}): PlannerInputRowDto =>
   pokemonType: 'Electric',
   srcLevel: 10,
   dstLevel: 30,
+  dstExpInLevel: 137,
   expRemaining: 100,
   expType: 600,
   nature: 'normal',
-  mode: 'targetLevel',
   boostReachLevel: 30,
-  candyPeak: 20,
   candyTarget: undefined,
   boostCandyInput: 8,
   ...patch,
@@ -38,100 +40,52 @@ const baseRow = (patch: Partial<PlannerInputRowDto> = {}): PlannerInputRowDto =>
 
 function deepFreeze<T>(value: T): T {
   if (value !== null && typeof value === 'object') {
-    for (const nested of Object.values(value as Record<string, unknown>)) {
-      deepFreeze(nested);
-    }
+    for (const nested of Object.values(value as Record<string, unknown>)) deepFreeze(nested);
     Object.freeze(value);
   }
   return value;
 }
 
 describe('buildPlannerInput', () => {
-  it('個数指定なしなら目標は dstLevel ちょうど（あとEXP 0）になる', () => {
-    const row = baseRow({ candyTarget: undefined, boostCandyInput: 8 });
-    const snapshot = baseSnapshot('none');
+  beforeEach(() => clearExactLevelTargets());
+
+  it('明示された dstLevel + dstExpInLevel を唯一の最終目標として渡す', () => {
+    const row = baseRow();
     const currentExpInLevel = Math.max(
       0,
       calcExp(row.srcLevel, row.srcLevel + 1, row.expType) - row.expRemaining,
     );
+    const input = buildPlannerInput([row], baseSnapshot('none'));
 
-    const input = buildPlannerInput([row], snapshot);
-
-    expect(input).not.toBeNull();
     expect(input?.pokemonList[0]).toMatchObject({
       candyFamilyKey: '25',
       currentExpInLevel,
-      // ceil の余剰EXPを目標へ混ぜない（設計書§3.8-d, §4.5）
-      targetLevel: row.dstLevel,
-      targetExpInLevel: 0,
+      targetLevel: 30,
+      targetExpInLevel: 137,
       requestedBoostCandy: 8,
     });
-    expect(input).toMatchObject({
-      dreamShards: 123_456,
-      boost: { kind: 'none', limit: 350 },
-      options: { itemCompareMode: 'surplusGateFirst' },
-    });
   });
 
-  it('targetLevel かつ boostReachLevel が目標未満なら、ユーザー目標 Lv を維持する', () => {
-    const row = baseRow({
-      mode: 'targetLevel',
-      dstLevel: 40,
-      boostReachLevel: 25,
-      candyPeak: 1,
-      boostCandyInput: 7,
-      expRemaining: 0,
-    });
-
-    const input = buildPlannerInput([row], baseSnapshot('full'));
-
-    expect(input?.pokemonList[0]).toMatchObject({
-      targetLevel: 40,
-      targetExpInLevel: 0,
-      currentExpInLevel: 0,
-      requestedBoostCandy: 7,
-    });
-  });
-
-  it('個数指定ありなら (n, m) の到達点が目標になり、Lv内EXPも引き継ぐ', () => {
-    const row = baseRow({
-      expRemaining: 40,
-      candyTarget: 19,
-      boostCandyInput: 13,
-    });
-    const currentExpInLevel = Math.max(
-      0,
-      calcExp(row.srcLevel, row.srcLevel + 1, row.expType) - row.expRemaining,
-    );
-    // アメブ13個 + 通常6個 = 指定19個 を使い切った到達点
-    const reached = simulateCandyBudget(
-      { currentLevel: row.srcLevel, currentExpInLevel, expType: row.expType, nature: row.nature },
-      13, 19, Infinity, 'mini',
-    );
-
+  it('既存 store DTO が dstExpInLevel を省略しても registry の正確な目標を使う', () => {
+    setExactLevelTarget('pikachu', { level: 31, expInLevel: 246 });
+    const row = baseRow({ dstLevel: 31, dstExpInLevel: undefined, candyTarget: 19 });
     const input = buildPlannerInput([row], baseSnapshot('mini'));
 
     expect(input?.pokemonList[0]).toMatchObject({
-      currentExpInLevel,
-      targetLevel: reached.level,
-      targetExpInLevel: reached.expInLevel,
+      targetLevel: 31,
+      targetExpInLevel: 246,
       candyTarget: { totalCandyUnits: 19 },
-      requestedBoostCandy: 13,
     });
-    // 個数指定ありでは Lv 内 EXP が付きうる（Lvちょうどに固定されない）
-    expect(reached.expInLevel).toBeGreaterThan(0);
   });
 
-  it('睡眠EXPはアメ到達点の後に加算される（アメが先、睡眠が後）', () => {
-    const row = baseRow({ expRemaining: 40, candyTarget: 19, boostCandyInput: 13 });
-    const withoutSleep = buildPlannerInput([row], baseSnapshot('mini'))!.pokemonList[0];
-    const withSleep = buildPlannerInput([{ ...row, sleepExp: 20_000 }], baseSnapshot('mini'))!.pokemonList[0];
-
-    const advanced = withSleep.targetLevel > withoutSleep.targetLevel
-      || (withSleep.targetLevel === withoutSleep.targetLevel && (withSleep.targetExpInLevel ?? 0) > (withoutSleep.targetExpInLevel ?? 0));
-    expect(advanced).toBe(true);
-    // 睡眠で目標が伸びても、アメの予定数（個数指定）は変わらない
-    expect(withSleep.candyTarget).toEqual(withoutSleep.candyTarget);
+  it('sleepExp は最終目標へ再加算しない', () => {
+    const row = baseRow({ candyTarget: 19, sleepExp: 20_000 });
+    const input = buildPlannerInput([row], baseSnapshot('mini'));
+    expect(input?.pokemonList[0]).toMatchObject({
+      targetLevel: row.dstLevel,
+      targetExpInLevel: row.dstExpInLevel,
+      candyTarget: { totalCandyUnits: 19 },
+    });
   });
 
   it('空配列・有効な pokedexId がない行だけなら null を返し、無効行は優先順位から除外する', () => {
@@ -143,11 +97,7 @@ describe('buildPlannerInput', () => {
     expect(buildPlannerInput([], snapshot)).toBeNull();
     expect(buildPlannerInput([missingId, zeroId], snapshot)).toBeNull();
     expect(buildPlannerInput([missingId, valid], snapshot)?.pokemonList).toEqual([
-      expect.objectContaining({
-        pokemonId: 'valid',
-        type: 'Electric',
-        priorityIndex: 0,
-      }),
+      expect.objectContaining({ pokemonId: 'valid', type: 'Electric', priorityIndex: 0 }),
     ]);
   });
 
@@ -169,20 +119,23 @@ describe('buildPlannerInput', () => {
     expect(input?.candyInventory.typeCandy.Electric).not.toBe(snapshot.candyInventory.typeCandy.Electric);
     expect(input?.candyInventory.universal).not.toBe(snapshot.candyInventory.universal);
     expect(input?.boost).not.toBe(snapshot.boost);
-    expect(input?.pokemonList[0].candyTarget).toEqual({ totalCandyUnits: 0 });
   });
 
-  it('異なる図鑑番号の同じ進化系を共有familyへ正規化する', () => {
-    const snapshot = baseSnapshot('none');
-    snapshot.candyInventory.species = { '25': 12, '26': 8, '172': 20 };
+  it('同じ進化系の在庫を共有 family へ正規化する', () => {
+    const base = baseSnapshot('none');
+    const snapshot: PlannerInputSnapshotDto = {
+      ...base,
+      candyInventory: {
+        ...base.candyInventory,
+        species: { '25': 12, '26': 8, '172': 20 },
+      },
+    };
     const rows = [
       baseRow({ id: 'pichu', pokedexId: 172 }),
       baseRow({ id: 'pikachu', pokedexId: 25 }),
       baseRow({ id: 'raichu', pokedexId: 26 }),
     ];
-
     const input = buildPlannerInput(rows, snapshot);
-
     expect(input?.pokemonList.map(row => row.candyFamilyKey)).toEqual(['25', '25', '25']);
     expect(input?.candyInventory.species).toEqual({ '25': 20 });
   });

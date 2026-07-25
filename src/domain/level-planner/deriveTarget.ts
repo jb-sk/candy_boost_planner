@@ -1,75 +1,117 @@
 import type { BoostEvent, ExpGainNature, ExpType } from '../types';
-import { addExpToLevel, calcExpAndCandy, calcExpAndCandyMixed } from '../pokesleep/exp';
-import { simulateCandyBudget } from '../pokesleep/simulateCandyBudget';
+import { calcExp, calcExpAndCandy, calcExpAndCandyMixed } from '../pokesleep/exp';
+import { maxLevel as MAX_LEVEL } from '../pokesleep/tables';
+import { deriveCandyEndpoint } from './deriveCandyEndpoint';
 
 export type DeriveTargetParams = {
   srcLevel: number;
-  /** 現在Lv内で既に得ているEXP */
+  /** 現在Lv内で既に得ているEXP。 */
   expGot: number;
-  /** 保存された目標Lv。個数指定なしのときはこれがそのまま目標になる。 */
+  /** 保存された正確な最終目標Lv。 */
   dstLevel: number;
-  /** アメ個数指定（総アメ数）。undefined = 個数指定なし（目標Lvが anchor）。 */
+  /** 保存された正確な最終目標Lv内EXP。 */
+  dstExpInLevel?: number;
+  /** アメ個数指定（総アメ数）。undefined = 目標から必要数を計算する。 */
   candyTarget?: number;
-  /** アメブ個数。個数指定ありのときは candyTarget でクランプする。 */
+  /** アメブ個数。総アメ数または目標までの必要数の内数としてクランプする。 */
   boostCandy: number;
   expType: ExpType;
   nature: ExpGainNature;
   boostKind: BoostEvent;
-  /**
-   * 睡眠EXP（アメ投入後の到達点に加算する。アメが先、睡眠が後）。
-   * 個数指定なしのときは呼び出し側で 0 を渡すこと（不変条件 §4.3 により S=0 が保証される）。
-   */
+  /** @deprecated 旧 store の個数到達点計算だけで使用する。planner は再加算しない。 */
   sleepExp?: number;
+  /** 保存された正確な目標を使う。planner 呼び出しでは必ず true。 */
+  fixedTarget?: boolean;
 };
 
 export type DerivedTarget = {
-  /** 睡眠後の最終目標Lv。 */
+  /** 保存された正確な最終目標Lv。 */
   targetLevel: number;
-  /** 睡眠後の最終目標Lv内EXP。 */
+  /** 保存された正確な最終目標Lv内EXP。 */
   targetExpInLevel: number;
-  /** 「目標まで」行のアメ数（個数指定があればその値、なければ dstLevel ちょうどへ届く最小アメ数）。 */
+  /** 「目標まで」行のアメ数。 */
   requiredCandy: number;
 };
 
+function normalizeTargetExp(dstLevel: number, dstExpInLevel: number | undefined, expType: ExpType): number {
+  if (dstLevel >= MAX_LEVEL) return 0;
+  const toNext = Math.max(0, calcExp(dstLevel, dstLevel + 1, expType));
+  return Math.max(0, Math.min(Math.max(0, toNext - 1), Math.floor(dstExpInLevel ?? 0)));
+}
+
 /**
- * 個数指定・目標Lv・アメブ個数・睡眠EXPから、最終目標（T）と「目標まで」行のアメ数を導出する。
- * rowsView（表示）と buildPlannerInput（ソルバー入力）の両方がこれを使う（設計書§4.5）。
+ * 保存された最終目標と、その目標行で必要なアメ数を導出する。
  *
- * - 個数指定あり: 「アメブ n 個＋通常 m-n 個」の混合シミュレーションでアメ到達点を求め、睡眠EXPを加算する。
- * - 個数指定なし: 目標は dstLevel ちょうど（targetExpInLevel=0）。ceil の余剰EXPを目標へ混ぜない（§3.8-d）。
- *
- * アメブが目標Lv到達に必要な最小数を超えた場合は、呼び出し側（ストア）が個数指定を立てて
- * 「個数指定あり」へ遷移させる。ここは常に2状態のまま保つ。
+ * 最終目標は常に dstLevel + dstExpInLevel が唯一の真実のソースである。
+ * 睡眠目標では必要アメ数が整数へ丸められるため、アメ＋睡眠の順方向シミュレーションは
+ * 保存目標をわずかに追い越し得る。その余剰を最終目標へ混ぜない。
  */
 export function deriveTarget(params: DeriveTargetParams): DerivedTarget {
-  const { srcLevel, expGot, dstLevel, candyTarget, expType, nature, boostKind } = params;
+  const {
+    srcLevel,
+    expGot,
+    dstLevel,
+    candyTarget,
+    expType,
+    nature,
+    boostKind,
+  } = params;
+  const targetExpInLevel = normalizeTargetExp(dstLevel, params.dstExpInLevel, expType);
   const boostCandy = Math.max(0, Math.floor(params.boostCandy));
-  const sleepExp = Math.max(0, Math.floor(params.sleepExp ?? 0));
 
-  if (candyTarget === undefined) {
-    // アメブは総アメ数の内数。ここでクランプしないと、calcExpAndCandyMixed が余剰ブーストを
-    // 目標Lv内へ投入して総数へ計上するため（exp.ts の boostLeft 消化）、必要アメ数が過大になる。
-    const fullBoost = calcExpAndCandy({
-      srcLevel, dstLevel, dstExpInLevel: 0, expType, nature, boost: boostKind, expGot,
-    }).candy;
-    const mixed = calcExpAndCandyMixed({
-      srcLevel, dstLevel, dstExpInLevel: 0, expType, nature, boost: boostKind,
-      boostCandy: Math.min(boostCandy, fullBoost), expGot,
-    });
+  if (candyTarget !== undefined) {
+    const requiredCandy = Math.max(0, Math.floor(candyTarget));
+    // 未移行の base store はこの関数を「個数から到達点を求める」用途にも使っている。
+    // fixedTarget または dstExpInLevel が明示された planner 経路では、保存目標を必ず優先する。
+    if (!params.fixedTarget && params.dstExpInLevel === undefined) {
+      const endpoint = deriveCandyEndpoint({
+        srcLevel,
+        expGot,
+        candyTarget: requiredCandy,
+        boostCandy,
+        expType,
+        nature,
+        boostKind,
+        sleepExp: params.sleepExp,
+      });
+      return {
+        targetLevel: endpoint.level,
+        targetExpInLevel: endpoint.expInLevel,
+        requiredCandy,
+      };
+    }
     return {
       targetLevel: dstLevel,
-      targetExpInLevel: 0,
-      requiredCandy: mixed.boostCandy + mixed.normalCandy,
+      targetExpInLevel,
+      requiredCandy,
     };
   }
 
-  const m = Math.max(0, Math.floor(candyTarget));
-  const n = Math.min(boostCandy, m);
-  const reached = simulateCandyBudget(
-    { currentLevel: srcLevel, currentExpInLevel: expGot, expType, nature },
-    n, m, Infinity, boostKind,
-  );
-  const point = sleepExp > 0 ? addExpToLevel(reached.level, reached.expInLevel, sleepExp, expType) : reached;
+  // アメブは総アメ数の内数。必要数を超える入力をそのまま mixed 計算へ渡すと、
+  // 目標到達後の余剰アメまで消費して必要数が過大になる。
+  const fullBoost = calcExpAndCandy({
+    srcLevel,
+    dstLevel,
+    dstExpInLevel: targetExpInLevel,
+    expType,
+    nature,
+    boost: boostKind,
+    expGot,
+  }).candy;
+  const mixed = calcExpAndCandyMixed({
+    srcLevel,
+    dstLevel,
+    dstExpInLevel: targetExpInLevel,
+    expType,
+    nature,
+    boost: boostKind,
+    boostCandy: Math.min(boostCandy, fullBoost),
+    expGot,
+  });
 
-  return { targetLevel: point.level, targetExpInLevel: point.expInLevel, requiredCandy: m };
+  return {
+    targetLevel: dstLevel,
+    targetExpInLevel,
+    requiredCandy: mixed.boostCandy + mixed.normalCandy,
+  };
 }

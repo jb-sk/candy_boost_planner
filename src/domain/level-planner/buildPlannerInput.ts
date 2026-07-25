@@ -3,6 +3,7 @@ import { calcExp } from '../pokesleep';
 import { getPokemonType } from '../pokesleep/pokemon-names';
 import { getCandyFamilyKey, normalizeSpeciesCandyByFamily } from '../pokesleep/candy-family';
 import { deriveTarget } from './deriveTarget';
+import { getExactLevelTarget } from './exactTargetRegistry';
 import type {
   BoostKind,
   CandyInventory,
@@ -19,16 +20,15 @@ export type PlannerInputRowDto = {
   readonly pokemonType?: string;
   readonly srcLevel: number;
   readonly dstLevel: number;
+  /** 正確な最終目標Lv内EXP。旧呼び出し元は registry から補完する。 */
+  readonly dstExpInLevel?: number;
   readonly expRemaining: number;
   readonly expType: ExpType;
   readonly nature: ExpGainNature;
   readonly boostReachLevel?: number;
   readonly candyTarget?: number;
   readonly boostCandyInput: number;
-  /**
-   * 睡眠EXP（アメ投入後の到達点に加算する。§5.0）。
-   * 不変条件（§4.3）により、candyTarget が undefined の行では 0。
-   */
+  /** @deprecated 最終目標は dstLevel + dstExpInLevel で固定し、睡眠EXPを再加算しない。 */
   readonly sleepExp?: number;
 };
 
@@ -84,18 +84,25 @@ export function buildPlannerInput(
       ? Math.max(0, toNextLevel - row.expRemaining)
       : 0;
 
-    // 目標導出は deriveTarget に一本化する（§4.5）。
-    // 個数指定あり → (n, m) の到達点＋睡眠EXP、個数指定なし → dstLevel ちょうど。
+    // useCalcStore の既存 DTO 組み立ては dstExpInLevel を含まないため、ラッパーが同期する
+    // registry を後方互換の橋渡しとして使う。明示された DTO 値を常に優先する。
+    const registeredTarget = row.dstExpInLevel === undefined
+      ? getExactLevelTarget(row.id)
+      : undefined;
+    const exactTargetLevel = registeredTarget?.level ?? row.dstLevel;
+    const exactTargetExpInLevel = row.dstExpInLevel ?? registeredTarget?.expInLevel ?? 0;
+
     const { targetLevel, targetExpInLevel } = deriveTarget({
       srcLevel: row.srcLevel,
       expGot: currentExpInLevel,
-      dstLevel: row.dstLevel,
+      dstLevel: exactTargetLevel,
+      dstExpInLevel: exactTargetExpInLevel,
       candyTarget: row.candyTarget,
       boostCandy: row.boostCandyInput,
       expType: row.expType,
       nature: row.nature,
       boostKind: snapshot.boost.kind,
-      sleepExp: row.sleepExp,
+      fixedTarget: true,
     });
 
     pokemonList.push({
