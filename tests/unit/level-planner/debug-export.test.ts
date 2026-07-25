@@ -49,7 +49,6 @@ function pokemonPlan(): PokemonPlanResult {
     targetLevel: 20,
     targetExpInLevel: 0,
     targetLine: line,
-    candyTargetLine: line,
     reachableLine: line,
     targetReached: true,
     shortage: { expToTarget: 0, candyToTarget: 0, dreamShardShortage: 0, boostCandyUnavailable: 0 },
@@ -109,7 +108,6 @@ function context(): DebugExportContext {
       candyFamilyKey: '25',
       type: 'electric',
       nature: 'normal',
-      mode: 'target\nLevel',
       currentLevel: 10,
       currentExpInLevel: 5,
       expRemaining: 95,
@@ -145,7 +143,7 @@ function context(): DebugExportContext {
 }
 
 const mainColumns = [
-  'index', 'id', 'name', 'pokedexId', 'candyFamilyKey', 'type', 'nature', 'mode',
+  'index', 'id', 'name', 'pokedexId', 'candyFamilyKey', 'type', 'nature',
   'currentLv', 'currentExpInLevel', 'expRemaining', 'targetLv', 'targetExpInLevel', 'candyTarget',
   'boostKind', 'itemCompareMode', 'calculationScope', 'reachedLv', 'targetReached', 'role', 'expToNext', 'expToTarget',
   'shortageCandy', 'shortageBoost', 'shortageShards', 'limitingFactor', 'initialSpeciesStock',
@@ -155,9 +153,9 @@ const mainColumns = [
   'targetBoost', 'targetNormal', 'targetTotalCandy', 'targetShards',
   'targetSpecies', 'targetTypeS', 'targetTypeM', 'targetUniversalS', 'targetUniversalM', 'targetUniversalL',
   'targetTotalSupply', 'targetItemValue', 'targetNonSpeciesItemValue', 'targetSurplus',
-  'limitBoost', 'limitNormal', 'limitTotalCandy', 'limitShards',
-  'limitSpecies', 'limitTypeS', 'limitTypeM', 'limitUniversalS', 'limitUniversalM', 'limitUniversalL',
-  'limitTotalSupply', 'limitItemValue', 'limitNonSpeciesItemValue', 'limitSurplus',
+  // targetLv/targetExpInLevel は睡眠後の最終目標。アメを使い終えた地点は別列（設計書§6.4）。
+  'plannedCandyEndLevel', 'plannedCandyEndExpInLevel',
+  'reachableCandyEndLevel', 'reachableCandyEndExpInLevel',
 ];
 
 describe('level planner debug TSV golden contract', () => {
@@ -182,8 +180,8 @@ describe('level planner debug TSV golden contract', () => {
     expect(sections[1].split('\n')[1]).toBe('mode\tpolicy\tstructuralProbeStatus\tdeadlineMs\tactualDurationMs\tfeasibilityMs\trefineMs\trefineStatus\trefineReason\tloss\tsource\texactPrefixCount\tlocalStartIndex\tlocalSuffixCount');
     expect(sections[4].split('\n')[1]).toBe('status\tselectedIsExactBest\tmode\trows\tlocalCandidateCounts\tdpFinalStates\tscope\texactPrefixCount\tlocalSuffixCount\tnote');
     expect(sections[5].split('\n')[1]).toBe('status\tselectedValid\tsolverStatus\trefineStatus\trows\treachedCount\tboundaryIndex\tboundaryLv\tboundaryExp\tdurationMs\tglobalKeyCount\ttransitions\twitnessRestoreMs\treason');
+    // タブ・改行のエスケープは name（'Pika\tChu\nLine'）で検証する
     expect(first).toContain('Pika Chu Line');
-    expect(first).toContain('target Level');
     expect(first).not.toContain('Pika\tChu');
     expect(first).not.toContain('Pika\nChu');
     expect(first).toContain('normal-path fixed-demand refine snapshot; export solver disabled');

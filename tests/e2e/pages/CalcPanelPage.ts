@@ -140,14 +140,6 @@ export class CalcPanelPage {
     return row.getByTestId('boostReachLevel').getByTestId('level-picker-trigger');
   }
 
-  getRowBoostRatioSlider(row: Locator): Locator {
-    return row.getByTestId('boostRatio');
-  }
-
-  getRowBoostRatioText(row: Locator): Locator {
-    return row.locator('.field__sub').first();
-  }
-
   getRowBoostCandyInput(row: Locator): Locator {
     return row.getByTestId('boostCandyCount');
   }
@@ -156,12 +148,24 @@ export class CalcPanelPage {
     return row.getByTestId('candyTarget');
   }
 
-  getRowSleepButton1000h(row: Locator): Locator {
-    return row.getByTestId('sleepBtn1000h');
+  /**
+   * アメ個数指定を入力して確定する。
+   * 入力欄は Enter / フォーカスアウトで確定するため、fill だけでは反映されない。
+   */
+  async setRowCandyTarget(row: Locator, value: string | number): Promise<void> {
+    const input = this.getRowCandyTargetInput(row);
+    await input.fill(String(value));
+    await input.blur();
   }
 
-  getRowSleepButton2000h(row: Locator): Locator {
-    return row.getByTestId('sleepBtn2000h');
+  /** 睡眠目標時間のドロップダウン（未設定 / 200h / 500h / 1000h / 2000h）。 */
+  getRowSleepTargetSelect(row: Locator): Locator {
+    return row.getByTestId('sleepTargetHours');
+  }
+
+  /** 累計睡眠時間の編集ポップオーバーを開くラベル添え字リンク。 */
+  getRowSleepTargetCurrentLink(row: Locator): Locator {
+    return row.getByTestId('sleepTargetCurrentHours');
   }
 
   async setRowSrcLevel(row: Locator, level: number): Promise<void> {
@@ -223,10 +227,6 @@ export class CalcPanelPage {
 
   getRowUsedRow(row: Locator): Locator {
     return row.getByTestId('resultRowReachable');
-  }
-
-  getRowCandyTargetRow(row: Locator): Locator {
-    return row.getByTestId('resultRowCandyTarget');
   }
 
   // 結果行の展開状態

@@ -610,14 +610,30 @@ button.calcRow__dragHandle:active {
   flex-wrap: wrap;
 }
 
-.field__range {
-  width: 100%;
-  accent-color: rgba(var(--accent-rgb), 0.85);
+/* ラベルに添える累計睡眠時間リンク（クリックで編集ポップオーバー）。
+   目標Lv横の「（あとEXP N）」と同じ見え方に揃える。
+   .field__label の兄弟要素なので font は継承できず、同じ値を明示する。 */
+.field__labelLink {
+  -webkit-appearance: none;
+  appearance: none;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: normal;
+  letter-spacing: 0.02em;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--muted);
+  opacity: 0.8;
+  text-decoration: underline;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
-.field--sm .field__range {
-  transform: translateY(2px);
-  margin-bottom: -4px;
+.field__labelLink:hover {
+  opacity: 1;
+  color: var(--accent);
 }
 
 .field--sm .field__sub {
@@ -675,41 +691,6 @@ button.calcRow__dragHandle:active {
   color: var(--ink);
 }
 
-/* Sleep growth chips */
-.sleepLinks {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.sleepLinks > .hintIcon {
-  margin-left: 2px;
-}
-
-.sleepChip {
-  -webkit-appearance: none;
-  appearance: none;
-  font: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--surface-alt);
-  color: var(--accent);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.sleepChip:hover {
-  background: var(--surface);
-  border-color: var(--accent);
-}
-
-.sleepChip:active {
-  background: rgba(var(--accent-rgb), 0.12);
-}
 
 /* ===== Result Rows ===== */
 .calcRow__resultCollapse {

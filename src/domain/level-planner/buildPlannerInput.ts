@@ -1,8 +1,8 @@
 import type { ExpGainNature, ExpType } from '../types';
-import { calcExp, calcLevelByCandy } from '../pokesleep';
+import { calcExp } from '../pokesleep';
 import { getPokemonType } from '../pokesleep/pokemon-names';
 import { getCandyFamilyKey, normalizeSpeciesCandyByFamily } from '../pokesleep/candy-family';
-import { maxLevel as MAX_LEVEL } from '../pokesleep/tables';
+import { deriveTarget } from './deriveTarget';
 import type {
   BoostKind,
   CandyInventory,
@@ -22,11 +22,14 @@ export type PlannerInputRowDto = {
   readonly expRemaining: number;
   readonly expType: ExpType;
   readonly nature: ExpGainNature;
-  readonly mode: 'targetLevel' | 'peak';
   readonly boostReachLevel?: number;
-  readonly candyPeak?: number;
   readonly candyTarget?: number;
   readonly boostCandyInput: number;
+  /**
+   * 睡眠EXP（アメ投入後の到達点に加算する。§5.0）。
+   * 不変条件（§4.3）により、candyTarget が undefined の行では 0。
+   */
+  readonly sleepExp?: number;
 };
 
 export type PlannerCandyInventorySnapshotDto = {
@@ -81,49 +84,25 @@ export function buildPlannerInput(
       ? Math.max(0, toNextLevel - row.expRemaining)
       : 0;
 
-    const peak = row.candyPeak || row.boostCandyInput;
-    let targetLevel: number;
-    let targetExpInLevel: number;
-
-    if (snapshot.boost.kind === 'none') {
-      const peakResult = calcLevelByCandy({
-        srcLevel: row.srcLevel,
-        dstLevel: MAX_LEVEL,
-        expType: row.expType,
-        nature: row.nature,
-        boost: snapshot.boost.kind,
-        candy: peak,
-        expGot: currentExpInLevel,
-      });
-      targetLevel = peakResult.level;
-      targetExpInLevel = row.mode === 'peak' ? peakResult.expGot : 0;
-    } else if (
-      row.mode === 'targetLevel'
-      && row.boostReachLevel !== undefined
-      && row.boostReachLevel < row.dstLevel
-    ) {
-      targetLevel = row.dstLevel;
-      targetExpInLevel = 0;
-    } else {
-      const peakResult = calcLevelByCandy({
-        srcLevel: row.srcLevel,
-        dstLevel: MAX_LEVEL,
-        expType: row.expType,
-        nature: row.nature,
-        boost: snapshot.boost.kind,
-        candy: peak,
-        expGot: currentExpInLevel,
-      });
-      targetLevel = peakResult.level;
-      targetExpInLevel = row.mode === 'peak' ? peakResult.expGot : 0;
-    }
+    // 目標導出は deriveTarget に一本化する（§4.5）。
+    // 個数指定あり → (n, m) の到達点＋睡眠EXP、個数指定なし → dstLevel ちょうど。
+    const { targetLevel, targetExpInLevel } = deriveTarget({
+      srcLevel: row.srcLevel,
+      expGot: currentExpInLevel,
+      dstLevel: row.dstLevel,
+      candyTarget: row.candyTarget,
+      boostCandy: row.boostCandyInput,
+      expType: row.expType,
+      nature: row.nature,
+      boostKind: snapshot.boost.kind,
+      sleepExp: row.sleepExp,
+    });
 
     pokemonList.push({
       pokemonId: row.id,
       pokedexId,
       candyFamilyKey: getCandyFamilyKey(pokedexId),
       name: row.title,
-      mode: row.mode,
       type: pokemonType,
       currentLevel: row.srcLevel,
       currentExpInLevel,

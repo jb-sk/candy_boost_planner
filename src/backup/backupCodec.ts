@@ -2,7 +2,7 @@ import type { BoxSubSkillSlotV1, IngredientType, PokemonSpecialty } from "../dom
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { pokemonMaster } from "../domain/pokesleep/pokemon-master";
 import { PokemonTypes } from "../domain/pokesleep/pokemon-types";
-import type { CalcRowV1, CalcSaveSlotV1 } from "../persistence/calc";
+import { migrateLegacyPeakCandyTarget, SLEEP_TARGET_HOURS_OPTIONS, type CalcRowV1, type CalcSaveSlotV1 } from "../persistence/calc";
 import {
   migrateCandyInventoryV1,
   normalizeCandyInventoryV2,
@@ -18,7 +18,7 @@ import {
   BackupValidationError,
   type BackupBoxEntryV1,
   type BackupWarning,
-  type CandyBoostPlannerBackupV2,
+  type CandyBoostPlannerBackupV3,
   type ValidatedBackup,
 } from "./types";
 
@@ -28,6 +28,7 @@ const expTypes = new Set([600, 900, 1080, 1320]);
 const natures = new Set(["down", "normal", "up"]);
 const boostKinds = new Set(["none", "mini", "full"]);
 const compareModes = new Set(["surplusFirst", "surplusGateFirst", "legacyImproved"]);
+const sleepTargetHoursValues = new Set<number>(SLEEP_TARGET_HOURS_OPTIONS);
 const specialties = new Set(["Berries", "Ingredients", "Skills", "All", "unknown"]);
 const ingredientTypes = new Set(["AAA", "AAB", "AAC", "ABA", "ABB", "ABC"]);
 const subSkillLevels = new Set([10, 25, 50, 70, 80]);
@@ -162,12 +163,14 @@ function validateRow(value: unknown, path: string): CalcRowV1 {
     expType: enumAt(row.expType, `${path}.expType`, expTypes) as 600 | 900 | 1080 | 1320,
     nature: enumAt(row.nature, `${path}.nature`, natures) as "down" | "normal" | "up",
     boostReachLevel: numberAt(row.boostReachLevel, `${path}.boostReachLevel`, srcLevel, dstLevel),
-    boostRatioPct: numberAt(row.boostRatioPct, `${path}.boostRatioPct`, 0, 100),
     boostOrExpAdjustment: optionalNumber(row.boostOrExpAdjustment, `${path}.boostOrExpAdjustment`, 0),
-    candyPeak: optionalNumber(row.candyPeak, `${path}.candyPeak`, 0),
-    candyTarget: optionalNumber(row.candyTarget, `${path}.candyTarget`, 0),
-    mode: enumAt(row.mode, `${path}.mode`, new Set(["targetLevel", "peak"])) as "targetLevel" | "peak",
+    // 旧 mode:"peak" 行は candyTarget へ移行する（設計書§6.1）。
+    // mode / candyPeak / boostRatioPct は V3 で廃止したため、あっても読み捨てる。
+    candyTarget: optionalNumber(row.candyTarget, `${path}.candyTarget`, 0) ?? migrateLegacyPeakCandyTarget(row),
     sleepHours: optionalNumber(row.sleepHours, `${path}.sleepHours`, 0),
+    sleepTargetHours: row.sleepTargetHours === undefined
+      ? undefined
+      : enumAt(row.sleepTargetHours, `${path}.sleepTargetHours`, sleepTargetHoursValues),
   };
 }
 
@@ -251,8 +254,10 @@ export function parseBackup(text: string): ValidatedBackup {
   if (root.format !== BACKUP_FORMAT) fail("$.format", `must be ${BACKUP_FORMAT}`);
   if (typeof root.schemaVersion !== "number") fail("$.schemaVersion", "number is required");
   if (root.schemaVersion > BACKUP_SCHEMA_VERSION) fail("$.schemaVersion", "future schema version is not supported");
-  if (root.schemaVersion !== 1 && root.schemaVersion !== BACKUP_SCHEMA_VERSION) fail("$.schemaVersion", "schema version is not supported");
-  const sourceSchemaVersion = root.schemaVersion as 1 | 2;
+  if (root.schemaVersion !== 1 && root.schemaVersion !== 2 && root.schemaVersion !== BACKUP_SCHEMA_VERSION) fail("$.schemaVersion", "schema version is not supported");
+  const sourceSchemaVersion = root.schemaVersion as 1 | 2 | 3;
+  // candyInventory 自体のスキーマは V2 のまま（V3での変更は CalcRowV1.sleepTargetHours の追加のみ）。
+  const candyInventorySchemaVersion: 1 | 2 = sourceSchemaVersion === 1 ? 1 : 2;
   const data = objectAt(root.data, "$.data");
   const box = objectAt(data.box, "$.data.box");
   const rawEntries = arrayAt(box.entries, "$.data.box.entries");
@@ -275,7 +280,7 @@ export function parseBackup(text: string): ValidatedBackup {
     if (slotIds.has(slot.slotId)) fail(`$.data.calculator.slots[${index}].slotId`, "duplicate id");
     slotIds.add(slot.slotId);
   });
-  const backup: CandyBoostPlannerBackupV2 = {
+  const backup: CandyBoostPlannerBackupV3 = {
     format: BACKUP_FORMAT,
     schemaVersion: BACKUP_SCHEMA_VERSION,
     exportedAt: validateIso(root.exportedAt, "$.exportedAt"),
@@ -291,7 +296,7 @@ export function parseBackup(text: string): ValidatedBackup {
         candyInventory: validateCandy(
           globals.candyInventory,
           "$.data.globalSettings.candyInventory",
-          sourceSchemaVersion,
+          candyInventorySchemaVersion,
         ),
       },
       calculator: {
@@ -316,6 +321,6 @@ export function parseBackup(text: string): ValidatedBackup {
   return { backup, warnings };
 }
 
-export function stringifyBackup(backup: CandyBoostPlannerBackupV2): string {
+export function stringifyBackup(backup: CandyBoostPlannerBackupV3): string {
   return JSON.stringify(backup, null, 2);
 }

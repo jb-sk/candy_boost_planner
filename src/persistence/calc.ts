@@ -5,13 +5,6 @@ import type { ItemCompareMode } from "../domain/level-planner/types";
 import { toExpGainNature, toExpType, toInt } from "./shared";
 import { perfSpan } from "../utils/perf";
 
-/**
- * 計算モード
- * - "targetLevel": 目標Lvモード（デフォルト）- dstExpInLevel = 0
- * - "peak": ピークモード - ユーザーがアメ数を100%超に増やした
- */
-export type CalcMode = "targetLevel" | "peak";
-
 export type CalcRowV1 = {
   id: string;
   /** 元のボックスID（ボックス由来の場合のみ） */
@@ -30,17 +23,21 @@ export type CalcRowV1 = {
   expType: ExpType;
   nature: ExpGainNature;
   boostReachLevel: number;
-  boostRatioPct: number; // 0..100（派生値、表示用）
-  /** 入力されたアメブ個数（またはEXP調整値）- 真実のソース */
+  /** 入力されたアメブ個数 - 真実のソース */
   boostOrExpAdjustment?: number;
-  /** ピーク値（100%時のアメブ個数）- 入力がピークを超えたら更新 */
-  candyPeak?: number;
-  /** アメ個数指定（未設定=無制限、1以上=目標個数） */
+  /**
+   * アメ個数指定（総アメ数）。
+   * undefined = 個数指定なし（目標Lvが anchor）、値あり = 個数指定が anchor（設計書§4.3）。
+   */
   candyTarget?: number;
-  mode: CalcMode;
   /** 累計睡眠時間（時間単位、ポケモンごと） */
   sleepHours?: number;
+  /** 睡眠目標時間（時間単位）。未設定=睡眠を考慮しない。SLEEP_TARGET_HOURS_OPTIONS のいずれかのみ許可。 */
+  sleepTargetHours?: number;
 };
+
+/** 睡眠目標時間ドロップダウンの選択肢（アチーブメント区切りに対応。任意値は設けない）。 */
+export const SLEEP_TARGET_HOURS_OPTIONS = [200, 500, 1000, 2000] as const;
 
 export type CalcSaveSlotV1 = {
   /** スロット位置とは独立したセッション/保存データ上の安定ID。 */
@@ -252,22 +249,24 @@ function toRows(v: unknown): CalcRowV1[] {
     const expRemaining = clampInt(o.expRemaining, 0, 999999, 0);
     const nature = toExpGainNature(o.nature, "normal");
     const boostReachLevel = clampInt(o.boostReachLevel, srcLevel, dstLevel, dstLevel);
-    const boostRatioPct = clampInt(o.boostRatioPct, 0, 100, 100);
-    const mode: CalcMode = o.mode === "peak" ? "peak" : "targetLevel";
     const boxId = typeof o.boxId === "string" && o.boxId.trim() ? o.boxId : undefined;
     const dstLevelText = typeof o.dstLevelText === "string" ? o.dstLevelText : undefined;
     const pokedexId = typeof o.pokedexId === "number" && o.pokedexId > 0 ? o.pokedexId : undefined;
     const pokemonType = typeof o.pokemonType === "string" && o.pokemonType.trim() ? o.pokemonType : undefined;
     // boostOrExpAdjustment: 入力されたアメブ個数（真実のソース）
     const boostOrExpAdjustment = typeof o.boostOrExpAdjustment === "number" ? Math.max(0, Math.floor(o.boostOrExpAdjustment)) : undefined;
-    // candyPeak: ピーク値
-    const candyPeak = typeof o.candyPeak === "number" ? Math.max(0, Math.floor(o.candyPeak)) : undefined;
-    // candyTarget: undefined = 無制限、1以上 = 目標個数
-    const candyTarget = typeof o.candyTarget === "number" && o.candyTarget >= 0 ? Math.floor(o.candyTarget) : undefined;
+    // candyTarget: undefined = 個数指定なし（目標Lvが anchor）、0以上 = 個数指定あり
+    const storedCandyTarget = typeof o.candyTarget === "number" && o.candyTarget >= 0 ? Math.floor(o.candyTarget) : undefined;
+    const candyTarget = storedCandyTarget ?? migrateLegacyPeakCandyTarget(o);
     // sleepHours: 累計睡眠時間（後方互換: 未設定 = undefined = 0h扱い）
     const sleepHours =
       typeof o.sleepHours === "number" && Number.isFinite(o.sleepHours)
         ? Math.max(0, Math.floor(o.sleepHours))
+        : undefined;
+    // sleepTargetHours: 睡眠目標時間。ドロップダウンの選択肢のみ許可（任意値は保存データが壊れていても無視する）
+    const sleepTargetHours =
+      typeof o.sleepTargetHours === "number" && (SLEEP_TARGET_HOURS_OPTIONS as readonly number[]).includes(o.sleepTargetHours)
+        ? o.sleepTargetHours
         : undefined;
     out.push({
       id,
@@ -282,15 +281,27 @@ function toRows(v: unknown): CalcRowV1[] {
       expType,
       nature,
       boostReachLevel,
-      boostRatioPct,
       boostOrExpAdjustment,
-      candyPeak,
       candyTarget,
-      mode,
       sleepHours,
+      sleepTargetHours,
     });
   }
   return out.slice(0, 60);
+}
+
+/**
+ * 旧 mode:"peak" 行の移行（設計書§6.1）。
+ *
+ * peak はアメ個数側が目標を規定していた状態なので、入力された総アメ数を candyTarget として引き継ぐ。
+ * undefined にすると、ユーザーが入力した総アメ数と目標Lv内EXPを失う。
+ * 旧フィールド（mode / candyPeak / boostRatioPct）はここでの移行にだけ使い、保存形式からは落とす。
+ */
+export function migrateLegacyPeakCandyTarget(o: Record<string, unknown>): number | undefined {
+  if (o.mode !== "peak") return undefined;
+  const adjustment = typeof o.boostOrExpAdjustment === "number" ? Math.max(0, Math.floor(o.boostOrExpAdjustment)) : undefined;
+  if (adjustment !== undefined) return adjustment;
+  return typeof o.candyPeak === "number" ? Math.max(0, Math.floor(o.candyPeak)) : undefined;
 }
 
 function clampInt(v: unknown, min: number, max: number, fallback: number): number {

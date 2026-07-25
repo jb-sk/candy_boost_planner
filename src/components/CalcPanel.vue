@@ -345,7 +345,7 @@
               @update:model-value="calc.setBoostLevel(r.id, $event)"
               :label="`${t('calc.row.boostReachLevel')}: Lv${r.ui.boostReachLevel}`"
               :min="r.srcLevel"
-              :max="r.dstLevel"
+              :max="MAX_LEVEL"
             >
               <template #title>
                 Lv{{ r.srcLevel }} → Lv{{ r.ui.boostReachLevel }}
@@ -353,30 +353,14 @@
               </template>
             </LevelPicker>
           </div>
-          <label class="field field--sm" v-if="calc.boostKind.value !== 'none'">
-            <span class="field__label">{{ t("calc.row.boostRatio") }}</span>
-            <input
-              data-testid="boostRatio"
-              :value="r.ui.boostRatioPct"
-              type="range"
-              min="0"
-              max="100"
-              step="1"
-              class="field__range"
-              @input="calc.onRowBoostRatio(r.id, ($event.target as HTMLInputElement).value)"
-            />
-            <span class="field__sub">{{ r.ui.boostRatioPct }}%</span>
-          </label>
-          <div class="field field--sm">
+          <div class="field field--sm" v-if="calc.boostKind.value !== 'none'">
             <div class="field__labelRow">
-              <span class="field__label">
-                {{ calc.boostKind.value === 'none' ? t("calc.row.boostCandyCountNormal") : t("calc.row.boostCandyCount") }}
-              </span>
+              <span class="field__label">{{ t("calc.row.boostCandyCount") }}</span>
               <button
                 data-testid="hintBtn"
                 type="button"
                 class="hintIcon"
-                @click.stop.prevent="showHint($event, calc.boostKind.value === 'none' ? 'normalCandyCount' : 'boostCandyCount')"
+                @click.stop.prevent="showHint($event)"
               >?</button>
               <button
                 data-testid="boostCandyReset"
@@ -398,39 +382,41 @@
               @blur="handleInputBlur"
             />
           </div>
-          <div class="field field--sm field--sleepTarget">
+          <label class="field field--sm">
             <span class="field__label">{{ t("calc.row.candyTarget") }}</span>
             <input
               data-testid="candyTarget"
               type="number"
               min="0"
               class="field__input"
-              :value="r.candyTarget ?? ''"
+              :value="candyTargetInputValue(r)"
               :placeholder="t('calc.row.candyTargetNone')"
-              @input="onCandyTargetInput(r.id, ($event.target as HTMLInputElement).value)"
+              @focus="onCandyTargetFocus(r)"
+              @blur="onCandyTargetBlur(r)"
+              @input="onCandyTargetDraftInput(r.id, ($event.target as HTMLInputElement).value)"
+              @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
             />
-            <div class="sleepLinks">
+          </label>
+          <div class="field field--sm">
+            <div class="field__labelRow">
+              <span class="field__label">{{ t("calc.row.sleepTarget") }}</span>
               <button
-                data-testid="sleepBtn1000h"
+                data-testid="sleepTargetCurrentHours"
                 type="button"
-                class="sleepChip"
-                @click.stop="applySleepGrowth(r.id, 1000)"
-                :title="t('calc.sleep.btn1000h')"
-              >1000h</button>
-              <button
-                data-testid="sleepBtn2000h"
-                type="button"
-                class="sleepChip"
-                @click.stop="applySleepGrowth(r.id, 2000)"
-                :title="t('calc.sleep.btn2000h')"
-              >2000h</button>
-              <button
-                data-testid="sleepHintBtn"
-                type="button"
-                class="hintIcon"
+                class="field__labelLink"
+                :title="t('calc.sleep.currentSleepHours')"
                 @click.stop="showSleepHint($event, r.id)"
-              >?</button>
+              >{{ t("calc.row.sleepTargetCurrent", { hours: calc.fmtNum(r.sleepHours ?? 0) }) }}</button>
             </div>
+            <select
+              data-testid="sleepTargetHours"
+              class="field__input"
+              :value="r.sleepTargetHours ?? ''"
+              @change="onSleepTargetChange(r.id, ($event.target as HTMLSelectElement).value)"
+            >
+              <option value="">{{ t("calc.row.sleepTargetNone") }}</option>
+              <option v-for="h in SLEEP_TARGET_HOURS_OPTIONS" :key="h" :value="h">{{ h }}h</option>
+            </select>
           </div>
         </div>
 
@@ -448,16 +434,16 @@
             <span class="calcRow__resultLabel">{{ t("calc.row.required") }}</span>
               <span class="calcRow__resultItems">{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                 <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
-                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'boost') }">{{ calc.fmtNum(rowP(r)?.targetLine.boostedCandyUnits ?? 0) }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'boost') }">{{ calc.fmtNum(rowP(r)?.targetLine.boostedCandyUnits ?? 0) }}</span>
               </span>{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                 <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
-                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'normal') }">{{ calc.fmtNum(rowP(r)?.targetLine.nonBoostCandyUnits ?? 0) }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'normal') }">{{ calc.fmtNum(rowP(r)?.targetLine.nonBoostCandyUnits ?? 0) }}</span>
               </span>{{ ' ' }}<span class="calcRow__res">
                 <span class="calcRow__k">{{ t(calc.boostKind.value === 'none' ? "calc.row.candy" : "calc.row.candyTotal") }}</span>
-                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'candy') }">{{ calc.fmtNum(rowP(r)?.targetLine.totalCandyUnitsUsed ?? 0) }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'candy') }">{{ calc.fmtNum(rowP(r)?.targetLine.totalCandyUnitsUsed ?? 0) }}</span>
               </span>{{ ' ' }}<span class="calcRow__res">
                 <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
-                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'target', 'shards') }">{{ calc.fmtNum(rowP(r)?.targetLine.dreamShardsUsed ?? 0) }}</span>
+                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'shards') }">{{ calc.fmtNum(rowP(r)?.targetLine.dreamShardsUsed ?? 0) }}</span>
               </span>{{ ' ' }}<span class="calcRow__res" v-if="hasItemUsage(r)">
                 <span class="calcRow__k">{{ t("calc.row.itemRequired") }}</span>
                 <span class="calcRow__num calcRow__num--text">
@@ -481,77 +467,32 @@
               </span>{{ ' ' }}<span class="calcRow__res" v-if="!isExpanded(r.id) && rowP(r) && !hasAnyShortage(r) && getSurplusValue(r, 'reachable') > 0">
                 <span class="calcRow__k">{{ t("calc.row.itemUsage") }} {{ t("calc.candy.surplus") }}</span>
                 <span class="calcRow__num">{{ getSurplusValue(r, 'reachable') }}</span>
-              </span>{{ ' ' }}<span class="calcRow__res" v-if="!isExpanded(r.id) && hasLimit(r) && !hasAnyShortage(r) && getSurplusValue(r, 'limit') > 0">
-                <span class="calcRow__k">{{ t("calc.row.candyTargetRow") }} {{ t("calc.candy.surplus") }}</span>
-                <span class="calcRow__num">{{ getSurplusValue(r, 'limit') }}</span>
               </span>
             </span>
           </div>
 
-          <!-- 個数指定行と到達可能行をグループ化して表示（隙間をなくすため） -->
+          <!-- 到達可能行（個数指定行は目標まで行と同値になったため廃止。設計書§4.2） -->
           <div style="display: flex; flex-direction: column; gap: 0;">
-            <!-- 個数指定行（個数指定ありかつ不足がある場合のみ表示） -->
-            <div
-              v-if="isExpanded(r.id) && hasLimit(r) && getTheoreticalResources(r)"
-              data-testid="resultRowCandyTarget"
-              class="calcRow__resultRow calcRow__resultRow--used"
-              style="margin-bottom: 0; padding-bottom: 4px; border-bottom-left-radius: 0; border-bottom-right-radius: 0;"
-            >
-              <span class="calcRow__expandIcon" style="visibility: hidden"></span>
-              <span class="calcRow__resultLabel">{{ t("calc.row.candyTargetRow") }}</span>
-              <span class="calcRow__resultItems">{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
-                  <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'limit', 'boost') }">{{ calc.fmtNum(getTheoreticalResources(r)!.boostCandy) }}</span>
-                </span>{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
-                  <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'limit', 'normal') }">{{ calc.fmtNum(getTheoreticalResources(r)!.normalCandy) }}</span>
-                </span>{{ ' ' }}<span class="calcRow__res">
-                  <span class="calcRow__k">{{ t(calc.boostKind.value === 'none' ? "calc.row.candy" : "calc.row.candyTotal") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'limit', 'candy') }">{{ calc.fmtNum(getTheoreticalResources(r)!.candy) }}</span>
-                </span>{{ ' ' }}<span class="calcRow__res">
-                  <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'limit', 'shards') }">{{ calc.fmtNum(getTheoreticalResources(r)!.shards) }}</span>
-                </span>{{ ' ' }}<span class="calcRow__res" v-if="(rowItemUsageMaps.limit.get(r.id) ?? []).length > 0">
-                  <span
-                    class="calcRow__k calcRow__k--link"
-                    @click.stop="toggleLimitItems(r.id)"
-                    style="cursor: pointer; text-decoration: underline;"
-                  >{{ t("calc.row.itemRequired") }}</span>
-                </span>{{ ' ' }}<span class="calcRow__res" v-if="getSurplusValue(r, 'limit') > 0">
-                  <span class="calcRow__k">{{ t("calc.candy.surplus") }}</span>
-                  <span class="calcRow__num">{{ getSurplusValue(r, 'limit') }}</span>
-                </span>{{ ' ' }}<span class="calcRow__res" v-if="isLimitItemsExpanded(r.id) && (rowItemUsageMaps.limit.get(r.id) ?? []).length > 0">
-                  <span class="calcRow__num calcRow__num--text">
-                    <template v-for="(item, idx) in (rowItemUsageMaps.limit.get(r.id) ?? [])" :key="idx">
-                      <span :class="{ 'calcRow__num--danger': item.isDanger }">{{ item.label }} {{ item.value }}</span>
-                      <span v-if="idx < (rowItemUsageMaps.limit.get(r.id) ?? []).length - 1">, </span>
-                    </template>
-                  </span>
-                </span>
-              </span>
-            </div>
-
             <!-- 使用行（展開時のみ表示） -->
             <div
               v-if="isExpanded(r.id) && rowP(r)"
               data-testid="resultRowReachable"
               class="calcRow__resultRow calcRow__resultRow--used"
-              :style="hasLimit(r) && getTheoreticalResources(r) ? 'margin-top: 0; padding-top: 4px; border-top-left-radius: 0; border-top-right-radius: 0;' : ''"
             >
               <span class="calcRow__expandIcon" style="visibility: hidden"></span>
               <span class="calcRow__resultLabel">{{ t("calc.row.used") }}</span>
               <span class="calcRow__resultItems">{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                   <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'boost') }">{{ calc.fmtNum(rowP(r)!.reachableLine.boostedCandyUnits) }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'boost') }">{{ calc.fmtNum(rowP(r)!.reachableLine.boostedCandyUnits) }}</span>
                 </span>{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                   <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'normal') }">{{ calc.fmtNum(rowP(r)!.reachableLine.nonBoostCandyUnits) }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'normal') }">{{ calc.fmtNum(rowP(r)!.reachableLine.nonBoostCandyUnits) }}</span>
                 </span>{{ ' ' }}<span class="calcRow__res">
                   <span class="calcRow__k">{{ t(calc.boostKind.value === 'none' ? "calc.row.candy" : "calc.row.candyTotal") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'candy') }">{{ calc.fmtNum(rowP(r)!.reachableLine.totalCandyUnitsUsed) }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'candy') }">{{ calc.fmtNum(rowP(r)!.reachableLine.totalCandyUnitsUsed) }}</span>
                 </span>{{ ' ' }}<span class="calcRow__res">
                   <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'reachable', 'shards') }">{{ calc.fmtNum(rowP(r)!.reachableLine.dreamShardsUsed) }}</span>
+                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'shards') }">{{ calc.fmtNum(rowP(r)!.reachableLine.dreamShardsUsed) }}</span>
                 </span>{{ ' ' }}<span class="calcRow__res" v-if="(rowItemUsageMaps.reachable.get(r.id) ?? []).length > 0">
                   <span class="calcRow__k">{{ t("calc.row.itemUsage") }}</span>
                   <span class="calcRow__num calcRow__num--text">
@@ -704,14 +645,9 @@
         :style="{ left: hintState.left + 'px', top: hintState.top + 'px' }"
         @click.stop
       >
-        <template v-if="hintState.kind === 'normalCandyCount'">
-          {{ t('calc.row.boostCandyCountNormalHint') }}
-        </template>
-        <template v-else>
-          {{ t('calc.row.boostCandyCountHintLine1') }}<br>
-          {{ t('calc.row.boostCandyCountHintLine2') }}<br><br>
-          {{ t('calc.row.boostCandyCountHintNotePrefix') }}<button type="button" class="hintLink" data-testid="calc-hint-settings" @click="openSettingsFromHint">{{ t('calc.row.boostCandyCountHintSettings') }}</button>{{ t('calc.row.boostCandyCountHintNoteSuffix') }}
-        </template>
+        {{ t('calc.row.boostCandyCountHintLine1') }}<br>
+        {{ t('calc.row.boostCandyCountHintLine2') }}<br><br>
+        {{ t('calc.row.boostCandyCountHintNotePrefix') }}<button type="button" class="hintLink" data-testid="calc-hint-settings" @click="openSettingsFromHint">{{ t('calc.row.boostCandyCountHintSettings') }}</button>{{ t('calc.row.boostCandyCountHintNoteSuffix') }}
       </div>
     </Teleport>
 
@@ -758,12 +694,13 @@ import { useCandyStore } from "../composables/useCandyStore";
 import { getPokemonType } from "../domain/pokesleep/pokemon-names";
 import { getTypeName } from "../domain/pokesleep/pokemon-types";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
-import { markForSleep, calcCandyTargetFromSleepExp, calcSleepTimeForExp } from "../domain/pokesleep/sleep-growth";
+import { calcSleepTimeForExp } from "../domain/pokesleep/sleep-growth";
 import {
   formatSleepTimeResult,
   type SleepTimeFormatTokens,
 } from "../domain/pokesleep/sleep-growth-format";
-import { calcExp, calcExpAndCandyMixed, calcLevelByCandy } from "../domain/pokesleep/exp";
+import { calcExp } from "../domain/pokesleep/exp";
+import { SLEEP_TARGET_HOURS_OPTIONS } from "../persistence/calc";
 import { normalizeSleepHoursInput } from "../domain/box/sleep-milestones";
 import type { BoostEvent } from "../domain/types";
 
@@ -902,22 +839,6 @@ function toggleExpand(rowId: string) {
 
 function isExpanded(rowId: string): boolean {
   return expandedRows.value.has(rowId);
-}
-
-// 個数指定行の「必要アイテム」展開状態
-const expandedLimitItems = ref<Set<string>>(new Set());
-
-function toggleLimitItems(rowId: string) {
-  if (expandedLimitItems.value.has(rowId)) {
-    expandedLimitItems.value.delete(rowId);
-  } else {
-    expandedLimitItems.value.add(rowId);
-  }
-  expandedLimitItems.value = new Set(expandedLimitItems.value);
-}
-
-function isLimitItemsExpanded(rowId: string): boolean {
-  return expandedLimitItems.value.has(rowId);
 }
 
 /**
@@ -1121,146 +1042,57 @@ function tabDragClass(slotIndex: number): Record<string, boolean> {
   };
 }
 
-// アメ使用制限入力時のラッパー（値が設定されたら折りたたみを開く）
-function onCandyTargetInput(rowId: string, value: string) {
-  calc.onRowCandyTarget(rowId, value);
+// ─────────────────────────────────────────────────────────────
+// アメ個数指定は Enter / フォーカスアウトで確定する。
+//
+// 1文字ごとに反映すると "158" が 1 → 15 → 158 と流れ、最初の "1" で
+// アメブ個数が内数クランプされ（n := min(n, m)）、そのまま復元されない。
+// あとEXP欄と同じドラフト方式（expRemainingDraftByRowId）に揃えている。
+// ─────────────────────────────────────────────────────────────
+const candyTargetDraftByRowId = reactive<Record<string, string>>({});
+
+function displayCandyTarget(r: CalcRowView): string {
+  return r.candyTarget === undefined ? "" : String(r.candyTarget);
+}
+
+function candyTargetInputValue(r: CalcRowView): string {
+  const d = candyTargetDraftByRowId[r.id];
+  return d !== undefined ? d : displayCandyTarget(r);
+}
+
+function onCandyTargetFocus(r: CalcRowView) {
+  candyTargetDraftByRowId[r.id] = displayCandyTarget(r);
+}
+
+function onCandyTargetDraftInput(rowId: string, value: string) {
+  candyTargetDraftByRowId[rowId] = value;
+}
+
+function onCandyTargetBlur(r: CalcRowView) {
+  const draft = candyTargetDraftByRowId[r.id];
+  if (draft === undefined) return;
+  delete candyTargetDraftByRowId[r.id];
+  if (draft === displayCandyTarget(r)) return;
+
+  calc.onRowCandyTarget(r.id, draft);
   // 値が設定されたら自動的に到達可能行を開く
-  if (value.trim() !== "") {
-    expandedRows.value.add(rowId);
+  if (draft.trim() !== "") {
+    expandedRows.value.add(r.id);
     expandedRows.value = new Set(expandedRows.value);
   }
 }
 
 /**
- * 睡眠育成ボタン（1000h/2000h）のハンドラー
- * markForSleep() で睡眠EXPを計算し、calcCandyTargetFromSleepExp() で個数指定値を算出
+ * 睡眠目標時間の選択（設計書§5.3, §5.5）。
+ * 目標 T を固定したまま個数指定を再計算する処理はストア側に集約されている。
  */
-function applySleepGrowth(rowId: string, targetHours: number) {
-  calc.activeRowId.value = rowId;
-  const sleepSettings = calc.sleepSettings.value;
-  const sleepExpBonus = 1.0 + 0.14 * sleepSettings.sleepExpBonusCount;
-
-  // 行データから性格・レベル情報を取得
-  const row = calc.rowsView.value.find(r => r.id === rowId);
-  if (!row) return;
-  const target = calcSleepGrowthTarget(row);
-
-  // 累計睡眠時間を差し引いた残り時間を計算
-  const currentSleepHours = row.sleepHours ?? 0;
-  const remainingHours = Math.max(0, targetHours - currentSleepHours);
-  const remainingMinutes = Math.max(0, Math.round(remainingHours * 60));
-
-  // remainingHours=0 も通常フローで処理し、sleepExp=0 相当の個数指定を出す。
-  const result = markForSleep({
-    targetSleepHours: remainingMinutes / 60,
-    nature: row.nature,
-    dailySleepHours: sleepSettings.dailySleepHours,
-    sleepExpBonus,
-    includeGSD: sleepSettings.includeGSD,
-  });
-
-  // 現在レベル内で獲得済みのEXPを計算
-  // expGot = (srcLevel→srcLevel+1 の必要EXP) - expRemaining
-  const toNextLevel = calcExp(row.srcLevel, row.srcLevel + 1, row.expType);
-  const expGot = Math.max(0, toNextLevel - row.expRemaining);
-
-  // calcCandyTargetFromSleepExp でアメ個数指定値を計算
-  // p.dstLevel と p.dstExpInLevel を使用（動的計算された目標で一貫性を持たせる）
-  const candyTarget = calcCandyTargetFromSleepExp({
-    srcLevel: row.srcLevel,
-    dstLevel: target.dstLevel,
-    dstExpInLevel: target.dstExpInLevel,
-    expType: row.expType,
-    nature: row.nature,
-    boostKind: calc.boostKind.value,
-    targetBoostCandy: target.targetBoostCandy,
-    targetNormalCandy: target.targetNormalCandy,
-    sleepExp: result.sleepExp,
-    expGot,
-  });
-
-  // アメ個数指定値をセット
-  calc.onRowCandyTarget(rowId, String(candyTarget));
-
-  // 自動的に到達可能行を開く
-  expandedRows.value.add(rowId);
-  expandedRows.value = new Set(expandedRows.value);
-}
-
-function calcSleepGrowthTarget(row: CalcRowView): {
-  dstLevel: number;
-  dstExpInLevel: number;
-  targetBoostCandy: number;
-  targetNormalCandy: number;
-} {
-  const toNextLevel = calcExp(row.srcLevel, row.srcLevel + 1, row.expType);
-  const expGot = Math.max(0, toNextLevel - row.expRemaining);
-
-  if (calc.boostKind.value === "none") {
-    const targetNormalCandy = row.ui.boostCandyInput;
-    const peakResult = calcLevelByCandy({
-      srcLevel: row.srcLevel,
-      dstLevel: MAX_LEVEL,
-      expType: row.expType,
-      nature: row.nature,
-      boost: "none",
-      candy: row.candyPeak || targetNormalCandy,
-      expGot,
-    });
-    return {
-      dstLevel: peakResult.level,
-      dstExpInLevel: row.mode === "peak" ? peakResult.expGot : 0,
-      targetBoostCandy: 0,
-      targetNormalCandy,
-    };
+function onSleepTargetChange(rowId: string, value: string) {
+  const hours = value === "" ? undefined : Number(value);
+  calc.setRowSleepTargetHours(rowId, hours);
+  if (hours !== undefined) {
+    expandedRows.value.add(rowId);
+    expandedRows.value = new Set(expandedRows.value);
   }
-
-  const targetBoostCandy = row.ui.boostCandyInput;
-  if (row.mode === "targetLevel" && row.boostReachLevel !== undefined && row.boostReachLevel < row.dstLevel) {
-    const mixed = calcExpAndCandyMixed({
-      srcLevel: row.srcLevel,
-      dstLevel: row.dstLevel,
-      expType: row.expType,
-      nature: row.nature,
-      boost: calc.boostKind.value,
-      boostCandy: targetBoostCandy,
-      expGot,
-    });
-    return {
-      dstLevel: row.dstLevel,
-      dstExpInLevel: 0,
-      targetBoostCandy,
-      targetNormalCandy: mixed.normalCandy,
-    };
-  }
-
-  const peak = row.candyPeak || targetBoostCandy;
-  const peakResult = calcLevelByCandy({
-    srcLevel: row.srcLevel,
-    dstLevel: MAX_LEVEL,
-    expType: row.expType,
-    nature: row.nature,
-    boost: calc.boostKind.value,
-    candy: peak,
-    expGot,
-  });
-  const dstExpInLevel = row.mode === "peak" ? peakResult.expGot : 0;
-  const mixed = calcExpAndCandyMixed({
-    srcLevel: row.srcLevel,
-    dstLevel: peakResult.level,
-    dstExpInLevel,
-    expType: row.expType,
-    nature: row.nature,
-    boost: calc.boostKind.value,
-    boostCandy: targetBoostCandy,
-    expGot,
-  });
-  return {
-    dstLevel: peakResult.level,
-    dstExpInLevel,
-    targetBoostCandy,
-    targetNormalCandy: mixed.normalCandy,
-  };
 }
 
 /**
@@ -1346,8 +1178,8 @@ function getRowPokedexId(r: { pokedexId?: number; boxId?: string }): number | un
 // アイテム使用リストの項目型
 type ItemUsageItem = { label: string; value: number; isDanger: boolean };
 
-// アイテム使用リストの赤字判定モード
-type ItemDangerMode = 'target' | 'limit' | 'reachable';
+// アイテム使用リストの赤字判定モード（個数指定行は目標まで行と同値になったため廃止。設計書§4.2）
+type ItemDangerMode = 'target' | 'reachable';
 
 function supplyValue(supply: CandySupplyBreakdown): number {
   return supply.species
@@ -1372,73 +1204,38 @@ function buildItemUsageList(
   if (!p) return [];
 
   // モードに応じてアイテムソースを決定
-  let sourceLine: PokemonPlanLine;
-  switch (mode) {
-    case 'target':
-      sourceLine = p.targetLine;
-      break;
-    case 'limit':
-      if (!hasLimit(r)) return [];
-      sourceLine = p.candyTargetLine ?? p.targetLine;
-      break;
-    case 'reachable':
-      sourceLine = p.reachableLine;
-      break;
-  }
+  const sourceLine: PokemonPlanLine = mode === 'target' ? p.targetLine : p.reachableLine;
   const sourceItems = sourceLine.candySupply;
 
   const items: ItemUsageItem[] = [];
   const typeName = getTypeName(r.pokemonType || getPokemonType(p.pokedexId), locale.value);
   const uniLabel = t("calc.export.labelUni");
 
-  // 在庫を取得（limit モード用）
-  const uniStock = candyStore.universalCandy.value;
-  const typeStock = candyStore.getTypeCandyFor(r.pokemonType || getPokemonType(p.pokedexId));
-
-  // 赤字判定関数
-  const getDanger = (itemType: 'typeS' | 'typeM' | 'uniS' | 'uniM' | 'uniL', value: number): boolean => {
-    if (mode === 'limit') {
-      // 個数指定行: 各在庫超過時に赤字
-      switch (itemType) {
-        case 'typeS': return value > typeStock.s;
-        case 'typeM': return value > typeStock.m;
-        case 'uniS': return value > uniStock.s;
-        case 'uniM': return value > uniStock.m;
-        case 'uniL': return value > uniStock.l;
-      }
-    } else if (mode === 'target') {
-      // 目標まで行: 万能Sのみ、不足時かつ個数指定なしで赤字
-      if (itemType === 'uniS') {
-        const hasLimitValue = r.candyTarget != null && r.candyTarget >= 0;
-        return p.shortage.candyToTarget > 0 && !hasLimitValue;
-      }
-      return false;
-    } else {
-      // 到達可能行: 万能Sのみ、不足時に赤字
-      if (itemType === 'uniS') {
-        return p.shortage.candyToTarget > 0;
-      }
-      return false;
-    }
+  // 赤字判定関数。
+  // 目標まで行・到達可能行とも万能Sのみ、不足時に赤字。
+  // 個数指定＝目標になったため、個数指定ありでも抑止しない（設計書§4.9）。
+  const getDanger = (itemType: 'typeS' | 'typeM' | 'uniS' | 'uniM' | 'uniL'): boolean => {
+    if (itemType === 'uniS') return p.shortage.candyToTarget > 0;
+    return false;
   };
 
   // タイプアメ
   if (sourceItems.type.s > 0) {
-    items.push({ label: `${typeName}S`, value: sourceItems.type.s, isDanger: getDanger('typeS', sourceItems.type.s) });
+    items.push({ label: `${typeName}S`, value: sourceItems.type.s, isDanger: getDanger('typeS') });
   }
   if (sourceItems.type.m > 0) {
-    items.push({ label: `${typeName}M`, value: sourceItems.type.m, isDanger: getDanger('typeM', sourceItems.type.m) });
+    items.push({ label: `${typeName}M`, value: sourceItems.type.m, isDanger: getDanger('typeM') });
   }
 
   // 万能アメ
   if (sourceItems.universal.s > 0) {
-    items.push({ label: `${uniLabel}S`, value: sourceItems.universal.s, isDanger: getDanger('uniS', sourceItems.universal.s) });
+    items.push({ label: `${uniLabel}S`, value: sourceItems.universal.s, isDanger: getDanger('uniS') });
   }
   if (sourceItems.universal.m > 0) {
-    items.push({ label: `${uniLabel}M`, value: sourceItems.universal.m, isDanger: getDanger('uniM', sourceItems.universal.m) });
+    items.push({ label: `${uniLabel}M`, value: sourceItems.universal.m, isDanger: getDanger('uniM') });
   }
   if (sourceItems.universal.l > 0) {
-    items.push({ label: `${uniLabel}L`, value: sourceItems.universal.l, isDanger: getDanger('uniL', sourceItems.universal.l) });
+    items.push({ label: `${uniLabel}L`, value: sourceItems.universal.l, isDanger: getDanger('uniL') });
   }
 
   return items;
@@ -1447,29 +1244,19 @@ function buildItemUsageList(
 function getSurplusValue(r: CalcRowView, mode: ItemDangerMode): number {
   const p = rowP(r);
   if (!p) return 0;
-  switch (mode) {
-    case 'target':
-      return lineSurplus(p.targetLine);
-    case 'limit':
-      if (!hasLimit(r)) return 0;
-      return lineSurplus(p.candyTargetLine ?? p.targetLine);
-    case 'reachable':
-      return lineSurplus(p.reachableLine);
-  }
+  return lineSurplus(mode === 'target' ? p.targetLine : p.reachableLine);
 }
 
 /** 行ごとのアイテム内訳（1 computed にまとめ、行あたり rowP は1回だけ） */
 const rowItemUsageMaps = computed(() => {
   const target = new Map<string, ItemUsageItem[]>();
-  const limit = new Map<string, ItemUsageItem[]>();
   const reachable = new Map<string, ItemUsageItem[]>();
   for (const r of calc.rowsView.value) {
     const p = rowP(r);
     target.set(r.id, buildItemUsageList(r, "target", p));
-    limit.set(r.id, buildItemUsageList(r, "limit", p));
     reachable.set(r.id, buildItemUsageList(r, "reachable", p));
   }
-  return { target, limit, reachable };
+  return { target, reachable };
 });
 
 // アイテム使用があるか判定（目標まで行用 = targetLine）
@@ -1510,19 +1297,18 @@ function hasAnyShortage(r: CalcRowView): boolean {
     || getShortageValue(r, 'shards') > 0;
 }
 
-// 赤字判定
+/**
+ * 赤字判定。
+ * 個数指定＝目標になったため、どの行も同じ不足量で判定する（設計書§4.9）。
+ */
 function isDanger(
   r: CalcRowView,
-  row: 'target' | 'limit' | 'reachable',
   field: 'boost' | 'normal' | 'candy' | 'shards'
 ): boolean {
   const p = rowP(r);
   if (!p) return false;
 
   if (field === 'normal' && calc.boostKind.value === 'none') return false;
-
-  const hasLimitValue = r.candyTarget != null && r.candyTarget >= 0;
-  if (row === 'target' && hasLimitValue) return false;
 
   switch (field) {
     case 'boost': return p.shortage.boostCandyUnavailable > 0;
@@ -1539,50 +1325,16 @@ function isCandyShort(r: CalcRowView): boolean {
   return p.shortage.candyToTarget > 0;
 }
 
-// 個数指定があるか
-function hasLimit(r: CalcRowView): boolean {
-  return r.candyTarget != null && r.candyTarget >= 0;
-}
-
-// 個数指定がある場合の理論値ベースのリソースを取得
-interface TheoreticalResources {
-  candy: number;
-  boostCandy: number;
-  normalCandy: number;
-  shards: number;
-}
-function getTheoreticalResources(r: CalcRowView): TheoreticalResources | null {
-  if (!hasLimit(r)) return null;
-
-  const p = rowP(r);
-  if (!p) return null;
-
-  const line = p.candyTargetLine ?? p.targetLine;
-  const boostCandy = line.boostedCandyUnits;
-  const normalCandy = line.nonBoostCandyUnits;
-  const shards = line.dreamShardsUsed;
-
-  return {
-    candy: boostCandy + normalCandy,
-    boostCandy,
-    normalCandy,
-    shards,
-  };
-}
-
 // ヒントアイコン用
 // ヒントポップオーバーの状態
-type CalcHintKind = "normalCandyCount" | "boostCandyCount";
-
-const hintState = ref<{ visible: boolean; kind: CalcHintKind; left: number; top: number }>({
+const hintState = ref<{ visible: boolean; left: number; top: number }>({
   visible: false,
-  kind: "normalCandyCount",
   left: 0,
   top: 0
 });
 const hintPopoverRef = ref<HTMLElement | null>(null);
 
-async function showHint(ev: MouseEvent, kind: CalcHintKind) {
+async function showHint(ev: MouseEvent) {
   const target = ev.target as HTMLElement;
   const rect = target.getBoundingClientRect();
   const gap = 4;
@@ -1600,7 +1352,6 @@ async function showHint(ev: MouseEvent, kind: CalcHintKind) {
   // まず下に仮配置して描画
   hintState.value = {
     visible: true,
-    kind,
     left,
     top: rect.bottom + gap,
   };

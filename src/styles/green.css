@@ -113,7 +113,6 @@ body {
 }
 
 /* ===== Calc — Sleep Chips ===== */
-.sleepChip,
 .hintIcon {
   color: var(--ink);
 }

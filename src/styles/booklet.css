@@ -196,12 +196,6 @@
 }
 
 /* Sleep growth chips — tinted card on blue panel */
-.sleepChip {
-  background: rgba(var(--accent-rgb), 0.08);
-  color: var(--ink);
-  border-color: var(--ink);
-}
-
 .hintIcon {
   background: rgba(var(--accent-rgb), 0.08);
   color: var(--ink);

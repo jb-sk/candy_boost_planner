@@ -75,9 +75,9 @@ async function setupGolemSuicuneCondition(page: import('@playwright/test').Page)
   // 目標Lv60
   await calc.setRowDstLevel(rowGolem, 60);
   // アメブ0%
-  await calc.getRowBoostRatioSlider(rowGolem).fill('0');
+  await calc.getRowBoostCandyInput(rowGolem).fill('0');
   // 個数指定1500
-  await calc.getRowCandyTargetInput(rowGolem).fill('1500');
+  await calc.setRowCandyTarget(rowGolem, '1500');
 
   // --- スイクンを追加（EXP▼） ---
   await box.openAddNewPanel();
@@ -100,7 +100,7 @@ async function setupGolemSuicuneCondition(page: import('@playwright/test').Page)
   // アメブ在庫350
   await calc.getRowBoostCandyInput(rowSuicune).fill('350');
   // 個数指定50
-  await calc.getRowCandyTargetInput(rowSuicune).fill('50');
+  await calc.setRowCandyTarget(rowSuicune, '50');
 
   await page.waitForTimeout(300);
 }

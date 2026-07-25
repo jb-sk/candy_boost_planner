@@ -3,7 +3,7 @@ import type { CalcSaveSlotV1 } from "../persistence/calc";
 import type { CandyInventoryV1, CandyInventoryV2 } from "../persistence/candy";
 
 export const BACKUP_FORMAT = "candy-boost-planner-backup" as const;
-export const BACKUP_SCHEMA_VERSION = 2 as const;
+export const BACKUP_SCHEMA_VERSION = 3 as const;
 export const BACKUP_MAX_BYTES = 5 * 1024 * 1024;
 export const BACKUP_MAX_BOX_ENTRIES = 300;
 export const BACKUP_MAX_ROWS_PER_SLOT = 60;
@@ -32,6 +32,14 @@ export type CandyBoostPlannerBackupV1 = {
 
 export type CandyBoostPlannerBackupV2 = {
   format: typeof BACKUP_FORMAT;
+  schemaVersion: 2;
+  exportedAt: string;
+  data: CandyBoostPlannerBackupData<CandyInventoryV2>;
+};
+
+/** V3での変更点は CalcRowV1.sleepTargetHours の追加のみ。candyInventory のスキーマは V2 のまま。 */
+export type CandyBoostPlannerBackupV3 = {
+  format: typeof BACKUP_FORMAT;
   schemaVersion: typeof BACKUP_SCHEMA_VERSION;
   exportedAt: string;
   data: CandyBoostPlannerBackupData<CandyInventoryV2>;
@@ -43,8 +51,8 @@ export type BackupWarning = {
 };
 
 export type ValidatedBackup = {
-  /** V1入力もfamilyキーへ移行済みのV2として返す。 */
-  backup: CandyBoostPlannerBackupV2;
+  /** V1/V2入力もfamilyキーへ移行済みのV3として返す。 */
+  backup: CandyBoostPlannerBackupV3;
   warnings: BackupWarning[];
 };
 

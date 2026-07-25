@@ -1,7 +1,7 @@
 import type { PokemonBoxEntryV1, SleepSettings } from "../domain/types";
 import type { CalcSaveSlotV1 } from "../persistence/calc";
 import type { CandyInventoryV2 } from "../persistence/candy";
-import { BACKUP_FORMAT, BACKUP_SCHEMA_VERSION, type BackupBoxEntryV1, type CandyBoostPlannerBackupV2 } from "./types";
+import { BACKUP_FORMAT, BACKUP_SCHEMA_VERSION, type BackupBoxEntryV1, type CandyBoostPlannerBackupV3 } from "./types";
 
 export type BackupSnapshotSources = {
   boxEntries: readonly PokemonBoxEntryV1[];
@@ -32,7 +32,7 @@ function toBackupBoxEntry(entry: PokemonBoxEntryV1): BackupBoxEntryV1 {
   return copy as BackupBoxEntryV1;
 }
 
-export function createBackup(sources: BackupSnapshotSources, now = new Date()): CandyBoostPlannerBackupV2 {
+export function createBackup(sources: BackupSnapshotSources, now = new Date()): CandyBoostPlannerBackupV3 {
   return {
     format: BACKUP_FORMAT,
     schemaVersion: BACKUP_SCHEMA_VERSION,

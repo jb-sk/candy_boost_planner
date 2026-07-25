@@ -220,8 +220,6 @@ export type PokemonPlanInput = {
   /** 種族アメの共有資源キー。pokedexIdを資源キーへ流用しない。 */
   candyFamilyKey: CandyFamilyKey;
   name: string;
-  /** UIの入力モード。solver計算自体では使わないが、signatureの構造情報に含める。 */
-  mode?: 'targetLevel' | 'peak';
   type: PokemonType;
   currentLevel: number;
   currentExpInLevel: number;
@@ -351,10 +349,11 @@ export type PokemonPlanResult = {
   name: string;
   currentLevel: number;
   currentExpInLevel: number;
+  /** 睡眠後の最終目標（§4.5.1）。line.level（アメを使い終えた地点）とは別物。 */
   targetLevel: number;
   targetExpInLevel: number;
+  /** 予定アメ（個数指定、なければ目標到達に必要な最小数）を使い終えた地点。 */
   targetLine: PokemonPlanLine;
-  candyTargetLine?: PokemonPlanLine;
   reachableLine: PokemonPlanLine;
   targetReached: boolean;
   shortage: PokemonShortage;

@@ -25,7 +25,6 @@ export type DebugExportRow = {
   candyFamilyKey?: string;
   type: string;
   nature: string;
-  mode: string;
   currentLevel: number;
   currentExpInLevel: number;
   expRemaining: number;
@@ -416,7 +415,7 @@ function buildBoundarySearchTsv(context: DebugExportContext): string[] {
 
 export function buildDebugExportTsv(context: DebugExportContext): string {
   const headers = [
-    'index', 'id', 'name', 'pokedexId', 'candyFamilyKey', 'type', 'nature', 'mode',
+    'index', 'id', 'name', 'pokedexId', 'candyFamilyKey', 'type', 'nature',
     'currentLv', 'currentExpInLevel', 'expRemaining', 'targetLv', 'targetExpInLevel', 'candyTarget',
     'boostKind', 'itemCompareMode', 'calculationScope', 'reachedLv', 'targetReached', 'role', 'expToNext', 'expToTarget',
     'shortageCandy', 'shortageBoost', 'shortageShards', 'limitingFactor', 'initialSpeciesStock',
@@ -426,9 +425,9 @@ export function buildDebugExportTsv(context: DebugExportContext): string {
     'targetBoost', 'targetNormal', 'targetTotalCandy', 'targetShards',
     'targetSpecies', 'targetTypeS', 'targetTypeM', 'targetUniversalS', 'targetUniversalM', 'targetUniversalL',
     'targetTotalSupply', 'targetItemValue', 'targetNonSpeciesItemValue', 'targetSurplus',
-    'limitBoost', 'limitNormal', 'limitTotalCandy', 'limitShards',
-    'limitSpecies', 'limitTypeS', 'limitTypeM', 'limitUniversalS', 'limitUniversalM', 'limitUniversalL',
-    'limitTotalSupply', 'limitItemValue', 'limitNonSpeciesItemValue', 'limitSurplus',
+    // targetLv/targetExpInLevel は睡眠後の最終目標。アメを使い終えた地点は別列で出す（設計書§6.4）。
+    'plannedCandyEndLevel', 'plannedCandyEndExpInLevel',
+    'reachableCandyEndLevel', 'reachableCandyEndExpInLevel',
   ];
   const lines = [headers.join('\t')];
   if (!context.result) return lines.join('\n');
@@ -436,18 +435,14 @@ export function buildDebugExportTsv(context: DebugExportContext): string {
   context.rows.forEach((row, index) => {
     const plan = row.plan;
     if (!plan) {
-      lines.push([index + 1, row.id, row.name, row.pokedexId ?? '', row.candyFamilyKey ?? (row.pokedexId ? getCandyFamilyKey(row.pokedexId) : ''), row.type, row.nature, row.mode, row.currentLevel, row.currentExpInLevel, row.expRemaining, row.targetLevel, row.targetExpInLevel ?? '', row.candyTarget ?? '', context.boost.kind, context.itemCompareMode, calculationScopeForRow(context, index)].map(tsvCell).join('\t'));
+      lines.push([index + 1, row.id, row.name, row.pokedexId ?? '', row.candyFamilyKey ?? (row.pokedexId ? getCandyFamilyKey(row.pokedexId) : ''), row.type, row.nature, row.currentLevel, row.currentExpInLevel, row.expRemaining, row.targetLevel, row.targetExpInLevel ?? '', row.candyTarget ?? '', context.boost.kind, context.itemCompareMode, calculationScopeForRow(context, index)].map(tsvCell).join('\t'));
       return;
     }
     const reachable = plan.reachableLine;
     const target = plan.targetLine;
-    const limit = plan.candyTargetLine;
     const targetTotal = target.boostedCandyUnits + target.nonBoostCandyUnits;
-    const limitBoost = limit?.boostedCandyUnits ?? '';
-    const limitNormal = limit?.nonBoostCandyUnits ?? '';
-    const limitTotal = limit ? limit.boostedCandyUnits + limit.nonBoostCandyUnits : '';
     lines.push([
-      index + 1, row.id, row.name, plan.pokedexId, row.candyFamilyKey ?? getCandyFamilyKey(plan.pokedexId), row.type, row.nature, row.mode,
+      index + 1, row.id, row.name, plan.pokedexId, row.candyFamilyKey ?? getCandyFamilyKey(plan.pokedexId), row.type, row.nature,
       row.currentLevel, row.currentExpInLevel, row.expRemaining, row.targetLevel, plan.targetExpInLevel, row.candyTarget ?? '',
       context.boost.kind, context.itemCompareMode, calculationScopeForRow(context, index), reachable.level, reachable.targetReached, plan.role,
       reachable.expToNextLevel, plan.shortage.expToTarget, plan.shortage.candyToTarget, plan.shortage.boostCandyUnavailable,
@@ -458,9 +453,8 @@ export function buildDebugExportTsv(context: DebugExportContext): string {
       target.boostedCandyUnits, target.nonBoostCandyUnits, targetTotal, target.dreamShardsUsed,
       target.candySupply.species, target.candySupply.type.s, target.candySupply.type.m, target.candySupply.universal.s, target.candySupply.universal.m, target.candySupply.universal.l,
       lineItemValue(target), lineItemValue(target), lineNonSpeciesItemValue(target), lineSurplus(target),
-      limitBoost, limitNormal, limitTotal, limit?.dreamShardsUsed ?? '',
-      limit?.candySupply.species ?? '', limit?.candySupply.type.s ?? '', limit?.candySupply.type.m ?? '', limit?.candySupply.universal.s ?? '', limit?.candySupply.universal.m ?? '', limit?.candySupply.universal.l ?? '',
-      limit ? lineItemValue(limit) : '', limit ? lineItemValue(limit) : '', limit ? lineNonSpeciesItemValue(limit) : '', limit ? lineSurplus(limit) : '',
+      target.level, target.expInLevel,
+      reachable.level, reachable.expInLevel,
     ].map(tsvCell).join('\t'));
   });
 

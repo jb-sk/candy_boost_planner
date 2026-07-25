@@ -100,10 +100,6 @@ input, select, textarea {
 }
 
 /* ===== Range slider — remove drop shadow ===== */
-.field__range {
-  box-shadow: none;
-}
-
 /* ===== Calc — Slot Tabs ===== */
 /* Remove button/select shadow inherited from global rules */
 .slotTab {
@@ -119,6 +115,12 @@ input, select, textarea {
 .levelPick__chevron,
 .natureSelect__trigger {
   box-shadow: none;
+}
+
+/* ===== Label link (累計睡眠時間) — 見た目はテキストなのでボタン影を消す ===== */
+.field__labelLink {
+  box-shadow: none;
+  border: none;
 }
 
 /* ===== NatureSelect dropdown — remove shadow ===== */

@@ -3,6 +3,9 @@ import type { Composer } from "vue-i18n";
 import type { AppLocale } from "../i18n";
 import type { BoostEvent, ExpGainNature, ExpType, SleepSettings } from "../domain/types";
 import { calcExp, calcExpAndCandy, calcExpAndCandyMixed, calcLevelByCandy } from "../domain/pokesleep";
+import { minBoostForTarget } from "../domain/pokesleep/minBoostForTarget";
+import { calcCandyTargetFromSleepExp, markForSleep } from "../domain/pokesleep/sleep-growth";
+import { deriveTarget } from "../domain/level-planner/deriveTarget";
 import { boostRules, defaultBoostKind } from "../domain/pokesleep/boost-config";
 import type { CalcRowV1, CalcSaveSlotV1 } from "../persistence/calc";
 import { loadActiveSlot, loadCalcSlots, loadTotalShards, saveActiveSlot, saveCalcSlots, saveTotalShards, loadBoostCandyRemaining, saveBoostCandyRemaining, loadSleepSettings, saveSleepSettings } from "../persistence/calc";
@@ -45,7 +48,6 @@ export type CalcRowView = CalcRow & {
   expLeftNext: number;
   ui: {
     boostReachLevel: number;
-    boostRatioPct: number;
     boostCandyInput: number;
   };
 };
@@ -269,7 +271,6 @@ export type CalcStore = {
   onRowNature: (id: string, v: string) => void;
   onRowCandyTarget: (id: string, v: string) => void;
   onRowBoostLevel: (id: string, v: string) => void;
-  onRowBoostRatio: (id: string, v: string) => void;
   onRowBoostCandy: (id: string, v: string) => void;
   resetRowBoostCandy: (id: string) => void;
 
@@ -293,6 +294,7 @@ export type CalcStore = {
   }) => void;
   buildPlannerPatchFromRow: (rowId?: string) => CalcBoxPlannerPatch | null;
   setRowSleepHours: (rowId: string, sleepHours: number | undefined) => void;
+  setRowSleepTargetHours: (rowId: string, hours: number | undefined) => void;
 };
 
 export function useCalcStore(opts: {
@@ -763,6 +765,132 @@ export function useCalcStore(opts: {
     rows.value = rows.value.map((x) => (x.id === id ? { ...x, ...patch } : x));
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // 個数指定と目標Lvの一本化（設計書 §4.3 / §5.3）
+  //
+  // 永続状態は dstLevel / candyTarget? / sleepTargetHours? の3値。
+  // 不変条件: sleepTargetHours !== undefined ⇒ candyTarget !== undefined
+  //
+  // ここでの連動更新は calcCandyPatch を呼ばない（§4.4 ループ防止）。
+  // ─────────────────────────────────────────────────────────────
+
+  /** 現在Lv内で既に得ているEXP。 */
+  function rowExpGot(r: Pick<CalcRow, 'srcLevel' | 'expType' | 'expRemaining'>): number {
+    const toNext = Math.max(0, calcExp(r.srcLevel, r.srcLevel + 1, r.expType));
+    return (r.expRemaining !== undefined && r.expRemaining > 0) ? Math.max(0, toNext - r.expRemaining) : 0;
+  }
+
+  /** 行のアメブ個数（UIの真実のソース）。 */
+  /** 行のアメブ個数（UIの真実のソース）。 */
+  function rowBoostCandy(r: CalcRow): number {
+    if (boostKind.value === "none") return 0;
+    return Math.max(0, Math.floor(r.boostOrExpAdjustment ?? 0));
+  }
+
+  /**
+   * 「これから寝る時間」から睡眠EXPを求める。
+   * 睡眠目標時間が未設定なら 0（不変条件により candyTarget も undefined になる）。
+   */
+  function rowSleepExp(r: CalcRow): number {
+    if (r.sleepTargetHours === undefined) return 0;
+    const remainingHours = Math.max(0, r.sleepTargetHours - (r.sleepHours ?? 0));
+    if (remainingHours <= 0) return 0;
+    const s = sleepSettings.value;
+    return markForSleep({
+      targetSleepHours: remainingHours,
+      nature: r.nature,
+      dailySleepHours: s.dailySleepHours,
+      sleepExpBonus: 1.0 + 0.14 * s.sleepExpBonusCount,
+      includeGSD: s.includeGSD,
+    }).sleepExp;
+  }
+
+  /** 行の実効目標 T と「目標まで」行のアメ数（§4.5）。 */
+  function rowDerivedTarget(r: CalcRow) {
+    return deriveTarget({
+      srcLevel: r.srcLevel,
+      expGot: rowExpGot(r),
+      dstLevel: r.dstLevel,
+      candyTarget: r.candyTarget,
+      boostCandy: rowBoostCandy(r),
+      expType: r.expType,
+      nature: r.nature,
+      boostKind: boostKind.value,
+      sleepExp: rowSleepExp(r),
+    });
+  }
+
+  /**
+   * 個数指定の上限。MAX_LEVEL 到達に必要なアメ数から、睡眠EXPで賄える分を引いた値（§4.3）。
+   * 睡眠EXPだけで Lv70 に届くなら 0 になる。
+   */
+  function maxCandyTargetFor(r: CalcRow): number {
+    const expGot = rowExpGot(r);
+    const sleepExp = rowSleepExp(r);
+    // Lv70 から睡眠EXP分を戻した点 T'max がアメの担当範囲。
+    const cap = locateExpTargetFromSrc(r, expGot, sleepExp);
+    if (cap === null) return 0;
+    const mixed = calcExpAndCandyMixed({
+      srcLevel: r.srcLevel, dstLevel: cap.level, dstExpInLevel: cap.expInLevel,
+      expType: r.expType, nature: r.nature, boost: boostKind.value,
+      boostCandy: rowBoostCandy(r), expGot,
+    });
+    return mixed.boostCandy + mixed.normalCandy;
+  }
+
+  /** Lv70 から睡眠EXP分を戻した地点。睡眠EXPだけで Lv70 に届くなら null。 */
+  function locateExpTargetFromSrc(
+    r: Pick<CalcRow, 'srcLevel' | 'expType'>,
+    expGot: number,
+    sleepExp: number,
+  ): { level: number; expInLevel: number } | null {
+    const expToMax = Math.max(0, calcExp(r.srcLevel, MAX_LEVEL, r.expType) - expGot);
+    const expForCandy = expToMax - sleepExp;
+    if (expForCandy <= 0) return null;
+    let level = r.srcLevel;
+    let expInLevel = expGot + expForCandy;
+    while (level < MAX_LEVEL) {
+      const needed = calcExp(level, level + 1, r.expType);
+      if (expInLevel < needed) break;
+      expInLevel -= needed;
+      level++;
+    }
+    return { level, expInLevel: level >= MAX_LEVEL ? 0 : expInLevel };
+  }
+
+  /**
+   * 目標 T を固定したまま、睡眠EXPで賄えない分のアメ数を求める（§5.3）。
+   * 睡眠目標時間を設定・変更したときと、睡眠設定中に目標Lvを変えたときに使う。
+   */
+  function candyTargetForFixedTarget(r: CalcRow, targetLevel: number, targetExpInLevel: number): number {
+    const expGot = rowExpGot(r);
+    const sleepExp = rowSleepExp(r);
+    return calcCandyTargetFromSleepExp({
+      srcLevel: r.srcLevel,
+      dstLevel: targetLevel,
+      dstExpInLevel: targetExpInLevel,
+      expType: r.expType,
+      nature: r.nature,
+      boostKind: boostKind.value,
+      targetBoostCandy: rowBoostCandy(r),
+      targetNormalCandy: Number.MAX_SAFE_INTEGER,
+      sleepExp,
+      expGot,
+    });
+  }
+
+  /**
+   * 個数指定・アメブ関連の操作後に、実効目標のLvへ dstLevel を同期する（§4.3）。
+   * 保存値と表示値が乖離しないよう、dstLevel は常に実効目標のLv部分と一致させる。
+   */
+  function syncDstLevelToDerivedTarget(id: string, patch: Partial<CalcRow>): void {
+    const current = rows.value.find((x) => x.id === id);
+    if (!current) return;
+    const next = { ...current, ...patch };
+    const t = rowDerivedTarget(next);
+    updateRow(id, { ...patch, dstLevel: clampInt(t.targetLevel, next.srcLevel, MAX_LEVEL, next.dstLevel) });
+  }
+
   /**
    * レベル範囲に基づいてアメ計算パッチを生成するヘルパー関数
    * setDstLevel, setSrcLevel, setBoostLevel, upsertFromBox で共通使用
@@ -779,11 +907,11 @@ export function useCalcStore(opts: {
     expRemaining?: number;
     excludeRowId?: string;
     availableBoostCandy?: number;
-  }): Pick<CalcRow, 'boostOrExpAdjustment' | 'candyPeak' | 'boostRatioPct' | 'boostReachLevel' | 'mode'> {
+  }): Pick<CalcRow, 'boostOrExpAdjustment' | 'boostReachLevel'> {
     const { srcLevel, dstLevel, expType, nature, expRemaining, excludeRowId, availableBoostCandy } = params;
 
     if (srcLevel === dstLevel) {
-      return { boostOrExpAdjustment: 0, candyPeak: 0, boostRatioPct: 100, boostReachLevel: dstLevel, mode: "targetLevel" };
+      return { boostOrExpAdjustment: 0, boostReachLevel: dstLevel };
     }
 
     // expRemaining から expGot を計算
@@ -794,13 +922,10 @@ export function useCalcStore(opts: {
     // 目標Lvモード: dstExpInLevel = 0（目標Lvにちょうど到達）
     const dstExpInLevel = 0;
 
-    const candy = boostKind.value === "none"
-      ? calcExpAndCandyMixed({ srcLevel, dstLevel, dstExpInLevel, expType, nature, boost: "none", boostCandy: 0, expGot }).normalCandy
-      : calcExpAndCandy({ srcLevel, dstLevel, dstExpInLevel, expType, nature, boost: boostKind.value, expGot }).candy;
-
     // 通常モードの場合はグローバル上限なし
     if (boostKind.value === "none") {
-      return { boostOrExpAdjustment: candy, candyPeak: candy, boostRatioPct: 100, boostReachLevel: dstLevel, mode: "targetLevel" };
+      const candy = calcExpAndCandyMixed({ srcLevel, dstLevel, dstExpInLevel, expType, nature, boost: "none", boostCandy: 0, expGot }).normalCandy;
+      return { boostOrExpAdjustment: candy, boostReachLevel: dstLevel };
     }
 
     // アメブ/ミニブ: グローバル上限を考慮してリセット値を決定。
@@ -809,54 +934,58 @@ export function useCalcStore(opts: {
       ? Math.max(0, Math.floor(availableBoostCandy))
       : Math.max(0, autoBoostCandyCap() - upperRowsBoostCandyForAutoAllocation(excludeRowId));
 
-    // リセット値 = min(必要数, グローバル残数)
-    const resetValue = Math.min(candy, globalRemaining);
+    // アメブ→通常アメ置換を含む最小アメブ数（minBoostForTarget に集約。設計書§3.8-e）
+    const shared = { srcLevel, targetLevel: dstLevel, targetExpInLevel: dstExpInLevel, expType, nature, boostKind: boostKind.value, expGot };
+    const unconstrained = minBoostForTarget({ ...shared, maxBoost: Number.MAX_SAFE_INTEGER });
+    const optimizedValue = minBoostForTarget({ ...shared, maxBoost: globalRemaining });
 
-    let optimizedValue = resetValue;
+    // アメブ目標Lvは「アメブでどこまで賄うか」という意図。
+    // 置換で最後の1個を通常アメへ回しても意図は目標Lvのままなので、逆算せず dstLevel を持つ。
+    // グローバル上限で足りない場合だけ、実際に届くLvへ落とす。
+    const reachLevel = optimizedValue >= unconstrained
+      ? dstLevel
+      : Math.max(srcLevel, calcLevelByCandy({
+        srcLevel, dstLevel, expType, nature, boost: boostKind.value, candy: optimizedValue, expGot,
+      }).level);
 
-    if (resetValue > 0 && resetValue === candy) {
-      const tryValue = resetValue - 1;
-      const mixed = calcExpAndCandyMixed({
-        srcLevel,
-        dstLevel,
-        dstExpInLevel,
-        expType,
-        nature,
-        boost: boostKind.value,
-        boostCandy: tryValue,
-        expGot,
-      });
-
-      if (mixed.normalCandy <= 1) {
-        optimizedValue = tryValue;
-      }
-    }
-
-    // 割合を計算
-    const ratio = candy > 0 ? Math.round((optimizedValue / candy) * 100) : 100;
-
-    // アメブ個数から到達可能レベルを計算
-    const reachSim = calcLevelByCandy({
-      srcLevel,
-      dstLevel,
-      expType,
-      nature,
-      boost: boostKind.value,
-      candy: optimizedValue,
-      expGot,
-    });
-    const reachLevel = Math.max(srcLevel, reachSim.level);
-
-    return { boostOrExpAdjustment: optimizedValue, candyPeak: candy, boostRatioPct: ratio, boostReachLevel: reachLevel, mode: "targetLevel" };
+    return { boostOrExpAdjustment: optimizedValue, boostReachLevel: reachLevel };
   }
 
 
+  /**
+   * 目標Lvピッカーの操作（§4.3 / §4.6）。
+   * - 睡眠目標時間なし → candyTarget をクリアして「個数指定なし」へ
+   * - 睡眠目標時間あり → 睡眠設定を維持し、新しい T から candyTarget を再計算
+   *
+   * アメブは据え置き、目標Lvを下回る場合だけクランプする（§4.6 案1）。
+   * calcCandyPatch による自動最大化は行わない（ユーザーのアメブ目標Lv指定を破棄しない）。
+   */
   function setDstLevel(id: string, v: unknown) {
     activeRowId.value = id;
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
     const dst = clampInt(v, r.srcLevel, MAX_LEVEL, r.dstLevel);
-    updateRow(id, { dstLevel: dst, ...calcCandyPatch({ srcLevel: r.srcLevel, dstLevel: dst, expType: r.expType, nature: r.nature, expRemaining: r.expRemaining, excludeRowId: id }) });
+
+    const patch: Partial<CalcRow> = { dstLevel: dst };
+
+    // アメブ据え置き＋クランプ（§4.6 案1）。据え置くのは「アメブでどこまで賄うか」という意図で、
+    // 個数はそこから計算し直す。目標Lvが下がったらアメブ目標Lvもそこまで下げる。
+    //
+    // 「アメブ1個 → 通常アメ1個」置換（§3.8-e）はアメブが目標全体を賄うときだけ成立するので、
+    // 目標Lvが動くと当否が入れ替わる。毎回引き直さないと、
+    // 上げたときは削った1個が戻らず（アメブ目標Lvへ届かない）、
+    // 下げたときは戻した1個が余ったまま（かけらを無駄に使う）になる。
+    const reach = Math.min(r.boostReachLevel ?? r.srcLevel, dst);
+    patch.boostReachLevel = reach;
+    patch.boostOrExpAdjustment = Math.min(boostCandyForReachLevel(r, reach, dst), maxBoostCandyFor(r));
+
+    if (r.sleepTargetHours === undefined) {
+      updateRow(id, { ...patch, candyTarget: undefined });
+      return;
+    }
+    // 睡眠設定は維持し、新しい目標（Lv dst ちょうど）から個数指定を再計算する。
+    const next = { ...r, ...patch };
+    updateRow(id, { ...patch, candyTarget: candyTargetForFixedTarget(next, dst, 0) });
   }
   /** アメブ個数を現在の目標Lvのまま再計算（リセット） */
   function resetRowBoostCandy(id: string) {
@@ -870,6 +999,11 @@ export function useCalcStore(opts: {
     if (!r) return;
     setDstLevel(id, r.dstLevel + delta);
   }
+  /**
+   * 現在Lvの変更。
+   * 元Lvが変わると同じ個数指定でも到達点が変わるため、ボックス同期（§6.3）と同じく
+   * 個数指定・睡眠目標を解除する。dstLevel はクランプのみ。
+   */
   function setSrcLevel(id: string, v: unknown) {
     activeRowId.value = id;
     const r = rows.value.find((x) => x.id === id);
@@ -877,53 +1011,67 @@ export function useCalcStore(opts: {
     const src = clampInt(v, 1, r.dstLevel, r.srcLevel);
     const dst = r.dstLevel < src ? src : r.dstLevel;
     const toNext = Math.max(0, calcExp(src, src + 1, r.expType));
-    updateRow(id, { srcLevel: src, dstLevel: dst, expRemaining: toNext, ...calcCandyPatch({ srcLevel: src, dstLevel: dst, expType: r.expType, nature: r.nature, excludeRowId: id }) });
+    updateRow(id, {
+      srcLevel: src, dstLevel: dst, expRemaining: toNext,
+      candyTarget: undefined, sleepTargetHours: undefined,
+      ...calcCandyPatch({ srcLevel: src, dstLevel: dst, expType: r.expType, nature: r.nature, excludeRowId: id }),
+    });
   }
   function nudgeSrcLevel(id: string, delta: number) {
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
     setSrcLevel(id, r.srcLevel + delta);
   }
+  /**
+   * アメブ目標Lvの操作（§4.3）。
+   * そのLvまでに必要なアメブ数を求め、以降はアメブ個数の変更と同じ扱いになる。
+   * アメブ目標Lvは目標Lv T の内側でクランプされる。
+   */
   function setBoostLevel(id: string, v: unknown) {
     activeRowId.value = id;
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
-    const mid = clampInt(v, r.srcLevel, r.dstLevel, r.srcLevel);
+    // 目標Lvを超えるアメブ目標Lvも指定できる。
+    const mid = clampInt(v, r.srcLevel, MAX_LEVEL, r.srcLevel);
 
-    // expGot を計算（expRemaining が undefined または 0 なら expGot = 0）
-    const toNextLevel = calcExp(r.srcLevel, r.srcLevel + 1, r.expType);
-    const expGot = (r.expRemaining !== undefined && r.expRemaining > 0) ? Math.max(0, toNextLevel - r.expRemaining) : 0;
+    // グローバル上限は掛けない（掛けると指定したLvまで上がりきらない）。
+    // mid > dstLevel のときは目標Lvが mid まで上がるので、アメブが目標全体を賄う扱いになる。
+    const nextDstLevel = Math.max(r.dstLevel, mid);
+    const n = Math.min(boostCandyForReachLevel(r, mid, nextDstLevel), maxBoostCandyFor(r));
 
-    // 目標Lvモード: dstExpInLevel = 0（目標Lvにちょうど到達）
-    const dstExpInLevel = 0;
+    if (mid > r.dstLevel) {
+      // 目標Lvをそこまで引き上げ、アメ個数指定はリセットする（新しい目標でやり直す）。
+      const patch: Partial<CalcRow> = {
+        dstLevel: mid,
+        boostReachLevel: mid,
+        boostOrExpAdjustment: n,
+        candyTarget: undefined,
+        sleepTargetHours: undefined,
+      };
+      if (r.sleepTargetHours !== undefined) {
+        // 睡眠設定は維持し、新しい目標から個数指定を組み直す（不変条件を保つ）。
+        patch.sleepTargetHours = r.sleepTargetHours;
+        patch.candyTarget = candyTargetForFixedTarget({ ...r, ...patch } as CalcRow, mid, 0);
+      }
+      updateRow(id, patch);
+      return;
+    }
 
-    // アメブ目標Lv (mid) までのアメブ個数（グローバル制限なし）
-    const boostCandy = boostKind.value === "none"
-      ? calcExpAndCandyMixed({ srcLevel: r.srcLevel, dstLevel: mid, dstExpInLevel, expType: r.expType, nature: r.nature, boost: "none", boostCandy: 0, expGot }).normalCandy
-      : calcExpAndCandy({ srcLevel: r.srcLevel, dstLevel: mid, dstExpInLevel, expType: r.expType, nature: r.nature, boost: boostKind.value, expGot }).candy;
-
-    // 100%時の総アメ数（dstLevel まで、グローバル制限なし）
-    const fullCandy = boostKind.value === "none"
-      ? calcExpAndCandyMixed({ srcLevel: r.srcLevel, dstLevel: r.dstLevel, dstExpInLevel, expType: r.expType, nature: r.nature, boost: "none", boostCandy: 0, expGot }).normalCandy
-      : calcExpAndCandy({ srcLevel: r.srcLevel, dstLevel: r.dstLevel, dstExpInLevel, expType: r.expType, nature: r.nature, boost: boostKind.value, expGot }).candy;
-
-    // 割合を計算
-    const ratio = fullCandy > 0 ? Math.round((boostCandy / fullCandy) * 100) : 100;
-
-    updateRow(id, {
-      boostReachLevel: mid,
-      boostOrExpAdjustment: boostCandy,
-      candyPeak: fullCandy,
-      boostRatioPct: ratio,
-      mode: "targetLevel",
-    });
+    const patch: Partial<CalcRow> = { boostReachLevel: mid, boostOrExpAdjustment: n };
+    applyExcessBoostAsCandyTarget(r, n, patch);
+    syncDstLevelToDerivedTarget(id, patch);
   }
+
   function nudgeBoostLevel(id: string, delta: number) {
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
     setBoostLevel(id, (r.boostReachLevel ?? 0) + delta);
   }
 
+  /**
+   * あとEXPの変更。元Lvは変わらないので個数指定・睡眠目標は維持する（§6.3 と同じ規則）。
+   * ただし出発点が動く以上、個数指定ありの行では実効目標も動くため dstLevel を同期する。
+   */
   function onRowExpRemaining(id: string, v: string) {
     activeRowId.value = id;
     const r = rows.value.find((x) => x.id === id);
@@ -932,6 +1080,12 @@ export function useCalcStore(opts: {
     // 空文字 or 0 → toNext（レベルアップ直後扱い）
     const parsed = v.trim() === "" ? toNext : clampInt(v, 1, toNext, toNext);
     const rem = parsed === 0 ? toNext : parsed;
+
+    if (r.candyTarget !== undefined) {
+      // 個数指定が anchor。アメブ自動最大化は行わず（§4.4）、実効目標へ dstLevel を同期する。
+      syncDstLevelToDerivedTarget(id, { expRemaining: rem });
+      return;
+    }
 
     // candyPeak/boostOrExpAdjustment を再計算（expRemaining を渡して内部で expGot を計算）
     const candyPatch = calcCandyPatch({
@@ -950,251 +1104,163 @@ export function useCalcStore(opts: {
     const nat: ExpGainNature = v === "up" || v === "down" || v === "normal" ? v : "normal";
     updateRow(id, { nature: nat });
   }
+  /**
+   * アメ個数指定の確定（§4.3）。
+   * - 空欄 → 「個数指定なし」へ遷移。dstLevel は据え置き（Lv内EXPだけ 0 になる）。sleepTargetHours も解除
+   * - 値あり → candyTarget をセットし、n > m ならアメブをクランプ。dstLevel を実効目標のLvへ同期
+   *
+   * 入力途中の値では呼ばれない（UI側が Enter / フォーカスアウトで確定してから呼ぶ）。
+   * 1文字ごとに呼ぶと "158" が 1 → 15 → 158 と流れ、最初の "1" でアメブ個数が
+   * クランプされて復元できなくなる。
+   */
   function onRowCandyTarget(id: string, v: string) {
     activeRowId.value = id;
-    // 空欄 = undefined (制限なし)、0以上 = 有効な目標値
-    const n = v.trim() === "" ? undefined : Math.max(0, Math.floor(Number(v) || 0));
-    updateRow(id, { candyTarget: n });
+    const r = rows.value.find((x) => x.id === id);
+    if (!r) return;
+
+    if (v.trim() === "") {
+      // 不変条件 sleepTargetHours ⇒ candyTarget を守るため、睡眠目標も同時に解除する。
+      updateRow(id, { candyTarget: undefined, sleepTargetHours: undefined });
+      return;
+    }
+
+    const raw = Math.max(0, Math.floor(Number(v) || 0));
+    const m = Math.min(raw, maxCandyTargetFor(r));
+    const patch: Partial<CalcRow> = { candyTarget: m };
+    // アメブは総アメ数の内数。n > m ならクランプする。
+    if (rowBoostCandy(r) > m) patch.boostOrExpAdjustment = m;
+    syncDstLevelToDerivedTarget(id, patch);
+  }
+
+  /**
+   * 睡眠目標時間の設定・解除（§5.3）。
+   * 目標 T を固定したまま、睡眠EXPで賄えない分のアメ数を candyTarget へ保存する。
+   * 不変条件（sleepTargetHours ⇒ candyTarget）をここで必ず満たす。
+   */
+  function setRowSleepTargetHours(id: string, hours: number | undefined) {
+    activeRowId.value = id;
+    const r = rows.value.find((x) => x.id === id);
+    if (!r) return;
+
+    if (hours === undefined) {
+      // 睡眠目標のみ解除。candyTarget は通常の個数指定として残す（§4.3 状態遷移表）。
+      updateRow(id, { sleepTargetHours: undefined });
+      return;
+    }
+
+    // 現在の実効目標 T を固定する（睡眠設定前の目標を維持）。
+    const t = rowDerivedTarget(r);
+    const next = { ...r, sleepTargetHours: hours };
+    const m = candyTargetForFixedTarget(next, t.targetLevel, t.targetExpInLevel);
+    updateRow(id, { sleepTargetHours: hours, candyTarget: m });
+  }
+
+  /**
+   * 累計睡眠時間の変更。睡眠目標時間が設定済みなら「これから寝る時間」が変わるので
+   * candyTarget を再計算する（§5.5「累計睡眠時間の変更が自動で反映される」）。
+   */
+  function setRowSleepHours(rowId: string, sleepHours: number | undefined) {
+    const r = rows.value.find((x) => x.id === rowId);
+    if (!r) return;
+    if (r.sleepTargetHours === undefined) {
+      updateRow(rowId, { sleepHours });
+      return;
+    }
+    const t = rowDerivedTarget(r);
+    const next = { ...r, sleepHours };
+    const m = candyTargetForFixedTarget(next, t.targetLevel, t.targetExpInLevel);
+    updateRow(rowId, { sleepHours, candyTarget: m });
   }
   function onRowBoostLevel(id: string, v: string) {
     activeRowId.value = id;
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
-    const mid = clampInt(v, r.srcLevel, r.dstLevel, r.srcLevel);
-    updateRow(id, { boostReachLevel: mid, mode: "targetLevel" });
-  }
-  function onRowBoostRatio(id: string, v: string) {
-    activeRowId.value = id;
-    const r = rows.value.find((x) => x.id === id);
-    if (!r) return;
-
-    const pct = clampInt(v, 0, 100, 0);
-
-    // ピークを計算（expRemaining が undefined または 0 なら expGot = 0）
-    const toNext = Math.max(0, calcExp(r.srcLevel, r.srcLevel + 1, r.expType));
-    const expGot = (r.expRemaining !== undefined && r.expRemaining > 0) ? Math.max(0, toNext - r.expRemaining) : 0;
-
-    let computedPeak: number;
-    if (r.srcLevel === r.dstLevel) {
-      computedPeak = 0;
-    } else if (boostKind.value === "none") {
-      const res = calcExpAndCandyMixed({
-        srcLevel: r.srcLevel,
-        dstLevel: r.dstLevel,
-        expType: r.expType,
-        nature: r.nature,
-        boost: "none",
-        boostCandy: 0,
-        expGot,
-      });
-      computedPeak = res.normalCandy;
-    } else {
-      const res = calcExpAndCandy({
-        srcLevel: r.srcLevel,
-        dstLevel: r.dstLevel,
-        expType: r.expType,
-        nature: r.nature,
-        boost: boostKind.value,
-        expGot,
-      });
-      computedPeak = res.candy;
-    }
-
-    const storedPeak = r.candyPeak ?? 0;
-    const effectivePeak = storedPeak > 0 ? storedPeak : computedPeak;
-
-    // 割合からアメブ個数を計算
-    const newCandy = Math.round(effectivePeak * pct / 100);
-
-    // アメブ個数から到達可能レベルを計算
-    const sim = calcLevelByCandy({
-      srcLevel: r.srcLevel,
-      dstLevel: r.dstLevel,
-      expType: r.expType,
-      nature: r.nature,
-      boost: boostKind.value,
-      candy: newCandy,
-      expGot,
-    });
-    const newBoostReachLevel = Math.max(r.srcLevel, sim.level);
-
-    updateRow(id, {
-      boostOrExpAdjustment: newCandy,
-      candyPeak: effectivePeak,  // ピークを維持
-      boostRatioPct: pct,
-      boostReachLevel: newBoostReachLevel,
-      mode: "targetLevel"
-    });
+    const mid = clampInt(v, r.srcLevel, MAX_LEVEL, r.srcLevel);
+    updateRow(id, { boostReachLevel: mid });
   }
   /**
-   * アメブ個数（またはEXP調整）入力時のハンドラー
+   * アメブ個数の入力（§4.3）。
    *
-   * ロジック:
-   * - boostOrExpAdjustment = 入力されたアメブ個数（真実のソース）
-   * - candyPeak = ピーク値（入力がピークを超えたら更新）
-   * - boostRatioPct = 派生値（表示用）
-   *
-   * 入力がピーク超え → ピーク更新、割合100%
-   * 入力がピーク以下 → ピーク維持、割合更新
-   *
-   * ※ MAX_LEVEL到達に必要なアメ数を上限としてクランプ
+   * アメブが駆動側なので、増やして総アメ数を超えたら個数指定の方を引き上げる。
+   * （逆に個数指定を減らしたときは、そちらが駆動側なのでアメブを内数へクランプする）
    */
   function onRowBoostCandy(id: string, v: string) {
     activeRowId.value = id;
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
 
-    const toNext = Math.max(0, calcExp(r.srcLevel, r.srcLevel + 1, r.expType));
-    const expGot = (r.expRemaining !== undefined && r.expRemaining > 0) ? Math.max(0, toNext - r.expRemaining) : 0;
-
-    // MAX_LEVEL到達に必要なアメ数を計算（クランプ用上限）
-    let maxCandyForMaxLevel: number;
-    if (r.srcLevel >= MAX_LEVEL) {
-      maxCandyForMaxLevel = 0;
-    } else if (boostKind.value === "none") {
-      const res = calcExpAndCandyMixed({
-        srcLevel: r.srcLevel,
-        dstLevel: MAX_LEVEL,
-        expType: r.expType,
-        nature: r.nature,
-        boost: "none",
-        boostCandy: 0,
-        expGot,
-      });
-      maxCandyForMaxLevel = res.normalCandy;
-    } else {
-      const res = calcExpAndCandy({
-        srcLevel: r.srcLevel,
-        dstLevel: MAX_LEVEL,
-        expType: r.expType,
-        nature: r.nature,
-        boost: boostKind.value,
-        expGot,
-      });
-      maxCandyForMaxLevel = res.candy;
-    }
-
-    // 入力値をクランプ（0 ≤ n ≤ maxCandyForMaxLevel）
     const rawN = Math.max(0, Math.floor(Number(v) || 0));
-    const n = Math.min(rawN, maxCandyForMaxLevel);
+    const n = Math.min(rawN, maxBoostCandyFor(r));
 
-    // computedPeak を計算（現在の目標到達に必要なアメ数）
-    let computedPeak: number;
-    if (r.srcLevel === r.dstLevel) {
-      computedPeak = 0;
-    } else if (boostKind.value === "none") {
-      const res = calcExpAndCandyMixed({
-        srcLevel: r.srcLevel,
-        dstLevel: r.dstLevel,
-        expType: r.expType,
-        nature: r.nature,
-        boost: "none",
-        boostCandy: 0,
-        expGot,
-      });
-      computedPeak = res.normalCandy;
-    } else {
-      const res = calcExpAndCandy({
-        srcLevel: r.srcLevel,
-        dstLevel: r.dstLevel,
-        expType: r.expType,
-        nature: r.nature,
-        boost: boostKind.value,
-        expGot,
-      });
-      computedPeak = res.candy;
-    }
+    const patch: Partial<CalcRow> = { boostOrExpAdjustment: n, boostReachLevel: boostReachLevelFor(r, n) };
+    applyExcessBoostAsCandyTarget(r, n, patch);
+    syncDstLevelToDerivedTarget(id, patch);
+  }
 
-    // effectivePeak = 保存されたピークまたは computedPeak
-    const storedPeak = r.candyPeak ?? 0;
-    const effectivePeak = storedPeak > 0 ? storedPeak : computedPeak;
-
-
-
-    if (boostKind.value === "none") {
-      // 通常モード: 入力値と連動、割合は常に100%
-      // 到達レベルを計算
-      const sim = calcLevelByCandy({
-        srcLevel: r.srcLevel,
-        dstLevel: MAX_LEVEL,
-        expType: r.expType,
-        nature: r.nature,
-        boost: "none",
-        candy: n,
-        expGot,
-      });
-      const reachableLevel = Math.max(r.srcLevel, sim.level);
-      updateRow(id, {
-        mode: "peak",
-        dstLevel: reachableLevel,
-        boostOrExpAdjustment: n,
-        candyPeak: n,
-        boostRatioPct: 100,
-      });
+  /**
+   * アメブ個数が目標を追い越したら、その個数を個数指定として立てる／引き上げる。
+   *
+   * - 個数指定なし: 目標Lv到達に必要な最小数を超えたら個数指定へ遷移する。
+   *   こうしないと「個数指定なしなのに目標がアメブ個数で決まる」中間状態ができ、
+   *   個数指定の有無で anchor が決まるモデル（§4.3）が崩れる
+   * - 個数指定あり: n > m なら m を n まで引き上げる（アメブは総アメ数の内数のまま）
+   *
+   * アメブが超過した分は通常アメを使わないので、総アメ数はアメブ個数そのものになる。
+   */
+  function applyExcessBoostAsCandyTarget(r: CalcRow, n: number, patch: Partial<CalcRow>): void {
+    if (boostKind.value === "none") return;
+    if (r.candyTarget !== undefined) {
+      if (n > r.candyTarget) patch.candyTarget = n;
       return;
     }
+    const minBoost = minBoostForTarget({
+      srcLevel: r.srcLevel, targetLevel: r.dstLevel, targetExpInLevel: 0,
+      expType: r.expType, nature: r.nature, boostKind: boostKind.value,
+      maxBoost: Number.MAX_SAFE_INTEGER, expGot: rowExpGot(r),
+    });
+    if (n > minBoost) patch.candyTarget = n;
+  }
 
-    // イベント時（full/mini）
-    if (n > effectivePeak) {
-      // ピーク超えの入力 → ピーク更新、dstLevel更新
-      const sim = calcLevelByCandy({
-        srcLevel: r.srcLevel,
-        dstLevel: MAX_LEVEL,
-        expType: r.expType,
-        nature: r.nature,
-        boost: boostKind.value,
-        candy: n,
-        expGot,
-      });
-      const reachableLevel = Math.max(r.srcLevel, sim.level);
-      const newDst = Math.max(r.dstLevel, reachableLevel);
-      const currentBoostReach = r.boostReachLevel ?? r.srcLevel;
-      const isFullBoost = currentBoostReach >= r.dstLevel;
-      const newBoostReach = isFullBoost ? newDst : currentBoostReach;
+  /**
+   * アメブ個数の上限は MAX_LEVEL 到達に必要なアメ数。
+   *
+   * 個数指定 m ではクランプしない。アメブを増やす操作ではアメブが駆動側で、
+   * m を超えた分は m の方を引き上げる（applyExcessBoostAsCandyTarget）。
+   */
+  function maxBoostCandyFor(r: CalcRow): number {
+    if (boostKind.value === "none") return 0;
+    if (r.srcLevel >= MAX_LEVEL) return 0;
+    return calcExpAndCandy({
+      srcLevel: r.srcLevel, dstLevel: MAX_LEVEL, dstExpInLevel: 0,
+      expType: r.expType, nature: r.nature, boost: boostKind.value, expGot: rowExpGot(r),
+    }).candy;
+  }
 
-      updateRow(id, {
-        mode: "peak",
-        dstLevel: newDst,
-        boostOrExpAdjustment: n,
-        candyPeak: n,
-        boostRatioPct: 100,
-        boostReachLevel: newBoostReach,
-      });
-    } else {
-      // ピーク以下の入力 → ピーク維持、割合更新
-      // アメブ個数から到達可能レベルを計算
-      const sim = calcLevelByCandy({
-        srcLevel: r.srcLevel,
-        dstLevel: r.dstLevel,
-        expType: r.expType,
-        nature: r.nature,
-        boost: boostKind.value,
-        candy: n,
-        expGot,
-      });
-      const newBoostReachLevel = Math.max(r.srcLevel, sim.level);
+  /**
+   * 「アメブ目標Lv = reachLevel」を賄うアメブ個数。
+   *
+   * 「アメブ1個 → 通常アメ1個」置換（§3.8-e）は、アメブが目標全体を賄うときだけ当てる。
+   * その場合は最後のはみ出しEXPが余剰なので、1個を通常アメへ回せばかけらを節約できる。
+   * アメブ目標Lvが目標Lvより下（その先を通常アメで続ける）ときに1個削ると、
+   * アメブ分が実際に reachLevel へ届かず、不足を通常アメで補うぶん総アメ数も増えて損になる。
+   */
+  function boostCandyForReachLevel(r: CalcRow, reachLevel: number, dstLevel: number): number {
+    const shared = { srcLevel: r.srcLevel, expType: r.expType, nature: r.nature, expGot: rowExpGot(r) };
+    return reachLevel >= dstLevel
+      ? minBoostForTarget({
+        ...shared, targetLevel: reachLevel, targetExpInLevel: 0,
+        boostKind: boostKind.value, maxBoost: Number.MAX_SAFE_INTEGER,
+      })
+      : calcExpAndCandy({ ...shared, dstLevel: reachLevel, dstExpInLevel: 0, boost: boostKind.value }).candy;
+  }
 
-      if (storedPeak > 0) {
-        // ピークあり → candyPeak は変更しない
-        const newRatio = storedPeak > 0 ? Math.floor((n / storedPeak) * 100) : 100;
-        updateRow(id, {
-          mode: "targetLevel",
-          boostOrExpAdjustment: n,
-          boostRatioPct: newRatio,
-          boostReachLevel: newBoostReachLevel,
-        });
-      } else {
-        // ピークなし → effectivePeak をピークとして確定
-        const newRatio = effectivePeak > 0 ? Math.floor((n / effectivePeak) * 100) : 100;
-        updateRow(id, {
-          mode: "targetLevel",
-          boostOrExpAdjustment: n,
-          candyPeak: effectivePeak,
-          boostRatioPct: newRatio,
-          boostReachLevel: newBoostReachLevel,
-        });
-      }
-    }
+  /** アメブ個数 n から、アメブだけで到達できるLv（表示用）。 */
+  function boostReachLevelFor(r: CalcRow, n: number): number {
+    const sim = calcLevelByCandy({
+      srcLevel: r.srcLevel, dstLevel: MAX_LEVEL, expType: r.expType, nature: r.nature,
+      boost: boostKind.value, candy: n, expGot: rowExpGot(r),
+    });
+    return Math.max(r.srcLevel, sim.level);
   }
 
   function indexOfRow(id: string): number {
@@ -1286,39 +1352,33 @@ export function useCalcStore(opts: {
     // ─────────────────────────────────────────────────────────────
     // ui.boostCandyInput: boostOrExpAdjustment が真実のソース
     // ─────────────────────────────────────────────────────────────
-    // 保存された candyPeak を使用（なければ computedPeak をフォールバック）
-    const storedPeak = r.candyPeak ?? 0;
-    const effectivePeak = storedPeak > 0 ? storedPeak : computedPeak;
-    // 保存された boostOrExpAdjustment を使用（なければ effectivePeak をフォールバック）
-    const storedAdjustment = r.boostOrExpAdjustment ?? effectivePeak;
+    // 未設定なら「目標Lv到達に必要な数」をフォールバックとして表示する
+    const effectivePeak = computedPeak;
+    const uiCandy = r.boostOrExpAdjustment ?? effectivePeak;
 
-    // アメブ個数: 常に boostOrExpAdjustment を真実のソースとして使用
-    const uiCandy = storedAdjustment;
-
-    // ui.boostReachLevel: アメブで到達可能なレベル
-    const boostOnly = calcLevelByCandy({
-      srcLevel: src,
-      dstLevel: dst,
-      expType: expT,
-      nature: nat,
-      boost: boostKind.value,
-      candy: uiCandy,
-      expGot,
-    });
-    const uiBoostReachLevel =
-      (r.mode === "targetLevel" && r.boostReachLevel !== undefined && r.boostReachLevel < dst) ? clampInt(r.boostReachLevel, src, dst, src) : clampInt(boostOnly.level, src, dst, src);
-
-    // スライダー割合はピークに対するアメブ個数の割合（派生値）
-    const uiRatioPct = effectivePeak > 0 ? Math.round((uiCandy / effectivePeak) * 100) : 100;
+    // ui.boostReachLevel: 「アメブでどこまで賄うか」という保存された意図をそのまま出す。
+    //
+    // アメブ個数から逆算してはいけない。「アメブ1個 → 通常アメ1個」置換（§3.8-e）は
+    // 最後の1個を通常アメへ回すかけら節約なので、逆算すると必ず1段下がって見え、
+    // スライダーで上げても表示が戻る（上げ操作を食う）。
+    // 目標Lvを超えるアメブ設定も許容するため、上限は MAX_LEVEL でクランプする。
+    const uiBoostReachLevel = r.boostReachLevel !== undefined
+      ? clampInt(r.boostReachLevel, src, MAX_LEVEL, src)
+      : clampInt(
+        calcLevelByCandy({
+          srcLevel: src, dstLevel: MAX_LEVEL, expType: expT, nature: nat,
+          boost: boostKind.value, candy: uiCandy, expGot,
+        }).level,
+        src, MAX_LEVEL, src,
+      );
 
     // expLeftNext: アメを使った後の次Lvまでの残EXP
-    // ピーク維持の場合、獲得EXP = ピーク（固定）なので、ピークをキャンディ数として使用
     let totalCandyForSim: number;
     if (boostKind.value === "none") {
       // 通常モード: 入力値をそのまま使用
       totalCandyForSim = uiCandy;
     } else {
-      // アメブ時: ピークを使用
+      // アメブ時: 目標到達に必要な数を使用
       totalCandyForSim = effectivePeak;
     }
     const simResult = calcLevelByCandy({
@@ -1340,7 +1400,7 @@ export function useCalcStore(opts: {
       title: resolvedTitle,
       normalized: { srcLevel: src, dstLevel: dst, expRemaining: expInfo.expRemaining },
       expLeftNext,
-      ui: { boostCandyInput: uiCandy, boostRatioPct: uiRatioPct, boostReachLevel: uiBoostReachLevel },
+      ui: { boostCandyInput: uiCandy, boostReachLevel: uiBoostReachLevel },
     };
   }
 
@@ -1401,7 +1461,8 @@ export function useCalcStore(opts: {
         title: String(r.title ?? "").trim() || "(no name)",
         natureLabel: natureLabel(r.nature),
         srcLevel: r.srcLevel,
-        dstLevel: p.reachableLine.level,
+        // 出力先Lvは睡眠後の最終目標を出す（アメ終了地点ではない。設計書§6.4）
+        dstLevel: p.targetLevel,
         boostCandy,
         normalCandy,
         totalCandy: boostCandy + normalCandy,
@@ -1436,7 +1497,6 @@ export function useCalcStore(opts: {
           candyFamilyKey: pokedexId ? getCandyFamilyKey(pokedexId) : undefined,
           type: row.pokemonType || (pokedexId ? getPokemonType(pokedexId) : ""),
           nature: row.nature,
-          mode: row.mode,
           currentLevel: row.srcLevel,
           currentExpInLevel: Math.max(0, calcExp(row.srcLevel, row.srcLevel + 1, row.expType) - row.expRemaining),
           expRemaining: row.expRemaining,
@@ -1681,11 +1741,10 @@ export function useCalcStore(opts: {
       expRemaining: row.expRemaining,
       expType: row.expType,
       nature: row.nature,
-      mode: row.mode,
       boostReachLevel: row.boostReachLevel,
-      candyPeak: row.candyPeak,
       candyTarget: row.candyTarget,
       boostCandyInput: row.ui.boostCandyInput,
+      sleepExp: rowSleepExp(row),
     })), {
       candyInventory: candyStore.getInventory(),
       dreamShards: shardsCap.value,
@@ -2013,12 +2072,10 @@ export function useCalcStore(opts: {
   }
 
   /**
-   * 理論値行を取得（個数指定があれば candyTarget、なければ target）
+   * 理論値行を取得。
+   * 個数指定＝目標になったため targetLine に一本化した（設計書§4.2, §4.5.1）。
    */
   function getTheoreticalRow(p: PokemonPlanResult): PokemonPlanLine {
-    if (p.candyTargetLine) {
-      return p.candyTargetLine;
-    }
     return p.targetLine;
   }
 
@@ -2123,7 +2180,6 @@ export function useCalcStore(opts: {
     // 共通ヘルパーでアメ計算パッチを生成（expRemaining を渡して内部で expGot を計算）
     // 既存行がある場合は excludeRowId で自分を除外、新規行の場合は除外不要（まだ rows に存在しない）
     const existing = rows.value.find((x) => x.boxId === p.boxId) ?? null;
-    const candyPatchResult = calcCandyPatch({ srcLevel, dstLevel, expType: p.expType, nature: p.nature, expRemaining: remaining, excludeRowId: existing?.id });
 
     const title =
       String(p.title ?? "").trim() ||
@@ -2132,14 +2188,34 @@ export function useCalcStore(opts: {
 
 
     if (existing) {
-      updateRow(existing.id, {
-        title, boxId: p.boxId, srcLevel, dstLevel, expType: p.expType, nature: p.nature,
+      // §6.3: 元Lvが変わったときだけ個数指定・睡眠目標を解除し、アメブを再計算する。
+      // dstLevel はクランプのみでボックス既定値へ戻さない。
+      const srcLevelChanged = existing.srcLevel !== srcLevel;
+      const keptDstLevel = Math.max(srcLevel, Math.min(MAX_LEVEL, existing.dstLevel));
+      const base: Partial<CalcRow> = {
+        title, boxId: p.boxId, srcLevel, dstLevel: keptDstLevel, expType: p.expType, nature: p.nature,
         expRemaining: remaining, pokedexId: p.pokedexId, pokemonType: p.pokemonType,
         sleepHours: p.sleepHours,
-        ...candyPatchResult,
+      };
+
+      if (!srcLevelChanged) {
+        updateRow(existing.id, base);
+        activeRowId.value = existing.id;
+        return;
+      }
+
+      updateRow(existing.id, {
+        ...base,
+        candyTarget: undefined,
+        sleepTargetHours: undefined,
+        ...calcCandyPatch({
+          srcLevel, dstLevel: keptDstLevel, expType: p.expType, nature: p.nature,
+          expRemaining: remaining, excludeRowId: existing.id,
+        }),
       });
       activeRowId.value = existing.id;
     } else {
+      const candyPatchResult = calcCandyPatch({ srcLevel, dstLevel, expType: p.expType, nature: p.nature, expRemaining: remaining });
       const row: CalcRow = {
         id: cryptoRandomId(), title, boxId: p.boxId, pokedexId: p.pokedexId, pokemonType: p.pokemonType,
         srcLevel, dstLevel, expRemaining: remaining, expType: p.expType, nature: p.nature,
@@ -2164,12 +2240,6 @@ export function useCalcStore(opts: {
       expRemaining: r.expRemaining,
       sleepHours: r.sleepHours,
     };
-  }
-
-  function setRowSleepHours(rowId: string, sleepHours: number | undefined) {
-    rows.value = rows.value.map((x) =>
-      x.id === rowId ? { ...x, sleepHours } : x
-    );
   }
 
   return {
@@ -2289,7 +2359,6 @@ export function useCalcStore(opts: {
     onRowNature,
     onRowCandyTarget,
     onRowBoostLevel,
-    onRowBoostRatio,
     onRowBoostCandy,
     resetRowBoostCandy,
 
@@ -2302,5 +2371,6 @@ export function useCalcStore(opts: {
     upsertFromBox,
     buildPlannerPatchFromRow,
     setRowSleepHours,
+    setRowSleepTargetHours,
   };
 }

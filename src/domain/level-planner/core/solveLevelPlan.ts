@@ -9,6 +9,8 @@ import type {
 import { isPerfEnabled } from '../../../utils/perf';
 import { CANDY_VALUES, MAX_ACCEPTABLE_SURPLUS } from '../constants';
 import { calcExp, calcExpAndCandyMixed, calcExpPerCandy } from '../../pokesleep/exp';
+import { minBoostForTarget } from '../../pokesleep/minBoostForTarget';
+import { simulateCandyBudget } from '../../pokesleep/simulateCandyBudget';
 import { dreamShardsPerCandy, maxLevel } from '../../pokesleep/tables';
 import { boostRules } from '../../pokesleep/boost-config';
 import { findBestItemAllocation } from './itemAllocation';
@@ -268,40 +270,6 @@ function hasFixedCandyTargetBoost(pokemon: Pick<NormalizedPokemon, 'candyTarget'
   return pokemon.candyTarget?.boostedCandyUnits !== undefined;
 }
 
-function simulateCandyBudget(pokemon: Pick<NormalizedPokemon, 'currentLevel' | 'currentExpInLevel' | 'expType' | 'nature'>, boostBudget: number, totalBudget: number, shardLimit: number, kind: LevelPlannerInput['boost']['kind'], fixedBoost = false) {
-  let level = pokemon.currentLevel;
-  let expInLevel = pokemon.currentExpInLevel;
-  let boost = Math.max(0, Math.floor(boostBudget));
-  let remaining = Math.max(0, Math.floor(totalBudget));
-  let boostUsed = 0; let normalUsed = 0; let shards = 0;
-  const useCandy = (isBoost: boolean): boolean => {
-    if (remaining <= 0 || level >= maxLevel) return false;
-    if (isBoost && boost <= 0) return false;
-    const shard = (dreamShardsPerCandy[level + 1] ?? 0) * (isBoost ? boostRules[kind].shardMultiplier : 1);
-    if (shards + shard > shardLimit) return false;
-    if (isBoost) { boost--; boostUsed++; } else normalUsed++;
-    remaining--;
-    expInLevel += calcExpPerCandy(level, pokemon.nature, isBoost ? kind : 'none');
-    shards += shard;
-    while (level < maxLevel) {
-      const needed = calcExp(level, level + 1, pokemon.expType);
-      if (expInLevel < needed) break;
-      expInLevel -= needed;
-      level++;
-    }
-    return true;
-  };
-  while (remaining > 0 && level < maxLevel) {
-    if (boost > 0) {
-      if (useCandy(true)) continue;
-      if (fixedBoost) break;
-    }
-    if (!useCandy(false)) break;
-  }
-  const expGained = calcExp(pokemon.currentLevel, level, pokemon.expType) + expInLevel - pokemon.currentExpInLevel;
-  return { level, expInLevel: level >= maxLevel ? 0 : expInLevel, boostUsed, normalUsed, shards, expGained };
-}
-
 function candyTargetBoostCap(pokemon: Pick<NormalizedPokemon, 'candyTarget' | 'requestedBoostCandy'>, requestedBoostCandy: number, kind: LevelPlannerInput['boost']['kind']): number {
   if (kind === 'none' || !pokemon.candyTarget) return 0;
   return Math.min(Math.max(0, requestedBoostCandy), pokemon.candyTarget.boostedCandyUnits ?? pokemon.candyTarget.totalCandyUnits);
@@ -368,7 +336,17 @@ function analyzeContention(input: Pick<NormalizedInput, 'pokemonList' | 'boost' 
 }
 function maxBoostFor(pokemon: NormalizedPokemon, kind: LevelPlannerInput['boost']['kind'], limit: number): number {
   if (pokemon.candyTarget) return Math.min(candyTargetBoostCap(pokemon, pokemon.requestedBoostCandy, kind), Math.max(0, limit));
-  const full = targetMixed(pokemon, kind, Number.MAX_SAFE_INTEGER).boostCandy;
+  // 目標到達に不要な余分な1個のアメブを消費しない（仕様§4、設計書§3.8-e）。
+  const full = minBoostForTarget({
+    srcLevel: pokemon.currentLevel,
+    targetLevel: pokemon.effectiveLevel,
+    targetExpInLevel: pokemon.effectiveExp,
+    expType: pokemon.expType,
+    nature: pokemon.nature,
+    boostKind: kind,
+    maxBoost: Number.MAX_SAFE_INTEGER,
+    expGot: pokemon.currentExpInLevel,
+  });
   return Math.min(pokemon.requestedBoostCandy, full, Math.max(0, limit));
 }
 
@@ -2332,9 +2310,18 @@ function zeroLine(pokemon: NormalizedPokemon): PokemonPlanLine {
 function canReuseDisplaySupplyBase(baseTotalCandy: number | undefined, targetTotalCandy: number): boolean {
   return baseTotalCandy === targetTotalCandy;
 }
+/**
+ * 「目標まで」行（§4.5.1）。
+ *
+ * - totalCandyUnitsUsed = 予定アメ数（個数指定があればその値、なければ目標到達に必要な最小数）
+ * - level / expInLevel  = 予定アメを使い終えた地点（睡眠EXPを含まない）
+ *
+ * 到達判定・残EXPは effectiveLevel/effectiveExp（＝アメが担当する到達点）を基準にする。
+ * 個数指定なしの行では effective == target なので、従来と同じ結果になる。
+ */
 function displayLine(pokemon: NormalizedPokemon, input: NormalizedInput, inventory: CandyInventory, total: number, requestedBoost: number, baseSupply?: CandySupplyBreakdown, baseTotalCandy?: number): PokemonPlanLine {
   const boost = input.boost.kind === 'none' ? 0 : Math.min(Math.max(0, requestedBoost), total);
-  const reached = simulate(pokemon, boost, Math.max(0, total - boost), Infinity, pokemon.targetLevel, pokemon.targetExpInLevel, input.boost.kind);
+  const reached = simulate(pokemon, boost, Math.max(0, total - boost), Infinity, pokemon.effectiveLevel, pokemon.effectiveExp, input.boost.kind);
   const used = reached.boostUsed + reached.normalUsed;
   const supply = baseSupply && canReuseDisplaySupplyBase(baseTotalCandy, used)
     ? addTheoreticalSupplyFill(baseSupply, used, pokemon, inventory)
@@ -2342,32 +2329,30 @@ function displayLine(pokemon: NormalizedPokemon, input: NormalizedInput, invento
   return {
     level: reached.level, expInLevel: reached.expInLevel,
     expToNextLevel: Math.max(0, calcExp(reached.level, reached.level + 1, pokemon.expType) - reached.expInLevel),
-    expToTarget: Math.max(0, calcExp(reached.level, pokemon.targetLevel, pokemon.expType) + pokemon.targetExpInLevel - reached.expInLevel),
+    expToTarget: Math.max(0, calcExp(reached.level, pokemon.effectiveLevel, pokemon.expType) + pokemon.effectiveExp - reached.expInLevel),
     totalCandyUnitsUsed: used, boostedCandyUnits: reached.boostUsed, nonBoostCandyUnits: reached.normalUsed,
     candySupply: supply, dreamShardsUsed: reached.shards, expGained: reached.expGained,
-    surplusExp: Math.max(0, reached.expInLevel - pokemon.targetExpInLevel), surplusCandyValue: Math.max(0, supplyValue(supply) - used),
-    targetReached: cmpLevel(reached, { level: pokemon.targetLevel, expInLevel: pokemon.targetExpInLevel }) >= 0,
+    surplusExp: Math.max(0, reached.expInLevel - pokemon.effectiveExp), surplusCandyValue: Math.max(0, supplyValue(supply) - used),
+    targetReached: cmpLevel(reached, { level: pokemon.effectiveLevel, expInLevel: pokemon.effectiveExp }) >= 0,
   };
 }
-function displayCandyTargetLine(pokemon: NormalizedPokemon, input: NormalizedInput, candidate: Candidate, inventory: CandyInventory): PokemonPlanLine {
-  if (!pokemon.candyTarget) return candidate.line;
-  const total = pokemon.candyTarget.totalCandyUnits;
-  if (candidate.line.targetReached) {
-    const supply = addTheoreticalSupplyFill(candidate.line.candySupply, total, pokemon, inventory);
-    return { ...candidate.line, candySupply: supply, surplusCandyValue: Math.max(0, supplyValue(supply) - total) };
+
+/** 「目標まで」行の予定アメ数と、そのうちアメブに回す数（§4.5.1）。 */
+function plannedCandyForDisplay(pokemon: NormalizedPokemon, input: NormalizedInput): { total: number; boost: number } {
+  // 「アメブ1個 → 通常アメ1個」置換（仕様§4 / 設計書§3.8-e）は maxBoostFor に入っている。
+  // 表示行もそれを通さないと、実配分がアメブ n-1 + 通常1 なのに目標まで行だけ全アメブになり、
+  // アメブ内訳とかけらが実配分とズレる。
+  // グローバル上限は掛けない（理論値行なので、枠不足は shortage.boostCandyUnavailable で別途出す）。
+  const boost = maxBoostFor(pokemon, input.boost.kind, Number.POSITIVE_INFINITY);
+  if (pokemon.candyTarget) {
+    return { total: pokemon.candyTarget.totalCandyUnits, boost };
   }
-  const boost = Math.min(candyTargetBoostCap(pokemon, pokemon.requestedBoostCandy, input.boost.kind), total);
-  const reached = simulateCandyBudget(pokemon, boost, total, Infinity, input.boost.kind, hasFixedCandyTargetBoost(pokemon));
-  const supply = resolveDisplayCandySupply(total, pokemon, inventory, true, prefersMinSurplusDisplay(input));
-  return {
-    level: reached.level, expInLevel: reached.expInLevel,
-    expToNextLevel: Math.max(0, calcExp(reached.level, reached.level + 1, pokemon.expType) - reached.expInLevel),
-    expToTarget: Math.max(0, calcExp(reached.level, pokemon.targetLevel, pokemon.expType) + pokemon.targetExpInLevel - reached.expInLevel),
-    totalCandyUnitsUsed: total, boostedCandyUnits: reached.boostUsed, nonBoostCandyUnits: reached.normalUsed,
-    candySupply: supply, dreamShardsUsed: reached.shards, expGained: reached.expGained,
-    surplusExp: Math.max(0, reached.expInLevel - pokemon.targetExpInLevel), surplusCandyValue: Math.max(0, supplyValue(supply) - total),
-    targetReached: true,
-  };
+  const mixed = calcExpAndCandyMixed({
+    srcLevel: pokemon.currentLevel, dstLevel: pokemon.effectiveLevel, dstExpInLevel: pokemon.effectiveExp,
+    expType: pokemon.expType, nature: pokemon.nature, boost: input.boost.kind,
+    boostCandy: boost, expGot: pokemon.currentExpInLevel,
+  });
+  return { total: mixed.boostCandy + mixed.normalCandy, boost: mixed.boostCandy };
 }
 function calcDiagnosis(pokemon: NormalizedPokemon, line: PokemonPlanLine, usage: Usage, input: NormalizedInput): { shortage: PokemonShortage; diagnosis: PokemonConstraintDiagnosis } {
   const remainingBoost = Math.max(0, input.boost.limit - usage.boost); const remainingShards = Math.max(0, input.dreamShards - usage.shards);
@@ -2451,13 +2436,13 @@ export function solveLevelPlan(rawInput: LevelPlannerInput): LevelPlannerResult 
   markPhase('selectChoices');
   const inventory = structuredClone(input.candyInventory); let snapshot = emptyUsage();
   const pokemonResults: PokemonPlanResult[] = choices.map((candidate, index) => {
-    const pokemon = candidate.p; const mixed = calcExpAndCandyMixed({ srcLevel: pokemon.currentLevel, dstLevel: pokemon.targetLevel, dstExpInLevel: pokemon.targetExpInLevel, expType: pokemon.expType, nature: pokemon.nature, boost: input.boost.kind, boostCandy: pokemon.requestedBoostCandy, expGot: pokemon.currentExpInLevel });
-    const candyTargetLine = pokemon.candyTarget ? displayCandyTargetLine(pokemon, input, candidate, inventory) : undefined;
-    const targetLine = displayLine(pokemon, input, inventory, mixed.boostCandy + mixed.normalCandy, mixed.boostCandy, candyTargetLine?.candySupply ?? candidate.line.candySupply, pokemon.candyTarget?.totalCandyUnits ?? candidate.line.totalCandyUnitsUsed);
+    const pokemon = candidate.p;
+    const planned = plannedCandyForDisplay(pokemon, input);
+    const targetLine = displayLine(pokemon, input, inventory, planned.total, planned.boost, candidate.line.candySupply, candidate.line.totalCandyUnitsUsed);
     const diagnostic = calcDiagnosis(pokemon, candidate.line, snapshot, input);
     const role = boundaryIndex === null || index < boundaryIndex ? 'upper' : index === boundaryIndex ? 'boundary' : 'lower';
     consumeInventory(inventory, pokemon, candidate.line); snapshot = mergeUsage(snapshot, candidate.usage);
-    return { pokemonId: pokemon.pokemonId, pokedexId: pokemon.pokedexId, name: pokemon.name, currentLevel: pokemon.currentLevel, currentExpInLevel: pokemon.currentExpInLevel, targetLevel: pokemon.targetLevel, targetExpInLevel: pokemon.targetExpInLevel, targetLine, candyTargetLine, reachableLine: candidate.line, targetReached: candidate.line.targetReached, shortage: diagnostic.shortage, constraintDiagnosis: diagnostic.diagnosis, role };
+    return { pokemonId: pokemon.pokemonId, pokedexId: pokemon.pokedexId, name: pokemon.name, currentLevel: pokemon.currentLevel, currentExpInLevel: pokemon.currentExpInLevel, targetLevel: pokemon.targetLevel, targetExpInLevel: pokemon.targetExpInLevel, targetLine, reachableLine: candidate.line, targetReached: candidate.line.targetReached, shortage: diagnostic.shortage, constraintDiagnosis: diagnostic.diagnosis, role };
   });
   markPhase('renderResults');
   const boostUsed = pokemonResults.reduce((sum, result) => sum + result.reachableLine.boostedCandyUnits, 0);
@@ -2517,14 +2502,13 @@ function renderMixedResult(input: NormalizedInput, choices: Candidate[], lossLed
   let snapshot = emptyUsage();
   const pokemonResults: PokemonPlanResult[] = normalizedChoices.map((candidate, index) => {
     const pokemon = candidate.p;
-    const mixed = calcExpAndCandyMixed({ srcLevel: pokemon.currentLevel, dstLevel: pokemon.targetLevel, dstExpInLevel: pokemon.targetExpInLevel, expType: pokemon.expType, nature: pokemon.nature, boost: input.boost.kind, boostCandy: pokemon.requestedBoostCandy, expGot: pokemon.currentExpInLevel });
-    const candyTargetLine = pokemon.candyTarget ? displayCandyTargetLine(pokemon, input, candidate, inventory) : undefined;
-    const targetLine = displayLine(pokemon, input, inventory, mixed.boostCandy + mixed.normalCandy, mixed.boostCandy, candyTargetLine?.candySupply ?? candidate.line.candySupply, pokemon.candyTarget?.totalCandyUnits ?? candidate.line.totalCandyUnitsUsed);
+    const planned = plannedCandyForDisplay(pokemon, input);
+    const targetLine = displayLine(pokemon, input, inventory, planned.total, planned.boost, candidate.line.candySupply, candidate.line.totalCandyUnitsUsed);
     const diagnostic = calcDiagnosis(pokemon, candidate.line, snapshot, input);
     const role = boundaryIndex === null || index < boundaryIndex ? 'upper' : index === boundaryIndex ? 'boundary' : 'lower';
     consumeInventory(inventory, pokemon, candidate.line);
     snapshot = mergeUsage(snapshot, candidate.usage);
-    return { pokemonId: pokemon.pokemonId, pokedexId: pokemon.pokedexId, name: pokemon.name, currentLevel: pokemon.currentLevel, currentExpInLevel: pokemon.currentExpInLevel, targetLevel: pokemon.targetLevel, targetExpInLevel: pokemon.targetExpInLevel, targetLine, candyTargetLine, reachableLine: candidate.line, targetReached: candidate.line.targetReached, shortage: diagnostic.shortage, constraintDiagnosis: diagnostic.diagnosis, role };
+    return { pokemonId: pokemon.pokemonId, pokedexId: pokemon.pokedexId, name: pokemon.name, currentLevel: pokemon.currentLevel, currentExpInLevel: pokemon.currentExpInLevel, targetLevel: pokemon.targetLevel, targetExpInLevel: pokemon.targetExpInLevel, targetLine, reachableLine: candidate.line, targetReached: candidate.line.targetReached, shortage: diagnostic.shortage, constraintDiagnosis: diagnostic.diagnosis, role };
   });
   const boostUsed = pokemonResults.reduce((sum, result) => sum + result.reachableLine.boostedCandyUnits, 0);
   const candyShortages = pokemonResults.filter(result => result.shortage.candyToTarget > 0).map(result => ({ pokemonId: result.pokemonId, name: result.name, amount: result.shortage.candyToTarget }));

@@ -88,7 +88,13 @@ function close() {
   isOpen.value = false;
 }
 
+/**
+ * 確定値が現在の modelValue と異なる場合だけ emit する。
+ * 未変更でも emit すると、目標Lv欄を開いて閉じただけで個数指定・睡眠目標が解除され、
+ * planner が再計算されてしまう（設計書§6.2）。
+ */
 function setValue(v: number) {
+  if (v === props.modelValue) return;
   emit("update:modelValue", v);
 }
 
@@ -129,7 +135,7 @@ function commitInput(): number {
   const hi = props.max ?? MAX_LEVEL;
   const clamped = Math.max(lo, Math.min(hi, n));
   inputValue.value = String(clamped);
-  emit("update:modelValue", clamped);
+  setValue(clamped);
   return clamped;
 }
 

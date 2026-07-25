@@ -39,7 +39,6 @@ export function buildPlannerStructureSignature(input: LevelPlannerInput): string
       candyFamilyKey: pokemon.candyFamilyKey,
       type: pokemon.type,
       nature: pokemon.nature,
-      mode: pokemon.mode ?? null,
       hasCandyTarget: pokemon.candyTarget !== undefined,
     })),
   });

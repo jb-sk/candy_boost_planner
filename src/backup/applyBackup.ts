@@ -13,7 +13,7 @@ import {
   serializeCalcSlots,
 } from "../persistence/calc";
 import { cancelPersist, flushPersist } from "../persistence/deferredPersist";
-import type { CandyBoostPlannerBackupV2 } from "./types";
+import type { CandyBoostPlannerBackupV3 } from "./types";
 
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -24,14 +24,14 @@ export type ApplyBackupOptions = {
   reload?: () => void;
 };
 
-function restoreInternalBoxEntries(backup: CandyBoostPlannerBackupV2) {
+function restoreInternalBoxEntries(backup: CandyBoostPlannerBackupV3) {
   return backup.data.box.entries.map((entry) => ({
     ...entry,
     source: entry.rawText.trim() ? "nitoyon" as const : "manual" as const,
   }));
 }
 
-export function applyBackup(backup: CandyBoostPlannerBackupV2, options: ApplyBackupOptions = {}): void {
+export function applyBackup(backup: CandyBoostPlannerBackupV3, options: ApplyBackupOptions = {}): void {
   const storage = options.storage ?? localStorage;
   const flush = options.flush ?? (() => flushPersist());
   const cancelPending = options.cancelPending ?? (() => cancelPersist());

@@ -6,7 +6,7 @@ import {
   solveLevelPlanWithBudget as solveLevelPlanWithBudgetCore,
 } from '../../../src/domain/level-planner/core/solveLevelPlan';
 import type { CandySupplyBreakdown, LevelPlannerInput, SolverItemCompareMode } from '../../../src/domain/level-planner/types';
-import { calcExp } from '../../../src/domain/pokesleep/exp';
+import { calcExp, calcExpAndCandy } from '../../../src/domain/pokesleep/exp';
 import { setPerfEnabled } from '../../../src/utils/perf';
 
 function withTestCandyFamilyKeys(input: LevelPlannerInput): LevelPlannerInput {
@@ -503,11 +503,40 @@ describe('単一最適化パイプライン', () => {
       candyInventory: { species: { '25': 0 }, typeCandy: { electric: { s: 0, m: 0 } }, universal: { s: 10, m: 10, l: 2 } },
       options: { itemCompareMode: 'surplusFirst' },
     });
-    const line = result.pokemonResults[0].candyTargetLine!;
+    // 新設計では個数指定＝目標なので、目標まで行がそのまま個数指定行を兼ねる（設計書§4.2, §4.5.1）
+    const line = result.pokemonResults[0].targetLine;
     expect(line.totalCandyUnitsUsed).toBe(1_000);
     expect(line.candySupply.universal.m).toBe(10);
     expect(line.candySupply.universal.l).toBe(2);
     expect(line.candySupply.universal.s).toBeGreaterThan(10);
+  });
+
+  it('目標まで行にも「アメブ1個→通常アメ1個」置換が効き、実配分と内訳・かけらが一致する', () => {
+    // 仕様§4「余分なアメブはコアでも抑制する」/ 設計書§3.8-e。
+    // 表示行だけ全アメブで組むと、アメブ内訳とかけらが実配分とズレる。
+    const result = solveLevelPlan({
+      pokemonList: [{
+        pokemonId: 'swap-display', pokedexId: 25, candyFamilyKey: '25', name: '置換表示', type: 'electric',
+        currentLevel: 50, currentExpInLevel: 0, targetLevel: 51, targetExpInLevel: 0,
+        expType: 600, nature: 'normal', requestedBoostCandy: 9_999, boostAllowed: true, priorityIndex: 0,
+      }],
+      dreamShards: Infinity,
+      boost: { kind: 'mini', limit: 9_999 },
+      candyInventory: { species: { '25': 9_999 }, typeCandy: {}, universal: { s: 0, m: 0, l: 0 } },
+      options: { itemCompareMode: 'surplusFirst' },
+    });
+
+    const p = result.pokemonResults[0];
+    const allBoost = calcExpAndCandy({ srcLevel: 50, dstLevel: 51, dstExpInLevel: 0, expType: 600, nature: 'normal', boost: 'mini' });
+    // 総アメ数は全アメブ時と同じだが、最後の1個は通常アメへ回してかけらを節約する
+    expect(p.targetLine.totalCandyUnitsUsed).toBe(allBoost.candy);
+    expect(p.targetLine.boostedCandyUnits).toBe(allBoost.candy - 1);
+    expect(p.targetLine.nonBoostCandyUnits).toBe(1);
+    expect(p.targetLine.dreamShardsUsed).toBeLessThan(allBoost.shards);
+    // 在庫が足りるので、目標まで行と到達可能行は完全に一致する
+    expect(p.targetLine.boostedCandyUnits).toBe(p.reachableLine.boostedCandyUnits);
+    expect(p.targetLine.nonBoostCandyUnits).toBe(p.reachableLine.nonBoostCandyUnits);
+    expect(p.targetLine.dreamShardsUsed).toBe(p.reachableLine.dreamShardsUsed);
   });
 
   it('個数指定ありの目標まで行は到達可能行のタイプアメ実配分を引き継いで不足分だけ万能Sで補填する', () => {
@@ -533,10 +562,11 @@ describe('単一最適化パイプライン', () => {
       options: { itemCompareMode: 'legacyImproved' },
     });
     const p = result.pokemonResults[0];
-    expect(p.candyTargetLine?.candySupply.type.m).toBe(3);
-    expect(p.candyTargetLine?.candySupply.universal.s).toBe(475);
+    // 新設計では個数指定＝目標。目標まで行が指定1,500個ぶんの行になる（設計書§4.5.1）。
+    // タイプアメの実配分（M×3）を引き継ぎ、不足分だけを万能Sで補填する点は従来どおり。
+    expect(p.targetLine.totalCandyUnitsUsed).toBe(1_500);
     expect(p.targetLine.candySupply.type.m).toBe(3);
-    expect(p.targetLine.candySupply.universal.s).toBe(503);
+    expect(p.targetLine.candySupply.universal.s).toBe(475);
   });
 
   it('目標まで行の理論値補填は在庫に残る種族アメを先に使い、個数指定に左右されない', () => {
@@ -563,19 +593,23 @@ describe('単一最適化パイプライン', () => {
     });
     const withTarget = solveLevelPlan(suicune(50)).pokemonResults[0];
     const withoutTarget = solveLevelPlan(suicune()).pokemonResults[0];
-    // 個数指定行は指定どおり50個ぶんだけを種族アメで賄う
-    expect(withTarget.candyTargetLine?.candySupply.species).toBe(50);
-    // 目標まで行は在庫の種族アメ147を先に使い切ってから万能Sで補填する（1230 = 147 + 361 * 3）
-    expect(withTarget.targetLine.totalCandyUnitsUsed).toBe(1_230);
-    expect(withTarget.targetLine.candySupply.species).toBe(147);
-    expect(withTarget.targetLine.candySupply.universal.s).toBe(361);
-    expect(withTarget.targetLine.surplusCandyValue).toBe(0);
-    // 個数指定の有無で目標まで行は変わらない
-    expect(withTarget.targetLine.candySupply).toEqual(withoutTarget.targetLine.candySupply);
+    // 新設計では個数指定＝目標。指定50個の行は、その50個ぶんを種族アメで賄う（設計書§4.5.1）。
+    expect(withTarget.targetLine.totalCandyUnitsUsed).toBe(50);
+    expect(withTarget.targetLine.candySupply.species).toBe(50);
+    // 個数指定なしの行は目標Lv到達に必要な数を出し、理論値補填は
+    // 「在庫に残る種族アメ147 → 万能S」の順で行う（1230 = 147 + 361 * 3）。この順序は維持する。
+    expect(withoutTarget.targetLine.totalCandyUnitsUsed).toBe(1_230);
+    expect(withoutTarget.targetLine.candySupply.species).toBe(147);
+    expect(withoutTarget.targetLine.candySupply.universal.s).toBe(361);
+    expect(withoutTarget.targetLine.surplusCandyValue).toBe(0);
   });
 
-  it('目標まで行はアメ個数指定の値に左右されない', () => {
-    // 報告ケース: 個数指定を1個下げただけで「目標まで」の必要アイテムと余りが変わっていた
+  it('目標まで行は指定個数ちょうどを需要とし、内訳が個数指定の端数に振り回されない', () => {
+    // 報告ケース: 個数指定を1個下げただけで「目標まで」の必要アイテムと余りが変わっていた。
+    //
+    // 新設計では個数指定＝目標なので、必要アメ数が指定値に一致するのは正しい（設計書§4.5.1）。
+    // ここで守るのは 7e6224f の本質、すなわち
+    // 「需要ちょうどに対して内訳が組まれ、隣接する指定値の間で内訳が飛ばない」こと。
     const row = (candyTarget?: number): LevelPlannerInput => ({
       pokemonList: [{
         pokemonId: 'cramorant',
@@ -602,17 +636,25 @@ describe('単一最適化パイプライン', () => {
     expect(base.surplusCandyValue).toBe(0);
     expect(base.candySupply.universal.s).toBeGreaterThan(0);
     const need = base.totalCandyUnitsUsed;
-    // 指定なし / 目標需要ちょうど / 未満 / 超過 のいずれでも目標まで行は同一
+
+    // 個数指定ありの行は、その指定値ちょうどを需要にする。
+    // ただしこのケースは目標がLv70（システム上限）なので、そこへ到達したあとのアメは使えない。
     for (const candyTarget of [1, need - 10, need - 1, need, need + 1, need + 200]) {
       const line = solveLevelPlan(row(candyTarget)).pokemonResults[0].targetLine;
-      expect(line.totalCandyUnitsUsed).toBe(need);
-      expect(line.dreamShardsUsed).toBe(base.dreamShardsUsed);
-      expect(line.candySupply).toEqual(base.candySupply);
-      expect(line.surplusCandyValue).toBe(base.surplusCandyValue);
+      expect(line.totalCandyUnitsUsed).toBe(Math.min(candyTarget, need));
+      // 需要ちょうどに対して組まれるので、余りは万能アメの粒度を超えない
+      expect(line.surplusCandyValue).toBeLessThanOrEqual(2);
+    }
+
+    // 隣接する指定値の間で内訳が飛ばない（1個の差が余り500のような跳ねを生まない）
+    for (const candyTarget of [need - 10, need - 1, need, need + 1]) {
+      const a = solveLevelPlan(row(candyTarget)).pokemonResults[0].targetLine;
+      const b = solveLevelPlan(row(candyTarget + 1)).pokemonResults[0].targetLine;
+      expect(Math.abs(b.surplusCandyValue - a.surplusCandyValue)).toBeLessThanOrEqual(2);
     }
   });
 
-  it('個数指定がある場合も、サマリ集計は個数指定行ではなく到達可能行を使う', () => {
+  it('個数指定がある場合も、サマリ集計は理論値行ではなく到達可能行を使う', () => {
     const result = solveLevelPlan({
       pokemonList: [{
         pokemonId: 'candy-target-summary',
@@ -635,8 +677,9 @@ describe('単一最適化パイプライン', () => {
       options: { itemCompareMode: 'surplusFirst' },
     });
     const p = result.pokemonResults[0];
-    expect(p.candyTargetLine).toBeDefined();
-    expect(p.reachableLine.totalCandyUnitsUsed).toBe(p.candyTargetLine!.totalCandyUnitsUsed);
+    // 理論値行（＝個数指定ぶん）と到達可能行が一致するケース
+    expect(p.targetLine.totalCandyUnitsUsed).toBe(20);
+    expect(p.reachableLine.totalCandyUnitsUsed).toBe(p.targetLine.totalCandyUnitsUsed);
     expect(result.summary.totalNeed.totalCandyUnits).toBe(p.reachableLine.totalCandyUnitsUsed);
     expect(result.summary.totalNeed.totalDreamShards).toBe(p.reachableLine.dreamShardsUsed);
     expect(result.summary.totalNeed.totalBoostCandyRequested).toBe(p.reachableLine.boostedCandyUnits);
@@ -787,9 +830,11 @@ describe('単一最適化パイプライン', () => {
     expect(suicune.reachableLine.totalCandyUnitsUsed).toBe(551);
     expect(suicune.reachableLine.boostedCandyUnits).toBe(549);
     expect(suicune.reachableLine.nonBoostCandyUnits).toBe(2);
-    expect(suicune.candyTargetLine?.totalCandyUnitsUsed).toBe(suicune.reachableLine.totalCandyUnitsUsed);
-    expect(suicune.candyTargetLine?.boostedCandyUnits).toBe(suicune.reachableLine.boostedCandyUnits);
-    expect(suicune.candyTargetLine?.nonBoostCandyUnits).toBe(suicune.reachableLine.nonBoostCandyUnits);
+    // 個数指定＝目標なので、理論値行（targetLine）の総アメ数は到達可能行と一致する。
+    // アメブ内訳は、理論値行がユーザー指定のアメブ設定を、到達可能行がグローバル上限を反映するため
+    // 一致しなくてよい（不足はshortageの由来別表示で出す。設計書§5.4）。
+    expect(suicune.targetLine.totalCandyUnitsUsed).toBe(suicune.reachableLine.totalCandyUnitsUsed);
+    expect(suicune.targetLine.boostedCandyUnits).toBeGreaterThanOrEqual(suicune.reachableLine.boostedCandyUnits);
     expect(suicune.shortage.dreamShardShortage).toBe(0);
     expect(suicune.shortage.boostCandyUnavailable).toBe(0);
     expect(suicune.constraintDiagnosis.isShardsShortage).toBe(false);

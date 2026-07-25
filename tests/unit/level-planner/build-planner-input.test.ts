@@ -4,8 +4,8 @@ import {
   type PlannerInputRowDto,
   type PlannerInputSnapshotDto,
 } from '../../../src/domain/level-planner/buildPlannerInput';
-import { calcExp, calcLevelByCandy } from '../../../src/domain/pokesleep';
-import { maxLevel as MAX_LEVEL } from '../../../src/domain/pokesleep/tables';
+import { calcExp } from '../../../src/domain/pokesleep';
+import { simulateCandyBudget } from '../../../src/domain/pokesleep/simulateCandyBudget';
 
 const baseSnapshot = (kind: PlannerInputSnapshotDto['boost']['kind']): PlannerInputSnapshotDto => ({
   candyInventory: {
@@ -47,22 +47,13 @@ function deepFreeze<T>(value: T): T {
 }
 
 describe('buildPlannerInput', () => {
-  it('none は入力アメ数を requested に保ち、ピークから目標 Lv を計算する', () => {
-    const row = baseRow({ candyPeak: 20, boostCandyInput: 8 });
+  it('個数指定なしなら目標は dstLevel ちょうど（あとEXP 0）になる', () => {
+    const row = baseRow({ candyTarget: undefined, boostCandyInput: 8 });
     const snapshot = baseSnapshot('none');
     const currentExpInLevel = Math.max(
       0,
       calcExp(row.srcLevel, row.srcLevel + 1, row.expType) - row.expRemaining,
     );
-    const peakResult = calcLevelByCandy({
-      srcLevel: row.srcLevel,
-      dstLevel: MAX_LEVEL,
-      expType: row.expType,
-      nature: row.nature,
-      boost: 'none',
-      candy: 20,
-      expGot: currentExpInLevel,
-    });
 
     const input = buildPlannerInput([row], snapshot);
 
@@ -70,7 +61,8 @@ describe('buildPlannerInput', () => {
     expect(input?.pokemonList[0]).toMatchObject({
       candyFamilyKey: '25',
       currentExpInLevel,
-      targetLevel: peakResult.level,
+      // ceil の余剰EXPを目標へ混ぜない（設計書§3.8-d, §4.5）
+      targetLevel: row.dstLevel,
       targetExpInLevel: 0,
       requestedBoostCandy: 8,
     });
@@ -101,11 +93,9 @@ describe('buildPlannerInput', () => {
     });
   });
 
-  it('peak はピークから Lv+EXP を計算し、candyTarget と現在 EXP を引き継ぐ', () => {
+  it('個数指定ありなら (n, m) の到達点が目標になり、Lv内EXPも引き継ぐ', () => {
     const row = baseRow({
-      mode: 'peak',
       expRemaining: 40,
-      candyPeak: 31,
       candyTarget: 19,
       boostCandyInput: 13,
     });
@@ -113,26 +103,35 @@ describe('buildPlannerInput', () => {
       0,
       calcExp(row.srcLevel, row.srcLevel + 1, row.expType) - row.expRemaining,
     );
-    const peakResult = calcLevelByCandy({
-      srcLevel: row.srcLevel,
-      dstLevel: MAX_LEVEL,
-      expType: row.expType,
-      nature: row.nature,
-      boost: 'mini',
-      candy: 31,
-      expGot: currentExpInLevel,
-    });
+    // アメブ13個 + 通常6個 = 指定19個 を使い切った到達点
+    const reached = simulateCandyBudget(
+      { currentLevel: row.srcLevel, currentExpInLevel, expType: row.expType, nature: row.nature },
+      13, 19, Infinity, 'mini',
+    );
 
     const input = buildPlannerInput([row], baseSnapshot('mini'));
 
     expect(input?.pokemonList[0]).toMatchObject({
-      mode: 'peak',
       currentExpInLevel,
-      targetLevel: peakResult.level,
-      targetExpInLevel: peakResult.expGot,
+      targetLevel: reached.level,
+      targetExpInLevel: reached.expInLevel,
       candyTarget: { totalCandyUnits: 19 },
       requestedBoostCandy: 13,
     });
+    // 個数指定ありでは Lv 内 EXP が付きうる（Lvちょうどに固定されない）
+    expect(reached.expInLevel).toBeGreaterThan(0);
+  });
+
+  it('睡眠EXPはアメ到達点の後に加算される（アメが先、睡眠が後）', () => {
+    const row = baseRow({ expRemaining: 40, candyTarget: 19, boostCandyInput: 13 });
+    const withoutSleep = buildPlannerInput([row], baseSnapshot('mini'))!.pokemonList[0];
+    const withSleep = buildPlannerInput([{ ...row, sleepExp: 20_000 }], baseSnapshot('mini'))!.pokemonList[0];
+
+    const advanced = withSleep.targetLevel > withoutSleep.targetLevel
+      || (withSleep.targetLevel === withoutSleep.targetLevel && (withSleep.targetExpInLevel ?? 0) > (withoutSleep.targetExpInLevel ?? 0));
+    expect(advanced).toBe(true);
+    // 睡眠で目標が伸びても、アメの予定数（個数指定）は変わらない
+    expect(withSleep.candyTarget).toEqual(withoutSleep.candyTarget);
   });
 
   it('空配列・有効な pokedexId がない行だけなら null を返し、無効行は優先順位から除外する', () => {
