@@ -155,8 +155,13 @@ jobs:
           if [ -d /tmp/pokesleep-tool ]; then
             FAMILY_ARGS+=(--pokesleep-tool /tmp/pokesleep-tool)
           fi
-          FAMILY_OUTPUT=$(pnpm run generate:candy-families -- "${FAMILY_ARGS[@]}" 2>&1)
+          FAMILY_EXIT=0
+          FAMILY_OUTPUT=$(pnpm run generate:candy-families -- "${FAMILY_ARGS[@]}" 2>&1) || FAMILY_EXIT=$?
           echo "$FAMILY_OUTPUT"
+          if [ "$FAMILY_EXIT" -ne 0 ]; then
+            echo "❌ 種族アメ系統の生成に失敗しました（exit=$FAMILY_EXIT）"
+            exit 1
+          fi
           if echo "$FAMILY_OUTPUT" | grep -q '\[SUMMARY\] has_changes=true' \
             || ! git diff --quiet -- src/domain/pokesleep/_generated/candy-family.ts; then
             echo "has_family_changes=true" >> "$GITHUB_OUTPUT"
@@ -186,18 +191,18 @@ jobs:
           DAY_OF_MONTH=$(date -u +%d)
           REFRESH_REQUESTED="${{ github.event.inputs.refresh_en_names }}"
 
+          EN_EXIT_CODE=0
           if [ "$DAY_OF_MONTH" = "01" ] || [ "$REFRESH_REQUESTED" = "true" ]; then
             echo "全件再取得モード（--refresh）"
-            EN_OUTPUT=$(pnpm run generate:pokemon-en-names -- --refresh 2>&1)
+            EN_OUTPUT=$(pnpm run generate:pokemon-en-names -- --refresh 2>&1) || EN_EXIT_CODE=$?
           else
             echo "通常モード（キャッシュ利用）"
-            EN_OUTPUT=$(pnpm run generate:pokemon-en-names 2>&1)
+            EN_OUTPUT=$(pnpm run generate:pokemon-en-names 2>&1) || EN_EXIT_CODE=$?
           fi
-          EN_EXIT_CODE=$?
           echo "$EN_OUTPUT"
 
           # 英語名取得が失敗した場合は中断
-          if [ $EN_EXIT_CODE -ne 0 ]; then
+          if [ "$EN_EXIT_CODE" -ne 0 ]; then
             echo "❌ 英語名取得に失敗しました"
             echo "en_success=false" >> $GITHUB_OUTPUT
             exit 1
