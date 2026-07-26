@@ -26,6 +26,8 @@ function parseArgs(argv) {
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
+    // pnpm run forwards the `--` separator verbatim; ignore it instead of failing.
+    if (arg === "--") continue;
     if (arg === "--master" && argv[i + 1]) args.master = path.resolve(argv[++i]);
     else if (arg === "--output" && argv[i + 1]) args.output = path.resolve(argv[++i]);
     else if (arg === "--overrides" && argv[i + 1]) args.overrides = path.resolve(argv[++i]);
