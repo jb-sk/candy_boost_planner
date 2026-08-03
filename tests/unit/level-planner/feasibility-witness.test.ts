@@ -7,8 +7,10 @@ import {
   solveFeasibilityForFixedRows,
   validateFeasibilityWitness,
 } from '../../../src/domain/level-planner/core/feasibilityWitness';
+import { CANDY_VALUES, MAX_ACCEPTABLE_SURPLUS } from '../../../src/domain/level-planner/constants';
 import { refineExactSupply } from '../../../src/domain/level-planner/core/exactSupplyRefine';
 import { __levelPlannerTestHooks, solveLevelPlan } from '../../../src/domain/level-planner/core/solveLevelPlan';
+import { simulateCandyBudget } from '../../../src/domain/pokesleep/simulateCandyBudget';
 import type {
   CandyInventory,
   FeasibilityDemandRow,
@@ -41,7 +43,7 @@ function demandRow(
     shards: 0,
     reachedLv: 20,
     expInLevel: 0,
-    targetReached: true,
+    candyDemandMet: true,
     ...overrides,
   };
 }
@@ -50,6 +52,24 @@ function emptyInventory(): CandyInventory {
   return {
     species: {},
     typeCandy: {},
+    universal: { s: 0, m: 0, l: 0 },
+  };
+}
+
+/**
+ * §6 / §14.4.2 の反例で使う共有系統（イーブイ）。
+ *
+ * **`candyFamilyKey` の契約は「正の整数文字列」**（`candy-family.ts` の `isCandyFamilyKey()` が正本）。
+ * `'shared-family'` のような任意の文字列を使うと `invalid_candy_family_key` で
+ * **その prefix ごと infeasible になり、到達数が黙って落ちる。**
+ */
+const SHARED_EEVEE_FAMILY = '133';
+
+/** 種族4・水タイプM1個（価値25）。§6 の反例そのもの。 */
+function sharedFamilyInventory(): CandyInventory {
+  return {
+    species: { [SHARED_EEVEE_FAMILY]: 4 },
+    typeCandy: { water: { s: 0, m: 1 } },
     universal: { s: 0, m: 0, l: 0 },
   };
 }
@@ -70,7 +90,7 @@ describe('fbl01d feasibility witness', () => {
     const twoReachedAndBoundary = [
       demandRow('upper-a', 1, 'normal', 19),
       demandRow('upper-b', 2, 'normal', 19),
-      demandRow('boundary', 3, 'normal', 18, { targetReached: false }),
+      demandRow('boundary', 3, 'normal', 18, { candyDemandMet: false }),
     ];
     const valid = solveFeasibilityForFixedRows(twoReachedAndBoundary, inventory, {
       ...noBoost,
@@ -83,7 +103,7 @@ describe('fbl01d feasibility witness', () => {
     expect(valid.witness.rows.map(row => row.supply.universalM)).toEqual([1, 1, 1]);
 
     const threeReached = solveFeasibilityForFixedRows(
-      twoReachedAndBoundary.map(row => ({ ...row, targetReached: true })),
+      twoReachedAndBoundary.map(row => ({ ...row, candyDemandMet: true })),
       inventory,
       {
         ...noBoost,
@@ -141,6 +161,37 @@ describe('fbl01d feasibility witness', () => {
     });
   });
 
+  /**
+   * `deadlineMs` は solver context ごとに開始時刻から測り直されるため、prefix 二分探索のように
+   * context を何度も作る経路では **probe ごとに満額使えてしまう**。
+   * 全 context が共有する絶対締切として `deadlineAt` を足してある。
+   *
+   * 検出力: `checkpoint()` の `deadlineAt` 判定を消すと、両方とも feasible になって落ちる。
+   */
+  it('deadlineAt は context をまたいで共有され、probe ごとにリセットされない', () => {
+    const rows = [
+      demandRow('p1', 1, 'alpha', 13),
+      demandRow('p2', 2, 'beta', 21),
+      demandRow('p3', 3, 'gamma', 19),
+    ];
+    const inventory: CandyInventory = { species: {}, typeCandy: {}, universal: { s: 32, m: 8, l: 2 } };
+    // 締切は既に過ぎている。`deadlineMs` は与えないので、絶対締切だけが効く。
+    const options = { ...noBoost, deadlineAt: performance.now() - 1 };
+
+    // 単発の solve も、session 経由の probe も、同じ絶対締切で打ち切られる。
+    expect(solveFeasibilityForFixedRows(rows, inventory, options)).toMatchObject({
+      status: 'inconclusive',
+      reason: 'deadline_exceeded',
+    });
+    const session = createPrefixDecisionSession(rows, inventory, options);
+    for (const length of [1, 2, 3]) {
+      expect(session.canSolvePrefix(length)).toMatchObject({
+        status: 'inconclusive',
+        reason: 'deadline_exceeded',
+      });
+    }
+  });
+
   it('prefix decision sessionは共有種族を含むprefixでは安全に通常solverへ退避する', () => {
     const rows = [
       demandRow('p1', 1, 'alpha', 13),
@@ -160,22 +211,491 @@ describe('fbl01d feasibility witness', () => {
     }
   });
 
+  /**
+   * §14.4.2 の前提（手法6）。**行余りゲートの下では prefix の可解性が単調にならない。**
+   *
+   * §6 の不変条件「系統の種族アメ使用合計 = min(系統在庫, 系統内の需要合計)」により、
+   * **prefix が短いほど種族アメの受け取り先が減り、余りとして計上される。**
+   * `surplusFirst` の行余りゲート（0〜2）はその余りを弾くので、短い prefix だけが落ちる。
+   *
+   * 同系統2行（需要25と4）・種族在庫4・タイプM1個（価値25）:
+   *
+   * - prefix1（A だけ）: 種族4は必ず使うので typeM も足して供給29 → **余り4 > ゲート2** → infeasible
+   * - prefix2（A+B）  : B が種族4を引き受け、A は typeM 単独 → **両行とも余り0** → feasible
+   *
+   * この非単調性は**種族アメ固有**である。タイプアメ・万能アメには使用総量の不変条件が無い。
+   */
+  it('§14.4.2: 行余りゲート下では prefix の可解性が単調にならない', () => {
+    const rows = [
+      demandRow('A', 134, 'water', 25, { candyFamilyKey: SHARED_EEVEE_FAMILY }),
+      demandRow('B', 136, 'water', 4, { candyFamilyKey: SHARED_EEVEE_FAMILY }),
+    ];
+    const session = createPrefixDecisionSession(rows, sharedFamilyInventory(), {
+      ...noBoost,
+      itemCompareMode: 'surplusFirst',
+      maxRowSurplus: MAX_ACCEPTABLE_SURPLUS,
+    });
+
+    expect(session.canSolvePrefix(1).status).toBe('infeasible');
+    expect(session.canSolvePrefix(2).status).toBe('feasible');
+  });
+
+  /**
+   * §14.4.2 の本題。**ゲート内に到達2の解があるのに、二分探索が prefix2 を試さず取りこぼしていた。**
+   *
+   * `findPrefix` は prefix の可解性が単調だと仮定して二分探索する。上のテストのとおり
+   * ゲート下では単調にならないので、`surplusFirst` だけが prefix1 の infeasible を見た時点で
+   * 打ち切り、**優先度の高い A を未達のまま境界にしていた**（B だけが到達）。
+   *
+   * 対照（手法7）: `surplusGateFirst` / `legacyImproved` は元から到達2。
+   * この2モードが通ったままであることが、修正が surplusFirst の取りこぼしだけを直した証拠になる。
+   *
+   * 検出力: `findPrefix` の上側スキャンを消すと `surplusFirst` だけが落ちる。
+   */
+  it.each(['surplusFirst', 'surplusGateFirst', 'legacyImproved'] as const)(
+    '§14.4.2: ゲート内に解があれば到達数を取りこぼさない: %s',
+    mode => {
+      const row = (id: string, pokedexId: number, totalCandyUnits: number): LevelPlannerInput['pokemonList'][number] => ({
+        pokemonId: id, pokedexId, candyFamilyKey: SHARED_EEVEE_FAMILY, name: id, type: 'water',
+        currentLevel: 10, currentExpInLevel: 0, targetLevel: 70, expType: 600, nature: 'normal',
+        requestedBoostCandy: 0, boostAllowed: true,
+        candyTarget: { totalCandyUnits, boostedCandyUnits: 0 },
+        priorityIndex: id === 'A' ? 0 : 1,
+      });
+      const result = solveLevelPlan({
+        pokemonList: [row('A', 134, 25), row('B', 136, 4)],
+        dreamShards: 999_999_999,
+        boost: { kind: 'none', limit: 0 },
+        candyInventory: sharedFamilyInventory(),
+        options: { itemCompareMode: mode },
+      });
+
+      // 優先度順に2匹とも到達する。片方だけなら、上位の A が落ちている。
+      expect(result.pokemonResults.map(pokemon => pokemon.reachableLine.candyDemandMet)).toEqual([true, true]);
+      // しかもハード制約（各行余り0〜2）を満たしたまま到達している。
+      // 供給値はテスト側で独立に計算する（実装の supplyValue を借りない）。
+      for (const pokemon of result.pokemonResults) {
+        const supply = pokemon.reachableLine.candySupply;
+        const supplyValue = supply.species
+          + supply.type.s * CANDY_VALUES.type.s + supply.type.m * CANDY_VALUES.type.m
+          + supply.universal.s * CANDY_VALUES.universal.s
+          + supply.universal.m * CANDY_VALUES.universal.m
+          + supply.universal.l * CANDY_VALUES.universal.l;
+        expect(supplyValue - pokemon.reachableLine.totalCandyUnitsUsed).toBe(0);
+      }
+    },
+  );
+
+  /**
+   * §14.4.2 の上側スキャンに対するプロパティテスト（2026-08-01・外部レビュー指摘4で強化）。
+   *
+   * **`findPrefix` の二分探索＋上側スキャンが、全長を線形に走査した最大 feasible 長と一致する。**
+   * 個別の反例（上の2本）は「その形だけ」を固定するもので、
+   * **中間の prefix 長だけが feasible になる形や、可解性が複数回反転する形は覆えていなかった。**
+   *
+   * 期待値は `createPrefixDecisionSession` を長いほうから線形に走査して独立に求める
+   * （実装の探索順序を一切使わない）。`inconclusive` が出たケースは判定できないので飛ばす。
+   *
+   * > **⚠ 実測値に最終到達数（`pokemonResults` から数えたもの）を使わないこと。**
+   * > `findPrefix` の返り値と最終到達数のあいだには **2周目への fallback（§14.4.3）・refine・
+   * > フェーズ3**が挟まる。とくにフェーズ3は余りゲートの対象外なので、`findPrefix` が0を返しても
+   * > 最終到達数が2になりうる（掃引1200件のうち378件でズレた）。最終到達数と比べると
+   * > **`>=`（下回らない）としか書けず、「解けない prefix を feasible と誤判定して長く返す」誤りが
+   * > 1件も落ちない。** 実測値は `prefixSearchAttempts[0].maxFeasiblePrefix`（探索そのものの返り値）を使う。
+   *
+   * > **⚠ `prefixSearch`（attempt をまたいだ最後の値）を見ないこと。**
+   * > 上側スキャンは余りゲートがあるときだけ走るので、ゲートを外す2周目の `upperScanProbes` は**常に0**。
+   * > fallback が発火した入力（掃引の約48%）でそちらを読むと、上限アサートが無条件に通って
+   * > **1周目の探索量を誰も見張らなくなる。**
+   *
+   * 検出力: `findPrefix` の上側スキャンを消すと落ちる（2026-08-01 に確認）。
+   */
+  it('§14.4.2: findPrefix は線形走査の最大 feasible 長と一致する', { timeout: 120_000 }, () => {
+    const families = ['133', '25', '172'];
+    const types = ['water', 'electric'];
+    const rng = (seed: number) => {
+      let state = (seed ^ 0x9e37_79b9) >>> 0;
+      return () => {
+        state ^= state << 13; state ^= state >>> 17; state ^= state << 5;
+        return (state >>> 0) / 0x1_0000_0000;
+      };
+    };
+    let compared = 0;
+    let nonMonotonic = 0;
+    let maxUpperScan = 0;
+    let solverGrewBeyondPrefix = 0;
+    // 検証は速度より網羅を採る（1200件で実測1秒未満）。範囲を狭めると非単調な形の対照が痩せる。
+    for (let seed = 1; seed <= 1200; seed++) {
+      const next = rng(seed);
+      const int = (min: number, max: number) => min + Math.floor(next() * (max - min + 1));
+      const count = int(2, 4);
+      const specs = Array.from({ length: count }, (_, index) => ({
+        id: `p${index}`,
+        pokedexId: 900 + seed * 10 + index,
+        candyFamilyKey: families[int(0, families.length - 1)],
+        type: types[int(0, types.length - 1)],
+        totalCandy: int(1, 28),
+      }));
+      const inventory: CandyInventory = {
+        species: Object.fromEntries(families.map(family => [family, int(0, 6)])),
+        typeCandy: Object.fromEntries(types.map(type => [type, { s: int(0, 2), m: int(0, 1) }])),
+        universal: { s: int(0, 2), m: int(0, 1), l: 0 },
+      };
+      // 種族アメの順位は入力配列順からソルバー内部で導出されるので、呼び出し側は指定しない。
+      // オラクル側も同じ配列順を比較時に使うことで、同じ問題を独立に解く。
+      const rows = specs.map(spec => demandRow(spec.id, spec.pokedexId, spec.type, spec.totalCandy, {
+        candyFamilyKey: spec.candyFamilyKey,
+      }));
+      const session = createPrefixDecisionSession(rows, inventory, {
+        ...noBoost,
+        itemCompareMode: 'surplusFirst',
+        maxRowSurplus: MAX_ACCEPTABLE_SURPLUS,
+      });
+      // 長いほうから線形に走査して最大 feasible 長を求める（実装の探索順序を借りない）。
+      const statuses = Array.from({ length: rows.length }, (_, index) => session.canSolvePrefix(index + 1).status);
+      if (statuses.includes('inconclusive')) continue;
+      const expectedPrefix = statuses.lastIndexOf('feasible') + 1;
+      // 短い prefix が infeasible なのに長いほうが feasible な形（＝二分探索が取りこぼす形）を数える。
+      if (statuses.slice(0, expectedPrefix).includes('infeasible')) nonMonotonic++;
+
+      const result = solveLevelPlan({
+        pokemonList: specs.map((spec, index) => ({
+          pokemonId: spec.id, pokedexId: spec.pokedexId, candyFamilyKey: spec.candyFamilyKey,
+          name: spec.id, type: spec.type,
+          currentLevel: 10, currentExpInLevel: 0, targetLevel: 70, expType: 600 as const, nature: 'normal' as const,
+          requestedBoostCandy: 0, boostAllowed: true,
+          candyTarget: { totalCandyUnits: spec.totalCandy, boostedCandyUnits: 0 },
+          priorityIndex: index,
+        })),
+        dreamShards: 999_999_999,
+        boost: { kind: 'none', limit: 0 },
+        candyInventory: inventory,
+        options: { itemCompareMode: 'surplusFirst' },
+      });
+      const met = result.pokemonResults.map(pokemon => pokemon.reachableLine.candyDemandMet);
+      const reached = met.findIndex(value => !value) === -1 ? met.length : met.findIndex(value => !value);
+      compared++;
+
+      // 本題。1周目（余りゲート内）の探索が返した最大 feasible 長が、線形走査の正解と一致すること。
+      const gatedSearch = result.performance?.prefixSearchAttempts?.[0];
+      expect(gatedSearch, `seed=${seed}`).toBeDefined();
+      expect(gatedSearch!.maxFeasiblePrefix, `seed=${seed} statuses=${statuses.join(',')}`)
+        .toBe(expectedPrefix);
+
+      // 探索量の上限（外部レビュー指摘4）。上側スキャンは N から low+1 まで降順に見て
+      // 最初の feasible で打ち切るので、**行数を超えて走ってはいけない。**
+      // 実時間ではなく probe 回数で固定する（負荷でぶれないため）。
+      expect(gatedSearch!.upperScanProbes, `seed=${seed} probes=${JSON.stringify(gatedSearch)}`)
+        .toBeLessThanOrEqual(specs.length);
+      maxUpperScan = Math.max(maxUpperScan, gatedSearch!.upperScanProbes);
+
+      // ソルバー全体としても取りこぼさない（こちらは別の主張。fallback とフェーズ3の上積みを許す）。
+      expect(reached, `seed=${seed} statuses=${statuses.join(',')} met=${met.join(',')}`)
+        .toBeGreaterThanOrEqual(expectedPrefix);
+      if (reached > expectedPrefix) solverGrewBeyondPrefix++;
+    }
+    // 対照: 比較が成立したケースと、二分探索だけでは取りこぼす形が実際に含まれていること。
+    expect(compared, '比較できたケースが少なすぎる').toBeGreaterThan(500);
+    expect(nonMonotonic, '非単調な形が1件も生成されていない（掃引が弱い）').toBeGreaterThan(0);
+    // 上側スキャンが1度も走っていなければ、上の上限アサートは何も見張っていない。
+    expect(maxUpperScan, '上側スキャンが1件も走っていない（掃引が弱い）').toBeGreaterThan(0);
+    // 対照: 最終到達数が prefix 探索の返り値より増えるケースが実在すること。
+    // 0件なら「最終到達数で代用しても同じ」ことになり、上の一致アサートを分けた意味が無い。
+    expect(solverGrewBeyondPrefix, '最終到達数が prefix 長を上回るケースが1件も無い（掃引が弱い）')
+      .toBeGreaterThan(0);
+  });
+
+  /**
+   * §14.4.3。**ゲート内で1匹も育たないなら、ハードゲートを外して探し直す。**
+   *
+   * `surplusFirst` は2段構えで「まず各行余り0〜2を守って探し、使い物になる witness が
+   * 作れなければゲートを外して探し直す」設計だが、2周目へ進む条件が
+   * `attemptMaxRowSurplus < MAX_ACCEPTABLE_SURPLUS`（＝ `2 < 2`）で**構造上決して真にならなかった**。
+   * 実際に効いていたのは「witness が1つも作れなかったとき」だけで、
+   * **境界行1つだけの witness（到達0匹）ができれば「使い物になる答え」として確定していた。**
+   *
+   * 入力: 需要1の行が2つ、在庫は水タイプM 1個（価値25）だけ。
+   *
+   * - ゲート内: A に渡すと**余り24**でゲート超過。1個のアメは分割できないので prefix1 も prefix2 も
+   *   作れず、**到達0匹**で確定する
+   * - ゲート無し: A へ渡して到達1匹（`level-planner-priority-guide.md` §72
+   *   「余り0〜2にできないときも計算を不成立にせず、3以上を許して結果を返す」）
+   *
+   * **到達数だけでは差が出ない**（修正前も、境界より下がフェーズ3の残資源処理で B を育てるため1匹になる）。
+   * 差が出るのは**どちらが育つか**で、仕様は上位優先なので A でなければならない。
+   */
+  it.each(['surplusFirst', 'surplusGateFirst', 'legacyImproved'] as const)(
+    '§14.4.3: ゲート内で到達0匹ならゲートを外して上位から育てる: %s',
+    mode => {
+      const row = (id: string, pokedexId: number, priorityIndex: number): LevelPlannerInput['pokemonList'][number] => ({
+        pokemonId: id, pokedexId, candyFamilyKey: String(pokedexId), name: id, type: 'water',
+        currentLevel: 10, currentExpInLevel: 0, targetLevel: 70, expType: 600, nature: 'normal',
+        requestedBoostCandy: 0, boostAllowed: true,
+        candyTarget: { totalCandyUnits: 1, boostedCandyUnits: 0 },
+        priorityIndex,
+      });
+      const result = solveLevelPlan({
+        pokemonList: [row('A', 134, 0), row('B', 136, 1)],
+        dreamShards: 999_999_999,
+        boost: { kind: 'none', limit: 0 },
+        // 水タイプM 1個だけ。需要1に対して価値25なので、どちらへ渡しても余り24になる。
+        candyInventory: { species: {}, typeCandy: { water: { s: 0, m: 1 } }, universal: { s: 0, m: 0, l: 0 } },
+        options: { itemCompareMode: mode },
+      });
+
+      expect(result.pokemonResults.map(pokemon => pokemon.reachableLine.candyDemandMet)).toEqual([true, false]);
+    },
+  );
+
+  /**
+   * §14.4.3。**床 witness を採らなくても、境界行の進捗を床以上に保つ。**
+   *
+   * 1周目のゲート内探索はアメを要する行を1匹も到達させられないので、2周目へ切り替わる。
+   * 床相当の固定需要 witness と、最終プランナーのフェーズ3が同じ残資源を持つとき、
+   * `compareCandidate` の第1軸（Lv/EXP 最大）により境界行が床を下回らないことを守る。
+   * 頭打ち（Lv70）と個数指定でもこの単調性を暗黙の前提にしない。
+   */
+  it.each([
+    {
+      name: '通常（頭打ちなし）',
+      targetLevel: 50,
+      candyTarget: undefined,
+      floorCandy: 4,
+      inventory: { species: {}, typeCandy: { water: { s: 1, m: 1 } }, universal: { s: 0, m: 0, l: 0 } },
+    },
+    {
+      name: 'Lv70硬上限・在庫過剰',
+      targetLevel: 70,
+      candyTarget: undefined,
+      floorCandy: 4,
+      inventory: { species: {}, typeCandy: { water: { s: 1, m: 1 } }, universal: { s: 0, m: 0, l: 2 } },
+    },
+    {
+      // 個数指定17に対しタイプSは4・タイプMは25なので、供給を [17,19] に収める組み合わせが無く
+      // ゲート内では到達0匹。ゲート内で作れる最大の境界進捗はタイプS1個の**4**（余り0）で、
+      // 縮退後はタイプM1個を渡して**17個ぶん使い切る**（超過ぶんは余り8）。
+      // **床を0にしないこと**——`floorCandy: 0` にすると assert が `>= 0` へ退化して空回りする。
+      name: '個数指定',
+      targetLevel: 70,
+      candyTarget: { totalCandyUnits: 17, boostedCandyUnits: 0 },
+      floorCandy: 4,
+      inventory: { species: {}, typeCandy: { water: { s: 1, m: 1 } }, universal: { s: 0, m: 0, l: 0 } },
+    },
+  ])(
+    '§14.4.3: 境界行の進捗はゲート内探索の床を下回らない: $name',
+    ({ name, targetLevel, candyTarget, floorCandy, inventory }) => {
+      const floorProgress = simulateCandyBudget(
+        { currentLevel: 10, currentExpInLevel: 0, expType: 600, nature: 'normal' },
+        0,
+        floorCandy,
+        Infinity,
+        'none',
+      );
+      const floorRow = demandRow('A', 134, 'water', floorCandy, {
+        candyDemandMet: false,
+        reachedLv: floorProgress.level,
+        expInLevel: floorProgress.expInLevel,
+      });
+      const floor = solveFeasibilityForFixedRows([floorRow], inventory, {
+        ...noBoost,
+        itemCompareMode: 'surplusFirst',
+        maxRowSurplus: MAX_ACCEPTABLE_SURPLUS,
+      });
+      expectFeasible(floor);
+      const floorBoundary = floor.witness.rows[0];
+
+      const pokemon = (
+        pokemonId: string,
+        pokedexId: number,
+        type: string,
+        priorityIndex: number,
+        rowCandyTarget?: { totalCandyUnits: number; boostedCandyUnits: number },
+      ): LevelPlannerInput['pokemonList'][number] => ({
+        pokemonId,
+        pokedexId,
+        candyFamilyKey: String(pokedexId),
+        name: pokemonId,
+        type,
+        currentLevel: 10,
+        currentExpInLevel: 0,
+        targetLevel,
+        expType: 600,
+        nature: 'normal',
+        requestedBoostCandy: 0,
+        boostAllowed: true,
+        ...(rowCandyTarget === undefined ? {} : { candyTarget: rowCandyTarget }),
+        priorityIndex,
+      });
+      const result = solveLevelPlan({
+        pokemonList: [pokemon('A', 134, 'water', 0, candyTarget), pokemon('B', 136, 'fire', 1)],
+        dreamShards: 999_999_999,
+        boost: { kind: 'none', limit: 0 },
+        candyInventory: inventory,
+        options: { itemCompareMode: 'surplusFirst' },
+      });
+
+      expect(result.performance?.prefixSearchAttempts, name).toHaveLength(2);
+      expect(result.performance?.prefixSearchAttempts?.[0].maxFeasiblePrefix, name).toBe(0);
+      const actualBoundary = result.pokemonResults[0].reachableLine;
+      // 供給値はテスト側で独立に計算する（実装の supplyValue を借りない）。
+      const floorSupplyValue = floorBoundary.supply.species
+        + floorBoundary.supply.typeS * CANDY_VALUES.type.s
+        + floorBoundary.supply.typeM * CANDY_VALUES.type.m
+        + floorBoundary.supply.universalS * CANDY_VALUES.universal.s
+        + floorBoundary.supply.universalM * CANDY_VALUES.universal.m
+        + floorBoundary.supply.universalL * CANDY_VALUES.universal.l;
+      // 対照: 床が空（アメ0個・Lv据え置き）だと下の2つが `>= 0` / `>= Lv10` へ退化して空回りする。
+      // ケースを組み替えるときは、まずここが通ることを確かめること。
+      expect(floorSupplyValue, `${name}: 床が空なので比較が空回りしている`).toBeGreaterThan(0);
+      expect(
+        floorBoundary.reachedLv > 10 || floorBoundary.expInLevel > 0,
+        `${name}: 床が開始地点のままなので比較が空回りしている（Lv${floorBoundary.reachedLv}/EXP${floorBoundary.expInLevel}）`,
+      ).toBe(true);
+
+      expect(actualBoundary.totalCandyUnitsUsed).toBeGreaterThanOrEqual(floorSupplyValue);
+      expect(actualBoundary.level > floorBoundary.reachedLv
+        || (actualBoundary.level === floorBoundary.reachedLv && actualBoundary.expInLevel >= floorBoundary.expInLevel)).toBe(true);
+    },
+  );
+
+  /**
+   * 需要0行だけの prefix は、目的関数ではなく候補列挙の構造で資源を一切持たない。
+   * 境界探索を行わない周でも、この witness が境界行を勝手に含めないことを守る。
+   */
+  it.each(['surplusFirst', 'surplusGateFirst', 'legacyImproved'] as const)(
+    '需要0行だけの prefix witness は全成分0で境界行を含まない: %s',
+    mode => {
+      const rows = [
+        demandRow('zero-a', 1, 'water', 0),
+        demandRow('zero-b', 2, 'fire', 0),
+        demandRow('needed', 3, 'electric', 3),
+      ];
+      const inventory: CandyInventory = {
+        species: {},
+        typeCandy: {},
+        universal: { s: 1, m: 0, l: 0 },
+      };
+      const session = createPrefixDecisionSession(rows, inventory, { ...noBoost, itemCompareMode: mode });
+      const zeroPrefix = session.canSolvePrefix(2);
+      expect(zeroPrefix.status).toBe('feasible');
+      expect(zeroPrefix.toWitness).toBeDefined();
+      const zeroWitnessResult = zeroPrefix.toWitness!();
+      expect(zeroWitnessResult.status).toBe('feasible');
+      if (zeroWitnessResult.status !== 'feasible') return;
+      expect(zeroWitnessResult.witness.rows).toHaveLength(2);
+      expect(zeroWitnessResult.witness.rows.map(row => row.supply)).toEqual([
+        { species: 0, typeS: 0, typeM: 0, universalS: 0, universalM: 0, universalL: 0 },
+        { species: 0, typeS: 0, typeM: 0, universalS: 0, universalM: 0, universalL: 0 },
+      ]);
+
+      const neededPrefix = session.canSolvePrefix(3);
+      expect(neededPrefix.status).toBe('feasible');
+      expect(neededPrefix.toWitness).toBeDefined();
+      const neededWitnessResult = neededPrefix.toWitness!();
+      expect(neededWitnessResult.status).toBe('feasible');
+      if (neededWitnessResult.status !== 'feasible') return;
+      expect(neededWitnessResult.witness.rows).toHaveLength(3);
+      expect(neededWitnessResult.witness.rows[2].supply.universalS).toBe(1);
+    },
+  );
+
+  /**
+   * §14.4.3 の続き。**バランスへ切り替えたら、供給内訳と境界より下もバランスで決める**
+   * （2026-08-01・外部レビュー指摘3）。
+   *
+   * 2周目は `mainSearchItemCompareMode = 'surplusGateFirst'` で探すが、**refine とフェーズ3へ
+   * `input.options.itemCompareMode`（＝ユーザーが選んだ余り最小）を渡していた。** その結果、
+   *
+   * ```text
+   * 到達prefix・境界 : バランス
+   * 供給内訳・下位行 : 余り最小
+   * ```
+   *
+   * という第3のモードになっており、UI の案内「到達できるポケモンが1匹もいない場合は
+   * **バランスの配分に切り替えます**」と食い違っていた。
+   *
+   * 入力（レビューの具体例）: A=水/需要17・B=炎/需要48・C=炎/需要50。在庫は水タイプM 1個、
+   * 炎タイプS 13個・M 2個、万能なし。A は水タイプM（価値25）でしか届かず**余り8**なので
+   * ゲート内では到達0匹になり、fallback が発火する。
+   *
+   * B/C の内訳はモードで割れる:
+   * - 余り最小 … B=タイプS12（余り0）/ C=タイプM2（余り0）
+   * - バランス … B=タイプM2（余り2）/ C=タイプS13（余り2）。`legacyItemPriority` はタイプSを多く使う側を先に見る
+   */
+  it('§14.4.3: バランスへ切り替えたら供給内訳と下位行もバランスで決める', () => {
+    const row = (
+      id: string, pokedexId: number, type: string, totalCandyUnits: number, priorityIndex: number,
+    ): LevelPlannerInput['pokemonList'][number] => ({
+      pokemonId: id, pokedexId, candyFamilyKey: String(pokedexId), name: id, type,
+      currentLevel: 10, currentExpInLevel: 0, targetLevel: 70, expType: 600, nature: 'normal',
+      requestedBoostCandy: 0, boostAllowed: true,
+      candyTarget: { totalCandyUnits, boostedCandyUnits: 0 },
+      priorityIndex,
+    });
+    const solve = (
+      pokemonList: LevelPlannerInput['pokemonList'],
+      inventory: CandyInventory,
+      itemCompareMode: SolverItemCompareMode,
+    ) => solveLevelPlan({
+      pokemonList,
+      dreamShards: 999_999_999,
+      boost: { kind: 'none', limit: 0 },
+      candyInventory: structuredClone(inventory),
+      options: { itemCompareMode },
+    });
+    const digest = (result: ReturnType<typeof solve>) => result.pokemonResults.map(pokemon => ({
+      met: pokemon.reachableLine.candyDemandMet,
+      supply: pokemon.reachableLine.candySupply,
+      surplus: pokemon.reachableLine.surplusCandyValue,
+    }));
+
+    const fallbackList = [row('A', 134, 'water', 17, 0), row('B', 4, 'fire', 48, 1), row('C', 155, 'fire', 50, 2)];
+    const fallbackInventory: CandyInventory = {
+      species: {},
+      typeCandy: { water: { s: 0, m: 1 }, fire: { s: 13, m: 2 } },
+      universal: { s: 0, m: 0, l: 0 },
+    };
+    const surplusFirst = solve(fallbackList, fallbackInventory, 'surplusFirst');
+
+    // 前提（手法6）: 2周目が実際に走り、1周目はアメを要する行を1つも到達させられていないこと。
+    const attempts = surplusFirst.performance?.prefixSearchAttempts;
+    expect(attempts, '2周目が走っていない（この入力では fallback を検証できない）').toHaveLength(2);
+    expect(attempts![0].maxFeasiblePrefix, '1周目がゲート内で到達してしまっている').toBe(0);
+    // ゲートを捨てた証拠。A はどう配ってもゲート（0〜2）に収まらない。
+    expect(surplusFirst.pokemonResults[0].reachableLine.surplusCandyValue).toBeGreaterThan(MAX_ACCEPTABLE_SURPLUS);
+
+    // 本題: 縮退先はバランスなので、直接バランスを選んだときと全行一致する。
+    expect(digest(surplusFirst)).toEqual(digest(solve(fallbackList, fallbackInventory, 'surplusGateFirst')));
+
+    // 対照（手法7）: fallback が発火しない入力では2モードは一致しない。
+    // ここが一致してしまうと、上の assert は「そもそも2モードが同じ」を見ているだけになる。
+    const gatedList = [row('D', 1020, 'electric', 8, 0), row('E', 1021, 'electric', 15, 1)];
+    const gatedInventory: CandyInventory = {
+      species: { '1020': 1, '1021': 2 },
+      typeCandy: { electric: { s: 1, m: 1 } },
+      universal: { s: 1, m: 0, l: 0 },
+    };
+    const gatedSurplusFirst = solve(gatedList, gatedInventory, 'surplusFirst');
+    expect(gatedSurplusFirst.performance?.prefixSearchAttempts, '対照でも fallback が発火している').toHaveLength(1);
+    expect(digest(gatedSurplusFirst)).not.toEqual(digest(solve(gatedList, gatedInventory, 'surplusGateFirst')));
+  });
+
   it('speciesUsedは§15どおり上位lex目的にしない', () => {
     const compare = __levelPlannerTestHooks.compareSyntheticStatesForTest([
-      { targetReached: true, level: 20, expInLevel: 0, totalCandyUnitsUsed: 4, species: 4 },
+      { candyDemandMet: true, effectiveTargetReached: true, level: 20, expInLevel: 0, totalCandyUnitsUsed: 4, species: 4 },
     ], [
-      { targetReached: true, level: 20, expInLevel: 0, totalCandyUnitsUsed: 4, species: 0 },
+      { candyDemandMet: true, effectiveTargetReached: true, level: 20, expInLevel: 0, totalCandyUnitsUsed: 4, species: 0 },
     ], 'surplusFirst');
     expect(compare).toBe(0);
   });
 
   it('余り最小は上位余り合計と進捗が同じならLvMAX余り0達成数を優先する', () => {
     const compare = __levelPlannerTestHooks.compareSyntheticStatesForTest([
-      { targetReached: true, level: 70, expInLevel: 0, totalCandyUnitsUsed: 0, surplusCandyValue: 1 },
-      { targetReached: true, level: 60, expInLevel: 0, totalCandyUnitsUsed: 0, surplusCandyValue: 0 },
+      { candyDemandMet: true, effectiveTargetReached: true, level: 70, expInLevel: 0, totalCandyUnitsUsed: 0, surplusCandyValue: 1 },
+      { candyDemandMet: true, effectiveTargetReached: true, level: 60, expInLevel: 0, totalCandyUnitsUsed: 0, surplusCandyValue: 0 },
     ], [
-      { targetReached: true, level: 70, expInLevel: 0, totalCandyUnitsUsed: 0, surplusCandyValue: 0 },
-      { targetReached: true, level: 60, expInLevel: 0, totalCandyUnitsUsed: 0, surplusCandyValue: 1 },
+      { candyDemandMet: true, effectiveTargetReached: true, level: 70, expInLevel: 0, totalCandyUnitsUsed: 0, surplusCandyValue: 0 },
+      { candyDemandMet: true, effectiveTargetReached: true, level: 60, expInLevel: 0, totalCandyUnitsUsed: 0, surplusCandyValue: 1 },
     ], 'surplusFirst');
 
     expect(compare).toBeLessThan(0);
@@ -265,8 +785,8 @@ describe('fbl01d feasibility witness', () => {
 
   it('共有種族は総量最大を守り、実行可能な分配の中でトップダウン正規形へ復元する', () => {
     const rows = [
-      demandRow('upper', 1, 'alpha', 25, { speciesLexWeight: 2 }),
-      demandRow('lower', 1, 'alpha', 4, { speciesLexWeight: 1 }),
+      demandRow('upper', 1, 'alpha', 25),
+      demandRow('lower', 1, 'alpha', 4),
     ];
     const inventory: CandyInventory = {
       species: { '1': 4 },
@@ -283,8 +803,8 @@ describe('fbl01d feasibility witness', () => {
 
   it('共有種族が別タイプの行へまたがっても、連結タイプブロック内で解く', () => {
     const rows = [
-      demandRow('upper', 1, 'alpha', 25, { speciesLexWeight: 2 }),
-      demandRow('lower', 11, 'beta', 4, { candyFamilyKey: '1', speciesLexWeight: 1 }),
+      demandRow('upper', 1, 'alpha', 25),
+      demandRow('lower', 11, 'beta', 4, { candyFamilyKey: '1' }),
     ];
     const inventory: CandyInventory = {
       species: { '1': 4 },
@@ -300,9 +820,9 @@ describe('fbl01d feasibility witness', () => {
 
   it('多グループのトップダウン候補が余る場合は、完全探索で余り0の共有種族配分を選ぶ', () => {
     const rows = [
-      demandRow('shared-upper', 1, 'alpha', 4, { speciesLexWeight: 3 }),
-      demandRow('shared-lower', 11, 'beta', 4, { candyFamilyKey: '1', speciesLexWeight: 2 }),
-      demandRow('independent', 2, 'gamma', 3, { speciesLexWeight: 1 }),
+      demandRow('shared-upper', 1, 'alpha', 4),
+      demandRow('shared-lower', 11, 'beta', 4, { candyFamilyKey: '1' }),
+      demandRow('independent', 2, 'gamma', 3),
     ];
     const inventory: CandyInventory = {
       species: { '1': 4, '2': 0 },
@@ -324,6 +844,58 @@ describe('fbl01d feasibility witness', () => {
     expect(result.witness.rows[1].supply).toMatchObject({ species: 4 });
     expect(result.witness.rows[2].supply).toMatchObject({ universalS: 1 });
     expect(validateFeasibilityWitness(result.witness, rows, inventory, noBoost)).toMatchObject({ valid: true });
+  });
+
+  /**
+   * 種族アメの総量と総余りが同じ候補では、アイテム優先順位より先に上位行への種族配分を確定する。
+   * feasibility と、fixedSpecies を渡さない exact refine の双方でこの正規形を守る。
+   */
+  it('種族アメはアイテム優先順位より先に上位行へ寄せる', () => {
+    const rows = [
+      demandRow('upper', 134, 'water', 4, { candyFamilyKey: SHARED_EEVEE_FAMILY }),
+      demandRow('lower', 136, 'water', 9, { candyFamilyKey: SHARED_EEVEE_FAMILY }),
+    ];
+    const inventory: CandyInventory = {
+      species: { [SHARED_EEVEE_FAMILY]: 1 },
+      typeCandy: { water: { s: 3, m: 0 } },
+      universal: { s: 4, m: 0, l: 0 },
+    };
+
+    const feasibility = solveFeasibilityForFixedRows(rows, inventory, {
+      ...noBoost,
+      itemCompareMode: 'surplusFirst',
+    });
+    expectFeasible(feasibility);
+    expect(feasibility.witness.rows.map(row => row.supply.species)).toEqual([1, 0]);
+
+    const exactRows = [
+      {
+        id: 'upper',
+        name: 'upper',
+        pokedexId: 134,
+        candyFamilyKey: SHARED_EEVEE_FAMILY,
+        type: 'water',
+        totalCandyCount: 4,
+        candyDemandMet: true,
+        selected: { species: 0, typeS: 1, typeM: 0, universalS: 0, universalM: 0, universalL: 0, supply: 4, surplus: 0 },
+      },
+      {
+        id: 'lower',
+        name: 'lower',
+        pokedexId: 136,
+        candyFamilyKey: SHARED_EEVEE_FAMILY,
+        type: 'water',
+        totalCandyCount: 9,
+        candyDemandMet: true,
+        selected: { species: 1, typeS: 2, typeM: 0, universalS: 0, universalM: 0, universalL: 0, supply: 9, surplus: 0 },
+      },
+    ];
+    const exact = refineExactSupply(exactRows, inventory, 'surplusFirst');
+    expect(exact.status).toBe('ok');
+    if (exact.status !== 'ok') return;
+    expect(exact.bestRows.map(row => row.species)).toEqual([1, 0]);
+    expect(exact.bestObjective.speciesUsed).toBe(1);
+    expect(exact.bestObjective.rawSurplus).toBe(0);
   });
 
   it('validatorは異なる図鑑番号によるfamily在庫の二重使用を拒否する', () => {
@@ -406,7 +978,7 @@ describe('fbl01d feasibility witness', () => {
 
   it('独立境界セッションのdecision envelopeはfull solveと同じ可否を返す', () => {
     const prefixRows = [demandRow('prefix', 10, 'alpha', 20)];
-    const boundaryRow = demandRow('boundary', 11, 'beta', 20, { targetReached: false, reachedLv: 54, expInLevel: 1004 });
+    const boundaryRow = demandRow('boundary', 11, 'beta', 20, { candyDemandMet: false, reachedLv: 54, expInLevel: 1004 });
     const blockedInventory: CandyInventory = {
       species: {},
       typeCandy: { alpha: { s: 0, m: 0 }, beta: { s: 0, m: 0 } },
@@ -426,8 +998,8 @@ describe('fbl01d feasibility witness', () => {
   });
 
   it('独立境界セッションは再構築せず上位余り上限を適用してfull solveと一致する', () => {
-    const prefixRows = [demandRow('reached-prefix', 20, 'alpha', 2, { targetReached: true })];
-    const boundaryRow = demandRow('unreached-boundary', 21, 'beta', 3, { targetReached: false, reachedLv: 20, expInLevel: 1 });
+    const prefixRows = [demandRow('reached-prefix', 20, 'alpha', 2, { candyDemandMet: true })];
+    const boundaryRow = demandRow('unreached-boundary', 21, 'beta', 3, { candyDemandMet: false, reachedLv: 20, expInLevel: 1 });
     const inventory: CandyInventory = {
       species: {},
       typeCandy: { alpha: { s: 0, m: 0 }, beta: { s: 0, m: 0 } },
@@ -463,9 +1035,9 @@ describe('fbl01d feasibility witness', () => {
 
   it('mini/full/none、かけら境界、個数指定の固定値を変更しない', () => {
     const rows = [
-      demandRow('mini', 20, 'alpha', 4, { boostCandy: 2, normalCandy: 2, shards: 5, targetReached: true }),
-      demandRow('full', 21, 'beta', 20, { boostCandy: 10, normalCandy: 10, shards: 7, targetReached: false, reachedLv: 31, expInLevel: 99 }),
-      demandRow('count', 22, 'gamma', 25, { boostCandy: 0, normalCandy: 25, targetReached: false, reachedLv: 31, expInLevel: 99 }),
+      demandRow('mini', 20, 'alpha', 4, { boostCandy: 2, normalCandy: 2, shards: 5, candyDemandMet: true }),
+      demandRow('full', 21, 'beta', 20, { boostCandy: 10, normalCandy: 10, shards: 7, candyDemandMet: false, reachedLv: 31, expInLevel: 99 }),
+      demandRow('count', 22, 'gamma', 25, { boostCandy: 0, normalCandy: 25, candyDemandMet: false, reachedLv: 31, expInLevel: 99 }),
     ];
     const inventory: CandyInventory = {
       species: {},
@@ -482,7 +1054,7 @@ describe('fbl01d feasibility witness', () => {
       shards: row.shards,
       reachedLv: row.reachedLv,
       expInLevel: row.expInLevel,
-      targetReached: row.targetReached,
+      candyDemandMet: row.candyDemandMet,
     }))).toEqual(rows.map(row => ({
       totalCandy: row.totalCandy,
       boostCandy: row.boostCandy,
@@ -490,7 +1062,7 @@ describe('fbl01d feasibility witness', () => {
       shards: row.shards,
       reachedLv: row.reachedLv,
       expInLevel: row.expInLevel,
-      targetReached: row.targetReached,
+      candyDemandMet: row.candyDemandMet,
     })));
     expect(result.witness.reachedCount).toBe(1);
     expect(result.witness.boundaryIndex).toBe(1);
@@ -503,9 +1075,9 @@ describe('fbl01d feasibility witness', () => {
 
   it('prefixを飛ばした入力を到達扱いにしない', () => {
     const rows = [
-      demandRow('first', 1, 'alpha', 1, { targetReached: true }),
-      demandRow('skipped', 2, 'alpha', 1, { targetReached: false }),
-      demandRow('after', 3, 'alpha', 1, { targetReached: true }),
+      demandRow('first', 1, 'alpha', 1, { candyDemandMet: true }),
+      demandRow('skipped', 2, 'alpha', 1, { candyDemandMet: false }),
+      demandRow('after', 3, 'alpha', 1, { candyDemandMet: true }),
     ];
     const result = solveFeasibilityForFixedRows(rows, {
       ...emptyInventory(),
@@ -552,7 +1124,7 @@ describe('fbl01d feasibility witness', () => {
       shards: row.shards,
       reachedLv: row.reachedLv,
       expInLevel: row.expInLevel,
-      targetReached: row.targetReached,
+      candyDemandMet: row.candyDemandMet,
       species: row.supply.species,
     }));
 
@@ -567,7 +1139,7 @@ describe('fbl01d feasibility witness', () => {
       shards: row.shards,
       reachedLv: row.reachedLv,
       expInLevel: row.expInLevel,
-      targetReached: row.targetReached,
+      candyDemandMet: row.candyDemandMet,
       species: row.supply.species,
     }))).toEqual(fixedBeforeRefine);
 
@@ -783,8 +1355,8 @@ describe('fbl01d feasibility witness', () => {
         name: 'surplus-and-shards',
         rows: [
           demandRow('surplus-1', 2_500, 'gamma', 1, { shards: 4, reachedLv: 29, expInLevel: 99 }),
-          demandRow('surplus-99', 2_501, 'gamma', 99, { shards: 5, reachedLv: 30, expInLevel: 1, targetReached: false }),
-          demandRow('surplus-100', 2_502, 'gamma', 100, { shards: 6, reachedLv: 30, expInLevel: 2, targetReached: false }),
+          demandRow('surplus-99', 2_501, 'gamma', 99, { shards: 5, reachedLv: 30, expInLevel: 1, candyDemandMet: false }),
+          demandRow('surplus-100', 2_502, 'gamma', 100, { shards: 6, reachedLv: 30, expInLevel: 2, candyDemandMet: false }),
         ],
         inventory: { species: {}, typeCandy: { gamma: { s: 0, m: 0 } }, universal: { s: 0, m: 0, l: 3 } },
         options: { boostKind: 'full', boostLimit: 0, dreamShards: 15 },
@@ -831,7 +1403,7 @@ describe('fbl01d feasibility witness', () => {
       shards: pokemon.reachableLine.dreamShardsUsed,
       reachedLv: pokemon.reachableLine.level,
       expInLevel: pokemon.reachableLine.expInLevel,
-      targetReached: pokemon.reachableLine.targetReached,
+      candyDemandMet: pokemon.reachableLine.candyDemandMet,
     }));
     const solved = solveFeasibilityForFixedRows(fixedRows, input.candyInventory, {
       boostKind: input.boost.kind,
@@ -841,7 +1413,7 @@ describe('fbl01d feasibility witness', () => {
     });
     expectFeasible(solved);
     expect(solved.witness.reachedCount).toBe(baseline.summary.fullyReachedCount);
-    expect(solved.witness.boundaryIndex).toBe(fixedRows.findIndex(row => !row.targetReached));
+    expect(solved.witness.boundaryIndex).toBe(fixedRows.findIndex(row => !row.candyDemandMet));
 
     const exactRows = solved.witness.rows.map((row, index) => {
       const supply = row.supply.species
@@ -970,7 +1542,7 @@ describe('fbl01d feasibility witness', () => {
   it('refine後も固定需要・かけら・Lv+EXP・種族アメを変更しない', () => {
     const rows = [
       demandRow('fixed-a', 601, 'alpha', 4, { boostCandy: 2, normalCandy: 2, shards: 7, reachedLv: 31, expInLevel: 17 }),
-      demandRow('fixed-b', 602, 'alpha', 20, { boostCandy: 5, normalCandy: 15, shards: 11, reachedLv: 32, expInLevel: 3, targetReached: false }),
+      demandRow('fixed-b', 602, 'alpha', 20, { boostCandy: 5, normalCandy: 15, shards: 11, reachedLv: 32, expInLevel: 3, candyDemandMet: false }),
     ];
     const inventory: CandyInventory = {
       species: { '601': 1, '602': 0 },
@@ -986,7 +1558,7 @@ describe('fbl01d feasibility witness', () => {
       shards: row.shards,
       reachedLv: row.reachedLv,
       expInLevel: row.expInLevel,
-      targetReached: row.targetReached,
+      candyDemandMet: row.candyDemandMet,
       species: row.supply.species,
     }));
     const exactRows = solved.witness.rows.map(row => {
@@ -1017,7 +1589,7 @@ describe('fbl01d feasibility witness', () => {
       shards: row.shards,
       reachedLv: row.reachedLv,
       expInLevel: row.expInLevel,
-      targetReached: row.targetReached,
+      candyDemandMet: row.candyDemandMet,
       species: refined.bestRows[index].species,
     }));
     expect(after).toEqual(fixed);
@@ -1066,16 +1638,15 @@ function emptyOracleQuality(): OracleQuality {
   };
 }
 
-function oracleQualityForSupply(supply: OracleSupply, row: FeasibilityDemandRow): OracleQuality {
+function oracleQualityForSupply(supply: OracleSupply, row: FeasibilityDemandRow, speciesLexOrder = 0): OracleQuality {
   const surplus = Math.max(0, oracleValue(supply) - row.totalCandy);
-  const speciesLexWeight = row.speciesLexWeight ?? 0;
   return {
     zeroSurplusCount: row.preferZeroSurplus && surplus === 0 ? 1 : 0,
     normalizedSurplus: surplus <= 2 ? 0 : surplus,
     maxSurplus: surplus,
     rawSurplus: surplus,
-    reachedSurplus: row.targetReached === false ? 0 : surplus,
-    speciesLex: supply.species * speciesLexWeight,
+    reachedSurplus: row.candyDemandMet === false ? 0 : surplus,
+    speciesLex: supply.species * speciesLexOrder,
     priority: [supply.typeS, supply.typeM, supply.universalS, supply.universalM, supply.universalL],
     legacyPriority: [-supply.universalL, -supply.universalM, supply.typeS, supply.typeM],
   };
@@ -1127,7 +1698,7 @@ function compareOracleQuality(a: OracleQuality, b: OracleQuality, mode?: SolverI
 }
 
 function qualityFromWitness(witness: FeasibilityWitness, rows: FeasibilityDemandRow[]): OracleQuality {
-  return witness.rows.reduce((quality, row, index) => addOracleQuality(quality, oracleQualityForSupply(row.supply, rows[index])), emptyOracleQuality());
+  return witness.rows.reduce((quality, row, index) => addOracleQuality(quality, oracleQualityForSupply(row.supply, rows[index], -index)), emptyOracleQuality());
 }
 
 function bruteForceBestQuality(rows: FeasibilityDemandRow[], inventory: CandyInventory, mode?: SolverItemCompareMode): OracleQuality | null {
@@ -1181,7 +1752,7 @@ function bruteForceBestQuality(rows: FeasibilityDemandRow[], inventory: CandyInv
         universalS + option.universalS,
         universalM + option.universalM,
         universalL + option.universalL,
-        addOracleQuality(quality, oracleQualityForSupply(option, row)),
+         addOracleQuality(quality, oracleQualityForSupply(option, row, -index)),
       );
     }
   };

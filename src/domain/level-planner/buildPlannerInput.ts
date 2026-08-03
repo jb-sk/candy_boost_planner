@@ -1,8 +1,9 @@
 import type { ExpGainNature, ExpType } from '../types';
-import { calcExp, calcLevelByCandy } from '../pokesleep';
+import { calcExp } from '../pokesleep';
 import { getPokemonType } from '../pokesleep/pokemon-names';
-import { getCandyFamilyKey, normalizeSpeciesCandyByFamily } from '../pokesleep/candy-family';
-import { maxLevel as MAX_LEVEL } from '../pokesleep/tables';
+import { getCandyFamilyKey, isValidPokedexId, normalizeSpeciesCandyByFamily } from '../pokesleep/candy-family';
+import { calcCandyTargetFromSleepExp } from '../pokesleep/sleep-growth';
+import { deriveTarget } from './deriveTarget';
 import type {
   BoostKind,
   CandyInventory,
@@ -19,14 +20,16 @@ export type PlannerInputRowDto = {
   readonly pokemonType?: string;
   readonly srcLevel: number;
   readonly dstLevel: number;
+  /** 最終目標のLv内EXP（睡眠後）。個数指定なしの行は 0（§10改訂A）。 */
+  readonly dstExpInLevel?: number;
   readonly expRemaining: number;
   readonly expType: ExpType;
   readonly nature: ExpGainNature;
-  readonly mode: 'targetLevel' | 'peak';
   readonly boostReachLevel?: number;
-  readonly candyPeak?: number;
   readonly candyTarget?: number;
   readonly boostCandyInput: number;
+  readonly sleepExp: number;
+  readonly sleepTargetMode?: "all";
 };
 
 export type PlannerCandyInventorySnapshotDto = {
@@ -73,7 +76,10 @@ export function buildPlannerInput(
 
   for (const row of rows) {
     const pokedexId = row.pokedexId;
-    if (!pokedexId) continue;
+    // 未選択（0 / undefined）だけでなく、負や非整数も弾く。`getCandyFamilyKey` は
+    // これらに対して契約外のキー（`'-1'` / `'1.5'`）を返し、ソルバーが
+    // `invalid_candy_family_key` でその行以降を丸ごと未達にしてしまう。
+    if (pokedexId === undefined || !isValidPokedexId(pokedexId)) continue;
 
     const pokemonType = row.pokemonType || getPokemonType(pokedexId);
     const toNextLevel = calcExp(row.srcLevel, row.srcLevel + 1, row.expType);
@@ -81,49 +87,37 @@ export function buildPlannerInput(
       ? Math.max(0, toNextLevel - row.expRemaining)
       : 0;
 
-    const peak = row.candyPeak || row.boostCandyInput;
-    let targetLevel: number;
-    let targetExpInLevel: number;
-
-    if (snapshot.boost.kind === 'none') {
-      const peakResult = calcLevelByCandy({
+    // 目標導出は deriveTarget に一本化する（§4.5）。
+    // 最終目標（睡眠後）は保存値そのもの。個数指定なしの行は dstLevel ちょうど。
+    const { targetLevel, targetExpInLevel } = deriveTarget({
+      dstLevel: row.dstLevel,
+      dstExpInLevel: row.dstExpInLevel,
+      candyTarget: row.candyTarget,
+      expType: row.expType,
+    });
+    const allSleep = row.sleepTargetMode === "all";
+    const requestedBoostCandy = allSleep ? 0 : row.boostCandyInput;
+    const sleepExp = allSleep ? 0 : row.sleepExp;
+    const candyTarget = allSleep ? 0 : row.candyTarget ?? (sleepExp > 0
+      ? calcCandyTargetFromSleepExp({
         srcLevel: row.srcLevel,
-        dstLevel: MAX_LEVEL,
+        dstLevel: targetLevel,
+        dstExpInLevel: targetExpInLevel,
         expType: row.expType,
         nature: row.nature,
-        boost: snapshot.boost.kind,
-        candy: peak,
+        boostKind: snapshot.boost.kind,
+        targetBoostCandy: requestedBoostCandy,
+        targetNormalCandy: Number.MAX_SAFE_INTEGER,
+        sleepExp,
         expGot: currentExpInLevel,
-      });
-      targetLevel = peakResult.level;
-      targetExpInLevel = row.mode === 'peak' ? peakResult.expGot : 0;
-    } else if (
-      row.mode === 'targetLevel'
-      && row.boostReachLevel !== undefined
-      && row.boostReachLevel < row.dstLevel
-    ) {
-      targetLevel = row.dstLevel;
-      targetExpInLevel = 0;
-    } else {
-      const peakResult = calcLevelByCandy({
-        srcLevel: row.srcLevel,
-        dstLevel: MAX_LEVEL,
-        expType: row.expType,
-        nature: row.nature,
-        boost: snapshot.boost.kind,
-        candy: peak,
-        expGot: currentExpInLevel,
-      });
-      targetLevel = peakResult.level;
-      targetExpInLevel = row.mode === 'peak' ? peakResult.expGot : 0;
-    }
+      })
+      : undefined);
 
     pokemonList.push({
       pokemonId: row.id,
       pokedexId,
       candyFamilyKey: getCandyFamilyKey(pokedexId),
       name: row.title,
-      mode: row.mode,
       type: pokemonType,
       currentLevel: row.srcLevel,
       currentExpInLevel,
@@ -131,11 +125,11 @@ export function buildPlannerInput(
       targetExpInLevel,
       expType: row.expType,
       nature: row.nature,
-      requestedBoostCandy: row.boostCandyInput,
+      requestedBoostCandy,
       boostAllowed: true,
-      candyTarget: row.candyTarget === undefined
+      candyTarget: candyTarget === undefined
         ? undefined
-        : { totalCandyUnits: row.candyTarget },
+        : { totalCandyUnits: candyTarget, boostedCandyUnits: requestedBoostCandy },
       priorityIndex: pokemonList.length,
     });
   }

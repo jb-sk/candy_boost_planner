@@ -25,6 +25,7 @@ export class CalcPanelPage {
   readonly settingsButton: Locator;
   readonly copySlotButton: Locator;
   readonly pasteSlotButton: Locator;
+  readonly reassignBoostButton: Locator;
 
   // === スロットタブ ===
   readonly slotTabs: Locator;
@@ -69,6 +70,7 @@ export class CalcPanelPage {
     this.settingsButton = page.getByTestId('settings-open-button-desktop');
     this.copySlotButton = page.getByTestId('calc-copy-slot-button');
     this.pasteSlotButton = page.getByTestId('calc-paste-slot-button');
+    this.reassignBoostButton = page.getByTestId('calc-reassign-boost-button');
 
     // スロットタブ（アクティブ＋非アクティブの両方を含む）
     this.slotTabs = page.getByTestId('calc-slot-tabs').locator('.slotTab');
@@ -116,6 +118,22 @@ export class CalcPanelPage {
     return row.getByTestId('dstLevel').getByTestId('level-picker-chevron');
   }
 
+  /** レベルピッカーを開く。`which` は data-testid。 */
+  async openLevelPicker(row: Locator, which: 'dstLevel' | 'boostReachLevel'): Promise<void> {
+    await row.getByTestId(which).getByTestId('level-picker-chevron').click();
+    await row.getByTestId(which).locator('.levelPick__title').waitFor();
+  }
+
+  /**
+   * レベルピッカー内の不足ラベル。無ければ ''。
+   * 目標Lvは アメ不足 / かけら不足、アメブ目標Lvは アメブ不足 を担当する。
+   * planner は debounce されるため、呼び出し側で expect.poll すること。
+   */
+  async getLevelPickerShortageText(row: Locator, which: 'dstLevel' | 'boostReachLevel'): Promise<string> {
+    const label = row.getByTestId(which).locator('.levelPick__shortage');
+    return (await label.count()) === 0 ? '' : ((await label.textContent()) ?? '').trim();
+  }
+
   getRowSrcLevelInput(row: Locator): Locator {
     return row.getByTestId('srcLevel').getByTestId('level-picker-trigger');
   }
@@ -132,6 +150,12 @@ export class CalcPanelPage {
     return row.getByTestId('speciesCandy');
   }
 
+  async setRowSpeciesCandy(row: Locator, value: string | number): Promise<void> {
+    const input = this.getRowSpeciesCandyInput(row);
+    await input.fill(String(value));
+    await input.blur();
+  }
+
   getRowBoostReachLevelButton(row: Locator): Locator {
     return row.getByTestId('boostReachLevel').getByTestId('level-picker-chevron');
   }
@@ -140,28 +164,50 @@ export class CalcPanelPage {
     return row.getByTestId('boostReachLevel').getByTestId('level-picker-trigger');
   }
 
-  getRowBoostRatioSlider(row: Locator): Locator {
-    return row.getByTestId('boostRatio');
-  }
-
-  getRowBoostRatioText(row: Locator): Locator {
-    return row.locator('.field__sub').first();
-  }
-
   getRowBoostCandyInput(row: Locator): Locator {
     return row.getByTestId('boostCandyCount');
+  }
+
+  async setRowBoostCandy(row: Locator, value: string | number): Promise<void> {
+    const input = this.getRowBoostCandyInput(row);
+    await input.fill(String(value));
+    await input.blur();
   }
 
   getRowCandyTargetInput(row: Locator): Locator {
     return row.getByTestId('candyTarget');
   }
 
-  getRowSleepButton1000h(row: Locator): Locator {
-    return row.getByTestId('sleepBtn1000h');
+  getRowNatureTrigger(row: Locator): Locator {
+    return row.getByTestId('nature-select-trigger');
   }
 
-  getRowSleepButton2000h(row: Locator): Locator {
-    return row.getByTestId('sleepBtn2000h');
+  async setRowNature(row: Locator, label: '-' | '▲▲' | '▼▼'): Promise<void> {
+    await this.getRowNatureTrigger(row).click();
+    const dropdown = this.page.getByTestId('nature-select-dropdown');
+    await expect(dropdown).toBeVisible();
+    await dropdown.getByRole('button', { name: label, exact: true }).dispatchEvent('mousedown');
+    await expect(dropdown).not.toBeVisible();
+  }
+
+  /**
+   * アメ個数指定を入力して確定する。
+   * 入力欄は Enter / フォーカスアウトで確定するため、fill だけでは反映されない。
+   */
+  async setRowCandyTarget(row: Locator, value: string | number): Promise<void> {
+    const input = this.getRowCandyTargetInput(row);
+    await input.fill(String(value));
+    await input.blur();
+  }
+
+  /** 睡眠目標のドロップダウン（未設定 / 200h / 500h / 1000h / 2000h / すべて睡眠）。 */
+  getRowSleepTargetSelect(row: Locator): Locator {
+    return row.getByTestId('sleepTargetHours');
+  }
+
+  /** 累計睡眠時間の編集ポップオーバーを開くラベル添え字リンク。 */
+  getRowSleepTargetCurrentLink(row: Locator): Locator {
+    return row.getByTestId('sleepTargetCurrentHours');
   }
 
   async setRowSrcLevel(row: Locator, level: number): Promise<void> {
@@ -225,10 +271,6 @@ export class CalcPanelPage {
     return row.getByTestId('resultRowReachable');
   }
 
-  getRowCandyTargetRow(row: Locator): Locator {
-    return row.getByTestId('resultRowCandyTarget');
-  }
-
   // 結果行の展開状態
   async isRowExpanded(row: Locator): Promise<boolean> {
     const requiredRow = this.getRowRequiredRow(row);
@@ -249,6 +291,20 @@ export class CalcPanelPage {
       await requiredRow.scrollIntoViewIfNeeded();
       await requiredRow.click({ position: { x: 12, y: 12 } });
       await expect(usedRow).toBeVisible({ timeout: 1000 });
+    }).toPass({ timeout: 7000 });
+  }
+
+  async collapseRow(row: Locator): Promise<void> {
+    const usedRow = this.getRowUsedRow(row);
+    if (!(await usedRow.isVisible())) {
+      return;
+    }
+    const requiredRow = this.getRowRequiredRow(row);
+    await expect(async () => {
+      if (!(await usedRow.isVisible())) return;
+      await requiredRow.scrollIntoViewIfNeeded();
+      await requiredRow.click({ position: { x: 12, y: 12 } });
+      await expect(usedRow).toBeHidden({ timeout: 1000 });
     }).toPass({ timeout: 7000 });
   }
 
@@ -308,7 +364,21 @@ export class CalcPanelPage {
 
   async getRowReachedLevel(row: Locator): Promise<string> {
     const usedRow = this.getRowUsedRow(row);
-    const res = usedRow.locator('.calcRow__res').filter({ hasText: '到達Lv' });
+    // 「睡眠到達Lv」は「到達Lv」を部分文字列として含むので、ラベルを完全一致で絞る
+    const res = usedRow.locator(
+      'xpath=.//span[contains(concat(" ", normalize-space(@class), " "), " calcRow__k ")][normalize-space()="到達Lv" or normalize-space()="アメ到達Lv"]/parent::span'
+    ).first();
+    const numText = await res.locator('.calcRow__num').first().textContent();
+    return numText?.trim() ?? '';
+  }
+
+  /** 睡眠込みの着地点（「約60.9」）。出ていない行では空文字。 */
+  async getRowSleepReachLevel(row: Locator): Promise<string> {
+    const usedRow = this.getRowUsedRow(row);
+    const res = usedRow.locator(
+      'xpath=.//span[contains(concat(" ", normalize-space(@class), " "), " calcRow__k ")][normalize-space()="睡眠到達Lv"]/parent::span'
+    );
+    if (await res.count() === 0) return '';
     const numText = await res.locator('.calcRow__num').first().textContent();
     return numText?.trim() ?? '';
   }

@@ -158,6 +158,7 @@ import NatureSelect from "./NatureSelect.vue";
 import { getPokemonNameLocalized } from "../domain/pokesleep/pokemon-name-localize";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import type { useBoxStore } from "../composables/useBoxStore";
+import type { CalcStore } from "../composables/useCalcStore";
 import { useCandyStore } from "../composables/useCandyStore";
 
 const emit = defineEmits<{
@@ -167,6 +168,7 @@ const emit = defineEmits<{
 
 const props = defineProps<{
   box: ReturnType<typeof useBoxStore>;
+  calc: CalcStore;
 }>();
 
 const box = props.box;
@@ -254,7 +256,7 @@ function onSubmit(ev?: MouseEvent) {
     const rawCandy = String(speciesCandyInput.value ?? '').trim();
     const parsedCandy = rawCandy === "" ? undefined : Math.max(0, Math.floor(Number(rawCandy) || 0));
     if (parsedCandy !== undefined) {
-      candyStore.updateSpeciesCandy(addLookup.value.pokedexId, parsedCandy);
+      props.calc.updateSpeciesCandy(addLookup.value.pokedexId, parsedCandy);
     }
   }
 

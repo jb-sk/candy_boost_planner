@@ -9,13 +9,15 @@
 
         <section class="section section--basic">
           <h3>{{ t("help.basic.title") }}</h3>
-          <dl class="helpDl helpDl--stacked">
+          <dl class="helpDl helpDl--table">
             <dt>{{ t("help.basic.addTitle") }}</dt>
             <dd>{{ t("help.basic.addDesc") }}</dd>
             <dt>{{ t("help.basic.usageTitle") }}</dt>
             <dd>{{ t("help.basic.usageDesc") }}</dd>
             <dt>{{ t("help.basic.stockTitle") }}</dt>
             <dd>{{ t("help.basic.stockDesc") }}</dd>
+            <dt>{{ t("settings.defaultBoostReachLevelLabel") }}</dt>
+            <dd>{{ t("settings.defaultBoostReachLevelHelp") }}</dd>
             <dt>{{ t("help.basic.sleepTitle") }}</dt>
             <dd>{{ t("help.basic.sleepDesc") }}</dd>
             <dt>{{ t("help.basic.tabSettingsTitle") }}</dt>
@@ -49,14 +51,29 @@
           </dl>
         </section>
 
+        <!-- モード名と各説明は settings.* を参照する。設定のツールチップと同じ文言を出すため、
+             ここで help.* に写しを作らない。 -->
+        <section class="section section--allocation">
+          <h3>{{ t("help.allocation.title") }}</h3>
+          <dl class="helpDl helpDl--table">
+            <dt>{{ t("settings.itemCompareModeSurplusFirst") }}</dt>
+            <dd>{{ t("settings.itemCompareModeSurplusFirstHelp") }}</dd>
+            <dt>{{ t("settings.itemCompareModeSurplusGateFirst") }}</dt>
+            <dd>{{ t("settings.itemCompareModeSurplusGateFirstHelp") }}</dd>
+            <dt>{{ t("settings.itemCompareModeLegacyImproved") }}</dt>
+            <dd>{{ t("settings.itemCompareModeLegacyImprovedHelp") }}</dd>
+          </dl>
+          <p class="section__note">{{ t("help.allocation.bagNote") }}</p>
+        </section>
+
         <section class="section">
-          <h3>{{ t("help.candy.title") }}</h3>
+          <h3>{{ t("help.itemPriority.title") }}</h3>
           <ul>
-            <li>{{ t("help.candy.item1") }}</li>
-            <li>{{ t("help.candy.item2") }}</li>
-            <li>{{ t("help.candy.item3") }}</li>
-            <li class="candy__note">{{ t("help.candy.note1") }}</li>
-            <li class="candy__note">{{ t("help.candy.note2") }}</li>
+            <li>{{ t("help.itemPriority.item1") }}</li>
+            <li>{{ t("help.itemPriority.item2") }}</li>
+            <li>{{ t("help.itemPriority.item3") }}</li>
+            <li class="itemPriority__note">{{ t("help.itemPriority.note1") }}</li>
+            <li class="itemPriority__note">{{ t("help.itemPriority.note2") }}</li>
           </ul>
         </section>
 

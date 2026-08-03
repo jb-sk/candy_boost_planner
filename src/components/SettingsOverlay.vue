@@ -52,18 +52,48 @@
                 <span class="settingsField__label">{{ t("calc.boostRemainingLabel") }}</span>
                 <input
                   data-testid="settings-boost-remaining-input"
-                  :value="calc.boostCandyRemainingText.value"
+                  :value="boostRemainingInputValue"
                   type="text"
                   inputmode="numeric"
                   autocomplete="off"
                   class="field__input field__input--sm"
                   :placeholder="t('calc.boostRemainingPlaceholder', { cap: calc.fmtNum(calc.boostCandyDefaultCap.value) })"
                   :title="t('calc.boostRemainingHelp')"
-                  @input="calc.onBoostCandyRemainingInput(($event.target as HTMLInputElement).value)"
+                  @focus="onBoostRemainingFocus"
+                  @input="onBoostRemainingInput(($event.target as HTMLInputElement).value)"
+                  @blur="onBoostRemainingBlur"
+                  @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
                   :disabled="calc.boostKind.value === 'none'"
                 />
               </label>
             </div>
+            <!-- 行を追加したときのアメブ目標Lvの既定値。既存の行は書き換えない。
+                 空欄＝「目標Lvと同じ」を placeholder で示す。
+                 **アプリ全体の設定なので、選択中スロットの種別では無効化しない。**
+                 上のアメブ上限はスロットごとの値なので `boostKind` で無効化してよいが、
+                 こちらは他のスロットや後の種別変更にも効く。通常アメのスロットを開いている
+                 というだけで編集できなくなるのは誤り。 -->
+            <div class="settingsRow">
+              <label class="settingsField settingsField--inline settingsField--aligned">
+                <span class="settingsField__label">{{ t("settings.defaultBoostReachLevelLabel") }}</span>
+                <input
+                  data-testid="settings-default-boost-reach-input"
+                  :value="defaultBoostReachInputValue"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  class="field__input field__input--sm"
+                  :placeholder="t('settings.defaultBoostReachLevelPlaceholder')"
+                  :title="t('settings.defaultBoostReachLevelHelp')"
+                  @focus="onDefaultBoostReachFocus"
+                  @input="onDefaultBoostReachInput(($event.target as HTMLInputElement).value)"
+                  @blur="onDefaultBoostReachBlur"
+                  @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
+                />
+              </label>
+            </div>
+            <!-- 各項目の説明文はヘルプへ移した（設定は入力欄だけにして見通しを保つ）。
+                 ここでは title 属性で同じ文言を出す。 -->
             <div class="settingsRow">
               <label class="settingsField settingsField--inline settingsField--aligned">
                 <span class="settingsField__label">{{ t("settings.itemCompareModeLabel") }}</span>
@@ -71,6 +101,7 @@
                   class="field__input field__input--sm"
                   data-testid="settings-item-compare-mode-select"
                   :value="calc.itemCompareMode.value"
+                  :title="itemCompareModeHelp"
                   @change="setItemCompareModeFromEvent($event)"
                 >
                   <option value="surplusFirst">{{ t("settings.itemCompareModeSurplusFirst") }}</option>
@@ -79,20 +110,20 @@
                 </select>
               </label>
             </div>
-            <p v-if="calc.itemCompareMode.value === 'surplusFirst'" class="settingsHelp" data-testid="settings-item-compare-mode-help">{{ t("settings.itemCompareModeSurplusFirstHelp") }}</p>
-            <p v-else-if="calc.itemCompareMode.value === 'surplusGateFirst'" class="settingsHelp" data-testid="settings-item-compare-mode-help">{{ t("settings.itemCompareModeSurplusGateFirstHelp") }}</p>
-            <p v-else class="settingsHelp" data-testid="settings-item-compare-mode-help">{{ t("settings.itemCompareModeLegacyImprovedHelp") }}</p>
             <div class="settingsRow">
               <label class="settingsField settingsField--inline settingsField--aligned">
                 <span class="settingsField__label">{{ t("calc.maxShardsLabel") }}</span>
                 <input
                   data-testid="settings-total-shards-input"
-                  :value="calc.totalShardsText.value"
+                  :value="totalShardsInputValue"
                   type="text"
                   inputmode="numeric"
                   autocomplete="off"
                   class="field__input field__input--sm"
-                  @input="calc.onTotalShardsInput(($event.target as HTMLInputElement).value)"
+                  @focus="onTotalShardsFocus"
+                  @input="onTotalShardsDraftInput(($event.target as HTMLInputElement).value)"
+                  @blur="onTotalShardsBlur"
+                  @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
                 />
               </label>
             </div>
@@ -107,8 +138,11 @@
                       type="number"
                       min="0"
                       class="field__input field__input--xs"
-                      :value="candyStore.universalCandy.value.s"
-                      @input="candyStore.updateUniversalCandy({ s: parseInt(($event.target as HTMLInputElement).value) || 0 })"
+                      :value="universalCandyInputValue('s')"
+                      @focus="onUniversalCandyFocus('s')"
+                      @input="onUniversalCandyInput('s', ($event.target as HTMLInputElement).value)"
+                      @blur="onUniversalCandyBlur('s')"
+                      @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
                     />
                   </label>
                   <label class="candyInput">
@@ -118,8 +152,11 @@
                       type="number"
                       min="0"
                       class="field__input field__input--xs"
-                      :value="candyStore.universalCandy.value.m"
-                      @input="candyStore.updateUniversalCandy({ m: parseInt(($event.target as HTMLInputElement).value) || 0 })"
+                      :value="universalCandyInputValue('m')"
+                      @focus="onUniversalCandyFocus('m')"
+                      @input="onUniversalCandyInput('m', ($event.target as HTMLInputElement).value)"
+                      @blur="onUniversalCandyBlur('m')"
+                      @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
                     />
                   </label>
                   <label class="candyInput">
@@ -129,8 +166,11 @@
                       type="number"
                       min="0"
                       class="field__input field__input--xs"
-                      :value="candyStore.universalCandy.value.l"
-                      @input="candyStore.updateUniversalCandy({ l: parseInt(($event.target as HTMLInputElement).value) || 0 })"
+                      :value="universalCandyInputValue('l')"
+                      @focus="onUniversalCandyFocus('l')"
+                      @input="onUniversalCandyInput('l', ($event.target as HTMLInputElement).value)"
+                      @blur="onUniversalCandyBlur('l')"
+                      @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
                     />
                   </label>
                 </div>
@@ -194,8 +234,11 @@
                     type="number"
                     min="0"
                     class="field__input field__input--xs field__input--compact"
-                    :value="candyStore.getTypeCandyFor(typeName).s"
-                    @input="candyStore.updateTypeCandy(typeName, { s: parseInt(($event.target as HTMLInputElement).value) || 0 })"
+                    :value="typeCandyInputValue(typeName, 's')"
+                    @focus="onTypeCandyFocus(typeName, 's')"
+                    @input="onTypeCandyInput(typeName, 's', ($event.target as HTMLInputElement).value)"
+                    @blur="onTypeCandyBlur(typeName, 's')"
+                    @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
                   />
                 </label>
                 <label class="candyInput">
@@ -205,8 +248,11 @@
                     type="number"
                     min="0"
                     class="field__input field__input--xs field__input--compact"
-                    :value="candyStore.getTypeCandyFor(typeName).m"
-                    @input="candyStore.updateTypeCandy(typeName, { m: parseInt(($event.target as HTMLInputElement).value) || 0 })"
+                    :value="typeCandyInputValue(typeName, 'm')"
+                    @focus="onTypeCandyFocus(typeName, 'm')"
+                    @input="onTypeCandyInput(typeName, 'm', ($event.target as HTMLInputElement).value)"
+                    @blur="onTypeCandyBlur(typeName, 'm')"
+                    @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
                   />
                 </label>
               </div>
@@ -230,12 +276,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import type { CalcStore } from "../composables/useCalcStore";
 import type { BoxStore } from "../composables/useBoxStore";
 import type { ItemCompareMode } from "../domain/level-planner/types";
 import { useCandyStore } from "../composables/useCandyStore";
+import { useDraftField } from "../composables/useDraftField";
 import { PokemonTypes, getTypeName } from "../domain/pokesleep/pokemon-types";
 import DataBackupSection from "./DataBackupSection.vue";
 
@@ -252,6 +299,91 @@ const calc = props.calc;
 const activeTab = ref<"inventory" | "backup">("inventory");
 const inventoryTabRef = ref<HTMLButtonElement | null>(null);
 const backupTabRef = ref<HTMLButtonElement | null>(null);
+
+const {
+  text: boostRemainingInputValue,
+  focus: onBoostRemainingFocus,
+  input: onBoostRemainingInput,
+  blur: onBoostRemainingBlur,
+} = useDraftField(() => calc.boostCandyRemainingText.value, (v) => calc.onBoostCandyRemainingInput(v));
+
+const {
+  text: totalShardsInputValue,
+  focus: onTotalShardsFocus,
+  input: onTotalShardsDraftInput,
+  blur: onTotalShardsBlur,
+} = useDraftField(() => calc.totalShardsText.value, (v) => calc.onTotalShardsInput(v));
+
+// 既定のアメブ目標Lv。空欄は「目標Lvと同じ」（null）を意味する。
+const {
+  text: defaultBoostReachInputValue,
+  focus: onDefaultBoostReachFocus,
+  input: onDefaultBoostReachInput,
+  blur: onDefaultBoostReachBlur,
+} = useDraftField(
+  () => (calc.defaultBoostReachLevel.value === null ? "" : String(calc.defaultBoostReachLevel.value)),
+  // 生の入力文字列をそのまま渡す。空欄・数値でない入力・範囲外の正規化はストアが担当する。
+  (v) => calc.setDefaultBoostReachLevel(v),
+);
+
+type UniversalCandySize = "s" | "m" | "l";
+type TypeCandySize = "s" | "m";
+const universalCandyDraft = reactive<Partial<Record<UniversalCandySize, string>>>({});
+const typeCandyDraft = reactive<Record<string, string>>({});
+
+function normalizedStockInput(value: string): number {
+  return Math.max(0, Math.floor(Number(value) || 0));
+}
+
+function universalCandyInputValue(size: UniversalCandySize): string {
+  return universalCandyDraft[size] ?? String(candyStore.universalCandy.value[size]);
+}
+
+function onUniversalCandyFocus(size: UniversalCandySize) {
+  universalCandyDraft[size] = String(candyStore.universalCandy.value[size]);
+}
+
+function onUniversalCandyInput(size: UniversalCandySize, value: string) {
+  universalCandyDraft[size] = value;
+}
+
+function onUniversalCandyBlur(size: UniversalCandySize) {
+  const draft = universalCandyDraft[size];
+  if (draft === undefined) return;
+  delete universalCandyDraft[size];
+  const value = normalizedStockInput(draft);
+  if (value !== candyStore.universalCandy.value[size]) {
+    calc.updateUniversalCandy({ [size]: value });
+  }
+}
+
+function typeCandyDraftKey(typeName: string, size: TypeCandySize): string {
+  return `${typeName}:${size}`;
+}
+
+function typeCandyInputValue(typeName: string, size: TypeCandySize): string {
+  return typeCandyDraft[typeCandyDraftKey(typeName, size)]
+    ?? String(candyStore.getTypeCandyFor(typeName)[size]);
+}
+
+function onTypeCandyFocus(typeName: string, size: TypeCandySize) {
+  typeCandyDraft[typeCandyDraftKey(typeName, size)] = String(candyStore.getTypeCandyFor(typeName)[size]);
+}
+
+function onTypeCandyInput(typeName: string, size: TypeCandySize, value: string) {
+  typeCandyDraft[typeCandyDraftKey(typeName, size)] = value;
+}
+
+function onTypeCandyBlur(typeName: string, size: TypeCandySize) {
+  const key = typeCandyDraftKey(typeName, size);
+  const draft = typeCandyDraft[key];
+  if (draft === undefined) return;
+  delete typeCandyDraft[key];
+  const value = normalizedStockInput(draft);
+  if (value !== candyStore.getTypeCandyFor(typeName)[size]) {
+    calc.updateTypeCandy(typeName, { [size]: value });
+  }
+}
 
 function onTabKeydown(event: KeyboardEvent) {
   let next: "inventory" | "backup" | null = null;
@@ -276,6 +408,14 @@ const dailySleepHoursInputValue = computed(() => dailySleepHoursDraft.value ?? S
 function isItemCompareMode(value: string): value is ItemCompareMode {
   return value === "surplusFirst" || value === "surplusGateFirst" || value === "legacyImproved";
 }
+
+/** 選択中モードの説明。本文はヘルプにあるので、ここは title 属性用。 */
+const itemCompareModeHelp = computed(() => {
+  const mode = calc.itemCompareMode.value;
+  if (mode === "surplusFirst") return t("settings.itemCompareModeSurplusFirstHelp");
+  if (mode === "surplusGateFirst") return t("settings.itemCompareModeSurplusGateFirstHelp");
+  return t("settings.itemCompareModeLegacyImprovedHelp");
+});
 
 function setItemCompareModeFromEvent(event: Event) {
   const value = (event.target as HTMLSelectElement).value;

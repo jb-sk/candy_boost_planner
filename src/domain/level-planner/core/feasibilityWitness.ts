@@ -1,5 +1,8 @@
 import { CANDY_VALUES } from '../constants';
+import { isCandyFamilyKey } from '../../pokesleep/candy-family';
 import { refineExactSupply } from './exactSupplyRefine';
+import { addItemPriority, compareItemPriority, emptyItemPriority, itemCountsFromPriority, itemPriorityOf } from './itemPriority';
+import type { ItemPriorityTuple } from './itemPriority';
 import type {
   CandyInventory,
   FeasiblePlanRow,
@@ -19,6 +22,17 @@ import type {
 
 type Supply = FeasiblePlanRow['supply'];
 
+type PreparedRow = FeasibilityDemandRow & {
+  readonly speciesLexOrder: number;
+};
+
+function prepareRows(rows: FeasibilityDemandRow[]): PreparedRow[] {
+  return rows.map((row, originalIndex) => ({
+    ...row,
+    speciesLexOrder: -originalIndex,
+  }));
+}
+
 type PathNode = {
   rowIndex: number;
   option: Supply;
@@ -33,8 +47,7 @@ type RepresentativeQuality = {
   reachedSurplus: number;
   totalCandy: number;
   speciesLex: number;
-  priority: [number, number, number, number, number];
-  legacyPriority: [number, number, number, number];
+  priority: ItemPriorityTuple;
 };
 
 type ResourceState = {
@@ -149,23 +162,21 @@ function emptyQuality(): RepresentativeQuality {
     reachedSurplus: 0,
     totalCandy: 0,
     speciesLex: 0,
-    priority: [0, 0, 0, 0, 0],
-    legacyPriority: [0, 0, 0, 0],
+    priority: emptyItemPriority(),
   };
 }
 
-function qualityForOption(supply: Supply, totalCandy: number, preferZeroSurplus = false, speciesLexWeight = 0, targetReached = true): RepresentativeQuality {
+function qualityForOption(supply: Supply, totalCandy: number, preferZeroSurplus = false, speciesLexOrder = 0, candyDemandMet = true): RepresentativeQuality {
   const surplus = Math.max(0, supplyValue(supply) - totalCandy);
   return {
     zeroSurplusCount: preferZeroSurplus && surplus === 0 ? 1 : 0,
     normalizedSurplus: surplus <= 2 ? 0 : surplus,
     maxSurplus: surplus,
     rawSurplus: surplus,
-    reachedSurplus: targetReached ? surplus : 0,
+    reachedSurplus: candyDemandMet ? surplus : 0,
     totalCandy,
-    speciesLex: supply.species * speciesLexWeight,
-    priority: [supply.typeS, supply.typeM, supply.universalS, supply.universalM, supply.universalL],
-    legacyPriority: [-supply.universalL, -supply.universalM, supply.typeS, supply.typeM],
+    speciesLex: supply.species * speciesLexOrder,
+    priority: itemPriorityOf(supply),
   };
 }
 
@@ -178,19 +189,7 @@ function addQuality(a: RepresentativeQuality, b: RepresentativeQuality): Represe
     reachedSurplus: a.reachedSurplus + b.reachedSurplus,
     totalCandy: a.totalCandy + b.totalCandy,
     speciesLex: a.speciesLex + b.speciesLex,
-    priority: [
-      a.priority[0] + b.priority[0],
-      a.priority[1] + b.priority[1],
-      a.priority[2] + b.priority[2],
-      a.priority[3] + b.priority[3],
-      a.priority[4] + b.priority[4],
-    ],
-    legacyPriority: [
-      a.legacyPriority[0] + b.legacyPriority[0],
-      a.legacyPriority[1] + b.legacyPriority[1],
-      a.legacyPriority[2] + b.legacyPriority[2],
-      a.legacyPriority[3] + b.legacyPriority[3],
-    ],
+    priority: addItemPriority(a.priority, b.priority),
   };
 }
 
@@ -201,10 +200,7 @@ function compareQuality(a: RepresentativeQuality, b: RepresentativeQuality, mode
     if (a.rawSurplus !== b.rawSurplus) return a.rawSurplus < b.rawSurplus ? 1 : -1;
     if (a.totalCandy !== b.totalCandy) return a.totalCandy > b.totalCandy ? 1 : -1;
     if (a.speciesLex !== b.speciesLex) return a.speciesLex > b.speciesLex ? 1 : -1;
-    for (let index = 0; index < a.priority.length; index++) {
-      if (a.priority[index] !== b.priority[index]) return a.priority[index] > b.priority[index] ? 1 : -1;
-    }
-    return 0;
+    return compareItemPriority(a.priority, b.priority);
   }
   if (mode === 'legacyImproved' || mode === 'surplusGateFirst') {
     if (a.zeroSurplusCount !== b.zeroSurplusCount) return a.zeroSurplusCount > b.zeroSurplusCount ? 1 : -1;
@@ -213,9 +209,9 @@ function compareQuality(a: RepresentativeQuality, b: RepresentativeQuality, mode
     if (acceptableA !== acceptableB) return acceptableA ? 1 : -1;
     if (!acceptableA && a.normalizedSurplus !== b.normalizedSurplus) return a.normalizedSurplus < b.normalizedSurplus ? 1 : -1;
     if (a.speciesLex !== b.speciesLex) return a.speciesLex > b.speciesLex ? 1 : -1;
-    for (let index = 0; index < a.legacyPriority.length; index++) {
-      if (a.legacyPriority[index] !== b.legacyPriority[index]) return a.legacyPriority[index] > b.legacyPriority[index] ? 1 : -1;
-    }
+    const priority = compareItemPriority(a.priority, b.priority);
+    if (priority) return priority;
+    // 余り0〜2を同等扱いする分、スコア同点でも供給価値がずれる。ここで明示的に詰める。
     if (a.rawSurplus !== b.rawSurplus) return a.rawSurplus < b.rawSurplus ? 1 : -1;
     return 0;
   }
@@ -764,9 +760,14 @@ function createContext(options: InternalFeasibilitySolverOptions): SolverContext
 }
 
 function checkpoint(context: SolverContext): void {
-  const { abortAfterTransitions, deadlineMs } = context.options;
+  const { abortAfterTransitions, deadlineMs, deadlineAt } = context.options;
   if (abortAfterTransitions !== undefined && context.stats.transitions >= abortAfterTransitions) {
     throw new FeasibilityAbort('transition_budget_exceeded');
+  }
+  // `deadlineMs` は context ごとに測り直されるので、prefix 二分探索のように context を
+  // 何度も作る経路では probe ごとに満額使えてしまう。絶対締切は全 context で共有する。
+  if (deadlineAt !== undefined && performance.now() >= deadlineAt) {
+    throw new FeasibilityAbort('deadline_exceeded');
   }
   if (deadlineMs !== undefined && performance.now() - context.startedAt >= deadlineMs) {
     throw new FeasibilityAbort('deadline_exceeded');
@@ -821,7 +822,7 @@ function topDownSpeciesDistribution(rows: FeasibilityDemandRow[], supplies: Supp
 }
 
 function normalizeSharedGroup(
-  rows: FeasibilityDemandRow[],
+  rows: PreparedRow[],
   state: SharedResourceState,
   targetSpecies: number,
   context: SolverContext,
@@ -861,14 +862,14 @@ function normalizeSharedGroup(
     universalS: acc.universalS + entry.option.universalS,
     universalM: acc.universalM + entry.option.universalM,
     universalL: acc.universalL + entry.option.universalL,
-    quality: addQuality(acc.quality, qualityForOption(entry.option, rows[index].totalCandy, rows[index].preferZeroSurplus, rows[index].speciesLexWeight, rows[index].targetReached)),
+    quality: addQuality(acc.quality, qualityForOption(entry.option, rows[index].totalCandy, rows[index].preferZeroSurplus, rows[index].speciesLexOrder, rows[index].candyDemandMet)),
     path: normalizedPath,
   }), { typeS: {}, typeM: {}, universalS: 0, universalM: 0, universalL: 0, quality: emptyQuality(), path: normalizedPath });
   return withinTotalSurplusBudget(normalized.quality, context) ? normalized : null;
 }
 
 function rowOptionsForSpecies(
-  row: FeasibilityDemandRow,
+  row: PreparedRow,
   species: number,
   inventory: CandyInventory,
   context?: SolverContext,
@@ -892,7 +893,7 @@ function rowOptionsForSpecies(
 
 function buildRowFrontierForSpecies(
   rowIndex: number,
-  row: FeasibilityDemandRow,
+  row: PreparedRow,
   species: number,
   inventory: CandyInventory,
   context: SolverContext,
@@ -901,7 +902,7 @@ function buildRowFrontierForSpecies(
   const states: ResourceState[] = [];
   for (const option of options) {
     checkpoint(context);
-    const quality = qualityForOption(option, row.totalCandy, row.preferZeroSurplus, row.speciesLexWeight, row.targetReached);
+    const quality = qualityForOption(option, row.totalCandy, row.preferZeroSurplus, row.speciesLexOrder, row.candyDemandMet);
     if (!withinTotalSurplusBudget(quality, context)) continue;
     const state: ResourceState = {
       typeS: option.typeS > 0 ? { [row.type]: option.typeS } : {},
@@ -922,7 +923,7 @@ function buildRowFrontierForSpecies(
 
 function buildUniqueGroupFrontier(
   rowIndex: number,
-  row: FeasibilityDemandRow,
+  row: PreparedRow,
   inventory: CandyInventory,
   context: SolverContext,
 ): GroupFrontier {
@@ -964,7 +965,7 @@ function buildUniqueGroupFrontier(
  */
 function buildCertifiedTopDownSharedGroupFrontier(
   rowIndexes: number[],
-  rows: FeasibilityDemandRow[],
+  rows: PreparedRow[],
   inventory: CandyInventory,
   context: SolverContext,
   targetSpecies: number,
@@ -981,7 +982,7 @@ function buildCertifiedTopDownSharedGroupFrontier(
   if (remainingSpecies !== 0) return null;
 
   const totalDemand = rowIndexes.reduce((sum, rowIndex) => sum + rows[rowIndex].totalCandy, 0);
-  const weights = rowIndexes.map(rowIndex => rows[rowIndex].speciesLexWeight ?? 0);
+  const weights = rowIndexes.map(rowIndex => rows[rowIndex].speciesLexOrder);
   const hasUniqueTopDownLexMaximum = targetSpecies === 0
     || targetSpecies === totalDemand
     || weights.every((weight, index) => index === weights.length - 1 || weight > weights[index + 1]);
@@ -1034,7 +1035,7 @@ function buildCertifiedTopDownSharedGroupFrontier(
 
 function buildSharedGroupFrontier(
   rowIndexes: number[],
-  rows: FeasibilityDemandRow[],
+  rows: PreparedRow[],
   inventory: CandyInventory,
   context: SolverContext,
 ): GroupFrontier {
@@ -1104,7 +1105,7 @@ function buildSharedGroupFrontier(
             || universalS > inventory.universal.s
             || universalM > inventory.universal.m
             || universalL > inventory.universal.l) continue;
-          const quality = addQuality(state.quality, qualityForOption(option, row.totalCandy, row.preferZeroSurplus, row.speciesLexWeight, row.targetReached));
+          const quality = addQuality(state.quality, qualityForOption(option, row.totalCandy, row.preferZeroSurplus, row.speciesLexOrder, row.candyDemandMet));
           if (!withinTotalSurplusBudget(quality, context)) continue;
           const candidate: SharedResourceState = {
             speciesUsed: state.speciesUsed + option.species,
@@ -1172,6 +1173,9 @@ function exactJoinTranslationKey(state: ResourceState): string {
   const quality = state.quality;
   const smallValue = CANDY_VALUES.universal.s;
   const mediumValue = CANDY_VALUES.universal.m;
+  // 同値判定はスコアではなく使用個数で行う。スコアだけを見ると、
+  // 同点だが個数の違う状態を同じクラスへ畳んでしまう。
+  const used = itemCountsFromPriority(quality.priority);
   return JSON.stringify([
     state.universalS * smallValue + state.universalM * mediumValue,
     quality.zeroSurplusCount,
@@ -1181,15 +1185,11 @@ function exactJoinTranslationKey(state: ResourceState): string {
     quality.reachedSurplus,
     quality.totalCandy,
     quality.speciesLex,
-    quality.priority[0],
-    quality.priority[1],
-    quality.priority[2] * smallValue + quality.priority[3] * mediumValue,
-    quality.priority[3] - state.universalM,
-    quality.priority[4],
-    quality.legacyPriority[0],
-    quality.legacyPriority[1] + state.universalM,
-    quality.legacyPriority[2],
-    quality.legacyPriority[3],
+    used.typeS,
+    used.typeM,
+    used.universalS * smallValue + used.universalM * mediumValue,
+    used.universalM - state.universalM,
+    used.universalL,
   ]);
 }
 
@@ -1517,7 +1517,7 @@ function projectTypeBlockFrontier(states: ResourceState[], context: SolverContex
 
 function buildTypeBlockResourceStates(
   rowIndexes: number[],
-  rows: FeasibilityDemandRow[],
+  rows: PreparedRow[],
   inventory: CandyInventory,
   context: SolverContext,
 ): ResourceState[] {
@@ -1550,7 +1550,7 @@ function buildTypeBlockResourceStates(
 
 function buildTypeBlockFrontier(
   rowIndexes: number[],
-  rows: FeasibilityDemandRow[],
+  rows: PreparedRow[],
   inventory: CandyInventory,
   context: SolverContext,
   cacheKey = typeBlockFrontierCacheKey(rowIndexes, rows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxTotalSurplus, context.options.maxReachedSurplus, context.options.decisionOnly),
@@ -1583,7 +1583,7 @@ function globalPrefixCacheKey(blockKeys: string[]): string {
   return blockKeys.join('\u001f');
 }
 
-function demandRowCacheKey(row: FeasibilityDemandRow): string {
+function demandRowCacheKey(row: PreparedRow): string {
   return [
     row.pokemonId,
     row.pokedexId,
@@ -1595,15 +1595,15 @@ function demandRowCacheKey(row: FeasibilityDemandRow): string {
     row.shards,
     row.reachedLv,
     row.expInLevel,
-    row.targetReached ? 1 : 0,
+    row.candyDemandMet ? 1 : 0,
     row.preferZeroSurplus ? 1 : 0,
-    row.speciesLexWeight ?? '',
+    row.speciesLexOrder,
   ].join(':');
 }
 
 function rowFrontierCacheKey(
   rowIndex: number,
-  row: FeasibilityDemandRow,
+  row: PreparedRow,
   inventory: CandyInventory,
   mode?: SolverItemCompareMode,
   maxRowSurplus?: number,
@@ -1627,7 +1627,7 @@ function rowFrontierCacheKey(
 
 function typeBlockFrontierCacheKey(
   rowIndexes: number[],
-  rows: FeasibilityDemandRow[],
+  rows: PreparedRow[],
   inventory: CandyInventory,
   mode?: SolverItemCompareMode,
   maxRowSurplus?: number,
@@ -1651,7 +1651,7 @@ function typeBlockFrontierCacheKey(
 }
 
 /** 共有種族で接続されたタイプを同一ブロックに閉じ込める。 */
-function buildTypeBlockComponents(rows: FeasibilityDemandRow[]): number[][] {
+function buildTypeBlockComponents(rows: PreparedRow[]): number[][] {
   const parent = new Map<string, string>();
   const find = (type: string): string => {
     const current = parent.get(type);
@@ -1725,12 +1725,12 @@ function validateDemandRows(
   let boostUsed = 0;
   let shardsUsed = 0;
   for (const row of rows) {
-    if (!/^[1-9]\d*$/.test(row.candyFamilyKey)) return `invalid_candy_family_key:${row.pokemonId}`;
+    if (!isCandyFamilyKey(row.candyFamilyKey)) return `invalid_candy_family_key:${row.pokemonId}`;
     const values = [row.totalCandy, row.boostCandy, row.normalCandy, row.shards, row.reachedLv, row.expInLevel];
     if (!values.every(isNonNegativeInteger)) return `invalid_row_values:${row.pokemonId}`;
     if (row.boostCandy + row.normalCandy !== row.totalCandy) return `candy_split_mismatch:${row.pokemonId}`;
-    if (seenUnreached && row.targetReached) return 'prefix_violation';
-    if (!row.targetReached) seenUnreached = true;
+    if (seenUnreached && row.candyDemandMet) return 'prefix_violation';
+    if (!row.candyDemandMet) seenUnreached = true;
     boostUsed += row.boostCandy;
     shardsUsed += row.shards;
   }
@@ -1798,7 +1798,7 @@ function expectedRemaining(
 }
 
 function expectedBoundary(rows: FeasibilityDemandRow[]): { reachedCount: number; boundaryIndex: number | null; boundaryLevel: number; boundaryExpInLevel: number } {
-  const boundaryIndex = rows.findIndex(row => !row.targetReached);
+  const boundaryIndex = rows.findIndex(row => !row.candyDemandMet);
   return {
     reachedCount: boundaryIndex === -1 ? rows.length : boundaryIndex,
     boundaryIndex: boundaryIndex === -1 ? null : boundaryIndex,
@@ -1948,7 +1948,7 @@ function validateFeasibilityWitnessInternal(
   for (let index = 0; index < rowCount; index++) {
     const expected = demandRows[index];
     const actual = witness.rows[index];
-    for (const key of ['pokemonId', 'pokedexId', 'candyFamilyKey', 'type', 'totalCandy', 'boostCandy', 'normalCandy', 'shards', 'reachedLv', 'expInLevel', 'targetReached'] as const) {
+    for (const key of ['pokemonId', 'pokedexId', 'candyFamilyKey', 'type', 'totalCandy', 'boostCandy', 'normalCandy', 'shards', 'reachedLv', 'expInLevel', 'candyDemandMet'] as const) {
       if (actual[key] !== expected[key]) errors.push(`row_field_mismatch:${index}:${key}`);
     }
     if (validateSupplyAndInventory([actual], {
@@ -1962,7 +1962,7 @@ function validateFeasibilityWitnessInternal(
     }
     const rowSurplus = Math.max(0, supplyValue(actual.supply) - actual.totalCandy);
     totalSurplus += rowSurplus;
-    if (actual.targetReached) reachedSurplus += rowSurplus;
+    if (actual.candyDemandMet) reachedSurplus += rowSurplus;
     if (options.maxRowSurplus !== undefined && rowSurplus > options.maxRowSurplus) {
       errors.push(`max_row_surplus_exceeded:${index}`);
     }
@@ -2014,7 +2014,7 @@ function hasSharedCandyFamily(rows: FeasibilityDemandRow[]): boolean {
  */
 function hasGlobalTopDownOptimalityCertificate(
   result: FeasibilityResult,
-  rows: FeasibilityDemandRow[],
+  rows: PreparedRow[],
   inventory: CandyInventory,
   mode?: SolverItemCompareMode,
 ): boolean {
@@ -2035,7 +2035,7 @@ function hasGlobalTopDownOptimalityCertificate(
     if (rowIndexes.length < 2) continue;
     const totalDemand = rowIndexes.reduce((sum, rowIndex) => sum + rows[rowIndex].totalCandy, 0);
     const targetSpecies = Math.min(inventory.species[familyKey] ?? 0, totalDemand);
-    const weights = rowIndexes.map(rowIndex => rows[rowIndex].speciesLexWeight ?? 0);
+    const weights = rowIndexes.map(rowIndex => rows[rowIndex].speciesLexOrder);
     const hasUniqueTopDownLexMaximum = targetSpecies === 0
       || targetSpecies === totalDemand
       || weights.every((weight, index) => index === weights.length - 1 || weight > weights[index + 1]);
@@ -2078,7 +2078,7 @@ function completeSolverOptionsAfter(
 }
 
 function solveFeasibilityForFixedRowsOnce(
-  rows: FeasibilityDemandRow[],
+  rows: PreparedRow[],
   inventory: CandyInventory,
   options: InternalFeasibilitySolverOptions,
 ): FeasibilityResult {
@@ -2105,8 +2105,8 @@ function solveFeasibilityForFixedRowsOnce(
   }
 }
 
-export function solveFeasibilityForFixedRows(
-  rows: FeasibilityDemandRow[],
+function solveFeasibilityForFixedRowsPrepared(
+  rows: PreparedRow[],
   inventory: CandyInventory,
   options: FeasibilitySolverOptions = {},
 ): FeasibilityResult {
@@ -2132,8 +2132,16 @@ export function solveFeasibilityForFixedRows(
   return solveFeasibilityForFixedRowsOnce(rows, inventory, completeSolverOptionsAfter(internal, startedAt));
 }
 
-function solveFeasibilityDecisionForFixedRowsOnce(
+export function solveFeasibilityForFixedRows(
   rows: FeasibilityDemandRow[],
+  inventory: CandyInventory,
+  options: FeasibilitySolverOptions = {},
+): FeasibilityResult {
+  return solveFeasibilityForFixedRowsPrepared(prepareRows(rows), inventory, options);
+}
+
+function solveFeasibilityDecisionForFixedRowsOnce(
+  rows: PreparedRow[],
   inventory: CandyInventory,
   options: InternalFeasibilitySolverOptions,
 ): FeasibilityDecisionResult {
@@ -2159,8 +2167,8 @@ function solveFeasibilityDecisionForFixedRowsOnce(
   }
 }
 
-export function solveFeasibilityDecisionForFixedRows(
-  rows: FeasibilityDemandRow[],
+function solveFeasibilityDecisionForFixedRowsPrepared(
+  rows: PreparedRow[],
   inventory: CandyInventory,
   options: FeasibilitySolverOptions = {},
 ): FeasibilityDecisionResult {
@@ -2181,11 +2189,20 @@ export function solveFeasibilityDecisionForFixedRows(
   return solveFeasibilityDecisionForFixedRowsOnce(rows, inventory, completeSolverOptionsAfter(internal, startedAt));
 }
 
+export function solveFeasibilityDecisionForFixedRows(
+  rows: FeasibilityDemandRow[],
+  inventory: CandyInventory,
+  options: FeasibilitySolverOptions = {},
+): FeasibilityDecisionResult {
+  return solveFeasibilityDecisionForFixedRowsPrepared(prepareRows(rows), inventory, options);
+}
+
 export function createPrefixDecisionSession(
   rows: FeasibilityDemandRow[],
   inventory: CandyInventory,
   options: FeasibilitySolverOptions = {},
 ): { canSolvePrefix: (length: number) => FeasibilityDecisionResult } {
+  const preparedRows = prepareRows(rows);
   const rowFrontierCache = (options as InternalFeasibilitySolverOptions).rowFrontierCache ?? new Map<string, CachedRowFrontier>();
   const sessionOptions: InternalFeasibilitySolverOptions = {
     ...options,
@@ -2198,7 +2215,7 @@ export function createPrefixDecisionSession(
     decisionOnly: false,
   });
   const decisions = new Map<number, FeasibilityDecisionResult>();
-  const prefixRows: FeasibilityDemandRow[] = [];
+  const prefixRows: PreparedRow[] = [];
   const speciesSeen = new Set<string>();
   const blockByType = new Map<string, {
     dirty: boolean;
@@ -2216,7 +2233,7 @@ export function createPrefixDecisionSession(
     if (sessionOptions.abortAfterTransitions !== undefined
       || sessionOptions.maxTotalSurplus !== undefined
       || sessionOptions.maxReachedSurplus !== undefined) return null;
-    const searchRows = rows.slice(0, length);
+    const searchRows = preparedRows.slice(0, length);
     if (new Set(searchRows.map(row => row.candyFamilyKey)).size !== searchRows.length) return null;
     const searchContext = createContext({ ...sessionOptions, logPerformance: false });
     const demandError = validateDemandRows(searchRows, searchContext.options);
@@ -2307,13 +2324,13 @@ export function createPrefixDecisionSession(
     return finishDecision(searchContext, feasible
       ? {
           status: 'feasible',
-          toWitness: () => solveFeasibilityForFixedRows(searchRows, inventory, witnessOptions()),
+          toWitness: () => solveFeasibilityForFixedRowsPrepared(searchRows, inventory, witnessOptions()),
         }
       : { status: 'infeasible', reason: 'no_global_feasible_state' });
   };
 
   const fallback = (length: number): FeasibilityDecisionResult => {
-    const clamped = Math.max(0, Math.min(rows.length, Math.floor(length)));
+    const clamped = Math.max(0, Math.min(preparedRows.length, Math.floor(length)));
     const cached = decisions.get(clamped);
     if (cached) return cached;
     if (sessionOptions.maxTotalSurplus === undefined && sessionOptions.maxReachedSurplus === undefined) {
@@ -2322,14 +2339,14 @@ export function createPrefixDecisionSession(
       // Build it once under the witness cache key instead of first building a
       // separate decision-only frontier that cannot be reused. Total-surplus
       // budget probes keep the decision-only path because most are not restored.
-      const full = solveFeasibilityForFixedRows(rows.slice(0, clamped), inventory, witnessOptions());
+      const full = solveFeasibilityForFixedRowsPrepared(preparedRows.slice(0, clamped), inventory, witnessOptions());
       const result: FeasibilityDecisionResult = full.status === 'feasible'
         ? { status: 'feasible', stats: full.stats, toWitness: () => full }
         : full;
       decisions.set(clamped, result);
       return result;
     }
-    const result = solveFeasibilityDecisionForFixedRows(rows.slice(0, clamped), inventory, sessionOptions);
+    const result = solveFeasibilityDecisionForFixedRowsPrepared(preparedRows.slice(0, clamped), inventory, sessionOptions);
     decisions.set(clamped, result);
     return result;
   };
@@ -2342,7 +2359,7 @@ export function createPrefixDecisionSession(
     for (const block of blockByType.values()) {
       if (!block.dirty) continue;
       block.frontier = projectTypeBlockFrontier(block.states, context);
-      block.key = typeBlockFrontierCacheKey(block.rowIndexes, rows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxTotalSurplus, context.options.maxReachedSurplus, context.options.decisionOnly);
+      block.key = typeBlockFrontierCacheKey(block.rowIndexes, preparedRows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxTotalSurplus, context.options.maxReachedSurplus, context.options.decisionOnly);
       block.dirty = false;
       rememberTypeBlock(block);
     }
@@ -2356,7 +2373,7 @@ export function createPrefixDecisionSession(
     if (combined.status === 'infeasible') return finishDecision(context, { status: 'infeasible', reason: combined.reason });
     return finishDecision(context, {
       status: 'feasible',
-      toWitness: () => solveFeasibilityForFixedRows(rows.slice(0, length), inventory, witnessOptions()),
+      toWitness: () => solveFeasibilityForFixedRowsPrepared(preparedRows.slice(0, length), inventory, witnessOptions()),
     });
   };
 
@@ -2378,7 +2395,7 @@ export function createPrefixDecisionSession(
     while (builtLength < length && builtLength < complexFrom) {
       checkpoint(context);
       const rowIndex = builtLength;
-      const row = rows[rowIndex];
+      const row = preparedRows[rowIndex];
       const speciesKey = row.candyFamilyKey;
       if (speciesSeen.has(speciesKey)) {
         complexFrom = rowIndex + 1;
@@ -2408,11 +2425,11 @@ export function createPrefixDecisionSession(
 
   return {
     canSolvePrefix(length: number): FeasibilityDecisionResult {
-      const clamped = Math.max(0, Math.min(rows.length, Math.floor(length)));
+      const clamped = Math.max(0, Math.min(preparedRows.length, Math.floor(length)));
       const cached = decisions.get(clamped);
       if (cached) return cached;
       if (clamped === 0) {
-        const result = finishDecision(context, { status: 'feasible', toWitness: () => solveFeasibilityForFixedRows([], inventory, witnessOptions()) });
+        const result = finishDecision(context, { status: 'feasible', toWitness: () => solveFeasibilityForFixedRowsPrepared([], inventory, witnessOptions()) });
         decisions.set(0, result);
         return result;
       }
@@ -2503,7 +2520,7 @@ function combineGlobalBlockFrontiers(
 }
 
 function restoreWitnessResult(
-  rows: FeasibilityDemandRow[],
+  rows: PreparedRow[],
   inventory: CandyInventory,
   context: SolverContext,
   global: BlockState[],
@@ -2515,7 +2532,13 @@ function restoreWitnessResult(
   const entries = pathEntries(selected.path);
   const optionsByRow = new Map(entries.map(entry => [entry.rowIndex, entry.option]));
   if (optionsByRow.size !== rows.length) return fallbackResult(context, 'witness_restore_missing_row', rows, inventory);
-  const witnessRows: FeasiblePlanRow[] = rows.map((row, index) => ({ ...row, supply: optionsByRow.get(index) ?? { species: 0, typeS: 0, typeM: 0, universalS: 0, universalM: 0, universalL: 0 } }));
+  const witnessRows: FeasiblePlanRow[] = rows.map((row, index) => {
+    const { speciesLexOrder: _speciesLexOrder, ...demandRow } = row;
+    return {
+      ...demandRow,
+      supply: optionsByRow.get(index) ?? { species: 0, typeS: 0, typeM: 0, universalS: 0, universalM: 0, universalL: 0 },
+    };
+  });
   const boundary = expectedBoundary(rows);
   const witness: FeasibilityWitness = {
     ...boundary,
@@ -2528,9 +2551,9 @@ function restoreWitnessResult(
   return finish(context, { status: 'feasible', witness });
 }
 
-export function solveFeasibilityForIndependentBoundary(
-  prefixRows: FeasibilityDemandRow[],
-  boundaryRow: FeasibilityDemandRow,
+function solveFeasibilityForIndependentBoundaryPrepared(
+  prefixRows: PreparedRow[],
+  boundaryRow: PreparedRow,
   inventory: CandyInventory,
   options: FeasibilitySolverOptions = {},
 ): FeasibilityResult | null {
@@ -2571,7 +2594,7 @@ export function solveFeasibilityForIndependentBoundary(
         };
         if (candidate.universalS > inventory.universal.s || candidate.universalM > inventory.universal.m || candidate.universalL > inventory.universal.l) continue;
         if (!withinTotalSurplusBudget(candidate.quality, context)) continue;
-          keepBestBlockState(next, candidate, context);
+        keepBestBlockState(next, candidate, context);
       }
     }
     const global = pruneBlockStates([...next.values()], context);
@@ -2584,8 +2607,23 @@ export function solveFeasibilityForIndependentBoundary(
   }
 }
 
-export function createIndependentBoundaryFeasibilitySession(
+export function solveFeasibilityForIndependentBoundary(
   prefixRows: FeasibilityDemandRow[],
+  boundaryRow: FeasibilityDemandRow,
+  inventory: CandyInventory,
+  options: FeasibilitySolverOptions = {},
+): FeasibilityResult | null {
+  const preparedRows = prepareRows([...prefixRows, boundaryRow]);
+  return solveFeasibilityForIndependentBoundaryPrepared(
+    preparedRows.slice(0, -1),
+    preparedRows[preparedRows.length - 1],
+    inventory,
+    options,
+  );
+}
+
+function createIndependentBoundaryFeasibilitySessionPrepared(
+  prefixRows: PreparedRow[],
   inventory: CandyInventory,
   options: FeasibilitySolverOptions = {},
 ): {
@@ -2602,6 +2640,10 @@ export function createIndependentBoundaryFeasibilitySession(
 } | null {
   const prefixTypes = new Set(prefixRows.map(row => row.type));
   const prefixSpecies = new Set(prefixRows.map(row => row.candyFamilyKey));
+  const prepareBoundaryRow = (row: FeasibilityDemandRow): PreparedRow => ({
+    ...row,
+    speciesLexOrder: -prefixRows.length,
+  });
   const context = createContext(options);
   const demandError = validateDemandRows(prefixRows, options);
   if (demandError) return null;
@@ -2627,7 +2669,7 @@ export function createIndependentBoundaryFeasibilitySession(
       affectedPrefixStateCache.set(componentIndex, states);
       return states;
     };
-    const sameTypeBoundaryComponentIndex = (boundaryRow: FeasibilityDemandRow): number | null => {
+    const sameTypeBoundaryComponentIndex = (boundaryRow: PreparedRow): number | null => {
       if (!prefixTypes.has(boundaryRow.type) || prefixSpecies.has(boundaryRow.candyFamilyKey)) return null;
       const stock = inventoryType(inventory, boundaryRow.type);
       if (
@@ -2654,7 +2696,7 @@ export function createIndependentBoundaryFeasibilitySession(
       return envelope;
     };
     const sameTypeAffectedFrontier = (
-      boundaryRow: FeasibilityDemandRow,
+      boundaryRow: PreparedRow,
       componentIndex: number,
     ): BlockState[] => {
       const boundaryRowIndex = prefixRows.length;
@@ -2670,7 +2712,7 @@ export function createIndependentBoundaryFeasibilitySession(
       context.stats.typeBlockFrontierCounts.push(affectedFrontier.length);
       return affectedFrontier;
     };
-    const sameTypeBoundaryDecision = (boundaryRow: FeasibilityDemandRow): FeasibilityDecisionResult | null => {
+    const sameTypeBoundaryDecision = (boundaryRow: PreparedRow): FeasibilityDecisionResult | null => {
       const componentIndex = sameTypeBoundaryComponentIndex(boundaryRow);
       if (componentIndex === null) return null;
       try {
@@ -2686,7 +2728,7 @@ export function createIndependentBoundaryFeasibilitySession(
         const affectedStates = affectedPrefixStatesFor(componentIndex);
         const stock = inventoryType(inventory, boundaryRow.type);
         for (const option of boundaryOptions) {
-          const optionQuality = qualityForOption(option, boundaryRow.totalCandy, boundaryRow.preferZeroSurplus, boundaryRow.speciesLexWeight, boundaryRow.targetReached);
+          const optionQuality = qualityForOption(option, boundaryRow.totalCandy, boundaryRow.preferZeroSurplus, boundaryRow.speciesLexOrder, boundaryRow.candyDemandMet);
           if (!withinTotalSurplusBudget(optionQuality, context)) continue;
           for (const state of affectedStates) {
             transition(context);
@@ -2710,8 +2752,8 @@ export function createIndependentBoundaryFeasibilitySession(
       }
     };
     const sameTypeBoundaryBlockFrontiers = (
-      boundaryRow: FeasibilityDemandRow,
-      rows: FeasibilityDemandRow[],
+      boundaryRow: PreparedRow,
+      rows: PreparedRow[],
     ): Array<{ key: string; frontier: BlockState[] }> | null => {
       const affectedComponentIndex = sameTypeBoundaryComponentIndex(boundaryRow);
       if (affectedComponentIndex === null) return null;
@@ -2727,7 +2769,7 @@ export function createIndependentBoundaryFeasibilitySession(
         };
       });
     };
-    const sameTypeBoundarySolve = (boundaryRow: FeasibilityDemandRow, rows: FeasibilityDemandRow[]): FeasibilityResult | null => {
+    const sameTypeBoundarySolve = (boundaryRow: PreparedRow, rows: PreparedRow[]): FeasibilityResult | null => {
       try {
         checkpoint(context);
         const blockFrontiers = sameTypeBoundaryBlockFrontiers(boundaryRow, rows);
@@ -2753,7 +2795,7 @@ export function createIndependentBoundaryFeasibilitySession(
       return envelope;
     };
     const maxBoundaryUniversalSFor = (
-      boundaryRow: FeasibilityDemandRow,
+      boundaryRow: PreparedRow,
       universalM: number,
       universalL: number,
       limits: { maxTotalSurplus?: number } = {},
@@ -2771,7 +2813,7 @@ export function createIndependentBoundaryFeasibilitySession(
       return inventory.universal.s - requiredPrefixS;
     };
     const findMaxSameTypeBoundaryTotal = (
-      boundaryRow: FeasibilityDemandRow,
+      boundaryRow: PreparedRow,
       maxTotalCandy: number,
     ): number | null => {
       const componentIndex = sameTypeBoundaryComponentIndex(boundaryRow);
@@ -2856,7 +2898,7 @@ export function createIndependentBoundaryFeasibilitySession(
 
       return best;
     };
-    const findMaxBoundaryTotal = (boundaryRow: FeasibilityDemandRow, maxTotalCandy: number): number | null => {
+    const findMaxBoundaryTotal = (boundaryRow: PreparedRow, maxTotalCandy: number): number | null => {
       if (sameTypeBoundaryComponentIndex(boundaryRow) !== null || prefixSpecies.has(boundaryRow.candyFamilyKey)) return null;
       const cappedTotal = Math.max(0, Math.floor(maxTotalCandy));
       const species = Math.min(inventory.species[boundaryRow.candyFamilyKey] ?? 0, cappedTotal);
@@ -2902,7 +2944,7 @@ export function createIndependentBoundaryFeasibilitySession(
     };
 
     const solveWithBoundaryFrontier = (
-      rows: FeasibilityDemandRow[],
+      rows: PreparedRow[],
       boundaryFrontier: BlockState[],
       limits: { maxTotalSurplus?: number; maxReachedSurplus?: number } = {},
     ): FeasibilityResult => {
@@ -2932,19 +2974,20 @@ export function createIndependentBoundaryFeasibilitySession(
 
     return {
       canSolve(boundaryRow: FeasibilityDemandRow, limits: { maxTotalSurplus?: number; maxReachedSurplus?: number } = {}): FeasibilityDecisionResult | null {
-        const rows = [...prefixRows, boundaryRow];
+        const preparedBoundaryRow = prepareBoundaryRow(boundaryRow);
+        const rows = [...prefixRows, preparedBoundaryRow];
         const rowError = validateDemandRows(rows, options);
         if (rowError) return finishDecision(context, { status: 'infeasible', reason: rowError });
         const rowRelaxationError = relaxationInfeasible(rows, inventory);
         if (rowRelaxationError) return finishDecision(context, { status: 'infeasible', reason: rowRelaxationError });
-        if (prefixSpecies.has(boundaryRow.candyFamilyKey)) return null;
+        if (prefixSpecies.has(preparedBoundaryRow.candyFamilyKey)) return null;
         if (context.options.maxTotalSurplus !== undefined) return null;
         if (limits.maxTotalSurplus !== undefined && limits.maxTotalSurplus !== context.options.maxTotalSurplus) return null;
         // Type candy stock is shared with the prefix in every policy. Treating
         // this row as an independent block can restore an over-stock witness.
-        if (sameTypeBoundaryComponentIndex(boundaryRow) !== null) {
+        if (sameTypeBoundaryComponentIndex(preparedBoundaryRow) !== null) {
           if (limits.maxReachedSurplus !== undefined) return null;
-          return sameTypeBoundaryDecision(boundaryRow);
+          return sameTypeBoundaryDecision(preparedBoundaryRow);
         }
         try {
           checkpoint(context);
@@ -2979,8 +3022,9 @@ export function createIndependentBoundaryFeasibilitySession(
         }
       },
       canSolveSupply(boundaryRow: FeasibilityDemandRow, supply: Supply, limits: { maxTotalSurplus?: number; maxReachedSurplus?: number } = {}): FeasibilityDecisionResult | null {
-        if (sameTypeBoundaryComponentIndex(boundaryRow) !== null || prefixSpecies.has(boundaryRow.candyFamilyKey)) return null;
-        const rows = [...prefixRows, boundaryRow];
+        const preparedBoundaryRow = prepareBoundaryRow(boundaryRow);
+        if (sameTypeBoundaryComponentIndex(preparedBoundaryRow) !== null || prefixSpecies.has(preparedBoundaryRow.candyFamilyKey)) return null;
+        const rows = [...prefixRows, preparedBoundaryRow];
         const rowError = validateDemandRows(rows, options);
         if (rowError) return finishDecision(context, { status: 'infeasible', reason: rowError });
         const rowRelaxationError = relaxationInfeasible(rows, inventory);
@@ -2991,12 +3035,12 @@ export function createIndependentBoundaryFeasibilitySession(
             universalS: supply.universalS,
             universalM: supply.universalM,
             universalL: supply.universalL,
-            quality: qualityForOption(supply, boundaryRow.totalCandy, boundaryRow.preferZeroSurplus, boundaryRow.speciesLexWeight, boundaryRow.targetReached),
+            quality: qualityForOption(supply, preparedBoundaryRow.totalCandy, preparedBoundaryRow.preferZeroSurplus, preparedBoundaryRow.speciesLexOrder, preparedBoundaryRow.candyDemandMet),
             path: null,
           };
           if (!resourceWithinInventory({
-            typeS: { [boundaryRow.type]: supply.typeS },
-            typeM: { [boundaryRow.type]: supply.typeM },
+            typeS: { [preparedBoundaryRow.type]: supply.typeS },
+            typeM: { [preparedBoundaryRow.type]: supply.typeM },
             universalS: supply.universalS,
             universalM: supply.universalM,
             universalL: supply.universalL,
@@ -3031,27 +3075,28 @@ export function createIndependentBoundaryFeasibilitySession(
         }
       },
       maxBoundaryTotal(boundaryRow: FeasibilityDemandRow, maxTotalCandy: number): number | null {
-        return findMaxBoundaryTotal(boundaryRow, maxTotalCandy);
+        return findMaxBoundaryTotal(prepareBoundaryRow(boundaryRow), maxTotalCandy);
       },
       solveMaxBoundaryTotal(
         boundaryRow: FeasibilityDemandRow,
         maxTotalCandy: number,
         boundaryRowForTotal: (totalCandy: number) => FeasibilityDemandRow,
       ): FeasibilityResult | null {
-        if (sameTypeBoundaryComponentIndex(boundaryRow) !== null && context.options.itemCompareMode !== 'legacyImproved' && context.options.maxRowSurplus !== undefined && context.options.maxTotalSurplus === undefined) {
-          const maxTotal = findMaxSameTypeBoundaryTotal(boundaryRow, maxTotalCandy);
+        const preparedBoundaryRow = prepareBoundaryRow(boundaryRow);
+        if (sameTypeBoundaryComponentIndex(preparedBoundaryRow) !== null && context.options.itemCompareMode !== 'legacyImproved' && context.options.maxRowSurplus !== undefined && context.options.maxTotalSurplus === undefined) {
+          const maxTotal = findMaxSameTypeBoundaryTotal(preparedBoundaryRow, maxTotalCandy);
           if (maxTotal === null) return null;
           if (maxTotal >= 0) {
-            const row = boundaryRowForTotal(maxTotal);
+            const row = prepareBoundaryRow(boundaryRowForTotal(maxTotal));
             const result = sameTypeBoundarySolve(row, [...prefixRows, row]);
             if (result) return result;
           }
           return finish(context, { status: 'infeasible', reason: 'no_global_feasible_state' });
         }
-        const maxTotal = findMaxBoundaryTotal(boundaryRow, maxTotalCandy);
+        const maxTotal = findMaxBoundaryTotal(preparedBoundaryRow, maxTotalCandy);
         if (maxTotal === null) return null;
         if (maxTotal < 0) return finish(context, { status: 'infeasible', reason: 'no_global_feasible_state' });
-        const row = boundaryRowForTotal(maxTotal);
+        const row = prepareBoundaryRow(boundaryRowForTotal(maxTotal));
         if (sameTypeBoundaryComponentIndex(row) !== null || prefixSpecies.has(row.candyFamilyKey)) return null;
         const rows = [...prefixRows, row];
         const rowError = validateDemandRows(rows, options);
@@ -3071,18 +3116,19 @@ export function createIndependentBoundaryFeasibilitySession(
         }
       },
       maxBoundaryUniversalS(boundaryRow: FeasibilityDemandRow, universalM: number, universalL: number, limits: { maxTotalSurplus?: number } = {}): number | null {
-        return maxBoundaryUniversalSFor(boundaryRow, universalM, universalL, limits);
+        return maxBoundaryUniversalSFor(prepareBoundaryRow(boundaryRow), universalM, universalL, limits);
       },
       solve(boundaryRow: FeasibilityDemandRow, limits: { maxTotalSurplus?: number; maxReachedSurplus?: number } = {}): FeasibilityResult | null {
-        const rows = [...prefixRows, boundaryRow];
+        const preparedBoundaryRow = prepareBoundaryRow(boundaryRow);
+        const rows = [...prefixRows, preparedBoundaryRow];
         const rowError = validateDemandRows(rows, options);
         if (rowError) return finish(context, { status: 'infeasible', reason: rowError });
         const rowRelaxationError = relaxationInfeasible(rows, inventory);
         if (rowRelaxationError) return finish(context, { status: 'infeasible', reason: rowRelaxationError });
-        if (prefixSpecies.has(boundaryRow.candyFamilyKey)) return null;
-        if (sameTypeBoundaryComponentIndex(boundaryRow) !== null) {
+        if (prefixSpecies.has(preparedBoundaryRow.candyFamilyKey)) return null;
+        if (sameTypeBoundaryComponentIndex(preparedBoundaryRow) !== null) {
           if (limits.maxTotalSurplus !== undefined || limits.maxReachedSurplus !== undefined) return null;
-          return sameTypeBoundarySolve(boundaryRow, rows);
+          return sameTypeBoundarySolve(preparedBoundaryRow, rows);
         }
         try {
           checkpoint(context);
@@ -3103,21 +3149,30 @@ export function createIndependentBoundaryFeasibilitySession(
   }
 }
 
+export function createIndependentBoundaryFeasibilitySession(
+  prefixRows: FeasibilityDemandRow[],
+  inventory: CandyInventory,
+  options: FeasibilitySolverOptions = {},
+): ReturnType<typeof createIndependentBoundaryFeasibilitySessionPrepared> {
+  return createIndependentBoundaryFeasibilitySessionPrepared(prepareRows(prefixRows), inventory, options);
+}
+
 export function hasSingleRowSupplyWithinSurplus(
   row: FeasibilityDemandRow,
   inventory: CandyInventory,
   maxRowSurplus: number,
 ): boolean {
+  const preparedRow = prepareRows([row])[0];
   const context = createContext({ maxRowSurplus });
-  const species = Math.min(inventory.species[row.candyFamilyKey] ?? 0, row.totalCandy);
-  const options = rowOptionsForSpecies(row, species, inventory, context);
+  const species = Math.min(inventory.species[preparedRow.candyFamilyKey] ?? 0, preparedRow.totalCandy);
+  const options = rowOptionsForSpecies(preparedRow, species, inventory, context);
   return options.some(option => resourceWithinInventory({
-    typeS: { [row.type]: option.typeS },
-    typeM: { [row.type]: option.typeM },
+    typeS: { [preparedRow.type]: option.typeS },
+    typeM: { [preparedRow.type]: option.typeM },
     universalS: option.universalS,
     universalM: option.universalM,
     universalL: option.universalL,
-    quality: qualityForOption(option, row.totalCandy, row.preferZeroSurplus, row.speciesLexWeight, row.targetReached),
+    quality: qualityForOption(option, preparedRow.totalCandy, preparedRow.preferZeroSurplus, preparedRow.speciesLexOrder, preparedRow.candyDemandMet),
     path: null,
   }, inventory));
 }
@@ -3126,7 +3181,7 @@ function demandRowsFromWitness(witness: FeasibilityWitness): FeasibilityDemandRo
   return witness.rows.map(({ supply: _supply, ...row }) => row);
 }
 
-function refinedSupplyRow(row: FeasiblePlanRow): {
+function refinedSupplyRow(row: FeasiblePlanRow, speciesLexOrder: number): {
   id: string;
   name: string;
   pokedexId: number;
@@ -3134,9 +3189,9 @@ function refinedSupplyRow(row: FeasiblePlanRow): {
   type: string;
   totalCandyCount: number;
   fixedSpecies: number;
-  speciesLexWeight?: number;
+  readonly speciesLexOrder: number;
   legacyZeroSurplusPriority?: boolean;
-  targetReached: boolean;
+  candyDemandMet: boolean;
   selected: {
     species: number;
     typeS: number;
@@ -3157,9 +3212,9 @@ function refinedSupplyRow(row: FeasiblePlanRow): {
     type: row.type,
     totalCandyCount: row.totalCandy,
     fixedSpecies: row.supply.species,
-    speciesLexWeight: row.speciesLexWeight,
+    speciesLexOrder,
     legacyZeroSurplusPriority: row.preferZeroSurplus,
-    targetReached: row.targetReached,
+    candyDemandMet: row.candyDemandMet,
     selected: { ...row.supply, supply, surplus: supply - row.totalCandy },
   };
 }
@@ -3172,6 +3227,7 @@ export function refineFeasibilityWitness(
 ): FeasibilityRefineResult {
   const startedAt = performance.now();
   const demandRows = demandRowsFromWitness(witness);
+  const preparedDemandRows = prepareRows(demandRows);
   const baselineValidation = validateFeasibilityWitness(witness, demandRows, inventory, options);
   if (!baselineValidation.valid) {
     return {
@@ -3186,7 +3242,7 @@ export function refineFeasibilityWitness(
   let refined;
   try {
     refined = refineExactSupply(
-      witness.rows.map(refinedSupplyRow),
+      witness.rows.map((row, index) => refinedSupplyRow(row, preparedDemandRows[index].speciesLexOrder)),
       inventory,
       mode,
       () => {

@@ -47,7 +47,8 @@ export const totalExpToTheLevel1320 = [
   152808, 159663, 166580, 173595, 180756,
 ] as const;
 
-// dreamShardsPerCandy[level] = アメ1個あたりのゆめのかけら
+// dreamShardsPerCandy[level] = そのレベル到達に使うアメ1個あたりのゆめのかけら
+// 添字は上の累積EXPテーブルと同じく「到達先レベル」。Lv N にいるときの単価は [N+1] を引く。
 export const dreamShardsPerCandy = [
   0, 0, 14, 18, 22, 27, 30, 34, 39, 44, 48,
   50, 52, 53, 56, 59, 62, 66, 68, 71, 74, 78,

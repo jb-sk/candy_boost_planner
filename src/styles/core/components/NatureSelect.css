@@ -15,14 +15,78 @@
   padding-right: 8px;
 }
 
+/* 行ヘッダは横幅がシビア（モバイルではタイトルを圧迫する）ので幅を詰める。
+   ただし**高さ 40px は詰めない**——タップ標的として確保する必要がある。 */
+.natureSelect--compact {
+  width: 34px;
+  flex: 0 0 34px;
+}
+
+/* 行ヘッダ用。通常バリアントには触れず、field__input 由来の枠と余白だけを外す。 */
+.natureSelect--compact .natureSelect__trigger.field__input {
+  width: 34px;
+  min-width: 34px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+
+/* 記号の上の小見出し（「EXP」）。行ヘッダには項目名を置く場所が無いため。 */
+.natureSelect__caption {
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+/* 記号も一回り小さくして幅を稼ぐ。SVG は viewBox を持つので
+   width/height を指定しても preserveAspectRatio で比率が保たれる。 */
+.natureSelect--compact .natureSelect__symbol {
+  width: 24px;
+  height: 12px;
+}
+
+.natureSelect--compact .natureSelect__symbol > svg {
+  width: 24px;
+  height: 12px;
+}
+
+.natureSelect--compact .natureSelect__trigger.field__input:hover,
+.natureSelect--compact .natureSelect__trigger.field__input:focus {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.natureSelect--compact .natureSelect__chevron {
+  display: none;
+}
+
 .natureSelect__symbol {
-  width: 16px;
+  width: 28px;
   height: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
+
+.natureSelect__symbol > svg {
+  display: block;
+}
+
+/* SVG は fill="currentColor" なので color を変えれば追従する。
+   色の正本はテーマの --nature-up / --nature-down（.calcRow__natureIcon と同じ変数） */
+.natureSelect__symbol--up { color: var(--nature-up); }
+.natureSelect__symbol--down { color: var(--nature-down); }
 
 /* Screen-reader only label — visually hidden to avoid duplicate symbols */
 .natureSelect__sr {
@@ -72,6 +136,15 @@
   color: var(--ink);
   text-align: left;
   transition: background-color 0.15s;
+}
+
+/* 3項目 × 40px だと縦に伸びすぎる（実測で画面を大きく占める）。
+   選択肢は記号だけなので詰めてよい。左右もトリガー幅に合わせる。 */
+.natureSelect__dropdown--compact .natureSelect__option {
+  min-height: 30px;
+  padding: 2px;
+  gap: 0;
+  justify-content: center;
 }
 
 .natureSelect__option:hover {

@@ -3,20 +3,20 @@ import type { CalcSaveSlotV1 } from "../persistence/calc";
 import type { CandyInventoryV1, CandyInventoryV2 } from "../persistence/candy";
 
 export const BACKUP_FORMAT = "candy-boost-planner-backup" as const;
-export const BACKUP_SCHEMA_VERSION = 2 as const;
+export const BACKUP_SCHEMA_VERSION = 3 as const;
 export const BACKUP_MAX_BYTES = 5 * 1024 * 1024;
 export const BACKUP_MAX_BOX_ENTRIES = 300;
 export const BACKUP_MAX_ROWS_PER_SLOT = 60;
 
 export type BackupBoxEntryV1 = Omit<PokemonBoxEntryV1, "source">;
 
-type CandyBoostPlannerBackupData<TCandyInventory> = {
+type CandyBoostPlannerBackupData<TCandyInventory, TGlobalExtras = object> = {
   box: { entries: BackupBoxEntryV1[] };
   globalSettings: {
     totalShards: number;
     sleepSettings: SleepSettings;
     candyInventory: TCandyInventory;
-  };
+  } & TGlobalExtras;
   calculator: {
     activeSlotIndex: 0 | 1 | 2;
     slots: [CalcSaveSlotV1 | null, CalcSaveSlotV1 | null, CalcSaveSlotV1 | null];
@@ -32,9 +32,31 @@ export type CandyBoostPlannerBackupV1 = {
 
 export type CandyBoostPlannerBackupV2 = {
   format: typeof BACKUP_FORMAT;
-  schemaVersion: typeof BACKUP_SCHEMA_VERSION;
+  schemaVersion: 2;
   exportedAt: string;
   data: CandyBoostPlannerBackupData<CandyInventoryV2>;
+};
+
+/**
+ * 現行形式。V2 からの変更点は4つとも**未リリースの同一開発サイクル**でまとめて入った。
+ *
+ * 1. `CalcRowV1.sleepTargetHours` の追加
+ * 2. アメブ個数の `undefined` を「導出」、値ありを「明示入力」として区別する（設計書 §10.18）
+ * 3. `globalSettings.defaultBoostReachLevel` の追加
+ * 4. `CalcRowV1.sleepTargetMode` の追加
+ *
+ * **2 のために版で判別している。** V2 以前は導出値と手入力値を保存値から区別できないため、
+ * 読み込み時に `boostOrExpAdjustment` を落とす（`backupCodec.validateRow`）。
+ * したがってこの形式を V2 のままにはできない。
+ */
+export type CandyBoostPlannerBackupV3 = {
+  format: typeof BACKUP_FORMAT;
+  schemaVersion: typeof BACKUP_SCHEMA_VERSION;
+  exportedAt: string;
+  data: CandyBoostPlannerBackupData<CandyInventoryV2, {
+    /** 既定のアメブ目標Lv。`null` は未設定（＝目標Lvと同じ）。旧形式にはこの項目が無い。 */
+    defaultBoostReachLevel: number | null;
+  }>;
 };
 
 export type BackupWarning = {
@@ -43,8 +65,8 @@ export type BackupWarning = {
 };
 
 export type ValidatedBackup = {
-  /** V1入力もfamilyキーへ移行済みのV2として返す。 */
-  backup: CandyBoostPlannerBackupV2;
+  /** 旧入力も現行形式へ移行済みのV3として返す。 */
+  backup: CandyBoostPlannerBackupV3;
   warnings: BackupWarning[];
 };
 

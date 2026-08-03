@@ -105,6 +105,21 @@ test.describe('検索・フィルタ', () => {
     await boxPanel.toggleAllFilter();
   });
 
+  test('計算中フィルタ: 表示中の計算スロットに登録した個体だけを表示する', async () => {
+    const initialCount = await boxPanel.boxTiles.count();
+    expect(initialCount).toBeGreaterThan(1);
+
+    await boxPanel.selectBoxTile(0);
+    await boxPanel.clickApplyToCalc();
+    await boxPanel.toggleCalculatingFilter();
+
+    await expect(boxPanel.calculatingFilterButton).toHaveClass(/chipBtn--on/);
+    await boxPanel.expectBoxTileCount(1);
+
+    await boxPanel.toggleCalculatingFilter();
+    await boxPanel.expectBoxTileCount(initialCount);
+  });
+
   test('フィルタリング設定の開閉が動作する', async () => {
     // boxAdvancedパネルの開閉を確認
     // 最初に閉じた状態にする

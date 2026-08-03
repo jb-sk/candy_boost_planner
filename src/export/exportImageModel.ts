@@ -65,6 +65,13 @@ export type ExportImageSource = {
   universalCandyUsedTotal: { s: number; m: number; l: number };
 
   boostKind: ExportImageBoostKind;
+
+  /**
+   * アメ在庫が1つでも設定されているか。「在庫を設定してください」の表示条件。
+   * 実使用アメが 0 かどうかで判定してはいけない（元Lv＝目標Lvの行や、
+   * 睡眠だけで目標に届く行は在庫があっても 0 になる）。
+   */
+  hasCandyStock: boolean;
 };
 
 /** 翻訳関数（vue-i18n の t 相当）。params は数値・文字列の穴埋め。 */
@@ -158,12 +165,6 @@ export type ExportImageModel = {
 };
 
 const TAU = Math.PI * 2;
-
-/** 在庫未設定警告: 実使用のアメ・かけらが両方 0（現行 showNoStockWarning と同一条件） */
-function shouldShowNoStockWarning(source: ExportImageSource): boolean {
-  const t = source.totals;
-  return t.boostCandy + t.normalCandy === 0 && t.shards === 0;
-}
 
 function buildStatCards(
   source: ExportImageSource,
@@ -400,9 +401,7 @@ export function buildExportImageModel(
       list: t("calc.export.sectionList"),
       ranking: t("calc.export.universalRankingTitle"),
     },
-    noStockWarning: shouldShowNoStockWarning(source)
-      ? t("calc.export.noStockWarning")
-      : undefined,
+    noStockWarning: source.hasCandyStock ? undefined : t("calc.export.noStockWarning"),
     statCards: buildStatCards(source, isBoostMode, fmt, t),
     bars: buildBars(source, isBoostMode, fmt, t),
     columns: buildColumns(isBoostMode, t),

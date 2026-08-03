@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CANDY_VALUES } from '../../../src/domain/level-planner/constants';
 import { refineExactSupply } from '../../../src/domain/level-planner/core/exactSupplyRefine';
+import { itemCountsFromPriority } from '../../../src/domain/level-planner/core/itemPriority';
 import { __levelPlannerTestHooks, solveLevelPlan } from '../../../src/domain/level-planner/core/solveLevelPlan';
 import { calcExp, calcExpAndCandyMixed } from '../../../src/domain/pokesleep/exp';
 import { getCandyFamilyKey } from '../../../src/domain/pokesleep/candy-family';
@@ -263,7 +264,7 @@ function detectFailure({ seed, input, tags }: RandomCase, mode: SolverItemCompar
         message: `seed=${seed} mode=${mode} tags=${tags.join(',')} row=${pokemon.name} supplyValue=${value} expected=${expectedValue}`,
       };
     }
-    if (mode !== 'surplusFirst' && !pokemon.targetReached) {
+    if (mode !== 'surplusFirst' && !pokemon.candyDemandMet) {
       return {
         kind: 'targetNotReached',
         message: `seed=${seed} mode=${mode} tags=${tags.join(',')} row=${pokemon.name} target not reached`,
@@ -541,7 +542,7 @@ function expectPlanIsExactBest(
   const result = solveLevelPlan({ ...input, options: { itemCompareMode: mode } });
   const rows = rowForResult(input, result);
   if (mode !== 'surplusFirst') {
-    expect(result.pokemonResults.map(pokemon => pokemon.targetReached)).toEqual(input.pokemonList.map(() => true));
+    expect(result.pokemonResults.map(pokemon => pokemon.candyDemandMet)).toEqual(input.pokemonList.map(() => true));
   }
   const exact = refineExactSupply(rows, input.candyInventory, mode);
   expect(exact.status).toBe('ok');
@@ -600,7 +601,10 @@ describe('level planner exact property checks', () => {
     expect(exact.selectedObjective.rawSurplus).toBe(1);
     expect(exact.selectedObjective.normalizedSurplus).toBe(0);
     expect(exact.selectedObjective.zeroSurplusCount).toBe(4);
-    expect(exact.selectedObjective.legacyPriority).toEqual([0, -17, 11, 11]);
+    // スコアそのものではなく内訳を固定する。重みを調整しても意図が読めるようにするため。
+    expect(itemCountsFromPriority(exact.selectedObjective.priority)).toEqual({
+      typeS: 11, typeM: 11, universalS: 430, universalM: 17, universalL: 0,
+    });
   });
 
   it('実ケース: アメの余り最小は全行余り0のexact bestを返す', () => {
@@ -614,6 +618,7 @@ describe('level planner exact property checks', () => {
       { species: 181, typeS: 0, typeM: 0, universalS: 137, universalM: 2, universalL: 0, supply: 632, surplus: 0 },
       { species: 0, typeS: 0, typeM: 0, universalS: 86, universalM: 2, universalL: 0, supply: 298, surplus: 0 },
       { species: 2947, typeS: 0, typeM: 10, universalS: 127, universalM: 1, universalL: 0, supply: 3598, surplus: 0 },
+      // タイプSを使い切る側を選ぶ。万能Mが1個増えるが、そのぶん万能Sが在庫に残る
       { species: 436, typeS: 13, typeM: 0, universalS: 60, universalM: 14, universalL: 0, supply: 948, surplus: 0 },
       { species: 272, typeS: 0, typeM: 0, universalS: 12, universalM: 0, universalL: 0, supply: 308, surplus: 0 },
     ]);

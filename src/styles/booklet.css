@@ -55,8 +55,9 @@
 
   /* Semantic Accents */
   --star-color: #eab308;
-  --nature-up: #2a7c6f;
-  --nature-down: #6b8caf;
+  /* ▲▲ = 赤系 / ▼▼ = 青系。印刷風の朱と藍を、クリーム紙で沈まない明度まで上げる */
+  --nature-up: #CF4A2C;
+  --nature-down: #3179BD;
 
   /* Border Radius */
   --radius-sm: 0px;
@@ -196,12 +197,6 @@
 }
 
 /* Sleep growth chips — tinted card on blue panel */
-.sleepChip {
-  background: rgba(var(--accent-rgb), 0.08);
-  color: var(--ink);
-  border-color: var(--ink);
-}
-
 .hintIcon {
   background: rgba(var(--accent-rgb), 0.08);
   color: var(--ink);
@@ -292,4 +287,12 @@
   background: var(--paper);
   border-top: 2px solid var(--ink);
   box-shadow: 0 -4px 0px rgba(31, 33, 34, 0.1);
+}
+
+/* ===== Toast =====
+   このテーマの `--shadow-md` は硬いオフセット影（3px 3px 0px）。
+   浮いている通知に付くと黒い板が背後に出るので落とす。
+   セレクタは基本規則（`.appToastStack .appToast`）と同じ詳細度で書くこと。 */
+.appToastStack .appToast {
+  box-shadow: none;
 }

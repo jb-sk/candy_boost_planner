@@ -17,6 +17,7 @@
 @import "./components/CalcPanel.css";
 @import "./components/Modal.css";
 @import "./components/MobileNav.css";
+@import "./components/AppToast.css";
 @import "./components/ExportOverlay.css";
 @import "./components/SettingsOverlay.css";
 @import "./components/HelpOverlay.css";

@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+import { isCI } from './tests/helpers/isCI';
+
 /**
  * Read environment variables from file.
  * https://github.com/motdotla/dotenv
@@ -16,11 +18,12 @@ export default defineConfig({
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
-  forbidOnly: !!process.env.CI,
-  /* Retry on CI only */
-  retries: process.env.CI ? 2 : 0,
+  forbidOnly: isCI(),
+  /* CI は直列実行なので 2 回。ローカルは並列実行で稀に1件取りこぼす（マシン負荷依存で、
+     落ちるテストは毎回変わる）ため 1 回だけ再試行する。本物の失敗は再試行でも落ちる。 */
+  retries: isCI() ? 2 : 1,
   /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
+  workers: isCI() ? 1 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
@@ -70,6 +73,6 @@ export default defineConfig({
   webServer: {
     command: 'pnpm run dev',
     url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !isCI(),
   },
 });

@@ -34,6 +34,31 @@ export type MarkForSleepResult = {
 
   /** 目標時間を設定睡眠時間単位で切り上げた日数 */
   requiredDays: number;
+
+  /** 途中の値（検算用）。`sleepExp = dailyExp × requiredDays + gsdExtra` */
+  breakdown: SleepExpBreakdown;
+};
+
+/**
+ * 睡眠EXPの内訳（検算用）。
+ *
+ * 睡眠EXPは1つの数字にまとまってしまい、画面からは下流の結果（個数指定・必要日数）しか見えない。
+ * どの段階で食い違っているかを切り分けられるよう、markForSleep が途中の値も返す。
+ * `?perf=1` のコンソールログと検算TSVへ出す（設計書§6.4）。
+ */
+export type SleepExpBreakdown = {
+  /** 1日の睡眠時間（分）。設定が範囲外なら 0 */
+  dailySleepMinutes: number;
+  /** 1日の睡眠スコア（上限100） */
+  dailyScore: number;
+  /** 1日の睡眠EXP（= スコア × ボーナス × 性格補正） */
+  dailyExp: number;
+  /** GSDの概算追加EXP（29.53日周期）。includeGSD=false なら 0 */
+  gsdExtra: number;
+  /** 睡眠EXPボーナス倍率 */
+  sleepExpBonus: number;
+  /** 性格倍率（百分率。up=118 / normal=100 / down=82） */
+  naturePercent: number;
 };
 
 /**
@@ -76,9 +101,18 @@ function getNaturePercent(nature: ExpGainNature): number {
 }
 
 /**
- * 睡眠時間（分）→ スコア
+ * 睡眠EXPボーナス持ちの個体数（0〜5）→ 倍率。
+ * 呼び出し側が 0.14 という定数を知らずに済むよう、ここに集約する。
+ */
+export function sleepExpBonusMultiplier(bonusCount: number): number {
+  return 1.0 + 0.14 * Math.max(0, bonusCount);
+}
+
+/**
+ * 睡眠時間（分）→ スコア。`round(分 ÷ 510 × 100)`、上限100。
  *
- * @see にとよんツール Score.ts
+ * にとよんツール `AmountOfSleep.score`（`src/util/TimeUtil.ts`）と一致することを確認済み。
+ * @see .agent/sessions/残EXP睡眠時間の端数表示設計.md §2, §3.1
  */
 export function calcScoreFromMinutes(minutes: number): number {
   if (!Number.isFinite(minutes)) return 0;
@@ -88,10 +122,13 @@ export function calcScoreFromMinutes(minutes: number): number {
 /**
  * 睡眠EXP計算
  *
- * 計算順序（検証済み）:
+ * 計算順序:
  * 1. スコア × 睡眠EXPボーナス → 四捨五入
  * 2. × イベントボーナス
  * 3. × 性格補正 → 切り捨て (floor)
+ *
+ * にとよんツール `src/util/Exp.ts` の丸めと突き合わせて確認した順序。
+ * @see .agent/sessions/残EXP睡眠時間の端数表示設計.md §3.1
  */
 export function calcSleepExp(params: {
   sleepMinutes: number;
@@ -246,22 +283,40 @@ export function markForSleep(params: {
 
   const dailySleepMinutes = normalizeDailySleepMinutes(dailySleepHours);
   if (dailySleepMinutes === null || !Number.isFinite(targetSleepHours) || targetSleepHours <= 0) {
-    return { sleepExp: 0, requiredDays: 0 };
+    return {
+      sleepExp: 0,
+      requiredDays: 0,
+      breakdown: {
+        dailySleepMinutes: dailySleepMinutes ?? 0,
+        dailyScore: 0,
+        dailyExp: 0,
+        gsdExtra: 0,
+        sleepExpBonus,
+        naturePercent: getNaturePercent(nature),
+      },
+    };
   }
 
   const targetSleepMinutes = Math.max(0, Math.round(targetSleepHours * 60));
   const requiredDays = Math.ceil(targetSleepMinutes / dailySleepMinutes);
-  const sleepExp = calcSleepExpForDays({
-    days: requiredDays,
-    dailySleepMinutes,
-    sleepExpBonus,
-    nature,
-    includeGSD,
-  });
+  const dailyExp = calcDailySleepExp({ dailySleepMinutes, sleepExpBonus, nature });
+  const gsdExtra = includeGSD
+    ? calcApproximateGsdExtra({ sessionDays: requiredDays, dailySleepMinutes, sleepExpBonus, nature })
+    : 0;
 
   return {
-    sleepExp,
+    // calcSleepExpForDays と同じ式。内訳を出すために求めた値からそのまま組み立てる
+    //（同値であることは「整数日境界では日単位概算と一致する」テストで固定）
+    sleepExp: dailyExp * requiredDays + gsdExtra,
     requiredDays,
+    breakdown: {
+      dailySleepMinutes,
+      dailyScore: calcScoreFromMinutes(dailySleepMinutes),
+      dailyExp,
+      gsdExtra,
+      sleepExpBonus,
+      naturePercent: getNaturePercent(nature),
+    },
   };
 }
 

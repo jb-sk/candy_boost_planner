@@ -59,6 +59,8 @@
 .calcSumInline--boostTotal { min-width: 90px; }
 .calcSumInline--boostTotalMini { min-width: 82px; }
 .calcSumInline--unused { min-width: 102px; }
+/* 「アメブ未使用」と排他で、同じ幅を確保しておく（fbl04 §9.11 のCLS対策） */
+.calcSumInline--boostShortage { min-width: 102px; }
 .calcSumInline--shards { min-width: 118px; }
 .calcSumInline--candyS { min-width: 81px; }
 .calcSumInline--candyM { min-width: 47px; }
@@ -446,6 +448,66 @@
   line-height: 1.8;
 }
 
+/* アメブ上限を超えた個数が入っている入力欄。
+   値自体は残す仕様なので（「目標まで」行の理論値に使う）、枠線で超過だけを示し、
+   隣の ? ヒントにある上限入力へ誘導する。 */
+/* テーマCSS（green/dark/candy等）が .field__input へ border ショートハンドを当てているため、
+   クラス2つで詳細度を上げないと border-color が上書きされて何も見えない。 */
+.field__input.field__input--overQuota {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px rgba(var(--danger-rgb), 0.22);
+}
+
+/* 未入力時の導出アメブ数。テーマ差に埋もれない濃さを専用クラスで固定する。 */
+.field__input.field__input--boostDerived::placeholder {
+  color: var(--muted);
+  opacity: 0.72;
+}
+
+/* 睡眠EXPでアメブ目標Lvが T' に頭打ちになっている状態。
+   テーマの border ショートハンドに負けないようクラス2つで詳細度を確保する。 */
+/* アメブ枠を超えている行のアメブ目標Lv欄。個数が未入力（導出モード）の行では、
+   超過の原因はこちらなのでピッカーを赤くする（明示入力の行は個数欄側が赤くなる）。
+   クラス2つで詳細度を上げること（テーマCSSの border ショートハンドに負ける。D-1 で踏み済み）。 */
+.levelPick.levelPick--overQuota .levelPick__input {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px rgba(var(--danger-rgb), 0.22);
+}
+
+/* 押し下げられているのは T' 超の範囲だけで、**それ以下は今までどおり操作できる**
+   （`isBoostSleepCapped` の docblock が正本）。編集できる欄に not-allowed を出すと嘘になるので、
+   カーソルは実際に無効化されているときだけ変える。
+
+   `--allSleep`（睡眠目標「すべて睡眠」）は別条件だが**見た目は同じ**。どちらも
+   「睡眠が担当していてアメで動かせない」状態なので、破線という語彙を共有する。
+   条件を1つにまとめてはいけない（`isBoostSleepCapped` は all を除外している。
+   押し下げは範囲の一部だけ、すべて睡眠は全範囲、と意味が違う）。 */
+.levelPick.levelPick--sleepCapped .levelPick__input,
+.levelPick.levelPick--allSleep .levelPick__input {
+  border-style: dashed;
+  color: rgba(var(--ink-rgb), 0.7);
+}
+
+.levelPick.levelPick--sleepCapped .levelPick__input:disabled,
+.levelPick.levelPick--allSleep .levelPick__input:disabled {
+  cursor: not-allowed;
+}
+
+/* 同じ頭打ちでアメブ個数欄も操作できない状態。アメブ目標Lvと語彙を揃える。
+   disabled のブラウザ既定色だけに任せると、テーマによっては通常の欄と見分けがつかない。
+   `--allSleep` ではアメ個数指定欄にも付く（頭打ちと違い、あちらも無効化されるため）。 */
+.field__input.field__input--sleepCapped,
+.field__input.field__input--allSleep {
+  border-style: dashed;
+  color: rgba(var(--ink-rgb), 0.7);
+  opacity: 1;
+}
+
+.field__input.field__input--sleepCapped:disabled,
+.field__input.field__input--allSleep:disabled {
+  cursor: not-allowed;
+}
+
 /* Onboarding demo result row preview */
 .calcEmpty__demo {
   margin-top: 16px;
@@ -528,20 +590,8 @@ button.calcRow__dragHandle:active {
   color: var(--accent);
 }
 
-/* Nature icon */
-.calcRow__natureIcon {
-  font-size: 12px;
-  margin-right: 2px;
-  font-weight: 700;
+.calcRow__natureSelect {
   flex-shrink: 0;
-}
-
-.calcRow__natureIcon--up {
-  color: var(--nature-up);
-}
-
-.calcRow__natureIcon--down {
-  color: var(--nature-down);
 }
 
 .calcRow__title {
@@ -610,14 +660,30 @@ button.calcRow__dragHandle:active {
   flex-wrap: wrap;
 }
 
-.field__range {
-  width: 100%;
-  accent-color: rgba(var(--accent-rgb), 0.85);
+/* ラベルに添える累計睡眠時間リンク（クリックで編集ポップオーバー）。
+   目標Lv横の「（あとEXP N）」と同じ見え方に揃える。
+   .field__label の兄弟要素なので font は継承できず、同じ値を明示する。 */
+.field__labelLink {
+  -webkit-appearance: none;
+  appearance: none;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: normal;
+  letter-spacing: 0.02em;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--muted);
+  opacity: 0.8;
+  text-decoration: underline;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
-.field--sm .field__range {
-  transform: translateY(2px);
-  margin-bottom: -4px;
+.field__labelLink:hover {
+  opacity: 1;
+  color: var(--accent);
 }
 
 .field--sm .field__sub {
@@ -631,7 +697,7 @@ button.calcRow__dragHandle:active {
   border: 1px solid var(--border);
   background: var(--surface-alt);
   color: var(--muted);
-  border-radius: 50%;
+  border-radius: 5px;
   width: 18px;
   height: 18px;
   font-size: 11px;
@@ -642,20 +708,31 @@ button.calcRow__dragHandle:active {
   justify-content: center;
   cursor: pointer;
   vertical-align: middle;
-  padding: 0;
+  /* 「?」は字形の下側と左側に余白がある。flex 中央のままだと上・右へ寄って見えるので、
+     1px 押し下げて 1px 左へ寄せる。box-sizing: border-box なので 18px の外形は変わらない。 */
+  padding: 1px 0 0;
+  text-indent: -1px;
   flex-shrink: 0;
+  flex-grow: 0;
   margin-block: -1px;
 }
 
+/* 中身が SVG のバリエーション。? 用の押し下げ・左寄せは打ち消す。 */
 .hintIcon--pill {
   border-radius: 6px;
   width: auto;
   height: auto;
   padding: 2px 3px;
+  text-indent: 0;
 }
 
+/* リセットだけは丸のまま（アイコンが円形の矢印なので、角丸だと収まりが悪い）。
+   中身は SVG なので、? 用の押し下げも打ち消す。 */
 .hintIcon--reset {
   margin-left: 14px;
+  border-radius: 50%;
+  padding: 0;
+  text-indent: 0;
 }
 
 .hintIcon__resetSvg {
@@ -675,41 +752,6 @@ button.calcRow__dragHandle:active {
   color: var(--ink);
 }
 
-/* Sleep growth chips */
-.sleepLinks {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.sleepLinks > .hintIcon {
-  margin-left: 2px;
-}
-
-.sleepChip {
-  -webkit-appearance: none;
-  appearance: none;
-  font: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--surface-alt);
-  color: var(--accent);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.sleepChip:hover {
-  background: var(--surface);
-  border-color: var(--accent);
-}
-
-.sleepChip:active {
-  background: rgba(var(--accent-rgb), 0.12);
-}
 
 /* ===== Result Rows ===== */
 .calcRow__resultCollapse {
@@ -849,9 +891,61 @@ button.calcRow__dragHandle:active {
   border: 1px solid var(--muted);
   z-index: 1000;
   font-size: 0.9em;
-  max-width: 200px;
+  /* 箇条書き（「・イベント複数回分のミニブ」等）が1行に収まる幅。
+     睡眠ヒント（.sleepHintPopover）にも同じ基準で効く */
+  max-width: 220px;
   pointer-events: auto;
   animation: fadeIn 0.15s ease-out;
+}
+
+/* i18n 文字列の改行を箇条書きとして表示する。テンプレート側は span を
+   開始タグ直後から改行なしで書くこと（インデントが改行として出るため） */
+.hintPopover__note {
+  margin: 0;
+  white-space: pre-line;
+}
+
+/* 見出し（アメブ個数 / アメブ上限）。太字で本文と区別する。 */
+.hintPopover__heading {
+  margin: 10px 0 2px;
+  font-weight: 700;
+}
+
+.hintPopover__heading:first-child {
+  margin-top: 0;
+}
+
+/* 睡眠EXPの頭打ち警告。マークを文字列に混ぜるとベースライン揃えになって下がって見えるので、
+   別要素にする。float にして2行目以降をマークの下へ回り込ませる（幅 220px を無駄にしない）。
+   flex だと2行目以降がマーク幅ぶんぶら下がり、狭いポップオーバーでは折り返しが増える。 */
+.hintPopover__warn {
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+
+/* 制約違反の警告。上限の案内と区別がつくよう赤で塗る。
+   クラス2つで詳細度を上げること（テーマCSSに負けて色が出ない。D-1 で踏み済み）。 */
+.hintPopover__warn.hintPopover__warn--alert {
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(var(--danger-rgb), 0.1);
+  color: var(--danger);
+}
+
+/* float した要素は親の高さに含まれないので、1行で収まったときのために clear する。 */
+.hintPopover__warn::after {
+  content: "";
+  display: block;
+  clear: both;
+}
+
+/* 絵文字のグリフが下寄りに描かれるぶんを視覚補正する（.levelPick__capWarn と同じ理由）。 */
+.hintPopover__warnMark {
+  float: left;
+  margin-right: 4px;
+  line-height: 1.5;
+  position: relative;
+  top: -1px;
 }
 
 .hintPopover .hintLink,
@@ -875,31 +969,35 @@ button.calcRow__dragHandle:active {
   margin: 0 0 8px;
   font-size: var(--font-sm);
   line-height: 1.5;
+  /* i18n 文字列の改行を箇条書きとして表示する（連続空白は潰れ、折り返しは通常どおり） */
+  white-space: pre-line;
 }
 
-.sleepHintPopover__field {
+/* ヒント内でその場編集させる入力欄。睡眠ヒント・アメブヒントで共用する
+   （.sleepHintPopover は .hintPopover と併用されているのでどちらにも効く） */
+.hintPopover__field {
   display: flex;
   flex-direction: column;
   gap: 4px;
   margin-top: 8px;
 }
 
-.sleepHintPopover__label {
+.hintPopover__label {
   font-size: var(--font-xs);
   font-weight: 600;
 }
 
-.sleepHintPopover__inputRow {
+.hintPopover__inputRow {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-.sleepHintPopover__input {
+.hintPopover__input {
   width: 80px;
 }
 
-.sleepHintPopover__unit {
+.hintPopover__unit {
   font-size: var(--font-sm);
   color: var(--ink-muted);
 }

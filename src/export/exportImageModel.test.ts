@@ -21,7 +21,7 @@ function makeSource(overrides: Partial<ExportImageSource> = {}): ExportImageSour
       {
         id: "r1",
         title: "ピカチュウ",
-        natureLabel: "EXP▲",
+        natureLabel: "EXP▲▲",
         srcLevel: 10,
         dstLevel: 30,
         boostCandy: 50,
@@ -43,6 +43,7 @@ function makeSource(overrides: Partial<ExportImageSource> = {}): ExportImageSour
     universalCandyRanking: [],
     universalCandyUsedTotal: { s: 0, m: 0, l: 0 },
     boostKind: "full",
+    hasCandyStock: true,
     ...overrides,
   };
 }
@@ -68,6 +69,7 @@ describe("buildExportImageModel — 情報同等性とブランド", () => {
     expect(model.rows[0].boostCandy).toBe("50");
     expect(model.rows[0].normalCandy).toBe("1,500");
     expect(model.rows[0].totalCandy).toBe("1,550");
+    expect(model.rows[0].natureLabel).toBe("EXP▲▲");
     expect(model.totalRow.boostCandy).toBe("50");
   });
 
@@ -158,18 +160,22 @@ describe("buildExportImageModel — bars", () => {
 });
 
 describe("buildExportImageModel — 在庫警告", () => {
-  it("アメ・かけらが全て 0 のとき警告を出す", () => {
-    const model = buildExportImageModel(
-      makeSource({
-        totals: { boostCandy: 0, normalCandy: 0, totalCandy: 0, shards: 0 },
-      }),
-      jaPresentation(),
-    );
+  it("アメ在庫が空のとき警告を出す", () => {
+    const model = buildExportImageModel(makeSource({ hasCandyStock: false }), jaPresentation());
     expect(model.noStockWarning).toBe("calc.export.noStockWarning");
   });
 
-  it("いずれかが正のとき警告を出さない", () => {
+  it("アメ在庫があれば警告を出さない", () => {
     const model = buildExportImageModel(makeSource(), jaPresentation());
+    expect(model.noStockWarning).toBeUndefined();
+  });
+
+  it("在庫があれば、実使用アメ・かけらが 0 でも警告を出さない", () => {
+    // 元Lv＝目標Lvの行や、睡眠だけで目標に届く行では在庫があっても使用量が 0 になる
+    const model = buildExportImageModel(
+      makeSource({ totals: { boostCandy: 0, normalCandy: 0, totalCandy: 0, shards: 0 } }),
+      jaPresentation(),
+    );
     expect(model.noStockWarning).toBeUndefined();
   });
 });

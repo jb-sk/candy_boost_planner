@@ -37,6 +37,19 @@ watch(
 export function useCandyStore() {
   const inventorySnapshot = computed(() => inventory.value);
 
+  /**
+   * アメ在庫が1つでも設定されているか。
+   *
+   * 「在庫を設定してください」の表示条件はこれだけで決める。実際に使ったアメ数が 0 かどうかで
+   * 推測してはいけない（元Lv＝目標Lvの行や、睡眠だけで目標に届く行では在庫があっても 0 になる）。
+   */
+  const hasAnyStock = computed(() => {
+    const inv = inventory.value;
+    return inv.universal.s + inv.universal.m + inv.universal.l > 0
+      || Object.values(inv.typeCandy).some((v) => v.s + v.m > 0)
+      || Object.values(inv.species).some((v) => v > 0);
+  });
+
   // --- 万能アメ ---
   const universalCandy = computed(() => getUniversalCandy(inventory.value));
 
@@ -93,6 +106,11 @@ export function useCandyStore() {
     return JSON.parse(JSON.stringify(inventory.value));
   }
 
+  /** undo・バックアップ復元用に、検証済みの在庫スナップショットを丸ごと戻す。 */
+  function restoreInventory(snapshot: CandyInventoryV2) {
+    inventory.value = JSON.parse(JSON.stringify(snapshot)) as CandyInventoryV2;
+  }
+
   function resetInventory() {
     inventory.value = createEmptyCandyInventory();
   }
@@ -113,7 +131,9 @@ export function useCandyStore() {
 
     // 全体
     inventorySnapshot,
+    hasAnyStock,
     getInventory,
+    restoreInventory,
     resetInventory,
   };
 }

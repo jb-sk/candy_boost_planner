@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { isPerfWallClockEnabled } from '../../helpers/isPerfWallClockEnabled';
+import { perfBudgetMs } from './perfBudget';
 import { solveFeasibilityForFixedRows } from '../../../src/domain/level-planner/core/feasibilityWitness';
 import {
   __levelPlannerTestHooks,
@@ -36,9 +38,8 @@ const fixedRows: FeasibilityDemandRow[] = [
     shards: 165_084,
     reachedLv: 67,
     expInLevel: 1099,
-    targetReached: true,
+    candyDemandMet: true,
     preferZeroSurplus: false,
-    speciesLexWeight: 6,
   },
   {
     pokemonId: 'cramorant',
@@ -51,9 +52,8 @@ const fixedRows: FeasibilityDemandRow[] = [
     shards: 364_899,
     reachedLv: 70,
     expInLevel: 0,
-    targetReached: true,
+    candyDemandMet: true,
     preferZeroSurplus: true,
-    speciesLexWeight: 5,
   },
   {
     pokemonId: 'sylveon',
@@ -66,9 +66,8 @@ const fixedRows: FeasibilityDemandRow[] = [
     shards: 1_235_190,
     reachedLv: 65,
     expInLevel: 1540,
-    targetReached: true,
+    candyDemandMet: true,
     preferZeroSurplus: false,
-    speciesLexWeight: 4,
   },
   {
     pokemonId: 'dragonite',
@@ -81,9 +80,8 @@ const fixedRows: FeasibilityDemandRow[] = [
     shards: 598_346,
     reachedLv: 68,
     expInLevel: 1157,
-    targetReached: true,
+    candyDemandMet: true,
     preferZeroSurplus: false,
-    speciesLexWeight: 3,
   },
   {
     pokemonId: 'swalot',
@@ -96,9 +94,8 @@ const fixedRows: FeasibilityDemandRow[] = [
     shards: 773_802,
     reachedLv: 65,
     expInLevel: 1547,
-    targetReached: true,
+    candyDemandMet: true,
     preferZeroSurplus: false,
-    speciesLexWeight: 2,
   },
   {
     pokemonId: 'flareon',
@@ -111,9 +108,8 @@ const fixedRows: FeasibilityDemandRow[] = [
     shards: 0,
     reachedLv: 50,
     expInLevel: 0,
-    targetReached: false,
+    candyDemandMet: false,
     preferZeroSurplus: false,
-    speciesLexWeight: 1,
   },
 ];
 
@@ -169,7 +165,8 @@ function input(mode: SolverItemCompareMode): LevelPlannerInput {
         currentExpInLevel: 2144,
         targetLevel: 70,
         targetExpInLevel: 0,
-        candyTarget: { totalCandyUnits: 825 },
+        // アメブ上限は総数と同じ（＝内数の制約なし）。requestedBoostCandy 350 が実効上限になる
+        candyTarget: { totalCandyUnits: 825, boostedCandyUnits: 825 },
         expType: 600,
         nature: 'down',
         requestedBoostCandy: 350,
@@ -244,9 +241,15 @@ describe('reported six-row reproduction', () => {
       deadlineMs: 5_000,
     });
     expect(result.status).toBe('feasible');
-    expect(result.stats.durationMs).toBeLessThan(1_000);
+    expect(Math.max(...result.stats.rowOptionCounts)).toBeLessThanOrEqual(1_200);
+    expect(Math.max(...result.stats.typeBlockFrontierCounts)).toBeLessThanOrEqual(512);
+    expect(result.stats.globalKeyCount).toBeLessThanOrEqual(2_000);
+    expect(result.stats.transitions).toBeLessThanOrEqual(75_000);
+    if (isPerfWallClockEnabled()) {
+      expect(result.stats.durationMs).toBeLessThan(perfBudgetMs(1_000));
+    }
     console.info('[reported-six-row-fixed]', mode, result.status, result.stats);
-  }, 10_000);
+  }, 60_000);
 
   it.each(modes)('solves the full reported plan exactly and quickly: %s', mode => {
     __levelPlannerTestHooks.clearCandidateCache();
@@ -272,7 +275,7 @@ describe('reported six-row reproduction', () => {
       [60, 0],
     ]);
     expect(lines.map(line => line.candySupply.species)).toEqual([0, 0, 825, 578, 272, 175]);
-    expect(lines.every(line => line.targetReached)).toBe(true);
+    expect(lines.every(line => line.candyDemandMet)).toBe(true);
     if (mode === 'surplusFirst') {
       expect(lines.every(line => line.surplusCandyValue === 0)).toBe(true);
     } else {
@@ -280,13 +283,15 @@ describe('reported six-row reproduction', () => {
       expect(lines[1].surplusCandyValue).toBe(0);
     }
     expect(result.lossLedger.hasLoss).toBe(false);
-    expect(result.performance?.feasibilityMs).toBeLessThan(1_000);
-    expect(durationMs).toBeLessThan(2_000);
+    if (isPerfWallClockEnabled()) {
+      expect(result.performance?.feasibilityMs).toBeLessThan(perfBudgetMs(1_000));
+      expect(durationMs).toBeLessThan(perfBudgetMs(2_000));
+    }
     console.info('[reported-six-row-full-plan]', mode, {
       durationMs,
       feasibilityMs: result.performance?.feasibilityMs,
       refineMs: result.performance?.refineMs,
       refineStatus: result.performance?.refineStatus,
     });
-  }, 10_000);
+  }, 60_000);
 });

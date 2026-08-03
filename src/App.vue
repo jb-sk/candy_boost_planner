@@ -41,7 +41,7 @@
     </header>
 
     <div class="dashboard">
-      <CalcPanel ref="calcPanelRef" :calc="calc" :resolve-pokedex-id-by-box-id="resolvePokedexIdByBoxId" @apply-to-box="applyCalculatorToBox($event)" @open-help="showHelp = true" @open-settings="openSettings" @open-add-modal="showAddModal = true" />
+      <CalcPanel :calc="calc" :resolve-pokedex-id-by-box-id="resolvePokedexIdByBoxId" @apply-to-box="applyCalculatorToBox($event)" @open-help="showHelp = true" @open-settings="openSettings" @open-add-modal="showAddModal = true" />
 
       <BoxPanel v-if="mountBoxPanel" :box="box" :calc="calc" :gt="gt" @apply-to-calc="applyBoxToCalculator(undefined, true)" @open-settings="showSettings = true" />
       <div v-else class="panel panel--box boxPanelDefer" aria-busy="true" aria-live="polite">
@@ -54,6 +54,8 @@
     </div>
 
     <MobileNav :scroll-to-panel="scrollToPanel" v-show="!calc.exportOpen.value" @open-settings="openSettings" @scroll-top="scrollToTop" />
+
+    <AppToast />
 
     <ExportOverlay
       v-if="calc.exportOpen.value"
@@ -71,6 +73,7 @@
       :universal-candy-ranking="calc.universalCandyRanking.value"
       :universal-candy-used-total="calc.universalCandyUsedTotal.value"
       :boost-kind="calc.boostKind.value"
+      :has-candy-stock="candyStore.hasAnyStock.value"
       @close="calc.closeExport()"
       @open-settings="calc.closeExport(); openSettings()"
     />
@@ -79,7 +82,7 @@
 
     <SettingsOverlay v-if="showSettings" :calc="calc" :box="box" @close="showSettings = false" />
 
-    <AddPokemonModal v-if="showAddModal" :box="box" @close="showAddModal = false" @added="onAddModalAdded($event)" />
+    <AddPokemonModal v-if="showAddModal" :box="box" :calc="calc" @close="showAddModal = false" @added="onAddModalAdded($event)" />
 
     <OnboardingTour v-if="onboarding.isActive.value" :onboarding="onboarding" />
   </main>
@@ -97,9 +100,11 @@ import { getPokemonType } from "./domain/pokesleep/pokemon-names";
 import CalcPanel from "./components/CalcPanel.vue";
 import BoxPanel from "./components/BoxPanel.vue";
 import MobileNav from "./components/MobileNav.vue";
+import AppToast from "./components/AppToast.vue";
 import SettingsOverlay from "./components/SettingsOverlay.vue";
 import { useBoxStore } from "./composables/useBoxStore";
 import { useCalcStore } from "./composables/useCalcStore";
+import { useCandyStore } from "./composables/useCandyStore";
 import { useOnboarding } from "./composables/useOnboarding";
 import { buildThemeList, DEFAULT_THEME_ID, DESIGN_STORAGE_KEY } from "./config/themes";
 
@@ -233,8 +238,6 @@ provide('scrollContainer', scrollContainerRef);
 // provide onboarding state for CalcPanel (dummy result row + inline tooltip for step 3)
 provide('onboardingActive', onboarding.isActive);
 provide('onboarding', onboarding);
-const calcPanelRef = ref<InstanceType<typeof CalcPanel> | null>(null);
-
 function openSettings() {
   showSettings.value = true;
 }
@@ -281,6 +284,7 @@ const supportLinks = computed<SupportLink[]>(() => {
 });
 
 const box = useBoxStore({ locale, t });
+const candyStore = useCandyStore();
 
 /**
  * ボックスが数百〜最大1000体のとき、計算機の rowsView / plan が毎回 boxId を線形探索すると重くなるため Map で O(1) 解決する。
@@ -529,10 +533,6 @@ function scrollToPanel(id: string) {
   const el = document.getElementById(id);
   const container = scrollContainerRef.value;
   if (!el) return;
-
-  // CalcPanel の handleInputBlur による scrollIntoView を抑止する。
-  // blur → 100ms setTimeout で元の入力欄に戻されてしまうため。
-  calcPanelRef.value?.setNavScrolling();
 
   // Prefer container-based scrolling.
   // Container scroll prevents iOS Safari address bar toggling

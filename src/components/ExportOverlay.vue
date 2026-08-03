@@ -243,8 +243,6 @@
         </div>
       </div>
     </div>
-    <div v-if="toastMsg" class="exportToast" role="status" aria-live="polite" data-testid="export-toast">{{ toastMsg }}</div>
-
     <!-- 共有が使えない端末向け: 画像を長押しして写真に保存させるフォールバック -->
     <div
       v-if="fallbackImageUrl"
@@ -281,6 +279,7 @@ import {
 import { createExportImageCanvas, ExportImageError } from "../export/renderExportImage";
 import { saveExportImage, type SaveImageAdapter } from "../export/saveExportImage";
 import { isSharePending, setSharePending } from "../export/sharePendingState";
+import { showToast } from "../composables/useToast";
 
 const props = defineProps<{
   rows: ExportImageRow[];
@@ -302,6 +301,8 @@ const props = defineProps<{
   universalCandyRanking: ExportImageRankingItem[];
   universalCandyUsedTotal: { s: number; m: number; l: number };
   boostKind: ExportImageBoostKind;
+  /** アメ在庫が1つでも設定されているか（在庫未設定警告の表示条件） */
+  hasCandyStock: boolean;
 }>();
 
 const emit = defineEmits<{ close: []; "open-settings": [] }>();
@@ -312,17 +313,6 @@ const exportBusy = ref(false);
 const exportStatus = ref("");
 const exportCsvMenuOpen = ref(false);
 
-// 保存完了トースト（共有/ダウンロード成功時に一時表示）
-const toastMsg = ref("");
-let toastTimer: ReturnType<typeof setTimeout> | null = null;
-function showToast(msg: string) {
-  toastMsg.value = msg;
-  if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    toastMsg.value = "";
-    toastTimer = null;
-  }, 2500);
-}
 // 共有が使えない時のフォールバック: 画像を表示し「長押しで写真に保存」させる（url は object URL）
 const fallbackImageUrl = ref("");
 function closeFallback() {
@@ -336,7 +326,6 @@ function closeFallback() {
 }
 
 onUnmounted(() => {
-  if (toastTimer) clearTimeout(toastTimer);
   closeFallback();
 });
 
@@ -346,11 +335,8 @@ function fmtNum(n: number): string {
 
 const isBoostMode = computed(() => props.boostKind !== "none");
 
-/** 在庫未設定警告: 実使用のアメ・かけらが両方0 */
-const showNoStockWarning = computed(() => {
-  const t = props.totals;
-  return t.boostCandy + t.normalCandy === 0 && t.shards === 0;
-});
+/** 在庫未設定警告: アメ在庫が空のときだけ出す（実使用アメ 0 で判定しない） */
+const showNoStockWarning = computed(() => !props.hasCandyStock);
 
 type StatCardDef = {
   key: string;
@@ -633,6 +619,7 @@ function buildExportSource(): ExportImageSource {
     universalCandyRanking: props.universalCandyRanking,
     universalCandyUsedTotal: props.universalCandyUsedTotal,
     boostKind: props.boostKind,
+    hasCandyStock: props.hasCandyStock,
   };
 }
 
@@ -775,7 +762,7 @@ async function downloadCalcExportPng() {
     ) {
       // shared: 共有成功 / downloaded: PC保存 / dismissed: 共有シートを閉じた（保存想定）
       // → 保存完了トーストを表示。cancelled は出さない。
-      showToast(t("status.imageSaved"));
+      showToast(t("status.imageSaved"), { testId: "export-toast" });
     }
   } catch (e) {
     if (e instanceof ExportImageError && e.reason === "image_too_large") {

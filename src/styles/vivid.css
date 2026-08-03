@@ -55,8 +55,9 @@
 
   /* Semantic Accents */
   --star-color: #FFD700;
-  --nature-up: #BDFF00;
-  --nature-down: #F02D7D;
+  /* ▲▲ = 赤系 / ▼▼ = 青系。高彩度テーマなので鮮やかに */
+  --nature-up: #FF4D4D;
+  --nature-down: #33B5FF;
 
   /* Border Radius */
   --radius-sm: 6px;
@@ -226,4 +227,12 @@ input:focus, select:focus, textarea:focus {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--accent);
+}
+
+/* ===== Toast =====
+   このテーマの `--shadow-md` は硬いオフセット影（4px 4px 0px var(--accent)）。
+   浮いている通知に付くとマゼンタの板が背後に出るので落とす。
+   セレクタは基本規則（`.appToastStack .appToast`）と同じ詳細度で書くこと。 */
+.appToastStack .appToast {
+  box-shadow: none;
 }

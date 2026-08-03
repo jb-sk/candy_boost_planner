@@ -55,8 +55,9 @@
 
   /* Semantic Accents */
   --star-color: #FFD600;
-  --nature-up: #10b981;
-  --nature-down: #f43f5e;
+  /* ▲▲ = 赤系 / ▼▼ = 青系。菓子テーマなので ▲▲ はピンク寄り（対比 3.6 / 2.9） */
+  --nature-up: #F0457F;
+  --nature-down: #339CF0;
 
   /* Border Radius */
   --radius-sm: 8px;
@@ -105,12 +106,6 @@
 }
 
 /* ===== Sleep Chips (1000h / 2000h) & Hint ===== */
-.sleepChip {
-  background: rgba(var(--accent-rgb), 0.06);
-  color: #0891b2;
-  border: 2px solid rgba(var(--accent-rgb), 0.3);
-}
-
 .hintIcon {
   background: rgba(var(--accent-rgb), 0.06);
   color: #64748b;

@@ -1,0 +1,83 @@
+/* ===== App-wide transient status toasts ===== */
+
+/*
+  新しい通知ほど下（DOM 順＝古い順）。下端で固定するので、増えると古いものが上へ動く。
+
+  **アニメーションするのは `opacity` だけ。** 位置も色も瞬間に変える。
+  位置をスライドさせても色を遷移させても、連続操作ではちらついて見える。
+*/
+.shell > .appToastStack {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 11000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - 32px);
+  pointer-events: none;
+}
+
+.appToastStack .appToast {
+  max-width: 100%;
+  padding: 7px 16px;
+  border-radius: var(--radius-md);
+  background: rgba(22, 163, 74, 0.95);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: var(--shadow-md);
+  /*
+    **`transform` を足さないこと。** `<TransitionGroup>` は「move クラスを当てた複製の
+    `transition-property` に `transform` があるか」で押し上げ（FLIP）の有無を決めるため、
+    move クラスを書かなくても位置の変化がアニメーションするようになる。
+  */
+  transition: opacity 160ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/*
+  同時に見せるのは新しい3件まで。
+
+  **上限を状態側で「古い順に捨てる」形にしない。** 捨てた通知が退場フェードで
+  4件目として見えてしまう。`display: none` なら遷移を挟まず即座に消え、行数も増えない。
+*/
+.appToastStack .appToast:nth-last-child(n + 4) {
+  display: none;
+}
+
+/*
+  最新以外は薄くする。**遷移させない**（増えるたびの濃→薄が重なってちらつく）。
+
+  **薄くするのに `opacity` を使わない。** `:not()` のぶんこちらの詳細度が勝ち、
+  **退場フェードが効かなくなる**（実測: 消えるときも `0.72` のまま止まる）。
+*/
+.appToastStack .appToast:not(:last-child) {
+  background: rgba(22, 163, 74, 0.62);
+}
+
+/*
+  入場のフェードは**1件目だけ**。積み上がる途中もフェードさせるとちらついて見える。
+
+  `:only-child` で判定するので状態側にフラグは要らない。
+  「2件目以降は `transition: none`」で消そうとすると、Vue が `-enter-from` を外すのは
+  2フレーム後なので、**その間だけ透明のまま残って一瞬消えて見える**。
+  最初から透明にしないのが正解。
+*/
+.appToastStack .appToast:only-child.appToast-enter-from {
+  opacity: 0;
+}
+
+/*
+  退場はその場でフェードアウトするだけ。位置も大きさも変えない。
+
+  **`position: absolute` で流れから外さないこと。** `max-width: 100%` が
+  「残った通知の幅」で解決され直して**背景が左右から縮み**、列が縮むぶん
+  **まだフェード中の通知が下へ引きずられる**。
+  流れに残しても行は増えない（上限を超えたぶんは `display: none` で最初から数に入らない）。
+*/
+.appToastStack .appToast-leave-to {
+  opacity: 0;
+}

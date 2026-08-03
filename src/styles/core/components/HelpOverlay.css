@@ -52,26 +52,26 @@
   margin: 2px 0 0 0;
 }
 
-/* ===== Basic section: side-by-side at 680px+ ===== */
+/* ===== 表形式（ラベル列 → 本文列）。モバイル幅では縦積みのままにする ===== */
 @media (min-width: 680px) {
-  .help-overlay .section--basic .helpDl {
+  .help-overlay .helpDl--table {
     display: grid;
     grid-template-columns: auto 1fr;
     gap: 6px 0;
   }
 
-  .help-overlay .section--basic .helpDl dt {
+  .help-overlay .helpDl--table dt {
     white-space: nowrap;
     margin-top: 0;
     padding-right: 12px;
   }
 
-  .help-overlay .section--basic .helpDl dd {
+  .help-overlay .helpDl--table dd {
     margin: 0;
   }
 
-  .help-overlay .section--basic .helpDl dt,
-  .help-overlay .section--basic .helpDl dd {
+  .help-overlay .helpDl--table dt,
+  .help-overlay .helpDl--table dd {
     padding-bottom: 6px;
     border-bottom: 1px solid rgba(var(--ink-rgb), 0.08);
   }
@@ -110,8 +110,8 @@
   color: var(--muted);
 }
 
-/* ===== Candy note ===== */
-.help-overlay .candy__note {
+/* ===== Item priority note ===== */
+.help-overlay .itemPriority__note {
   font-size: 13px;
   color: var(--muted);
 }
@@ -119,6 +119,13 @@
 /* ===== Section body text indent ===== */
 .help-overlay .section__desc {
   margin-left: 8px;
+}
+
+/* 本文より一段弱い注記。dl のあとに補足を置くときに使う。 */
+.help-overlay .section__note {
+  margin-left: 8px;
+  font-size: 13px;
+  color: var(--muted);
 }
 
 /* ===== Formula cards ===== */

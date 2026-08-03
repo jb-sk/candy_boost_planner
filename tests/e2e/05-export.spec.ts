@@ -75,15 +75,15 @@ async function setupGolemSuicuneCondition(page: import('@playwright/test').Page)
   // 目標Lv60
   await calc.setRowDstLevel(rowGolem, 60);
   // アメブ0%
-  await calc.getRowBoostRatioSlider(rowGolem).fill('0');
+  await calc.setRowBoostCandy(rowGolem, '0');
   // 個数指定1500
-  await calc.getRowCandyTargetInput(rowGolem).fill('1500');
+  await calc.setRowCandyTarget(rowGolem, '1500');
 
-  // --- スイクンを追加（EXP▼） ---
+  // --- スイクンを追加（EXP▼▼） ---
   await box.openAddNewPanel();
   await box.fillPokemonName('スイクン');
   await box.confirmPokemonName();
-  // 性格をEXP下降（▼）に設定
+  // 性格をEXP下降（▼▼）に設定
   await box.openNatureDropdown();
   await box.selectNatureOption(2);
   await box.clickAddToBox();
@@ -96,11 +96,11 @@ async function setupGolemSuicuneCondition(page: import('@playwright/test').Page)
   // 目標Lv65
   await calc.setRowDstLevel(rowSuicune, 65);
   // 種族アメ147
-  await calc.getRowSpeciesCandyInput(rowSuicune).fill('147');
+  await calc.setRowSpeciesCandy(rowSuicune, '147');
   // アメブ在庫350
-  await calc.getRowBoostCandyInput(rowSuicune).fill('350');
+  await calc.setRowBoostCandy(rowSuicune, '350');
   // 個数指定50
-  await calc.getRowCandyTargetInput(rowSuicune).fill('50');
+  await calc.setRowCandyTarget(rowSuicune, '50');
 
   await page.waitForTimeout(300);
 }
@@ -577,5 +577,6 @@ test.describe('05-export G. 計算機との整合性検証', () => {
     expect(csv).toContain('アイテム');
     expect(csv).toContain('タM3');
     expect(csv).toContain('万S475');
+    expect(csv).toContain(',▼▼,');
   });
 });

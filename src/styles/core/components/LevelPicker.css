@@ -58,11 +58,80 @@
   margin-bottom: 8px;
 }
 
+/* タイトル文字と、その横に並ぶ警告マーク・不足ラベルを縦中央で揃える。
+   インラインのままだとベースライン揃えになり、文字サイズの違う要素（12px の不足ラベル、
+   16px の絵文字）が下へずれて見える。 */
 .levelPick__title {
   font-family: var(--font-heading);
   font-weight: 800;
   font-size: 14px;
   letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 上限に当たっている理由と打ち手（睡眠EXPの頭打ちなど）。
+   title 属性だけだと disabled の欄ではホバーしても出ないため、ポップオーバー内に文章で置く。 */
+.levelPick__note {
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(var(--ink-rgb), 0.05);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 制約違反の警告。上限の案内（--muted）と区別がつくよう赤で塗る。
+   クラス2つで詳細度を上げること（テーマCSSに負けて色が出ない。D-1 で踏み済み）。 */
+.levelPick__note.levelPick__note--alert {
+  background: rgba(var(--danger-rgb), 0.1);
+  color: var(--danger);
+}
+
+/* float した要素は親の高さに含まれないので、1行で収まったときのために clear する。 */
+.levelPick__note::after {
+  content: "";
+  display: block;
+  clear: both;
+}
+
+/* 警告マーク。float にして2行目以降をマークの下へ回り込ませる（ヒントと同じ作り）。
+   絵文字のグリフが下寄りに描かれるぶんを視覚補正する（.levelPick__capWarn と同じ理由）。 */
+.levelPick__noteMark {
+  float: left;
+  margin-right: 4px;
+  line-height: 1.5;
+  position: relative;
+  top: -1px;
+}
+
+/* 睡眠EXPで上限が下がっていることの警告。不足ラベル（--danger）と同じ位置に置く。
+   絵文字なので色は指定しない（指定しても効かない）。タイトル文字より一回り大きくして目立たせる。 */
+.levelPick__capWarn {
+  font-size: 16px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: help;
+  /* 絵文字はグリフが em ボックスの下寄りに描かれるため、ボックスを中央に揃えても
+     見た目は沈む。align-items ではボックスまでしか制御できないので視覚補正する。
+     値は実ブラウザ（Windows / Segoe UI Emoji）での見え方に合わせた実測。 */
+  position: relative;
+  top: -3px;
+}
+
+/* 律速要因のラベル（アメ不足 / かけら不足 / アメブ不足）。設計書§10.15
+   縦位置は .levelPick__title の flex（align-items: center）が揃える。
+   gap だけだと「Lv70」と詰まって読みにくいので、このラベルだけ左を広く取る。 */
+.levelPick__shortage {
+  margin-left: 4px;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 /* ===== Slider Row ===== */

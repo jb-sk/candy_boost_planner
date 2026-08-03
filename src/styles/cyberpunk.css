@@ -55,8 +55,9 @@
 
   /* Semantic Accents */
   --star-color: #facc15;
-  --nature-up: #4ade80;
-  --nature-down: #fb7185;
+  /* ▲▲ = 赤系 / ▼▼ = 青系。暗い紙面なのでネオン寄り */
+  --nature-up: #fb5b73;
+  --nature-down: #38bdf8;
 
   /* Border Radius */
   --radius-sm: 2px;

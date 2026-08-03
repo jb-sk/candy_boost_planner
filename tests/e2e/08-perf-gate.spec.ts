@@ -12,7 +12,9 @@ function capturePerfLogs(page: Page): string[] {
 
 async function updateCandyInventory(page: Page): Promise<void> {
   await page.locator('[data-testid="calc-empty-settings-link"]').click();
-  await page.locator('[data-testid="settings-universal-candy-s-input"]').fill('123');
+  const input = page.locator('[data-testid="settings-universal-candy-s-input"]');
+  await input.fill('123');
+  await input.blur();
   await page.waitForTimeout(650);
 }
 
