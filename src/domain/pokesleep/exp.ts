@@ -116,13 +116,34 @@ function isInvalidLevel(srcLevel: number, dstLevel: number): boolean {
 }
 
 /** 目標（Lv+EXP）に到達済みかどうか */
-function isTargetReached(
+export function isTargetReached(
   srcLevel: number,
   dstLevel: number,
   expGot: number,
   dstExpInLevel: number
 ): boolean {
   return srcLevel > dstLevel || (srcLevel === dstLevel && expGot >= dstExpInLevel);
+}
+
+/**
+ * Lv+EXPの地点へ生のEXPを加算した場合の到達点（アメ換算ではなく、上限なくレベルアップを繰り上げる）。
+ * 睡眠EXPをアメ投入後の到達点へ加算する用途（アメが先、睡眠が後）。
+ */
+export function addExpToLevel(
+  level: number,
+  expInLevel: number,
+  addExp: number,
+  expType: ExpType
+): { level: number; expInLevel: number } {
+  let lv = level;
+  let exp = expInLevel + Math.max(0, addExp);
+  while (lv < maxLevel) {
+    const needed = calcExp(lv, lv + 1, expType);
+    if (exp < needed) break;
+    exp -= needed;
+    lv++;
+  }
+  return { level: lv, expInLevel: lv >= maxLevel ? 0 : exp };
 }
 
 /**

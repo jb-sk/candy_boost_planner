@@ -134,7 +134,8 @@ test.describe('新規追加パネル', () => {
     await expect(boxPanel.levelTriggerButton).toHaveValue('26');
   });
 
-  test('EXP性格補正が選択できる', async () => {
+  test('EXP性格補正が選択できる', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
     await boxPanel.openAddNewPanel();
 
     await expect(boxPanel.natureField).toBeVisible();
@@ -145,9 +146,21 @@ test.describe('新規追加パネル', () => {
 
     // 3つのオプションが存在する
     await expect(boxPanel.natureOptions).toHaveCount(3);
+    const dropdownBox = await boxPanel.natureDropdown.boundingBox();
+    const viewport = page.viewportSize();
+    expect(dropdownBox).not.toBeNull();
+    expect(viewport).not.toBeNull();
+    expect(dropdownBox!.y).toBeGreaterThanOrEqual(0);
+    expect(dropdownBox!.y + dropdownBox!.height).toBeLessThanOrEqual(viewport!.height);
+    await expect(boxPanel.natureOptions.nth(0).locator('.natureSelect__sr')).toHaveText('-');
+    await expect(boxPanel.natureOptions.nth(1).locator('.natureSelect__sr')).toHaveText('▲▲');
+    await expect(boxPanel.natureOptions.nth(2).locator('.natureSelect__sr')).toHaveText('▼▼');
+    await expect(boxPanel.natureOptions.nth(1).locator('path')).toHaveCount(2);
+    await expect(boxPanel.natureOptions.nth(2).locator('path')).toHaveCount(2);
 
-    // 2番目のオプション（↑）を選択
+    // 2番目のオプション（▲▲）を選択
     await boxPanel.selectNatureOption(1);
+    await expect(boxPanel.natureTrigger.locator('.natureSelect__sr')).toHaveText('▲▲');
   });
 
   test('食材タイプが選択できる', async () => {

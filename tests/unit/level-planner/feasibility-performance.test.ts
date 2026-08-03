@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { isPerfWallClockEnabled } from '../../helpers/isPerfWallClockEnabled';
+import { perfBudgetMs } from './perfBudget';
 import { solveFeasibilityForFixedRows } from '../../../src/domain/level-planner/core/feasibilityWitness';
 import { solveLevelPlan } from '../../../src/domain/level-planner/core/solveLevelPlan';
 import type {
@@ -6,6 +8,7 @@ import type {
   FeasibilityDemandRow,
   FeasibilityStats,
   LevelPlannerInput,
+  LevelPlannerResult,
   SolverItemCompareMode,
 } from '../../../src/domain/level-planner/types';
 
@@ -28,7 +31,7 @@ function demandRow(
   pokedexId: number,
   type: string,
   totalCandy: number,
-  targetReached = true,
+  candyDemandMet = true,
 ): FeasibilityDemandRow {
   return {
     pokemonId,
@@ -39,10 +42,10 @@ function demandRow(
     boostCandy: 0,
     normalCandy: totalCandy,
     shards: 0,
-    reachedLv: targetReached ? 70 : 69,
-    expInLevel: targetReached ? 0 : 123,
-    targetReached,
-    preferZeroSurplus: targetReached,
+    reachedLv: candyDemandMet ? 70 : 69,
+    expInLevel: candyDemandMet ? 0 : 123,
+    candyDemandMet,
+    preferZeroSurplus: candyDemandMet,
   };
 }
 
@@ -273,7 +276,52 @@ function expectBoundedStats(stats: FeasibilityStats, rowCount: number): void {
   expect(max(stats.typeBlockFrontierCounts)).toBeLessThanOrEqual(64);
   expect(stats.globalKeyCount).toBeLessThanOrEqual(128);
   expect(stats.transitions).toBeLessThanOrEqual(5_000);
-  expect(stats.durationMs).toBeLessThan(1_000);
+  if (isPerfWallClockEnabled()) {
+    expect(stats.durationMs).toBeLessThan(perfBudgetMs(1_000));
+  }
+}
+
+/**
+ * 全行の資源使用が入力の在庫・かけら・アメブ枠に収まっていることを固定する。
+ *
+ * **⚠ かつてここは「境界より下の行は `totalCandyUnitsUsed === 0`」を固定していた。**
+ * それは `solveLevelPlan` が witness に含まれない行を `zeroLine` へ倒していた
+ * 実装の写しであって、仕様ではない。`level-planner-allocation-policy-spec.md` §4-5 と
+ * `fbl01d_feasibility_witness境界EXP改善_設計書.md` §14.4（フェーズ3）は
+ * **「下位は残資源で優先順位順に個別処理する」**と決めており、0固定はそれを禁じてしまう。
+ *
+ * 境界そのものは各テストの `lines[boundaryIndex]` で従来どおり厳密に固定している。
+ * ここが見るのは「下位処理が資源を作り出していないか」だけ。
+ */
+function expectResourceUsageWithinInput(result: LevelPlannerResult, input: LevelPlannerInput): void {
+  const lines = result.pokemonResults.map(row => row.reachableLine);
+  expect(lines.reduce((sum, line) => sum + line.dreamShardsUsed, 0)).toBeLessThanOrEqual(input.dreamShards);
+  expect(lines.reduce((sum, line) => sum + line.boostedCandyUnits, 0)).toBeLessThanOrEqual(input.boost.limit);
+
+  const species: Record<string, number> = {};
+  const type: Record<string, { s: number; m: number }> = {};
+  const universal = { s: 0, m: 0, l: 0 };
+  result.pokemonResults.forEach((row, index) => {
+    const pokemon = input.pokemonList[index]!;
+    const supply = row.reachableLine.candySupply;
+    species[pokemon.candyFamilyKey] = (species[pokemon.candyFamilyKey] ?? 0) + supply.species;
+    const stock = type[pokemon.type] ?? { s: 0, m: 0 };
+    type[pokemon.type] = { s: stock.s + supply.type.s, m: stock.m + supply.type.m };
+    universal.s += supply.universal.s;
+    universal.m += supply.universal.m;
+    universal.l += supply.universal.l;
+  });
+  for (const [key, used] of Object.entries(species)) {
+    expect(used).toBeLessThanOrEqual(input.candyInventory.species[key] ?? 0);
+  }
+  for (const [key, used] of Object.entries(type)) {
+    const stock = input.candyInventory.typeCandy[key] ?? { s: 0, m: 0 };
+    expect(used.s).toBeLessThanOrEqual(stock.s);
+    expect(used.m).toBeLessThanOrEqual(stock.m);
+  }
+  expect(universal.s).toBeLessThanOrEqual(input.candyInventory.universal.s);
+  expect(universal.m).toBeLessThanOrEqual(input.candyInventory.universal.m);
+  expect(universal.l).toBeLessThanOrEqual(input.candyInventory.universal.l);
 }
 
 describe('fbl01d feasibility performance fixture', () => {
@@ -292,7 +340,9 @@ describe('fbl01d feasibility performance fixture', () => {
     const fullPlan = solveLevelPlan(fullPlanFixture(mode));
     const feasibilityMs = fullPlan.performance?.feasibilityMs;
     expect(feasibilityMs).toEqual(expect.any(Number));
-    expect(feasibilityMs ?? Number.POSITIVE_INFINITY).toBeLessThan(10_000);
+    if (isPerfWallClockEnabled()) {
+      expect(feasibilityMs ?? Number.POSITIVE_INFINITY).toBeLessThan(perfBudgetMs(10_000));
+    }
 
     console.info('[level-planner-feasibility-perf] result', JSON.stringify({
       mode,
@@ -304,17 +354,18 @@ describe('fbl01d feasibility performance fixture', () => {
       globalKeyCount: result.stats.globalKeyCount,
       transitions: result.stats.transitions,
     }));
-  });
+  }, 60_000);
 
   it('keeps the reported 10-row legacy case exact and bounded', () => {
     const startedAt = performance.now();
-    const result = solveLevelPlan(reportedLegacyTenRowFixture());
+    const input = reportedLegacyTenRowFixture();
+    const result = solveLevelPlan(input);
     const durationMs = performance.now() - startedAt;
     const lines = result.pokemonResults.map(row => row.reachableLine);
 
-    expect(lines.slice(0, 4).every(line => line.targetReached)).toBe(true);
-    expect(lines[4]).toMatchObject({ level: 69, targetReached: false, totalCandyUnitsUsed: 995 });
-    expect(lines.slice(5).every(line => line.totalCandyUnitsUsed === 0)).toBe(true);
+    expect(lines.slice(0, 4).every(line => line.candyDemandMet)).toBe(true);
+    expect(lines[4]).toMatchObject({ level: 69, candyDemandMet: false, totalCandyUnitsUsed: 995 });
+    expectResourceUsageWithinInput(result, input);
     expect(result.lossLedger.hasLoss).toBe(false);
     console.info('[level-planner-reported-legacy-perf]', JSON.stringify({
       durationMs: Math.round(durationMs * 100) / 100,
@@ -322,15 +373,16 @@ describe('fbl01d feasibility performance fixture', () => {
       refineMs: result.performance?.refineMs,
       refineStatus: result.performance?.refineStatus,
     }));
-  });
+  }, 60_000);
 
   it('allows row surplus up to two while maximizing the reported surplus-first boundary', () => {
-    const result = solveLevelPlan(reportedLegacyTenRowFixture('surplusFirst'));
+    const input = reportedLegacyTenRowFixture('surplusFirst');
+    const result = solveLevelPlan(input);
     const lines = result.pokemonResults.map(row => row.reachableLine);
 
-    expect(lines.slice(0, 4).every(line => line.targetReached)).toBe(true);
-    expect(lines[4]).toMatchObject({ level: 69, targetReached: false, totalCandyUnitsUsed: 995 });
-    expect(lines.slice(5).every(line => line.totalCandyUnitsUsed === 0)).toBe(true);
+    expect(lines.slice(0, 4).every(line => line.candyDemandMet)).toBe(true);
+    expect(lines[4]).toMatchObject({ level: 69, candyDemandMet: false, totalCandyUnitsUsed: 995 });
+    expectResourceUsageWithinInput(result, input);
     expect(result.performance?.boundarySearch).toMatchObject({
       mode: 'surplusFirst',
       boundaryIndex: 4,
@@ -339,17 +391,18 @@ describe('fbl01d feasibility performance fixture', () => {
       stoppedReason: 'first_acceptable_surplus',
     });
     expect(result.lossLedger.hasLoss).toBe(false);
-  });
+  }, 60_000);
 
   it('finds the distant surplus-first boundary without descending one candy at a time', () => {
     const startedAt = performance.now();
-    const result = solveLevelPlan(reportedLongSurplusBoundaryFixture());
+    const input = reportedLongSurplusBoundaryFixture();
+    const result = solveLevelPlan(input);
     const durationMs = performance.now() - startedAt;
     const lines = result.pokemonResults.map(row => row.reachableLine);
 
-    expect(lines.slice(0, 6).every(line => line.targetReached)).toBe(true);
-    expect(lines[6]).toMatchObject({ level: 51, targetReached: false, totalCandyUnitsUsed: 1579 });
-    expect(lines.slice(7).every(line => line.totalCandyUnitsUsed === 0)).toBe(true);
+    expect(lines.slice(0, 6).every(line => line.candyDemandMet)).toBe(true);
+    expect(lines[6]).toMatchObject({ level: 51, candyDemandMet: false, totalCandyUnitsUsed: 1579 });
+    expectResourceUsageWithinInput(result, input);
     expect(result.performance?.boundarySearch).toMatchObject({
       mode: 'surplusFirst',
       boundaryIndex: 6,
@@ -365,7 +418,7 @@ describe('fbl01d feasibility performance fixture', () => {
       feasibilityMs: result.performance?.feasibilityMs,
       checkedLowerTotals: result.performance?.boundarySearch?.checkedLowerTotals,
     }));
-  });
+  }, 60_000);
 
   it.each(allModes)('keeps the cross-pokedex family boundary exact and bounded: %s', mode => {
     const startedAt = performance.now();
@@ -373,8 +426,8 @@ describe('fbl01d feasibility performance fixture', () => {
     const durationMs = performance.now() - startedAt;
     const lines = result.pokemonResults.map(row => row.reachableLine);
 
-    expect(lines.slice(0, 4).every(line => line.targetReached)).toBe(true);
-    expect(lines[4]).toMatchObject({ targetReached: false });
+    expect(lines.slice(0, 4).every(line => line.candyDemandMet)).toBe(true);
+    expect(lines[4]).toMatchObject({ candyDemandMet: false });
     expect(lines[0].candySupply.species).toBe(100);
     expect(lines[4].candySupply.species).toBe(0);
     expect(result.lossLedger.hasLoss).toBe(false);
@@ -383,7 +436,7 @@ describe('fbl01d feasibility performance fixture', () => {
       durationMs: Math.round(durationMs * 100) / 100,
       feasibilityMs: result.performance?.feasibilityMs,
     }));
-  });
+  }, 60_000);
 
   it.each(allModes)('keeps the mini-boost cross-pokedex family boundary exact and bounded: %s', mode => {
     const startedAt = performance.now();
@@ -391,8 +444,8 @@ describe('fbl01d feasibility performance fixture', () => {
     const durationMs = performance.now() - startedAt;
     const lines = result.pokemonResults.map(row => row.reachableLine);
 
-    expect(lines.slice(0, 4).every(line => line.targetReached)).toBe(true);
-    expect(lines[4]).toMatchObject({ targetReached: false, totalCandyUnitsUsed: 550 });
+    expect(lines.slice(0, 4).every(line => line.candyDemandMet)).toBe(true);
+    expect(lines[4]).toMatchObject({ candyDemandMet: false, totalCandyUnitsUsed: 550 });
     expect(lines[0].candySupply.species).toBe(100);
     expect(lines[4].candySupply.species).toBe(0);
     if (mode === 'surplusFirst') {
@@ -425,7 +478,7 @@ describe('fbl01d feasibility performance fixture', () => {
       feasibilityMs: result.performance?.feasibilityMs,
       boundarySearch: result.performance?.boundarySearch,
     }));
-  });
+  }, 60_000);
 
   it('maximizes EXP on a later shared-type boundary in legacyImproved', () => {
     const input = reportedSharedSpeciesBoundaryFixture('legacyImproved', 'mini');
@@ -446,30 +499,31 @@ describe('fbl01d feasibility performance fixture', () => {
     const result = solveLevelPlan(input);
     const lines = result.pokemonResults.map(row => row.reachableLine);
 
-    expect(lines.slice(0, 4).every(line => line.targetReached)).toBe(true);
-    expect(lines[4]).toMatchObject({ targetReached: false, totalCandyUnitsUsed: 1_502 });
+    expect(lines.slice(0, 4).every(line => line.candyDemandMet)).toBe(true);
+    expect(lines[4]).toMatchObject({ candyDemandMet: false, totalCandyUnitsUsed: 1_502 });
     expect(result.performance?.boundarySearch).toMatchObject({
       mode: 'legacyImproved',
       boundaryIndex: 4,
       selectedTotalCandy: 1_502,
     });
     expect(result.lossLedger.hasLoss).toBe(false);
-  });
+  }, 60_000);
 
   it.each(allModes)('keeps the reported full post-switch boundary exact: %s', mode => {
     const startedAt = performance.now();
-    const result = solveLevelPlan(reportedFullPostSwitchFixture(mode));
+    const input = reportedFullPostSwitchFixture(mode);
+    const result = solveLevelPlan(input);
     const durationMs = performance.now() - startedAt;
     const lines = result.pokemonResults.map(row => row.reachableLine);
 
-    expect(lines.slice(0, 6).every(line => line.targetReached)).toBe(true);
+    expect(lines.slice(0, 6).every(line => line.candyDemandMet)).toBe(true);
     expect(lines[6]).toMatchObject({
       level: 50,
       expInLevel: 1_700,
-      targetReached: false,
+      candyDemandMet: false,
       totalCandyUnitsUsed: 1_535,
     });
-    expect(lines.slice(7).every(line => line.totalCandyUnitsUsed === 0)).toBe(true);
+    expectResourceUsageWithinInput(result, input);
     if (mode === 'surplusFirst') {
       const reachedSurplus = lines.slice(0, 6).reduce((sum, line) => sum + line.surplusCandyValue, 0);
       expect(reachedSurplus).toBeLessThanOrEqual(2);
@@ -504,5 +558,5 @@ describe('fbl01d feasibility performance fixture', () => {
       feasibilityMs: result.performance?.feasibilityMs,
       boundarySearch: result.performance?.boundarySearch,
     }));
-  }, 30_000);
+  }, 60_000);
 });

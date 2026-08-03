@@ -3,7 +3,7 @@
  */
 
 export { solveLevelPlan, solveLevelPlanWithBudget, __levelPlannerTestHooks } from './solveLevelPlan';
-export { findBestItemAllocation, findBestUniversalAllocation } from './itemAllocation';
+export { findBestItemAllocation } from './itemAllocation';
 export {
   refineExactSupply,
   exactSupplyObjectiveFor,

@@ -62,8 +62,10 @@
 
   /* Semantic Accents */
   --star-color: #f59e0b;
-  --nature-up: hsl(140, 60%, 45%);
-  --nature-down: hsl(350, 60%, 50%);
+  /* EXP性格補正の記号色。▲▲ = 赤系 / ▼▼ = 青系（2026-07-29・ユーザー指定）。
+     テーマごとに色味を変えてよいが、赤／青の対応は入れ替えないこと */
+  --nature-up: #dc2626;
+  --nature-down: #2563eb;
 
   /* Border Radius */
   --radius-sm: 4px;

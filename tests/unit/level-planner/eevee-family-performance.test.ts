@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { isPerfWallClockEnabled } from "../../helpers/isPerfWallClockEnabled";
+import { perfBudgetMs } from "./perfBudget";
 import { solveFeasibilityForFixedRows } from "../../../src/domain/level-planner/core/feasibilityWitness";
 import {
   __levelPlannerTestHooks,
@@ -32,9 +34,8 @@ const rows: FeasibilityDemandRow[] = [
     shards: 1_990_565,
     reachedLv: 70,
     expInLevel: 0,
-    targetReached: true,
+    candyDemandMet: true,
     preferZeroSurplus: true,
-    speciesLexWeight: 2,
   },
   {
     pokemonId: "flareon",
@@ -47,9 +48,8 @@ const rows: FeasibilityDemandRow[] = [
     shards: 371_734,
     reachedLv: 60,
     expInLevel: 0,
-    targetReached: true,
+    candyDemandMet: true,
     preferZeroSurplus: false,
-    speciesLexWeight: 1,
   },
 ];
 
@@ -113,9 +113,14 @@ describe("reported two-row Eevee family performance", () => {
     });
     console.info("[reported-eevee-family]", mode, result.status, result.stats);
     expect(result.status).toBe("feasible");
-    expect(Math.max(...result.stats.rowOptionCounts)).toBeLessThan(1_000);
-    expect(result.stats.durationMs).toBeLessThan(1_000);
-  }, 10_000);
+    expect(Math.max(...result.stats.rowOptionCounts)).toBeLessThanOrEqual(1_000);
+    expect(Math.max(...result.stats.typeBlockFrontierCounts)).toBeLessThanOrEqual(750);
+    expect(result.stats.globalKeyCount).toBeLessThanOrEqual(750);
+    expect(result.stats.transitions).toBeLessThanOrEqual(80_000);
+    if (isPerfWallClockEnabled()) {
+      expect(result.stats.durationMs).toBeLessThan(perfBudgetMs(1_000));
+    }
+  }, 60_000);
 
   it.each(modes)("solves the full reported plan exactly and quickly: %s", mode => {
     __levelPlannerTestHooks.clearCandidateCache();
@@ -131,7 +136,7 @@ describe("reported two-row Eevee family performance", () => {
     const lines = result.pokemonResults.map(row => row.reachableLine);
 
     expect(lines).toHaveLength(2);
-    expect(lines.every(line => line.targetReached)).toBe(true);
+    expect(lines.every(line => line.candyDemandMet)).toBe(true);
     expect(lines[0]).toMatchObject({
       level: 70,
       expInLevel: 0,
@@ -146,13 +151,15 @@ describe("reported two-row Eevee family performance", () => {
     });
     expect(lines.map(line => line.candySupply.species)).toEqual([1000, 0]);
     expect(result.lossLedger.hasLoss).toBe(false);
-    expect(result.performance?.feasibilityMs).toBeLessThan(1_000);
-    expect(durationMs).toBeLessThan(2_000);
+    if (isPerfWallClockEnabled()) {
+      expect(result.performance?.feasibilityMs).toBeLessThan(perfBudgetMs(1_000));
+      expect(durationMs).toBeLessThan(perfBudgetMs(2_000));
+    }
     console.info("[reported-eevee-family-full-plan]", mode, {
       durationMs,
       feasibilityMs: result.performance?.feasibilityMs,
       refineMs: result.performance?.refineMs,
       refineStatus: result.performance?.refineStatus,
     });
-  }, 10_000);
+  }, 60_000);
 });

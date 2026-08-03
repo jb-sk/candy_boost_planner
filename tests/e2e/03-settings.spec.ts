@@ -155,6 +155,43 @@ test.describe('03-settings デスクトップ', () => {
     await expect(capText).toContainText('8,000');
   });
 
+  test('7c. 既定のアメブ目標Lvは通常アメのスロットでも編集できる', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const settings = new SettingsModalPage(page);
+
+    // アプリ全体の設定なので、選択中スロットの種別で無効化してはいけない
+    await calc.setBoostKind('none');
+    await settings.openSettingsFromDesktop();
+
+    await expect(settings.defaultBoostReachLevelInput).toBeEnabled();
+    // 対照: アメブ上限はスロットごとの値なので、こちらは無効化されて正しい
+    await expect(settings.boostCandyRemainingInput).toBeDisabled();
+  });
+
+  test('7b. 既定のアメブ目標Lvを設定でき、空欄で「目標Lvと同じ」へ戻る', async ({ page }) => {
+    const settings = new SettingsModalPage(page);
+
+    await settings.openSettingsFromDesktop();
+    // 未設定のうちは空欄で、意味を placeholder が示す
+    await expect(settings.defaultBoostReachLevelInput).toHaveValue('');
+    await expect(settings.defaultBoostReachLevelInput).toHaveAttribute('placeholder', '目標Lvと同じ');
+
+    await settings.defaultBoostReachLevelInput.fill('35');
+    await settings.defaultBoostReachLevelInput.blur();
+    await settings.closeByButton();
+
+    // 閉じて開き直しても残る
+    await settings.openSettingsFromDesktop();
+    await expect(settings.defaultBoostReachLevelInput).toHaveValue('35');
+
+    // 空欄へ戻すと「目標Lvと同じ」（未設定）へ戻る
+    await settings.defaultBoostReachLevelInput.fill('');
+    await settings.defaultBoostReachLevelInput.blur();
+    await settings.closeByButton();
+    await settings.openSettingsFromDesktop();
+    await expect(settings.defaultBoostReachLevelInput).toHaveValue('');
+  });
+
   test('8. かけらの上限入力ができる', async ({ page }) => {
     const settings = new SettingsModalPage(page);
 
@@ -583,12 +620,15 @@ test.describe('03-settings デスクトップ', () => {
     });
     await page.getByTestId('data-backup-copy').click();
     const restored = JSON.parse(await page.evaluate(() => (window as Window & { copiedFullBackup?: string }).copiedFullBackup ?? '{}'));
-    // V1入力がV2へ移行されて再エクスポートされることを検証する。
+    // V1入力が最新スキーマ(V3)へ移行されて再エクスポートされることを検証する。
     // 25(ピカチュウ)と26(ライチュウ)は同一系統キー"25"へ集約され、値は系統内最大値max(88,99)=99。
-    expect(restored.schemaVersion).toBe(2);
+    // candyInventory 自体のスキーマは V2 のまま（V3 の変更対象は計算機行とグローバル設定）。
+    expect(restored.schemaVersion).toBe(3);
     expect(restored.data.box).toEqual(expected.data.box);
     expect(restored.data.globalSettings).toEqual({
       ...expected.data.globalSettings,
+      // 旧形式には無い項目。未設定（＝目標Lvと同じ）として補われる
+      defaultBoostReachLevel: null,
       candyInventory: {
         schemaVersion: 2,
         universal: { s: 11, m: 22, l: 33 },
@@ -596,8 +636,22 @@ test.describe('03-settings デスクトップ', () => {
         species: { '25': 99, '27': 111 },
       },
     });
-    const withoutSavedAt = (slots: Array<Record<string, unknown>>) => slots.map(({ savedAt: _savedAt, ...slot }) => slot);
-    expect(withoutSavedAt(restored.data.calculator.slots)).toEqual(withoutSavedAt(expected.data.calculator.slots as never[]));
+    // V3 で廃止した旧フィールド（mode / candyPeak / boostRatioPct）は再エクスポートに現れない（設計書§6.1）
+    const LEGACY_ROW_FIELDS = ['mode', 'candyPeak', 'boostRatioPct'] as const;
+    const normalizeSlots = (slots: Array<Record<string, unknown>>) => slots.map(({ savedAt: _savedAt, ...slot }) => ({
+      ...slot,
+      rows: (slot.rows as Array<Record<string, unknown>> | undefined)?.map(row => {
+        const copy = { ...row };
+        for (const key of LEGACY_ROW_FIELDS) delete copy[key];
+        return copy;
+      }),
+    }));
+    expect(normalizeSlots(restored.data.calculator.slots)).toEqual(normalizeSlots(expected.data.calculator.slots as never[]));
+    for (const slot of restored.data.calculator.slots as Array<Record<string, unknown>>) {
+      for (const row of (slot?.rows ?? []) as Array<Record<string, unknown>>) {
+        for (const key of LEGACY_ROW_FIELDS) expect(row).not.toHaveProperty(key);
+      }
+    }
     expect(restored.data.calculator.activeSlotIndex).toBe(2);
   });
 });

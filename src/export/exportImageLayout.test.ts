@@ -59,6 +59,7 @@ function makeSource(n: number, overrides: Partial<ExportImageSource> = {}): Expo
     universalCandyRanking: [],
     universalCandyUsedTotal: { s: 0, m: 0, l: 0 },
     boostKind: "full",
+    hasCandyStock: true,
     ...overrides,
   };
 }
@@ -92,10 +93,7 @@ describe("computeExportImageLayout — 高さ", () => {
 
   it("warning があると WARNING_H 分高くなる", () => {
     const base = layoutFor(1);
-    const warned = layoutFor(1, {
-      totals: { boostCandy: 0, normalCandy: 0, totalCandy: 0, shards: 0 },
-      shardsUsed: 0,
-    });
+    const warned = layoutFor(1, { hasCandyStock: false });
     expect(warned.resources.warningTop).toBeDefined();
     expect(warned.logicalHeight).toBe(base.logicalHeight + 30);
   });
@@ -169,7 +167,7 @@ describe("ellipsize", () => {
         {
           id: "r0",
           title: "とてもながいポケモンのなまえ".repeat(4),
-          natureLabel: "EXP▲",
+          natureLabel: "EXP▲▲",
           srcLevel: 10,
           dstLevel: 30,
           boostCandy: 10,

@@ -16,11 +16,7 @@ describe("hint rendering security", () => {
 
   it.each([ja, en])("keeps interactive hint translations as plain text", (messages) => {
     const hintParts = [
-      messages.calc.row.boostCandyCountHintLine1,
-      messages.calc.row.boostCandyCountHintLine2,
-      messages.calc.row.boostCandyCountHintNotePrefix,
-      messages.calc.row.boostCandyCountHintSettings,
-      messages.calc.row.boostCandyCountHintNoteSuffix,
+      messages.calc.row.boostCandyCountHintNote,
       messages.box.detail.sleepCalcDailyHintPrefix,
       messages.box.detail.sleepCalcDailyHintSettings,
       messages.box.detail.sleepCalcDailyHintSuffix,

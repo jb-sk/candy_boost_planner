@@ -50,6 +50,7 @@ export class BoxPanelPage {
   readonly ingredientFilterButton: Locator;
   readonly skillFilterButton: Locator;
   readonly allFilterButton: Locator;
+  readonly calculatingFilterButton: Locator;
   readonly advancedSettingsPanel: Locator;
   readonly advancedSettingsSummary: Locator;
   readonly filterJoinSelect: Locator;
@@ -98,7 +99,7 @@ export class BoxPanelPage {
     // 性格選択（新規追加用）
     this.natureField = page.getByTestId('box-add-nature-field');
     this.speciesCandyInput = page.getByTestId('box-add-species-candy');
-    this.natureTrigger = page.getByTestId('nature-select-trigger').first();
+    this.natureTrigger = this.natureField.getByTestId('nature-select-trigger');
     this.natureDropdown = page.getByTestId('nature-select-dropdown');
     this.natureOptions = this.natureDropdown.getByTestId('nature-select-option');
 
@@ -136,6 +137,7 @@ export class BoxPanelPage {
     this.ingredientFilterButton = page.getByTestId('box-filter-ingredient');
     this.skillFilterButton = page.getByTestId('box-filter-skill');
     this.allFilterButton = page.getByTestId('box-filter-all');
+    this.calculatingFilterButton = page.getByTestId('box-filter-calculating');
 
     // フィルタリング設定
     this.advancedSettingsPanel = page.getByTestId('box-advanced-panel');
@@ -314,6 +316,10 @@ export class BoxPanelPage {
 
   async toggleAllFilter() {
     await this.allFilterButton.click();
+  }
+
+  async toggleCalculatingFilter() {
+    await this.calculatingFilterButton.click();
   }
 
   async openAdvancedSettings() {

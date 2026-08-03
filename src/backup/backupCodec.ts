@@ -1,8 +1,9 @@
 import type { BoxSubSkillSlotV1, IngredientType, PokemonSpecialty } from "../domain/types";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
+import { maxTargetExpInLevel } from "../domain/level-planner/deriveTarget";
 import { pokemonMaster } from "../domain/pokesleep/pokemon-master";
 import { PokemonTypes } from "../domain/pokesleep/pokemon-types";
-import type { CalcRowV1, CalcSaveSlotV1 } from "../persistence/calc";
+import { migrateLegacyPeakCandyTarget, SLEEP_TARGET_HOURS_OPTIONS, type CalcRowV1, type CalcSaveSlotV1 } from "../persistence/calc";
 import {
   migrateCandyInventoryV1,
   normalizeCandyInventoryV2,
@@ -18,7 +19,7 @@ import {
   BackupValidationError,
   type BackupBoxEntryV1,
   type BackupWarning,
-  type CandyBoostPlannerBackupV2,
+  type CandyBoostPlannerBackupV3,
   type ValidatedBackup,
 } from "./types";
 
@@ -28,6 +29,8 @@ const expTypes = new Set([600, 900, 1080, 1320]);
 const natures = new Set(["down", "normal", "up"]);
 const boostKinds = new Set(["none", "mini", "full"]);
 const compareModes = new Set(["surplusFirst", "surplusGateFirst", "legacyImproved"]);
+const sleepTargetHoursValues = new Set<number>(SLEEP_TARGET_HOURS_OPTIONS);
+const sleepTargetModes = new Set<"all">(["all"]);
 const specialties = new Set(["Berries", "Ingredients", "Skills", "All", "unknown"]);
 const ingredientTypes = new Set(["AAA", "AAB", "AAC", "ABA", "ABB", "ABC"]);
 const subSkillLevels = new Set([10, 25, 50, 70, 80]);
@@ -145,10 +148,36 @@ function validateBoxEntry(value: unknown, path: string): BackupBoxEntryV1 {
   };
 }
 
-function validateRow(value: unknown, path: string): CalcRowV1 {
+function validateRow(value: unknown, path: string, sourceSchemaVersion: 1 | 2 | 3): CalcRowV1 {
   const row = objectAt(value, path);
   const srcLevel = numberAt(row.srcLevel, `${path}.srcLevel`, 1, MAX_LEVEL);
   const dstLevel = numberAt(row.dstLevel, `${path}.dstLevel`, srcLevel, MAX_LEVEL);
+  const expType = enumAt(row.expType, `${path}.expType`, expTypes) as 600 | 900 | 1080 | 1320;
+  const sleepTargetMode = row.sleepTargetMode === undefined
+    ? undefined
+    : enumAt(row.sleepTargetMode, `${path}.sleepTargetMode`, sleepTargetModes);
+  // 旧 mode:"peak" 行は candyTarget へ移行する（設計書§6.1）。
+  // mode / candyPeak / boostRatioPct は V3 で廃止したため、あっても読み捨てる。
+  const candyTarget = sleepTargetMode === "all"
+    ? undefined
+    : optionalNumber(row.candyTarget, `${path}.candyTarget`, 0) ?? migrateLegacyPeakCandyTarget(row);
+  // 不変条件（設計書§4.3 / §10改訂A）。バックアップは正規化せず、違反を拒否する。
+  const dstExpInLevel = sleepTargetMode === "all" || row.dstExpInLevel === undefined
+    ? undefined
+    : numberAt(row.dstExpInLevel, `${path}.dstExpInLevel`, 0, maxTargetExpInLevel(dstLevel, expType));
+  // V2 以前は導出値と手入力値を保存値から区別できない（旧仕様では自動最大化が既定で、
+  // 値の大半は自動値）。復元して明示入力として扱うと §11.4 の非可逆が復活するため落とす。
+  const storedBoostOrExpAdjustment = sourceSchemaVersion >= 3
+    ? optionalNumber(row.boostOrExpAdjustment, `${path}.boostOrExpAdjustment`, 0)
+    : undefined;
+  const boostOrExpAdjustment = storedBoostOrExpAdjustment === undefined
+    ? undefined
+    : candyTarget === undefined
+      ? storedBoostOrExpAdjustment
+      : Math.min(storedBoostOrExpAdjustment, candyTarget);
+  if (candyTarget === undefined && boostOrExpAdjustment === undefined && dstExpInLevel !== undefined && dstExpInLevel > 0) {
+    fail(`${path}.dstExpInLevel`, "must be 0 without a candy-count anchor");
+  }
   return {
     id: stringAt(row.id, `${path}.id`, false),
     boxId: optionalString(row.boxId, `${path}.boxId`),
@@ -157,26 +186,28 @@ function validateRow(value: unknown, path: string): CalcRowV1 {
     title: stringAt(row.title, `${path}.title`),
     srcLevel,
     dstLevel,
+    dstExpInLevel,
     dstLevelText: row.dstLevelText === undefined ? undefined : stringAt(row.dstLevelText, `${path}.dstLevelText`),
     expRemaining: numberAt(row.expRemaining, `${path}.expRemaining`, 0, 999999),
-    expType: enumAt(row.expType, `${path}.expType`, expTypes) as 600 | 900 | 1080 | 1320,
+    expType,
     nature: enumAt(row.nature, `${path}.nature`, natures) as "down" | "normal" | "up",
-    boostReachLevel: numberAt(row.boostReachLevel, `${path}.boostReachLevel`, srcLevel, dstLevel),
-    boostRatioPct: numberAt(row.boostRatioPct, `${path}.boostRatioPct`, 0, 100),
-    boostOrExpAdjustment: optionalNumber(row.boostOrExpAdjustment, `${path}.boostOrExpAdjustment`, 0),
-    candyPeak: optionalNumber(row.candyPeak, `${path}.candyPeak`, 0),
-    candyTarget: optionalNumber(row.candyTarget, `${path}.candyTarget`, 0),
-    mode: enumAt(row.mode, `${path}.mode`, new Set(["targetLevel", "peak"])) as "targetLevel" | "peak",
+    boostReachLevel: numberAt(row.boostReachLevel, `${path}.boostReachLevel`, srcLevel, MAX_LEVEL),
+    boostOrExpAdjustment,
+    candyTarget,
     sleepHours: optionalNumber(row.sleepHours, `${path}.sleepHours`, 0),
+    sleepTargetHours: sleepTargetMode === "all" || row.sleepTargetHours === undefined
+      ? undefined
+      : enumAt(row.sleepTargetHours, `${path}.sleepTargetHours`, sleepTargetHoursValues),
+    sleepTargetMode,
   };
 }
 
-function validateSlot(value: unknown, path: string): CalcSaveSlotV1 | null {
+function validateSlot(value: unknown, path: string, sourceSchemaVersion: 1 | 2 | 3): CalcSaveSlotV1 | null {
   if (value === null) return null;
   const slot = objectAt(value, path);
   const rawRows = arrayAt(slot.rows, `${path}.rows`);
   if (rawRows.length > BACKUP_MAX_ROWS_PER_SLOT) fail(`${path}.rows`, `maximum is ${BACKUP_MAX_ROWS_PER_SLOT}`);
-  const rows = rawRows.map((row, index) => validateRow(row, `${path}.rows[${index}]`));
+  const rows = rawRows.map((row, index) => validateRow(row, `${path}.rows[${index}]`, sourceSchemaVersion));
   const rowIds = new Set<string>();
   rows.forEach((row, index) => {
     if (rowIds.has(row.id)) fail(`${path}.rows[${index}].id`, "duplicate id");
@@ -239,6 +270,23 @@ function validateCandy(
     : normalizeCandyInventoryV2({ schemaVersion: 2, ...common });
 }
 
+/**
+ * 既定のアメブ目標Lv。V3 で追加した項目。
+ *
+ * **省略を許すのは旧形式（V2 以前）だけ。** 現行形式は必ず書き出すので、
+ * 欠けているなら壊れた入力であり、黙って未設定へ寄せると原因が見えなくなる。
+ */
+function validateDefaultBoostReachLevel(value: unknown, sourceSchemaVersion: 1 | 2 | 3): number | null {
+  const path = "$.data.globalSettings.defaultBoostReachLevel";
+  if (value === undefined || value === null) {
+    if (sourceSchemaVersion >= BACKUP_SCHEMA_VERSION && value === undefined) {
+      fail(path, "is required");
+    }
+    return null;
+  }
+  return numberAt(value, path, 1, MAX_LEVEL);
+}
+
 export function parseBackup(text: string): ValidatedBackup {
   if (new TextEncoder().encode(text).byteLength > BACKUP_MAX_BYTES) fail("$", `maximum size is ${BACKUP_MAX_BYTES} bytes`);
   let parsed: unknown;
@@ -251,8 +299,16 @@ export function parseBackup(text: string): ValidatedBackup {
   if (root.format !== BACKUP_FORMAT) fail("$.format", `must be ${BACKUP_FORMAT}`);
   if (typeof root.schemaVersion !== "number") fail("$.schemaVersion", "number is required");
   if (root.schemaVersion > BACKUP_SCHEMA_VERSION) fail("$.schemaVersion", "future schema version is not supported");
-  if (root.schemaVersion !== 1 && root.schemaVersion !== BACKUP_SCHEMA_VERSION) fail("$.schemaVersion", "schema version is not supported");
-  const sourceSchemaVersion = root.schemaVersion as 1 | 2;
+  if (
+    root.schemaVersion !== 1
+    && root.schemaVersion !== 2
+    && root.schemaVersion !== BACKUP_SCHEMA_VERSION
+  ) {
+    fail("$.schemaVersion", "schema version is not supported");
+  }
+  const sourceSchemaVersion = root.schemaVersion as 1 | 2 | 3;
+  // candyInventory 自体のスキーマは V2 のまま（V3 の変更対象は計算機行とグローバル設定）。
+  const candyInventorySchemaVersion: 1 | 2 = sourceSchemaVersion === 1 ? 1 : 2;
   const data = objectAt(root.data, "$.data");
   const box = objectAt(data.box, "$.data.box");
   const rawEntries = arrayAt(box.entries, "$.data.box.entries");
@@ -268,20 +324,21 @@ export function parseBackup(text: string): ValidatedBackup {
   const calculator = objectAt(data.calculator, "$.data.calculator");
   const rawSlots = arrayAt(calculator.slots, "$.data.calculator.slots");
   if (rawSlots.length !== 3) fail("$.data.calculator.slots", "exactly 3 slots are required");
-  const slots = rawSlots.map((slot, index) => validateSlot(slot, `$.data.calculator.slots[${index}]`)) as [CalcSaveSlotV1 | null, CalcSaveSlotV1 | null, CalcSaveSlotV1 | null];
+  const slots = rawSlots.map((slot, index) => validateSlot(slot, `$.data.calculator.slots[${index}]`, sourceSchemaVersion)) as [CalcSaveSlotV1 | null, CalcSaveSlotV1 | null, CalcSaveSlotV1 | null];
   const slotIds = new Set<string>();
   slots.forEach((slot, index) => {
     if (!slot?.slotId) return;
     if (slotIds.has(slot.slotId)) fail(`$.data.calculator.slots[${index}].slotId`, "duplicate id");
     slotIds.add(slot.slotId);
   });
-  const backup: CandyBoostPlannerBackupV2 = {
+  const backup: CandyBoostPlannerBackupV3 = {
     format: BACKUP_FORMAT,
     schemaVersion: BACKUP_SCHEMA_VERSION,
     exportedAt: validateIso(root.exportedAt, "$.exportedAt"),
     data: {
       box: { entries },
       globalSettings: {
+        defaultBoostReachLevel: validateDefaultBoostReachLevel(globals.defaultBoostReachLevel, sourceSchemaVersion),
         totalShards: numberAt(globals.totalShards, "$.data.globalSettings.totalShards", 0),
         sleepSettings: {
           dailySleepHours: numberAt(sleep.dailySleepHours, "$.data.globalSettings.sleepSettings.dailySleepHours", 1, 13, false),
@@ -291,7 +348,7 @@ export function parseBackup(text: string): ValidatedBackup {
         candyInventory: validateCandy(
           globals.candyInventory,
           "$.data.globalSettings.candyInventory",
-          sourceSchemaVersion,
+          candyInventorySchemaVersion,
         ),
       },
       calculator: {
@@ -316,6 +373,6 @@ export function parseBackup(text: string): ValidatedBackup {
   return { backup, warnings };
 }
 
-export function stringifyBackup(backup: CandyBoostPlannerBackupV2): string {
+export function stringifyBackup(backup: CandyBoostPlannerBackupV3): string {
   return JSON.stringify(backup, null, 2);
 }

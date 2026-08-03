@@ -4,14 +4,17 @@ import type {
   PokemonPlanInput, PokemonPlanLine, PokemonPlanResult, PokemonShortage,
   PokemonConstraintDiagnosis, PlannerLossLedger, PlannerOptions, TypeCandyStock, UniversalCandyStock,
   DeadlineExceededMeta, MixedCalculationMeta, PlannerSolveOptions, PlannerSolveOutcome, PlannerTuning,
-  ItemCompareMode,
+  ItemCompareMode, ShortageType,
 } from '../types';
 import { isPerfEnabled } from '../../../utils/perf';
 import { CANDY_VALUES, MAX_ACCEPTABLE_SURPLUS } from '../constants';
-import { calcExp, calcExpAndCandyMixed, calcExpPerCandy } from '../../pokesleep/exp';
-import { dreamShardsPerCandy, maxLevel } from '../../pokesleep/tables';
-import { boostRules } from '../../pokesleep/boost-config';
+import { calcExp, calcExpAndCandyMixed } from '../../pokesleep/exp';
+import { minBoostForTarget } from '../../pokesleep/minBoostForTarget';
+import { simulateCandyBudget, simulateCandyRun } from '../../pokesleep/simulateCandyBudget';
+import { maxLevel } from '../../pokesleep/tables';
 import { findBestItemAllocation } from './itemAllocation';
+import { addItemPriority, compareItemPriority, emptyItemPriority, itemPriorityOf } from './itemPriority';
+import type { ItemPriorityTuple } from './itemPriority';
 import { createIndependentBoundaryFeasibilitySession, createPrefixDecisionSession, fixedRowsFailFeasibilityRelaxation, hasSingleRowSupplyWithinSurplus, refineFeasibilityWitness, solveFeasibilityDecisionForFixedRows, solveFeasibilityForFixedRows } from './feasibilityWitness';
 import { createPlannerLossLedger, toPublicPlannerLossLedger } from './lossLedger';
 import type { InternalPlannerLossLedger } from './lossLedger';
@@ -56,12 +59,13 @@ type NormalizedInput = Omit<LevelPlannerInput, 'pokemonList' | 'options'> & {
   contentionKeys: ContentionKeys; speciesNeeds: Record<string, number>;
 };
 type Candidate = { p: NormalizedPokemon; line: PokemonPlanLine; usage: Usage; stableIndex: number };
-type StateMetrics = { zeroSurplusCount: number; speciesUsed: number; rawSurplus: number; reachedSurplus: number; normalizedSurplus: number; surplusExp: number; itemPriority: number[]; legacyItemPriority: number[] };
+type StateMetrics = { zeroSurplusCount: number; speciesUsed: number; rawSurplus: number; reachedSurplus: number; normalizedSurplus: number; surplusExp: number; itemPriority: ItemPriorityTuple };
 type State = { choices: Candidate[]; usage: Usage; reachedPrefixCount: number; boundary?: Candidate; metrics: StateMetrics };
 type SupplyOption = { supply: CandySupplyBreakdown; order: number };
 type SupplyCandidateCacheEntry = { candidates: CandySupplyBreakdown[]; cut?: PlannerLossLedger['supplyCandidateCuts'][number] };
 type MixedChoiceResult = { choices: Candidate[]; source: MixedCalculationMeta['source']; exactPrefixCount: number };
 type BoundarySearchSummary = NonNullable<NonNullable<LevelPlannerResult['performance']>['boundarySearch']>;
+type PrefixSearchSummary = NonNullable<NonNullable<LevelPlannerResult['performance']>['prefixSearch']>;
 type CandyExpOptimizationResult = {
   solvedCandidates: number;
   supplyRejectedCandidates: number;
@@ -71,6 +75,8 @@ type CandyExpOptimizationResult = {
   refineStatus?: string;
   refineReason?: string;
   boundarySearch?: BoundarySearchSummary;
+  prefixSearch?: PrefixSearchSummary;
+  prefixSearchAttempts?: PrefixSearchSummary[];
 };
 type InternalPlannerTuning = PlannerTuning & {
   // Probe-only: lets tuning tests inspect large frontiers before the full DP completes.
@@ -213,15 +219,23 @@ function normalizeInput(raw: LevelPlannerInput): NormalizedInput {
     const targetLevel = Math.min(maxLevel, pokemon.targetLevel);
     const targetExpInLevel = targetLevel >= maxLevel ? 0 : (pokemon.targetExpInLevel ?? 0);
     const requestedBoostCandy = kind === 'none' || !pokemon.boostAllowed ? 0 : Math.max(0, Math.floor(pokemon.requestedBoostCandy));
+    // `boostedCandyUnits` は型上必須だが、保存データの復元など型検査を通らない経路から
+    // 欠けた値が来ると `Math.min(x, undefined)` が NaN になって静かに壊れる。ここで整える。
+    const candyTarget = pokemon.candyTarget
+      ? {
+        totalCandyUnits: Math.max(0, Math.floor(pokemon.candyTarget.totalCandyUnits) || 0),
+        boostedCandyUnits: Math.max(0, Math.floor(pokemon.candyTarget.boostedCandyUnits) || 0),
+      }
+      : undefined;
     let effectiveLevel = targetLevel;
     let effectiveExp = targetExpInLevel;
-    if (pokemon.candyTarget) {
-      const boosted = candyTargetBoostCap(pokemon, requestedBoostCandy, kind);
-      const reached = simulateCandyBudget(pokemon, boosted, pokemon.candyTarget.totalCandyUnits, Infinity, kind);
+    if (candyTarget) {
+      const boosted = candyTargetBoostCap({ candyTarget, requestedBoostCandy }, requestedBoostCandy, kind);
+      const reached = simulateCandyBudget(pokemon, boosted, candyTarget.totalCandyUnits, Infinity, kind);
       effectiveLevel = reached.level;
       effectiveExp = reached.expInLevel;
     }
-    return { ...pokemon, priorityIndex, targetLevel, targetExpInLevel, requestedBoostCandy, effectiveLevel, effectiveExp, preferZeroSurplus: Boolean(pokemon.preferZeroSurplus) };
+    return { ...pokemon, priorityIndex, targetLevel, targetExpInLevel, requestedBoostCandy, candyTarget, effectiveLevel, effectiveExp, preferZeroSurplus: Boolean(pokemon.preferZeroSurplus) };
   });
   const base = {
     ...raw,
@@ -236,75 +250,35 @@ function normalizeInput(raw: LevelPlannerInput): NormalizedInput {
 
 /** exp.ts と同じく、boost は低レベル側から優先して消費する。 */
 function simulate(pokemon: Pick<NormalizedPokemon, 'currentLevel' | 'currentExpInLevel' | 'expType' | 'nature'>, boostBudget: number, normalBudget: number, shardLimit: number, targetLevel: number, targetExp: number, kind: LevelPlannerInput['boost']['kind']) {
-  let level = pokemon.currentLevel;
-  let expInLevel = pokemon.currentExpInLevel;
-  let boost = Math.max(0, Math.floor(boostBudget));
-  let normal = Math.max(0, Math.floor(normalBudget));
-  let boostUsed = 0; let normalUsed = 0; let shards = 0;
-  const useCandy = (isBoost: boolean): boolean => {
-    const available = isBoost ? boost : normal;
-    if (available <= 0) return false;
-    const shard = (dreamShardsPerCandy[level + 1] ?? 0) * (isBoost ? boostRules[kind].shardMultiplier : 1);
-    if (shards + shard > shardLimit) return false;
-    if (isBoost) { boost--; boostUsed++; } else { normal--; normalUsed++; }
-    expInLevel += calcExpPerCandy(level, pokemon.nature, isBoost ? kind : 'none');
-    shards += shard;
-    while (level < maxLevel) {
-      const needed = calcExp(level, level + 1, pokemon.expType);
-      if (expInLevel < needed) break;
-      expInLevel -= needed;
-      level++;
-    }
-    return true;
-  };
-  while (level < targetLevel || (level === targetLevel && expInLevel < targetExp)) {
-    if (!useCandy(boost > 0) && !useCandy(false)) break;
-  }
-  const expGained = calcExp(pokemon.currentLevel, level, pokemon.expType) + expInLevel - pokemon.currentExpInLevel;
-  return { level, expInLevel: level >= maxLevel ? 0 : expInLevel, boostUsed, normalUsed, shards, expGained };
-}
-
-function hasFixedCandyTargetBoost(pokemon: Pick<NormalizedPokemon, 'candyTarget'>): boolean {
-  return pokemon.candyTarget?.boostedCandyUnits !== undefined;
-}
-
-function simulateCandyBudget(pokemon: Pick<NormalizedPokemon, 'currentLevel' | 'currentExpInLevel' | 'expType' | 'nature'>, boostBudget: number, totalBudget: number, shardLimit: number, kind: LevelPlannerInput['boost']['kind'], fixedBoost = false) {
-  let level = pokemon.currentLevel;
-  let expInLevel = pokemon.currentExpInLevel;
-  let boost = Math.max(0, Math.floor(boostBudget));
-  let remaining = Math.max(0, Math.floor(totalBudget));
-  let boostUsed = 0; let normalUsed = 0; let shards = 0;
-  const useCandy = (isBoost: boolean): boolean => {
-    if (remaining <= 0 || level >= maxLevel) return false;
-    if (isBoost && boost <= 0) return false;
-    const shard = (dreamShardsPerCandy[level + 1] ?? 0) * (isBoost ? boostRules[kind].shardMultiplier : 1);
-    if (shards + shard > shardLimit) return false;
-    if (isBoost) { boost--; boostUsed++; } else normalUsed++;
-    remaining--;
-    expInLevel += calcExpPerCandy(level, pokemon.nature, isBoost ? kind : 'none');
-    shards += shard;
-    while (level < maxLevel) {
-      const needed = calcExp(level, level + 1, pokemon.expType);
-      if (expInLevel < needed) break;
-      expInLevel -= needed;
-      level++;
-    }
-    return true;
-  };
-  while (remaining > 0 && level < maxLevel) {
-    if (boost > 0) {
-      if (useCandy(true)) continue;
-      if (fixedBoost) break;
-    }
-    if (!useCandy(false)) break;
-  }
-  const expGained = calcExp(pokemon.currentLevel, level, pokemon.expType) + expInLevel - pokemon.currentExpInLevel;
-  return { level, expInLevel: level >= maxLevel ? 0 : expInLevel, boostUsed, normalUsed, shards, expGained };
+  return simulateCandyRun(pokemon, {
+    boostBudget,
+    normalBudget,
+    totalCap: Infinity,
+    shardLimit,
+    kind,
+    shouldContinue: (level, expInLevel) => (
+      level < targetLevel || (level === targetLevel && expInLevel < targetExp)
+    ),
+  });
 }
 
 function candyTargetBoostCap(pokemon: Pick<NormalizedPokemon, 'candyTarget' | 'requestedBoostCandy'>, requestedBoostCandy: number, kind: LevelPlannerInput['boost']['kind']): number {
   if (kind === 'none' || !pokemon.candyTarget) return 0;
-  return Math.min(Math.max(0, requestedBoostCandy), pokemon.candyTarget.boostedCandyUnits ?? pokemon.candyTarget.totalCandyUnits);
+  return Math.min(Math.max(0, requestedBoostCandy), pokemon.candyTarget.boostedCandyUnits);
+}
+
+/** 固定配分のアメブ予算を、行の総数とその時点のグローバル残枠に収める。 */
+function fixedCandyTargetBoostBudget(
+  pokemon: Pick<NormalizedPokemon, 'candyTarget' | 'requestedBoostCandy'>,
+  kind: LevelPlannerInput['boost']['kind'],
+  totalCandy: number,
+  remainingBoost: number,
+): number {
+  return Math.min(
+    candyTargetBoostCap(pokemon, pokemon.requestedBoostCandy, kind),
+    Math.max(0, totalCandy),
+    Math.max(0, remainingBoost),
+  );
 }
 
 function targetMixed(pokemon: NormalizedPokemon, kind: LevelPlannerInput['boost']['kind'], boost: number) {
@@ -368,21 +342,30 @@ function analyzeContention(input: Pick<NormalizedInput, 'pokemonList' | 'boost' 
 }
 function maxBoostFor(pokemon: NormalizedPokemon, kind: LevelPlannerInput['boost']['kind'], limit: number): number {
   if (pokemon.candyTarget) return Math.min(candyTargetBoostCap(pokemon, pokemon.requestedBoostCandy, kind), Math.max(0, limit));
-  const full = targetMixed(pokemon, kind, Number.MAX_SAFE_INTEGER).boostCandy;
+  // 目標到達に不要な余分な1個のアメブを消費しない（仕様§4、設計書§3.8-e）。
+  const full = minBoostForTarget({
+    srcLevel: pokemon.currentLevel,
+    targetLevel: pokemon.effectiveLevel,
+    targetExpInLevel: pokemon.effectiveExp,
+    expType: pokemon.expType,
+    nature: pokemon.nature,
+    boostKind: kind,
+    maxBoost: Number.MAX_SAFE_INTEGER,
+    expGot: pokemon.currentExpInLevel,
+  });
   return Math.min(pokemon.requestedBoostCandy, full, Math.max(0, limit));
 }
 
-/** 余り最小用。余り同値なら使用優先順位 typeS > typeM > universalS > universalM > universalL で多く使う。 */
-function itemPriority(supply: CandySupplyBreakdown): number[] {
-  return [supply.type.s, supply.type.m, supply.universal.s, supply.universal.m, supply.universal.l];
+/** 3モード共通の使用優先度。重みと順序の根拠は `itemPriority.ts` を見ること。 */
+function itemPriority(supply: CandySupplyBreakdown): ItemPriorityTuple {
+  return itemPriorityOf({
+    typeS: supply.type.s,
+    typeM: supply.type.m,
+    universalS: supply.universal.s,
+    universalM: supply.universal.m,
+    universalL: supply.universal.l,
+  });
 }
-/** バランス/EXP最大用。万能L/Mを温存し、次にタイプS/Mを多く使う。 */
-function legacyItemPriority(supply: CandySupplyBreakdown): number[] {
-  return [-supply.universal.l, -supply.universal.m, supply.type.s, supply.type.m];
-}
-const ITEM_PRIORITY_TUPLE_LENGTH = itemPriority(emptySupply()).length;
-const LEGACY_ITEM_PRIORITY_TUPLE_LENGTH = legacyItemPriority(emptySupply()).length;
-function compareNumbers(a: number[], b: number[]): number { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] > b[i] ? 1 : -1; return 0; }
 function emptyStateMetrics(): StateMetrics {
   return {
     zeroSurplusCount: 0,
@@ -391,8 +374,7 @@ function emptyStateMetrics(): StateMetrics {
     reachedSurplus: 0,
     normalizedSurplus: 0,
     surplusExp: 0,
-    itemPriority: Array.from({ length: ITEM_PRIORITY_TUPLE_LENGTH }, () => 0),
-    legacyItemPriority: Array.from({ length: LEGACY_ITEM_PRIORITY_TUPLE_LENGTH }, () => 0),
+    itemPriority: emptyItemPriority(),
   };
 }
 function candidateUsesZeroSurplusPriority(candidate: Candidate, mode: PlannerOptions['itemCompareMode']): boolean {
@@ -404,16 +386,14 @@ function candidateAchievedZeroSurplusPriority(candidate: Candidate, mode: Planne
 }
 function appendStateMetrics(metrics: StateMetrics, candidate: Candidate, mode: PlannerOptions['itemCompareMode']): StateMetrics {
   const priority = itemPriority(candidate.line.candySupply);
-  const legacyPriority = legacyItemPriority(candidate.line.candySupply);
   return {
     zeroSurplusCount: metrics.zeroSurplusCount + (candidateAchievedZeroSurplusPriority(candidate, mode) ? 1 : 0),
     speciesUsed: metrics.speciesUsed + candidate.line.candySupply.species,
     rawSurplus: metrics.rawSurplus + candidate.line.surplusCandyValue,
-    reachedSurplus: metrics.reachedSurplus + (candidate.line.targetReached ? candidate.line.surplusCandyValue : 0),
+    reachedSurplus: metrics.reachedSurplus + (candidate.line.candyDemandMet ? candidate.line.surplusCandyValue : 0),
     normalizedSurplus: metrics.normalizedSurplus + (candidate.line.surplusCandyValue <= MAX_ACCEPTABLE_SURPLUS ? 0 : candidate.line.surplusCandyValue),
     surplusExp: metrics.surplusExp + candidate.line.surplusExp,
-    itemPriority: metrics.itemPriority.map((value, index) => value + priority[index]),
-    legacyItemPriority: metrics.legacyItemPriority.map((value, index) => value + legacyPriority[index]),
+    itemPriority: addItemPriority(metrics.itemPriority, priority),
   };
 }
 function supplyCacheKey(total: number, pokemon: NormalizedPokemon, input: NormalizedInput): string {
@@ -451,9 +431,6 @@ function supplyCacheKey(total: number, pokemon: NormalizedPokemon, input: Normal
     itemCompareMode: input.options.itemCompareMode,
   });
 }
-function supplyPriority(supply: CandySupplyBreakdown, mode: PlannerOptions['itemCompareMode']): number[] {
-  return isLegacyLikeMode(mode) ? legacyItemPriority(supply) : itemPriority(supply);
-}
 function acceptableSurplusRank(surplus: number): number {
   return surplus >= 0 && surplus <= MAX_ACCEPTABLE_SURPLUS ? 1 : 0;
 }
@@ -468,13 +445,14 @@ function compareSupply(a: CandySupplyBreakdown, b: CandySupplyBreakdown, total: 
     const acceptableB = acceptableSurplusRank(surplusB);
     if (acceptableA !== acceptableB) return acceptableA > acceptableB ? 1 : -1;
     if (!acceptableA && surplusA !== surplusB) return surplusA < surplusB ? 1 : -1;
-    const priority = compareNumbers(supplyPriority(a, mode), supplyPriority(b, mode));
+    const priority = compareItemPriority(itemPriority(a), itemPriority(b));
     if (priority) return priority;
+    // 余り0〜2を同等扱いする分、スコアが同点でも供給価値は最大2ずれる。ここで明示的に詰める。
     if (surplusA !== surplusB) return surplusA < surplusB ? 1 : -1;
     return 0;
   }
   if (surplusA !== surplusB) return surplusA < surplusB ? 1 : -1;
-  const priority = compareNumbers(supplyPriority(a, mode), supplyPriority(b, mode));
+  const priority = compareItemPriority(itemPriority(a), itemPriority(b));
   if (priority) return priority;
   return 0;
 }
@@ -490,7 +468,7 @@ function supplyDominates(a: CandySupplyBreakdown, b: CandySupplyBreakdown, total
   return a.species >= b.species
     && supplyUsageAtMost(a, b, pokemon, input)
     && supplyValue(a) - total <= supplyValue(b) - total
-    && compareNumbers(supplyPriority(a, input.options.itemCompareMode), supplyPriority(b, input.options.itemCompareMode)) >= 0;
+    && compareItemPriority(itemPriority(a), itemPriority(b)) >= 0;
 }
 function compareSupplyRetention(a: SupplyOption, b: SupplyOption, total: number, mode: PlannerOptions['itemCompareMode']): number {
   const compare = compareSupply(a.supply, b.supply, total, mode);
@@ -534,7 +512,7 @@ function trimSupplyOptions(options: SupplyOption[], total: number, pokemon: Norm
   let bestItemPriority = sorted[0];
   for (let index = 1; index < sorted.length; index++) {
     const option = sorted[index];
-    const priority = compareNumbers(supplyPriority(option.supply, input.options.itemCompareMode), supplyPriority(bestItemPriority.supply, input.options.itemCompareMode));
+    const priority = compareItemPriority(itemPriority(option.supply), itemPriority(bestItemPriority.supply));
     const surplusOption = supplyValue(option.supply) - total;
     const surplusBest = supplyValue(bestItemPriority.supply) - total;
     if (priority > 0
@@ -690,13 +668,18 @@ function enumerateCandySupplyCandidates(total: number, pokemon: NormalizedPokemo
   recordSupplyCandidateCut(key, cut);
   return result;
 }
+/** 配分方針「余り最小」では、表示用の理論配分でも余り最小を優先する。 */
+function prefersMinSurplusDisplay(input: NormalizedInput): boolean {
+  return input.options.itemCompareMode === 'surplusFirst';
+}
+
 /** 表示用。理論値行だけは不足分を万能Sで補填する。 */
-function resolveDisplayCandySupply(total: number, pokemon: NormalizedPokemon, inventory: CandyInventory, allowUniversalSFill: boolean): CandySupplyBreakdown {
+function resolveDisplayCandySupply(total: number, pokemon: NormalizedPokemon, inventory: CandyInventory, allowUniversalSFill: boolean, preferMinSurplus: boolean): CandySupplyBreakdown {
   if (total === 0) return emptySupply();
   const type = inventory.typeCandy[pokemon.type] ?? { s: 0, m: 0 };
   const species = Math.min(inventory.species[speciesKey(pokemon)] ?? 0, total);
   const remaining = total - species;
-  const allocation = findBestItemAllocation(remaining, type, inventory.universal);
+  const allocation = findBestItemAllocation(remaining, type, inventory.universal, preferMinSurplus);
   const missing = Math.max(0, remaining - allocation.supplied);
   return {
     species,
@@ -709,11 +692,20 @@ function resolveDisplayCandySupply(total: number, pokemon: NormalizedPokemon, in
   };
 }
 
-/** 実配分を正本にし、目標まで行では不足分だけを理論上の万能Sで補う。 */
-function addTheoreticalUniversalSFill(supply: CandySupplyBreakdown, total: number): CandySupplyBreakdown {
-  const missing = Math.max(0, total - supplyValue(supply));
+/**
+ * 実配分を正本にし、理論値行では不足分を「在庫に残る種族アメ → 理論上の万能S」の順で補う。
+ *
+ * 種族アメは価値1で余りを生まないため、仕様どおり常に先に使い切る。
+ * 実配分がかけら・アメブ律速で在庫の種族アメを使い切っていない場合、
+ * 万能Sだけで補うと理論値行が「まだ持っている種族アメ」を無視した必要量になる。
+ */
+function addTheoreticalSupplyFill(supply: CandySupplyBreakdown, total: number, pokemon: NormalizedPokemon, inventory: CandyInventory): CandySupplyBreakdown {
+  const shortfall = Math.max(0, total - supplyValue(supply));
+  const speciesLeft = Math.max(0, (inventory.species[speciesKey(pokemon)] ?? 0) - supply.species);
+  const speciesFill = Math.min(speciesLeft, shortfall);
+  const missing = shortfall - speciesFill;
   return {
-    species: supply.species,
+    species: supply.species + speciesFill,
     type: { ...supply.type },
     universal: { ...supply.universal, s: supply.universal.s + Math.ceil(missing / CANDY_VALUES.universal.s) },
   };
@@ -747,6 +739,22 @@ function remainingCandyValue(input: NormalizedInput, usage: Usage, pokemon: Norm
     + Math.max(0, input.candyInventory.universal.m - usage.universal.m) * CANDY_VALUES.universal.m
     + Math.max(0, input.candyInventory.universal.l - usage.universal.l) * CANDY_VALUES.universal.l;
 }
+/**
+ * アメが担当する到達点（`effectiveLevel + effectiveExp`）へ届いたか（§11.3）。
+ *
+ * `candyDemandMet`（＝予定アメを配れたか）とは別概念。個数指定があるときは、アメブ枠不足で
+ * 通常アメへ置換されると**予定アメを配り切っても目標Lvへ届かない**（実測: 目標Lv40 に対し Lv34）。
+ * 不足診断はこちらで門番しないと、律速表示が丸ごと消える。
+ *
+ * Lv70 は硬上限でそれ以上進めないため到達扱いにする（§10.16 修正4 と同じ理由）。
+ */
+function reachedEffectiveTarget(
+  pokemon: Pick<NormalizedPokemon, 'effectiveLevel' | 'effectiveExp'>,
+  reached: { level: number; expInLevel: number },
+): boolean {
+  return cmpLevel(reached, { level: pokemon.effectiveLevel, expInLevel: pokemon.effectiveExp }) >= 0
+    || reached.level >= maxLevel;
+}
 function makeLineFromReached(pokemon: NormalizedPokemon, reached: ReturnType<typeof simulate>, supply: CandySupplyBreakdown): PokemonPlanLine {
   const used = reached.boostUsed + reached.normalUsed;
   return {
@@ -756,14 +764,13 @@ function makeLineFromReached(pokemon: NormalizedPokemon, reached: ReturnType<typ
     totalCandyUnitsUsed: used, boostedCandyUnits: reached.boostUsed, nonBoostCandyUnits: reached.normalUsed,
     candySupply: supply, dreamShardsUsed: reached.shards, expGained: reached.expGained,
     surplusExp: Math.max(0, reached.expInLevel - pokemon.effectiveExp), surplusCandyValue: Math.max(0, supplyValue(supply) - used),
-    targetReached: cmpLevel(reached, { level: pokemon.effectiveLevel, expInLevel: pokemon.effectiveExp }) >= 0,
+    candyDemandMet: cmpLevel(reached, { level: pokemon.effectiveLevel, expInLevel: pokemon.effectiveExp }) >= 0,
+    effectiveTargetReached: reachedEffectiveTarget(pokemon, reached),
   };
 }
-function makeCandyTargetLineFromReached(pokemon: NormalizedPokemon, input: NormalizedInput, reached: ReturnType<typeof simulateCandyBudget>, supply: CandySupplyBreakdown, totalBudget: number): PokemonPlanLine {
-  const fixedBoost = hasFixedCandyTargetBoost(pokemon);
+function makeCandyTargetLineFromReached(pokemon: NormalizedPokemon, reached: ReturnType<typeof simulateCandyBudget>, supply: CandySupplyBreakdown, totalBudget: number): PokemonPlanLine {
   const used = reached.boostUsed + reached.normalUsed;
   const targetTotal = pokemon.candyTarget?.totalCandyUnits ?? totalBudget;
-  const targetBoost = Math.min(candyTargetBoostCap(pokemon, pokemon.requestedBoostCandy, input.boost.kind), targetTotal);
   return {
     level: reached.level, expInLevel: reached.expInLevel,
     expToNextLevel: Math.max(0, calcExp(reached.level, reached.level + 1, pokemon.expType) - reached.expInLevel),
@@ -771,7 +778,8 @@ function makeCandyTargetLineFromReached(pokemon: NormalizedPokemon, input: Norma
     totalCandyUnitsUsed: used, boostedCandyUnits: reached.boostUsed, nonBoostCandyUnits: reached.normalUsed,
     candySupply: supply, dreamShardsUsed: reached.shards, expGained: reached.expGained,
     surplusExp: Math.max(0, reached.expInLevel - pokemon.effectiveExp), surplusCandyValue: Math.max(0, supplyValue(supply) - used),
-    targetReached: used >= targetTotal && (!fixedBoost || reached.boostUsed >= targetBoost),
+    candyDemandMet: used >= targetTotal || reached.level >= maxLevel,
+    effectiveTargetReached: reachedEffectiveTarget(pokemon, reached),
   };
 }
 function staticBoostValues(pokemon: NormalizedPokemon, input: NormalizedInput): number[] {
@@ -789,7 +797,7 @@ function withStableIndexes(candidates: Candidate[]): Candidate[] {
   return [...candidates]
     .sort((a, b) => {
       if (a.line.candySupply.species !== b.line.candySupply.species) return b.line.candySupply.species - a.line.candySupply.species;
-      const priority = compareNumbers(itemPriority(a.line.candySupply), itemPriority(b.line.candySupply));
+      const priority = compareItemPriority(itemPriority(a.line.candySupply), itemPriority(b.line.candySupply));
       if (priority) return -priority;
       return stableJson(a.line.candySupply).localeCompare(stableJson(b.line.candySupply));
     })
@@ -812,10 +820,10 @@ function candidateForBoost(pokemon: NormalizedPokemon, input: NormalizedInput, b
     if (onlyTarget && candyLimit < pokemon.candyTarget.totalCandyUnits) return [];
     const totalBudget = Math.min(pokemon.candyTarget.totalCandyUnits, candyLimit);
     const boostBudget = Math.min(boost, totalBudget);
-    const reached = simulateCandyBudget(pokemon, boostBudget, totalBudget, shardLimit, input.boost.kind, hasFixedCandyTargetBoost(pokemon));
+    const reached = simulateCandyBudget(pokemon, boostBudget, totalBudget, shardLimit, input.boost.kind);
     const used = reached.boostUsed + reached.normalUsed;
     return enumerateCandySupplyCandidates(used, pokemon, supplyInput).map((supply, stableIndex) => {
-      const line = makeCandyTargetLineFromReached(pokemon, input, reached, supply, totalBudget);
+      const line = makeCandyTargetLineFromReached(pokemon, reached, supply, totalBudget);
       return { p: pokemon, line, usage: usageFrom(pokemon, line), stableIndex };
     });
   }
@@ -855,17 +863,17 @@ function resourceAtMost(a: Usage, b: Usage, contention?: Contention): boolean {
     && (!contention || contention.universal.m ? a.universal.m <= b.universal.m : true)
     && (!contention || contention.universal.l ? a.universal.l <= b.universal.l : true);
 }
-function candidateDominates(a: Candidate, b: Candidate, input: NormalizedInput): boolean {
-  return a.line.level === b.line.level && a.line.expInLevel === b.line.expInLevel && a.line.targetReached === b.line.targetReached
+function candidateDominates(a: Candidate, b: Candidate): boolean {
+  return a.line.level === b.line.level && a.line.expInLevel === b.line.expInLevel && a.line.candyDemandMet === b.line.candyDemandMet
     && a.line.candySupply.species >= b.line.candySupply.species
     && resourceAtMost(a.usage, b.usage) && a.line.surplusExp <= b.line.surplusExp
     && a.line.surplusCandyValue <= b.line.surplusCandyValue
-    && compareNumbers(supplyPriority(a.line.candySupply, input.options.itemCompareMode), supplyPriority(b.line.candySupply, input.options.itemCompareMode)) >= 0;
+    && compareItemPriority(itemPriority(a.line.candySupply), itemPriority(b.line.candySupply)) >= 0;
 }
 function pruneExcessSurplusCandidates(candidates: Candidate[], input: NormalizedInput): Candidate[] {
   const groups = new Map<string, Candidate[]>();
   for (const candidate of candidates) {
-    const key = `${candidate.line.level}/${candidate.line.expInLevel}/${candidate.line.targetReached}/${candidate.line.boostedCandyUnits}`;
+    const key = `${candidate.line.level}/${candidate.line.expInLevel}/${candidate.line.candyDemandMet}/${candidate.line.boostedCandyUnits}`;
     groups.set(key, [...(groups.get(key) ?? []), candidate]);
   }
   const result: Candidate[] = [];
@@ -880,7 +888,7 @@ function pruneExcessSurplusCandidates(candidates: Candidate[], input: Normalized
       && other.line.candySupply.species >= candidate.line.candySupply.species
       && other.line.surplusCandyValue <= candidate.line.surplusCandyValue
       && resourceAtMost(other.usage, candidate.usage)
-      && compareNumbers(itemPriority(other.line.candySupply), itemPriority(candidate.line.candySupply)) >= 0
+      && compareItemPriority(itemPriority(other.line.candySupply), itemPriority(candidate.line.candySupply)) >= 0
     ));
     for (const candidate of [bestMin, ...boundaries]) {
       if (candidate && !result.includes(candidate)) result.push(candidate);
@@ -895,9 +903,9 @@ function pruneExactSafeCandidates(candidates: Candidate[], input: NormalizedInpu
   const unique = dedupeCandidates(candidates);
   const frontier: Candidate[] = [];
   for (const candidate of unique.sort((a, b) => -compareCandidate(a, b, input.options.itemCompareMode))) {
-    if (frontier.some(other => candidateDominates(other, candidate, input))) continue;
+    if (frontier.some(other => candidateDominates(other, candidate))) continue;
     for (let index = frontier.length - 1; index >= 0; index--) {
-      if (candidateDominates(candidate, frontier[index], input)) frontier.splice(index, 1);
+      if (candidateDominates(candidate, frontier[index])) frontier.splice(index, 1);
     }
     frontier.push(candidate);
   }
@@ -907,7 +915,7 @@ function pruneExactSafeCandidates(candidates: Candidate[], input: NormalizedInpu
   if (!allNonContended) return withStableIndexes(pruned);
   const bestByReachedState = new Map<string, Candidate>();
   for (const candidate of pruned) {
-    const key = `${candidate.line.level}/${candidate.line.expInLevel}/${candidate.line.targetReached}`;
+    const key = `${candidate.line.level}/${candidate.line.expInLevel}/${candidate.line.candyDemandMet}`;
     const previous = bestByReachedState.get(key);
     if (!previous || compareCandidate(candidate, previous, input.options.itemCompareMode) > 0) bestByReachedState.set(key, candidate);
   }
@@ -956,7 +964,7 @@ function stateForChoices(choices: Candidate[], mode: PlannerOptions['itemCompare
   for (const candidate of choices) {
     usage = mergeUsage(usage, candidate.usage);
     metrics = appendStateMetrics(metrics, candidate, mode);
-    if (!boundary && candidate.line.targetReached) prefix++;
+    if (!boundary && candidate.line.candyDemandMet) prefix++;
     else if (!boundary) boundary = candidate;
   }
   return { choices, usage, reachedPrefixCount: prefix, boundary, metrics };
@@ -986,7 +994,7 @@ function compareState(a: State, b: State, mode: PlannerOptions['itemCompareMode'
     if (boundaryProgress) return boundaryProgress;
     if (a.metrics.zeroSurplusCount !== b.metrics.zeroSurplusCount) return a.metrics.zeroSurplusCount > b.metrics.zeroSurplusCount ? 1 : -1;
     if (surplusA !== surplusB) return surplusA < surplusB ? 1 : -1;
-    const item = compareNumbers(a.metrics.itemPriority, b.metrics.itemPriority); if (item) return item;
+    const item = compareItemPriority(a.metrics.itemPriority, b.metrics.itemPriority); if (item) return item;
     if (a.metrics.surplusExp !== b.metrics.surplusExp) return a.metrics.surplusExp < b.metrics.surplusExp ? 1 : -1;
     if (a.usage.shards !== b.usage.shards) return a.usage.shards < b.usage.shards ? 1 : -1;
     return includeStableOrder ? compareStableOrder(a, b) : 0;
@@ -996,19 +1004,13 @@ function compareState(a: State, b: State, mode: PlannerOptions['itemCompareMode'
   const boundaryProgress = compareBoundaryProgress(a, b);
   if (boundaryProgress) return boundaryProgress;
   if (usesZeroSurplusPriority(mode) && a.metrics.zeroSurplusCount !== b.metrics.zeroSurplusCount) return a.metrics.zeroSurplusCount > b.metrics.zeroSurplusCount ? 1 : -1;
-  if (isLegacyLikeMode(mode)) {
-    const acceptableA = hasOnlyAcceptableRowSurplus(a.metrics);
-    const acceptableB = hasOnlyAcceptableRowSurplus(b.metrics);
-    if (acceptableA !== acceptableB) return acceptableA > acceptableB ? 1 : -1;
-    if (!acceptableA && a.metrics.normalizedSurplus !== b.metrics.normalizedSurplus) return a.metrics.normalizedSurplus < b.metrics.normalizedSurplus ? 1 : -1;
-    const legacyItem = compareNumbers(a.metrics.legacyItemPriority, b.metrics.legacyItemPriority); if (legacyItem) return legacyItem;
-    if (surplusA !== surplusB) return surplusA < surplusB ? 1 : -1;
-    if (a.metrics.surplusExp !== b.metrics.surplusExp) return a.metrics.surplusExp < b.metrics.surplusExp ? 1 : -1;
-    if (a.usage.shards !== b.usage.shards) return a.usage.shards < b.usage.shards ? 1 : -1;
-    return includeStableOrder ? compareStableOrder(a, b) : 0;
-  }
+  const acceptableA = hasOnlyAcceptableRowSurplus(a.metrics);
+  const acceptableB = hasOnlyAcceptableRowSurplus(b.metrics);
+  if (acceptableA !== acceptableB) return acceptableA > acceptableB ? 1 : -1;
+  if (!acceptableA && a.metrics.normalizedSurplus !== b.metrics.normalizedSurplus) return a.metrics.normalizedSurplus < b.metrics.normalizedSurplus ? 1 : -1;
+  const item = compareItemPriority(a.metrics.itemPriority, b.metrics.itemPriority); if (item) return item;
+  // 余り0〜2を同等扱いする分、スコア同点でも供給価値がずれる。ここで明示的に詰める。
   if (surplusA !== surplusB) return surplusA < surplusB ? 1 : -1;
-  const item = compareNumbers(a.metrics.itemPriority, b.metrics.itemPriority); if (item) return item;
   if (a.metrics.surplusExp !== b.metrics.surplusExp) return a.metrics.surplusExp < b.metrics.surplusExp ? 1 : -1;
   if (a.usage.shards !== b.usage.shards) return a.usage.shards < b.usage.shards ? 1 : -1;
   return includeStableOrder ? compareStableOrder(a, b) : 0;
@@ -1023,7 +1025,7 @@ function compareSurplusFirstBoundaryState(a: State, b: State, includeStableOrder
   if (boundaryProgress) return boundaryProgress;
   if (a.metrics.zeroSurplusCount !== b.metrics.zeroSurplusCount) return a.metrics.zeroSurplusCount > b.metrics.zeroSurplusCount ? 1 : -1;
   if (a.metrics.rawSurplus !== b.metrics.rawSurplus) return a.metrics.rawSurplus < b.metrics.rawSurplus ? 1 : -1;
-  const item = compareNumbers(a.metrics.itemPriority, b.metrics.itemPriority);
+  const item = compareItemPriority(a.metrics.itemPriority, b.metrics.itemPriority);
   if (item) return item;
   if (a.metrics.surplusExp !== b.metrics.surplusExp) return a.metrics.surplusExp < b.metrics.surplusExp ? 1 : -1;
   if (a.usage.shards !== b.usage.shards) return a.usage.shards < b.usage.shards ? 1 : -1;
@@ -1037,8 +1039,9 @@ function compareSurplusGateBoundaryState(a: State, b: State, includeStableOrder 
   if (!acceptableA && a.metrics.normalizedSurplus !== b.metrics.normalizedSurplus) return a.metrics.normalizedSurplus < b.metrics.normalizedSurplus ? 1 : -1;
   const boundaryProgress = compareBoundaryProgress(a, b);
   if (boundaryProgress) return boundaryProgress;
-  const legacyItem = compareNumbers(a.metrics.legacyItemPriority, b.metrics.legacyItemPriority);
-  if (legacyItem) return legacyItem;
+  const item = compareItemPriority(a.metrics.itemPriority, b.metrics.itemPriority);
+  if (item) return item;
+  // 余り0〜2を同等扱いする分、スコア同点でも供給価値がずれる。ここで明示的に詰める。
   if (a.metrics.rawSurplus !== b.metrics.rawSurplus) return a.metrics.rawSurplus < b.metrics.rawSurplus ? 1 : -1;
   if (a.metrics.surplusExp !== b.metrics.surplusExp) return a.metrics.surplusExp < b.metrics.surplusExp ? 1 : -1;
   if (a.usage.shards !== b.usage.shards) return a.usage.shards < b.usage.shards ? 1 : -1;
@@ -1094,6 +1097,12 @@ function boundarySearchSummary(
 }
 const FBL01D_DEFAULT_DEADLINE_MS = 30_000;
 const FBL01D_FAST_REFINE_MS = 250;
+/**
+ * 下位行の合同探索に許す時間（§14.4.1）。下位は到達数の保証対象ではないので、
+ * refine と同じ「任意の品質改善には上限を切る」扱いにする。主探索が 200ms で終わった入力で、
+ * この処理だけが残り 29.8 秒を使い切って体感を壊すことを防ぐ。
+ */
+const FBL01D_LOWER_JOINT_DEADLINE_MS = 1_000;
 const FBL01D_REFINE_SKIP_AFTER_FEASIBILITY_MS = 1_750;
 const FBL01D_FRONTIER_CACHE_LIMIT = 256;
 const FBL01D_BOUNDARY_SEARCH_SAMPLE_LIMIT = 200;
@@ -1104,6 +1113,9 @@ const fbl01dRowFrontierCache = new Map<string, unknown>();
 function fbl01dSolverOptions(input: NormalizedInput, deadlineAt: number): FeasibilitySolverOptions {
   const remainingDeadline = Math.max(0, deadlineAt - performance.now());
   return {
+    // 相対の `deadlineMs` は context ごとに測り直されるため、prefix 二分探索では
+    // probe ごとに満額使えてしまう。絶対締切も渡して合計を押さえる。
+    deadlineAt,
     boostKind: input.boost.kind,
     boostLimit: input.boost.limit,
     dreamShards: input.dreamShards,
@@ -1131,23 +1143,6 @@ function trimFbl01dFrontierCache(): void {
   }
 }
 
-function candyTargetDemandBoost(
-  pokemon: NormalizedPokemon,
-  input: NormalizedInput,
-  totalCandy: number,
-  remainingBoost: number,
-  remainingShards: number,
-): number {
-  const cap = candyTargetBoostCap(pokemon, pokemon.requestedBoostCandy, input.boost.kind);
-  if (hasFixedCandyTargetBoost(pokemon)) return Math.min(cap, totalCandy);
-  const maxBoost = Math.min(cap, totalCandy, Math.max(0, remainingBoost));
-  for (let boost = maxBoost; boost >= 0; boost--) {
-    const reached = simulateCandyBudget(pokemon, boost, totalCandy, Infinity, input.boost.kind, false);
-    if (reached.shards <= remainingShards) return boost;
-  }
-  return 0;
-}
-
 function feasibilityPreferZeroSurplus(
   pokemon: NormalizedPokemon,
   input: NormalizedInput,
@@ -1166,14 +1161,11 @@ function targetDemandRowForPokemon(
 ): FeasibilityDemandRow {
   if (pokemon.candyTarget) {
     const totalCandy = pokemon.candyTarget.totalCandyUnits;
-    const fixedBoost = hasFixedCandyTargetBoost(pokemon);
-    const requestedBoost = fixedBoost
-      ? Math.min(candyTargetBoostCap(pokemon, pokemon.requestedBoostCandy, input.boost.kind), totalCandy)
-      : candyTargetDemandBoost(pokemon, input, totalCandy, remainingBoost, remainingShards);
-    const reached = simulateCandyBudget(pokemon, requestedBoost, totalCandy, remainingShards, input.boost.kind, fixedBoost);
+    const requestedBoost = fixedCandyTargetBoostBudget(pokemon, input.boost.kind, totalCandy, remainingBoost);
+    const reached = simulateCandyBudget(pokemon, requestedBoost, totalCandy, remainingShards, input.boost.kind);
     const used = reached.boostUsed + reached.normalUsed;
     const candyTargetReached = used >= totalCandy;
-    const targetReached = candyTargetReached || reached.level >= maxLevel;
+    const candyDemandMet = candyTargetReached || reached.level >= maxLevel;
     return {
       pokemonId: pokemon.pokemonId,
       pokedexId: pokemon.pokedexId,
@@ -1185,14 +1177,14 @@ function targetDemandRowForPokemon(
       shards: reached.shards,
       reachedLv: reached.level,
       expInLevel: reached.expInLevel,
-      targetReached,
+      candyDemandMet,
       preferZeroSurplus: feasibilityPreferZeroSurplus(pokemon, input, reached.level, reached.expInLevel),
     };
   }
   const boost = maxBoostFor(pokemon, input.boost.kind, remainingBoost);
   const mixed = targetMixed(pokemon, input.boost.kind, boost);
   const reached = simulate(pokemon, mixed.boostCandy, mixed.normalCandy, remainingShards, pokemon.effectiveLevel, pokemon.effectiveExp, input.boost.kind);
-  const targetReached = cmpLevel(reached, { level: pokemon.effectiveLevel, expInLevel: pokemon.effectiveExp }) >= 0;
+  const candyDemandMet = cmpLevel(reached, { level: pokemon.effectiveLevel, expInLevel: pokemon.effectiveExp }) >= 0;
   return {
     pokemonId: pokemon.pokemonId,
     pokedexId: pokemon.pokedexId,
@@ -1204,7 +1196,7 @@ function targetDemandRowForPokemon(
     shards: reached.shards,
     reachedLv: reached.level,
     expInLevel: reached.expInLevel,
-    targetReached,
+    candyDemandMet,
     preferZeroSurplus: feasibilityPreferZeroSurplus(pokemon, input, reached.level, reached.expInLevel),
   };
 }
@@ -1218,13 +1210,10 @@ function demandRowForCandyBudget(
 ): FeasibilityDemandRow {
   const total = Math.max(0, totalCandy);
   if (pokemon.candyTarget) {
-    const fixedBoost = hasFixedCandyTargetBoost(pokemon);
-    const requestedBoost = fixedBoost
-      ? Math.min(candyTargetBoostCap(pokemon, pokemon.requestedBoostCandy, input.boost.kind), total, remainingBoost)
-      : candyTargetDemandBoost(pokemon, input, total, remainingBoost, remainingShards);
-    const reached = simulateCandyBudget(pokemon, requestedBoost, total, remainingShards, input.boost.kind, fixedBoost);
+    const requestedBoost = fixedCandyTargetBoostBudget(pokemon, input.boost.kind, total, remainingBoost);
+    const reached = simulateCandyBudget(pokemon, requestedBoost, total, remainingShards, input.boost.kind);
     const used = reached.boostUsed + reached.normalUsed;
-    const targetReached = used >= (pokemon.candyTarget?.totalCandyUnits ?? total) || reached.level >= maxLevel;
+    const candyDemandMet = used >= (pokemon.candyTarget?.totalCandyUnits ?? total) || reached.level >= maxLevel;
     return {
       pokemonId: pokemon.pokemonId,
       pokedexId: pokemon.pokedexId,
@@ -1236,7 +1225,7 @@ function demandRowForCandyBudget(
       shards: reached.shards,
       reachedLv: reached.level,
       expInLevel: reached.expInLevel,
-      targetReached,
+      candyDemandMet,
       preferZeroSurplus: feasibilityPreferZeroSurplus(pokemon, input, reached.level, reached.expInLevel),
     };
   }
@@ -1253,7 +1242,7 @@ function demandRowForCandyBudget(
     shards: reached.shards,
     reachedLv: reached.level,
     expInLevel: reached.expInLevel,
-    targetReached: cmpLevel(reached, { level: pokemon.effectiveLevel, expInLevel: pokemon.effectiveExp }) >= 0,
+    candyDemandMet: cmpLevel(reached, { level: pokemon.effectiveLevel, expInLevel: pokemon.effectiveExp }) >= 0,
     preferZeroSurplus: feasibilityPreferZeroSurplus(pokemon, input, reached.level, reached.expInLevel),
   };
 }
@@ -1261,11 +1250,11 @@ function demandRowForCandyBudget(
 function targetDemandRowsForInput(input: NormalizedInput): FeasibilityDemandRow[] {
   let remainingBoost = input.boost.limit;
   let remainingShards = input.dreamShards;
-  return input.pokemonList.map((pokemon, index) => {
+  return input.pokemonList.map(pokemon => {
     const row = targetDemandRowForPokemon(pokemon, input, remainingBoost, remainingShards);
     remainingBoost -= row.boostCandy;
     remainingShards -= row.shards;
-    return { ...row, speciesLexWeight: input.pokemonList.length - index };
+    return row;
   });
 }
 
@@ -1304,7 +1293,8 @@ function candidateFromFeasibleRow(row: FeasibilityWitness['rows'][number], pokem
     expGained,
     surplusExp: Math.max(0, row.expInLevel - pokemon.targetExpInLevel),
     surplusCandyValue: Math.max(0, supplyValue(supply) - row.totalCandy),
-    targetReached: row.targetReached,
+    candyDemandMet: row.candyDemandMet,
+    effectiveTargetReached: reachedEffectiveTarget(pokemon, { level: row.reachedLv, expInLevel: row.expInLevel }),
   };
   return { p: pokemon, line, usage: usageFrom(pokemon, line), stableIndex };
 }
@@ -1314,6 +1304,209 @@ function shouldRunFbl01dRefine(witness: FeasibilityWitness | null, feasibilityMs
   // refineは余り改善の任意処理。feasibilityが重い入力では、締切超過後に
   // witnessへ戻るだけの250msになりやすいため、到達数/境界EXPを優先して省く。
   return feasibilityMs < FBL01D_REFINE_SKIP_AFTER_FEASIBILITY_MS;
+}
+
+/** 候補の資源使用が、その時点の残資源に収まっているか。フェーズ3の安全弁。 */
+function candidateFitsResidual(
+  candidate: Candidate,
+  pokemon: NormalizedPokemon,
+  inventory: CandyInventory,
+  remainingBoost: number,
+  remainingShards: number,
+): boolean {
+  const { usage } = candidate;
+  if (usage.boost > remainingBoost || usage.shards > remainingShards) return false;
+  if ((usage.species[speciesKey(pokemon)] ?? 0) > (inventory.species[speciesKey(pokemon)] ?? 0)) return false;
+  const typeStock = inventory.typeCandy[pokemon.type] ?? { s: 0, m: 0 };
+  const typeUsed = usage.type[pokemon.type] ?? { s: 0, m: 0 };
+  if (typeUsed.s > typeStock.s || typeUsed.m > typeStock.m) return false;
+  return usage.universal.s <= inventory.universal.s
+    && usage.universal.m <= inventory.universal.m
+    && usage.universal.l <= inventory.universal.l;
+}
+
+/**
+ * 下位行どうしが同じ資源を取り合うか。
+ *
+ * 逐次処理は行ごとに最良の供給を選ぶので、**取り合いがあると per-row 最適が全体で負けうる。**
+ * 種族アメに限った話ではない（外部レビューで反例が出た）:
+ *
+ * - 同タイプ2行・水タイプS13個/M2個・需要50と51 →
+ *   逐次は需要50へ typeS13（余り2）を渡し、残る typeM2（価値50）では需要51が未達。
+ *   typeM2 と typeS13 を入れ替えれば両方到達する
+ * - 水17と炎20・水タイプM1個/万能M1個 →
+ *   逐次は需要17へ万能M（余り3）を渡し、炎20は水アメを使えず0個。
+ *   水タイプMと万能Mを入れ替えれば両方到達する
+ *
+ * **万能アメは全行が使えるので、残っていればそれだけで取り合いになる。**
+ * 在庫が無い次元は取り合いにならないので、在庫の有無まで見て判定する。
+ */
+function lowerRowsContendForResources(pokemonList: NormalizedPokemon[], inventory: CandyInventory): boolean {
+  if (pokemonList.length < 2) return false;
+  if (inventory.universal.s > 0 || inventory.universal.m > 0 || inventory.universal.l > 0) return true;
+  const families = new Set<string>();
+  const types = new Set<string>();
+  for (const pokemon of pokemonList) {
+    const family = speciesKey(pokemon);
+    if (families.has(family) && (inventory.species[family] ?? 0) > 0) return true;
+    families.add(family);
+    const typeStock = inventory.typeCandy[pokemon.type] ?? { s: 0, m: 0 };
+    if (types.has(pokemon.type) && (typeStock.s > 0 || typeStock.m > 0)) return true;
+    types.add(pokemon.type);
+  }
+  return false;
+}
+
+/** 残資源（在庫・かけら・アメブ枠）を前提にした、下位行だけの入力を組み直す。 */
+function residualInputFor(
+  input: NormalizedInput,
+  inventory: CandyInventory,
+  usage: Usage,
+  pokemonList: NormalizedPokemon[],
+): NormalizedInput {
+  const base = {
+    ...input,
+    pokemonList,
+    candyInventory: inventory,
+    boost: { ...input.boost, limit: Math.max(0, input.boost.limit - usage.boost) },
+    dreamShards: Math.max(0, input.dreamShards - usage.shards),
+  };
+  // 競合の解析は行の顔ぶれと在庫で決まるので、下位行だけの組で取り直す。
+  const speciesNeeds = calculateSpeciesNeeds(base);
+  const contention = analyzeContention(base, speciesNeeds);
+  return { ...base, speciesNeeds, contention, contentionKeys: buildContentionKeys(contention) };
+}
+
+/**
+ * 下位行が資源を取り合うとき、残資源で feasibility solver を回して到達 prefix を最大化する。
+ *
+ * **正本**: `fbl01d_feasibility_witness境界EXP改善_設計書.md` §6「種族アメ原則」/ §14.4.1。
+ *
+ * 逐次処理は行ごとに最良の供給を選ぶため、**per-row 最適が全体で負ける**ことがある。
+ * 種族アメでは §6 の反例（同系統2行 `totalCandy` = 25 と 4・種族在庫 4・タイプM 1個）が、
+ * タイプアメ・万能アメでも `lowerRowsContendForResources` の docblock にある2つの反例が起きる。
+ * 合同な分配の探索はブロックDP（§10）が既に解いているので、そちらへ委ねる。
+ *
+ * - **境界EXP最大化（フェーズ2）は行わない。** §14.4「下位は到達数＋境界EXPの保証対象ではない」を維持し、
+ *   到達 prefix の最大化だけに絞る
+ * - **再帰しない。** この prefix に入らなかった行は、呼び出し元の逐次処理がそのまま扱う
+ * - 取り合いが無ければ solver を呼ばない（在庫が無い次元は取り合いにならない）
+ * - frontier キャッシュは共有しない。下位の部分問題は小さく、本探索のキャッシュを
+ *   別の行集合で汚さないほうが安全
+ * - **`deadlineAt` は呼び出し元が一度だけ決めた絶対締切。** この関数は複数回呼ばれうるので、
+ *   ここで測り直すと合計が上限を超える
+ */
+function solveLowerContendedPrefix(
+  input: NormalizedInput,
+  inventory: CandyInventory,
+  usage: Usage,
+  startIndex: number,
+  deadlineAt: number,
+): Candidate[] {
+  const lowerPokemon = input.pokemonList.slice(startIndex);
+  if (!lowerRowsContendForResources(lowerPokemon, inventory)) return [];
+
+  const residualInput = residualInputFor(input, inventory, usage, lowerPokemon);
+  const rows = targetDemandRowsForInput(residualInput);
+  const options = fbl01dSolverOptions(residualInput, deadlineAt);
+
+  // フェーズ1と同じ単調性（k 到達可能 ⇒ k-1 到達可能）で二分探索する。
+  const session = createPrefixDecisionSession(rows, inventory, options);
+  let low = 0;
+  let high = rows.length;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    const decision = session.canSolvePrefix(mid);
+    // `inconclusive` は「不可行」ではない。infeasible と畳むと、証拠が無いまま
+    // 短い prefix を合同解として採用してしまう。全面的に逐次処理へ縮退させる。
+    if (decision.status === 'inconclusive') return [];
+    if (decision.status === 'feasible') low = mid;
+    else high = mid - 1;
+  }
+  if (low === 0) return [];
+
+  const result = solveFeasibilityForFixedRows(rows.slice(0, low), inventory, options);
+  // 締切超過（inconclusive）でも解なしでも、呼び出し元の逐次貪欲がそのまま引き受ける。
+  if (result.status !== 'feasible') return [];
+  return result.witness.rows.map((row, offset) => candidateFromFeasibleRow(row, lowerPokemon[offset], startIndex + offset));
+}
+
+/**
+ * フェーズ3: 境界より下の行を残資源で処理する。
+ *
+ * **正本**: `fbl01d_feasibility_witness境界EXP改善_設計書.md` §14.4「フェーズ3: 下位行」/
+ * `level-planner-allocation-policy-spec.md` §4-5「下位は残資源のみ」。
+ *
+ * feasibility witness は「到達prefix ＋ 境界」までしか行を持たない。それ以降を
+ * `zeroLine` へ倒すと、**下位行に自分の種族アメとかけらが丸ごと残っていても0個**になる
+ * （上位の在庫不足だけを理由に、無関係な系統の行が育たなくなる）。
+ *
+ * 下位行は到達数・境界EXPの保証対象ではないので合同最適化には含めず、
+ * witness が確定した残資源から**優先順位順に逐次**確定させる。
+ *
+ * **この関数に行の anchor（個数指定の有無）による分岐を足さないこと。**
+ * その分岐は `candidateForBoost` が唯一の正本として持っている。
+ */
+function allocateLowerRowsFromResidual(input: NormalizedInput, upperChoices: Candidate[], deadlineAt: number): Candidate[] {
+  if (upperChoices.length >= input.pokemonList.length) return [];
+  const inventory = structuredClone(input.candyInventory);
+  let usage = emptyUsage();
+  for (const candidate of upperChoices) {
+    consumeInventory(inventory, candidate.p, candidate.line);
+    usage = mergeUsage(usage, candidate.usage);
+  }
+  const lower: Candidate[] = [];
+  // 合同探索の総時間はここで一度だけ決める。下でループしても合計はこの締切を超えない。
+  const jointDeadlineAt = Math.min(deadlineAt, performance.now() + FBL01D_LOWER_JOINT_DEADLINE_MS);
+  let index = upperChoices.length;
+  while (index < input.pokemonList.length) {
+    // §14.4.1: 取り合いがある下位行は逐次では解けないので、先に合同で到達prefixを取る。
+    const joint = solveLowerContendedPrefix(input, inventory, usage, index, jointDeadlineAt);
+    if (joint.length > 0) {
+      for (const candidate of joint) {
+        lower.push(candidate);
+        consumeInventory(inventory, candidate.p, candidate.line);
+        usage = mergeUsage(usage, candidate.usage);
+      }
+      index += joint.length;
+      continue;
+    }
+    // 合同で1行も取れないとき（先頭が到達しえない・締切超過・取り合い無し）は、
+    // **その行だけ**逐次で確定して次へ進む。到達しえない行が1つあるだけで、
+    // その後ろ全部が合同探索の対象から外れてしまうのを防ぐ。
+    const pokemon = input.pokemonList[index];
+    const remainingBoost = Math.max(0, input.boost.limit - usage.boost);
+    const remainingShards = Math.max(0, input.dreamShards - usage.shards);
+    const residualInput: NormalizedInput = {
+      ...input,
+      candyInventory: inventory,
+      boost: { ...input.boost, limit: remainingBoost },
+    };
+    // 0配分は必ず残す。残資源が無い行の受け皿であり、候補が全滅しても落ちないようにする。
+    const zeroCandidate: Candidate = { p: pokemon, line: zeroLine(pokemon), usage: emptyUsage(), stableIndex: -1 };
+    const candidates = withStableIndexes([
+      zeroCandidate,
+      ...candidateForBoost(
+        pokemon,
+        residualInput,
+        maxBoostFor(pokemon, input.boost.kind, remainingBoost),
+        remainingShards,
+        false,
+        availableInventoryValue(residualInput, pokemon),
+        inventory,
+      ),
+    ].filter(candidate => candidateFitsResidual(candidate, pokemon, inventory, remainingBoost, remainingShards)));
+    let best = candidates[0] ?? zeroCandidate;
+    for (const candidate of candidates) {
+      if (compareCandidate(candidate, best, input.options.itemCompareMode) > 0) best = candidate;
+    }
+    const chosen: Candidate = { ...best, stableIndex: index };
+    lower.push(chosen);
+    consumeInventory(inventory, pokemon, chosen.line);
+    usage = mergeUsage(usage, chosen.usage);
+    index++;
+  }
+  return lower;
 }
 
 function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; optimized: CandyExpOptimizationResult; adopted: 'feasibility' } {
@@ -1339,12 +1532,35 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
     rowFrontierCache: fbl01dRowFrontierCache,
   });
   const targetRows = targetDemandRowsForInput(input);
+  /**
+   * 先頭から続く「アメを1個も要さない行」の数（§14.4.3）。
+   *
+   * 目標到達済み・`candyTarget.totalCandyUnits === 0`・「すべて睡眠」の行は、**探索が何もしなくても
+   * 到達扱いになる。** ゲート内再試行の判定を単純な「到達0匹」で書くと、この手の行が先頭にあるだけで
+   * 到達数が1以上になり、**落ちるべきときに落ちない。** 判定は「アメを要する行が新しく到達したか」で行う。
+   */
+  const trivialReachedPrefixCount = (() => {
+    let count = 0;
+    for (const row of targetRows) {
+      if (row.totalCandy > 0) break;
+      count++;
+    }
+    return count;
+  })();
   // surplusFirst first treats row surplus 0..2 as a hard constraint. If that
   // cannot produce a useful witness, retry without the hard gate.
   const searchMaxRowSurplusAttempts: Array<number | undefined> = input.options.itemCompareMode === 'surplusFirst' && targetRows.length > 1
     ? [MAX_ACCEPTABLE_SURPLUS, undefined]
     : [undefined];
   let mainSearchMaxRowSurplus: number | undefined = searchMaxRowSurplusAttempts[0];
+  /**
+   * 探索が実際に使っている比較モード。**2周目へ落ちたらバランスになる（§14.4.3）。**
+   *
+   * ループを抜けたあとも最後の attempt の値が残るので、**これが「この入力で最終的に採った方式」**である。
+   * refine とフェーズ3にも同じ値を渡すこと。`input.options.itemCompareMode`（＝ユーザーが選んだ方式）を
+   * 渡すと、**到達prefixと境界だけバランス・供給内訳は余り最小**という第3のモードになり、
+   * UI の案内「到達できるポケモンが1匹もいない場合はバランスの配分に切り替えます」と食い違う。
+   */
   let mainSearchItemCompareMode: PlannerOptions['itemCompareMode'] = input.options.itemCompareMode;
   const mainOptions = () => options(mainSearchMaxRowSurplus, mainSearchItemCompareMode);
   let canSearch = false;
@@ -1356,6 +1572,14 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
   let boundaryIndex: number | null = null;
   let shouldSearchBoundary = false;
   let boundarySearch: BoundarySearchSummary | undefined;
+  let prefixSearch: PrefixSearchSummary | undefined;
+  /**
+   * attempt ごとの `prefixSearch`（`[0]` が1周目）。
+   *
+   * `prefixSearch` は周の開始時に捨てられるので、fallback が発火すると1周目の値が残らない。
+   * **周ごとの探索量・探索結果を検証するテストはこちらを読む**（§14.4.2 / §14.4.3）。
+   */
+  const prefixSearchAttempts: PrefixSearchSummary[] = [];
   type SurplusLimits = { maxRowSurplus?: number; maxTotalSurplus?: number; maxReachedSurplus?: number };
   const normalizeLimits = (limits: SurplusLimits = {}): SurplusLimits => {
     if (limits.maxTotalSurplus === undefined) return limits;
@@ -1383,6 +1607,7 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
     boundaryIndex = null;
     shouldSearchBoundary = false;
     boundarySearch = undefined;
+    prefixSearch = undefined;
 
   if (canSearch && supplyInconclusiveCandidates === 0) {
     type PrefixSearchResult = {
@@ -1391,6 +1616,8 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
       solved: number;
       rejected: number;
       inconclusive: number;
+      /** §14.4.2 の上側スキャンだけで走らせた probe 数（探索量の上限をテストで固定するための診断値）。 */
+      upperScanProbes: number;
       limits: SurplusLimits;
     };
     const findPrefix = (
@@ -1409,6 +1636,7 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
       let solved = 0;
       let rejected = 0;
       let inconclusive = 0;
+      let upperScanProbes = 0;
       const prefixDecisionSession = createPrefixDecisionSession(targetRows, input.candyInventory, prefixOptions());
       let bestPrefixDecision: ReturnType<typeof solveFeasibilityDecisionForFixedRows> | null = null;
       let bestPrefixDecisionLength = 0;
@@ -1426,14 +1654,46 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
         else rejected++;
         high = mid - 1;
       }
-      if (low === 0) return { low, witness: null, solved, rejected, inconclusive, limits };
-      if (!restoreWitness && low < targetRows.length) return { low, witness: null, solved, rejected, inconclusive, limits };
+      // §14.4.2: **余りゲートの下では prefix の可解性が単調にならない。**
+      //
+      // §6 の「系統の種族アメ使用合計 = min(系統在庫, 系統内の需要合計)」により、
+      // prefix が短いほど種族アメの受け取り先が減り、余りとして計上される。
+      // 同系統2行（需要25と4）・種族在庫4・タイプM1個なら、prefix1 は種族4を使い切るために
+      // タイプMも足して余り4（ゲート超過で infeasible）だが、prefix2 は B が種族4を引き受けて
+      // 両行とも余り0（feasible）になる。**行を増やしたほうが解ける。**
+      //
+      // 二分探索は単調性を前提にしているので、打ち切った上側を降順に確かめ直す。
+      // ゲートが無ければ制約は資源だけになり、長い prefix ほど需要が増えて厳しくなる一方なので走らせない。
+      // `inconclusive` を見たあとも走らせない（判定できていないものを feasible 側へ倒さない）。
+      const hasSurplusGate = limits.maxRowSurplus !== undefined
+        || limits.maxTotalSurplus !== undefined
+        || limits.maxReachedSurplus !== undefined;
+      if (hasSurplusGate && inconclusive === 0 && low < targetRows.length) {
+        for (let length = targetRows.length; length > low; length--) {
+          const result = prefixDecisionSession.canSolvePrefix(length);
+          upperScanProbes++;
+          if (result.status === 'feasible') {
+            solved++;
+            bestPrefixDecision = result;
+            bestPrefixDecisionLength = length;
+            low = length;
+            break;
+          }
+          if (result.status === 'inconclusive') {
+            inconclusive++;
+            break;
+          }
+          rejected++;
+        }
+      }
+      if (low === 0) return { low, witness: null, solved, rejected, inconclusive, upperScanProbes, limits };
+      if (!restoreWitness && low < targetRows.length) return { low, witness: null, solved, rejected, inconclusive, upperScanProbes, limits };
       const selectedResult = bestPrefixDecisionLength === low && bestPrefixDecision?.toWitness
         ? bestPrefixDecision.toWitness()
         : solveFeasibilityForFixedRows(targetRows.slice(0, low), input.candyInventory, prefixOptions());
-      if (selectedResult.status === 'feasible') return { low, witness: selectedResult.witness, solved: solved + 1, rejected, inconclusive, limits };
-      if (selectedResult.status === 'inconclusive') return { low: 0, witness: null, solved, rejected, inconclusive: inconclusive + 1, limits };
-      return { low: 0, witness: null, solved, rejected: rejected + 1, inconclusive, limits };
+      if (selectedResult.status === 'feasible') return { low, witness: selectedResult.witness, solved: solved + 1, rejected, inconclusive, upperScanProbes, limits };
+      if (selectedResult.status === 'inconclusive') return { low: 0, witness: null, solved, rejected, inconclusive: inconclusive + 1, upperScanProbes, limits };
+      return { low: 0, witness: null, solved, rejected: rejected + 1, inconclusive, upperScanProbes, limits };
     };
 
     const findSurplusFirstPrefix = (): PrefixSearchResult => findPrefix({
@@ -1464,6 +1724,7 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
           solved: gatedPrefix.solved + unrestrictedPrefix.solved,
           rejected: gatedPrefix.rejected + unrestrictedPrefix.rejected,
           inconclusive: gatedPrefix.inconclusive + unrestrictedPrefix.inconclusive,
+          upperScanProbes: gatedPrefix.upperScanProbes + unrestrictedPrefix.upperScanProbes,
         };
       }
     } else {
@@ -1472,6 +1733,14 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
     solvedCandidates += prefix.solved;
     supplyRejectedCandidates += prefix.rejected;
     supplyInconclusiveCandidates += prefix.inconclusive;
+    prefixSearch = {
+      solved: prefix.solved,
+      rejected: prefix.rejected,
+      inconclusive: prefix.inconclusive,
+      upperScanProbes: prefix.upperScanProbes,
+      maxFeasiblePrefix: prefix.low,
+    };
+    prefixSearchAttempts.push(prefixSearch);
     if (prefix.witness) {
       selectedWitness = prefix.witness;
     }
@@ -1549,10 +1818,9 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
     const minimumReachedSurplus = selectedWitness
       ? stateForWitness(selectedWitness, input).metrics.reachedSurplus
       : 0;
-    const boundaryRowForTotal = (totalCandy: number): FeasibilityDemandRow => ({
-        ...demandRowForCandyBudget(boundaryPokemon, input, totalCandy, remainingBoost, remainingShards),
-        speciesLexWeight: input.pokemonList.length - currentBoundaryIndex,
-    });
+    const boundaryRowForTotal = (totalCandy: number): FeasibilityDemandRow => (
+      demandRowForCandyBudget(boundaryPokemon, input, totalCandy, remainingBoost, remainingShards)
+    );
     type BoundaryLimits = SurplusLimits;
     const boundaryCacheKey = (totalCandy: number, limits: BoundaryLimits): string => (
       `${totalCandy}|row:${limits.maxRowSurplus ?? ''}|total:${limits.maxTotalSurplus ?? ''}|reached:${limits.maxReachedSurplus ?? ''}`
@@ -2217,18 +2485,34 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
     }
   }
 
-    const selectedUnreachedIndex = selectedWitness?.rows.findIndex(row => !row.targetReached) ?? -1;
+    const selectedUnreachedIndex = selectedWitness?.rows.findIndex(row => !row.candyDemandMet) ?? -1;
     const selectedBoundaryReached = Boolean(
       selectedWitness
         && selectedWitness.rows.length >= targetRows.length
         && selectedUnreachedIndex === -1,
     );
+    /**
+     * §14.4.3。**ゲート内で1匹も新しく育っていないなら、ハードゲートを外して探し直す。**
+     *
+     * 旧条件は `attemptMaxRowSurplus < MAX_ACCEPTABLE_SURPLUS`（＝ `2 < 2`）で**構造上決して真にならず**、
+     * 導入時（`bf794c7`）から死んでいた。実際に効いていたのは「witness が1つも作れなかったとき」だけで、
+     * **境界行1つだけの witness（到達0匹）ができれば「使い物になる答え」として確定していた。**
+     *
+     * 根拠は `level-planner-priority-guide.md` §72「余り0〜2はハード制約ではない。0〜2にできないときも
+     * 計算を不成立にせず、3以上を許して結果を返す」。**これは解が無いときの縮退規則**であって、
+     * 「到達数のためにゲートを捨ててよい」ではない（それは §258 と正面から衝突する）。
+     * だから落ちる条件は**到達数の比較ではなく「ゲート内で何も作れなかったか」**にする。
+     */
+    const selectedReachedPrefix = selectedWitness
+      ? (selectedUnreachedIndex === -1 ? selectedWitness.rows.length : selectedUnreachedIndex)
+      : 0;
+    const gatedProducedNothing = selectedReachedPrefix <= trivialReachedPrefixCount;
     const shouldTryNextSurplusFirstGate = Boolean(
       selectedWitness
         && input.options.itemCompareMode === 'surplusFirst'
         && targetRows.length > 1
         && attemptMaxRowSurplus !== undefined
-        && attemptMaxRowSurplus < MAX_ACCEPTABLE_SURPLUS
+        && gatedProducedNothing
         && !selectedBoundaryReached,
     );
     const shouldTryNextGate = Boolean(
@@ -2239,17 +2523,33 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
     if (supplyInconclusiveCandidates > 0 || !shouldTryNextGate) break;
   }
 
-  const witness = canSearch ? selectedWitness : null;
+  /**
+   * §14.4.3。**1周目（ゲート内）の witness を床として退避してはいけない。**
+   *
+   * 2周目へ落ちる条件そのものが `gatedProducedNothing` なので、1周目の witness は
+   * **定義上「アメを要する行が1つも到達していない」。** それを最終解に採ると
+   * `rows[0..境界]` がゲートに縛られた配分に固定され、**フェーズ3がその行を育てられなくなる。**
+   * `witness = null` ならフェーズ3が全行を扱い、到達 prefix 長は最低でもアメ不要行の数（＝床の到達 prefix 長）になる。
+   * **つまり床が到達 prefix 長で null を上回ることは構造上ありえない。**
+   *
+   * 実測でも、2周目を強制的に `inconclusive` にした 400 件の掃引で
+   * **床の復元は 154 件で到達 prefix 長を下げ、改善は0件**だった（フェーズ3も締切超過へ落とした条件でも同じ）。
+   * 2026-08-01 に一度 `gatedFloor` として実装したが、この計測を受けて削除した。**戻さないこと。**
+   *
+   * `canSearch` によるガードもここでは不要になる。`selectedWitness` が入るのは
+   * `canSearch` が真の枝だけなので、**`canSearch === false` なら `selectedWitness` は必ず null** である。
+   */
+  const witness = selectedWitness;
   const feasibilityMs = performance.now() - feasibilityStartedAt;
   const refineStartedAt = performance.now();
   const shouldRefine = shouldRunFbl01dRefine(witness, feasibilityMs);
   const refined = witness && shouldRefine
-    ? refineFeasibilityWitness(witness, input.candyInventory, input.options.itemCompareMode, {
+    ? refineFeasibilityWitness(witness, input.candyInventory, mainSearchItemCompareMode, {
         boostKind: input.boost.kind,
         boostLimit: input.boost.limit,
         dreamShards: input.dreamShards,
-        itemCompareMode: input.options.itemCompareMode,
-        ...(input.options.itemCompareMode === 'surplusFirst' && mainSearchMaxRowSurplus !== undefined
+        itemCompareMode: mainSearchItemCompareMode,
+        ...(mainSearchItemCompareMode === 'surplusFirst' && mainSearchMaxRowSurplus !== undefined
           ? {
               maxRowSurplus: MAX_ACCEPTABLE_SURPLUS,
               maxReachedSurplus: witness
@@ -2266,15 +2566,12 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
   const witnessChoices = witness
     ? (finalWitness?.rows ?? witness.rows).map((row, index) => candidateFromFeasibleRow(row, input.pokemonList[index], index))
     : [];
-  const choices = [
-    ...witnessChoices,
-    ...input.pokemonList.slice(witnessChoices.length).map((pokemon, index) => ({
-      p: pokemon,
-      line: zeroLine(pokemon),
-      usage: emptyUsage(),
-      stableIndex: witnessChoices.length + index,
-    })),
-  ];
+  // フェーズ3: witness に含まれない行（境界より下）は残資源で逐次確定させる。
+  // **探索が実際に採った方式を渡す**（§14.4.3）。2周目へ落ちた入力は下位行もバランスで解く。
+  const effectiveInput: NormalizedInput = mainSearchItemCompareMode === input.options.itemCompareMode
+    ? input
+    : { ...input, options: { ...input.options, itemCompareMode: mainSearchItemCompareMode } };
+  const choices = [...witnessChoices, ...allocateLowerRowsFromResidual(effectiveInput, witnessChoices, solverDeadlineAt)];
   const refineMs = refined ? performance.now() - refineStartedAt : 0;
   const finalChoices = choices;
   trimFbl01dFrontierCache();
@@ -2290,6 +2587,8 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
       refineStatus: refined?.refineStatus ?? 'skipped',
       refineReason: refined?.reason ?? (refined ? undefined : (witness ? 'feasibility_too_slow' : 'no_feasible_witness')),
       boundarySearch,
+      prefixSearch,
+      prefixSearchAttempts,
     },
   };
   } finally {
@@ -2298,48 +2597,130 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
   }
 }
 function zeroLine(pokemon: NormalizedPokemon): PokemonPlanLine {
-  const targetReached = pokemon.candyTarget
+  const candyDemandMet = pokemon.candyTarget
     ? pokemon.candyTarget.totalCandyUnits <= 0
     : cmpLevel({ level: pokemon.currentLevel, expInLevel: pokemon.currentExpInLevel }, { level: pokemon.targetLevel, expInLevel: pokemon.targetExpInLevel }) >= 0;
-  return { level: pokemon.currentLevel, expInLevel: pokemon.currentExpInLevel, expToNextLevel: Math.max(0, calcExp(pokemon.currentLevel, pokemon.currentLevel + 1, pokemon.expType) - pokemon.currentExpInLevel), expToTarget: Math.max(0, calcExp(pokemon.currentLevel, pokemon.targetLevel, pokemon.expType) + pokemon.targetExpInLevel - pokemon.currentExpInLevel), totalCandyUnitsUsed: 0, boostedCandyUnits: 0, nonBoostCandyUnits: 0, candySupply: emptySupply(), dreamShardsUsed: 0, expGained: 0, surplusExp: 0, surplusCandyValue: 0, targetReached };
+  return { level: pokemon.currentLevel, expInLevel: pokemon.currentExpInLevel, expToNextLevel: Math.max(0, calcExp(pokemon.currentLevel, pokemon.currentLevel + 1, pokemon.expType) - pokemon.currentExpInLevel), expToTarget: Math.max(0, calcExp(pokemon.currentLevel, pokemon.targetLevel, pokemon.expType) + pokemon.targetExpInLevel - pokemon.currentExpInLevel), totalCandyUnitsUsed: 0, boostedCandyUnits: 0, nonBoostCandyUnits: 0, candySupply: emptySupply(), dreamShardsUsed: 0, expGained: 0, surplusExp: 0, surplusCandyValue: 0, candyDemandMet, effectiveTargetReached: reachedEffectiveTarget(pokemon, { level: pokemon.currentLevel, expInLevel: pokemon.currentExpInLevel }) };
 }
-function displayLine(pokemon: NormalizedPokemon, input: NormalizedInput, inventory: CandyInventory, total: number, requestedBoost: number, reachableSupply?: CandySupplyBreakdown): PokemonPlanLine {
+/**
+ * 目標まで行が既存の配分（到達可能行、および個数指定に対して作られた配分）を正本として流用できるか。
+ *
+ * 流用できるのは、その配分が「目標到達に必要なアメ数ちょうど」に対して作られている場合だけ。
+ * 補填は万能Sを足すことしかできないため、需要が食い違う土台を使うと内訳がそのまま漏れ出す。
+ * - 個数指定は「このポケモンに何個まで使うか」というユーザーの自己制約であり、目標到達に必要な量ではない。
+ *   これを土台にすると、目標まで行が個数指定に左右されてしまう。
+ * - かけら・アメブ・在庫律速で目標需要に届かない実配分も、残りを万能Sだけで補うと
+ *   実際には使える在庫（種族アメ・万能M/L・タイプアメ）を無視した内訳になる。
+ *
+ * 需要が一致しない場合は、その行の時点の在庫から目標需要ぶんを組み直す。
+ */
+function canReuseDisplaySupplyBase(baseTotalCandy: number | undefined, targetTotalCandy: number): boolean {
+  return baseTotalCandy === targetTotalCandy;
+}
+/**
+ * 「目標まで」行（§4.5.1）。
+ *
+ * - totalCandyUnitsUsed = 予定アメ数（個数指定があればその値、なければ目標到達に必要な最小数）
+ * - level / expInLevel  = 予定アメを使い終えた地点（睡眠EXPを含まない）
+ *
+ * 到達判定・残EXPは effectiveLevel/effectiveExp（＝アメが担当する到達点）を基準にする。
+ * 個数指定なしの行では effective == target なので、従来と同じ結果になる。
+ */
+function displayLine(pokemon: NormalizedPokemon, input: NormalizedInput, inventory: CandyInventory, total: number, requestedBoost: number, baseSupply?: CandySupplyBreakdown, baseTotalCandy?: number): PokemonPlanLine {
   const boost = input.boost.kind === 'none' ? 0 : Math.min(Math.max(0, requestedBoost), total);
-  const reached = simulate(pokemon, boost, Math.max(0, total - boost), Infinity, pokemon.targetLevel, pokemon.targetExpInLevel, input.boost.kind);
+  const reached = simulate(pokemon, boost, Math.max(0, total - boost), Infinity, pokemon.effectiveLevel, pokemon.effectiveExp, input.boost.kind);
   const used = reached.boostUsed + reached.normalUsed;
-  const supply = reachableSupply
-    ? addTheoreticalUniversalSFill(reachableSupply, used)
-    : resolveDisplayCandySupply(used, pokemon, inventory, true);
+  const supply = baseSupply && canReuseDisplaySupplyBase(baseTotalCandy, used)
+    ? addTheoreticalSupplyFill(baseSupply, used, pokemon, inventory)
+    : resolveDisplayCandySupply(used, pokemon, inventory, true, prefersMinSurplusDisplay(input));
   return {
     level: reached.level, expInLevel: reached.expInLevel,
     expToNextLevel: Math.max(0, calcExp(reached.level, reached.level + 1, pokemon.expType) - reached.expInLevel),
-    expToTarget: Math.max(0, calcExp(reached.level, pokemon.targetLevel, pokemon.expType) + pokemon.targetExpInLevel - reached.expInLevel),
+    expToTarget: Math.max(0, calcExp(reached.level, pokemon.effectiveLevel, pokemon.expType) + pokemon.effectiveExp - reached.expInLevel),
     totalCandyUnitsUsed: used, boostedCandyUnits: reached.boostUsed, nonBoostCandyUnits: reached.normalUsed,
     candySupply: supply, dreamShardsUsed: reached.shards, expGained: reached.expGained,
-    surplusExp: Math.max(0, reached.expInLevel - pokemon.targetExpInLevel), surplusCandyValue: Math.max(0, supplyValue(supply) - used),
-    targetReached: cmpLevel(reached, { level: pokemon.targetLevel, expInLevel: pokemon.targetExpInLevel }) >= 0,
+    surplusExp: Math.max(0, reached.expInLevel - pokemon.effectiveExp), surplusCandyValue: Math.max(0, supplyValue(supply) - used),
+    candyDemandMet: cmpLevel(reached, { level: pokemon.effectiveLevel, expInLevel: pokemon.effectiveExp }) >= 0,
+    effectiveTargetReached: reachedEffectiveTarget(pokemon, reached),
   };
 }
-function displayCandyTargetLine(pokemon: NormalizedPokemon, input: NormalizedInput, candidate: Candidate, inventory: CandyInventory): PokemonPlanLine {
-  if (!pokemon.candyTarget) return candidate.line;
-  const total = pokemon.candyTarget.totalCandyUnits;
-  if (candidate.line.targetReached) {
-    const supply = addTheoreticalUniversalSFill(candidate.line.candySupply, total);
-    return { ...candidate.line, candySupply: supply, surplusCandyValue: Math.max(0, supplyValue(supply) - total) };
+
+/** 「目標まで」行の予定アメ数と、そのうちアメブに回す数（§4.5.1）。 */
+function plannedCandyForDisplay(pokemon: NormalizedPokemon, input: NormalizedInput): { total: number; boost: number } {
+  // 「アメブ1個 → 通常アメ1個」置換（仕様§4 / 設計書§3.8-e）は maxBoostFor に入っている。
+  // 表示行もそれを通さないと、実配分がアメブ n-1 + 通常1 なのに目標まで行だけ全アメブになり、
+  // アメブ内訳とかけらが実配分とズレる。
+  // グローバル上限は掛けない（理論値行なので、枠不足は shortage.boostCandyUnavailable で別途出す）。
+  const boost = maxBoostFor(pokemon, input.boost.kind, Number.POSITIVE_INFINITY);
+  if (pokemon.candyTarget) {
+    return { total: pokemon.candyTarget.totalCandyUnits, boost };
   }
-  const boost = Math.min(candyTargetBoostCap(pokemon, pokemon.requestedBoostCandy, input.boost.kind), total);
-  const reached = simulateCandyBudget(pokemon, boost, total, Infinity, input.boost.kind, hasFixedCandyTargetBoost(pokemon));
-  const supply = resolveDisplayCandySupply(total, pokemon, inventory, true);
-  return {
-    level: reached.level, expInLevel: reached.expInLevel,
-    expToNextLevel: Math.max(0, calcExp(reached.level, reached.level + 1, pokemon.expType) - reached.expInLevel),
-    expToTarget: Math.max(0, calcExp(reached.level, pokemon.targetLevel, pokemon.expType) + pokemon.targetExpInLevel - reached.expInLevel),
-    totalCandyUnitsUsed: total, boostedCandyUnits: reached.boostUsed, nonBoostCandyUnits: reached.normalUsed,
-    candySupply: supply, dreamShardsUsed: reached.shards, expGained: reached.expGained,
-    surplusExp: Math.max(0, reached.expInLevel - pokemon.targetExpInLevel), surplusCandyValue: Math.max(0, supplyValue(supply) - total),
-    targetReached: true,
-  };
+  const mixed = calcExpAndCandyMixed({
+    srcLevel: pokemon.currentLevel, dstLevel: pokemon.effectiveLevel, dstExpInLevel: pokemon.effectiveExp,
+    expType: pokemon.expType, nature: pokemon.nature, boost: input.boost.kind,
+    boostCandy: boost, expGot: pokemon.currentExpInLevel,
+  });
+  return { total: mixed.boostCandy + mixed.normalCandy, boost: mixed.boostCandy };
 }
+/**
+ * 指定したアメブ枠を確保できなかった量。
+ *
+ * **目標に到達したかどうかとは切り離す。** 「目標まで」行のアメブ数（`plannedCandyForDisplay`）は
+ * グローバル上限を掛けない理論値なので、枠が回ってこなかったことはここでしか表現できない。
+ * 到達していれば黙るようにすると、上位行に枠を取られて指定どおり使えていない行が
+ * 何の警告もなく通ってしまう。
+ *
+ * アメブ枠が 0 の場合も同じ扱いにする。上限を 0 にする操作自体は `recalculateAllRows` が
+ * 全行のアメブを 0 へ再割当てするので通常は起きないが、**保存データの復元では
+ * 「上限 0 ＋ 行のアメブ個数あり」が復元されうる**（初期化時に再割当てを通らないため）。
+ * その状態こそ指定が満たせていないので黙ってはいけない。
+ *
+ * `diagnosis.isBoostShortage` は「目標未達の原因がアメブか」を指す別概念なので、条件を共有しない。
+ * 到達している行の `limitingFactor` は null のままであること。
+ */
+function boostQuotaShortfall(
+  input: NormalizedInput,
+  requestedBoost: number,
+  remainingBoost: number,
+  actualBoostUsed: number,
+): number {
+  if (input.boost.kind === 'none') return 0;
+  // 枠を使い切っているときだけ「枠が足りなかった」と言える。
+  // かけら・アメ在庫で先に止まった行はアメブ枠が余っており、要求量が残枠を超えていても
+  // 原因はアメブではない（例: かけら律速で Lv61 止まり、残枠1,623に対し実使用1,129）。
+  // ここを見ないと、サマリーに「アメブ未使用」と「アメブ不足」が同時に並ぶ。
+  if (actualBoostUsed < remainingBoost) return 0;
+  return Math.max(0, requestedBoost - remainingBoost);
+}
+
+/**
+ * 最も制限的な要因を1つ選ぶ。
+ *
+ * **固定優先順位（`shardsShortage ? 'shards' : …`）で決めてはいけない。**
+ * 各 `xxxShortage` は「その制約だけを課したら目標に届かない」というブール値なので、
+ * かけらが1でも足りなければ、アメが1個も配れない行でも `'shards'` と答えてしまう。
+ *
+ * > 実測: アメ在庫0・かけら500,000（必要537,974）の行で、アメだけを課すと Lv10（元Lvのまま）、
+ * > かけらだけを課すと Lv59+1,193。旧固定優先順位は `'shards'` を返していた。
+ *
+ * 行に出す不足量は `limitingFactor` で1つに絞る（設計書 §10.12）ため、
+ * ここでの誤診はそのまま誤った数値の表示になる（上の例では「かけら不足 37,974」だけが出て、
+ * 実際に足りていないアメ 1,853 が隠れる）。
+ *
+ * 旧仕様（`a5ca21f` の `selectFinalLevelAndExp`）と同じく、**各制約だけを課したときの到達点を比べ、
+ * 最も低い要因**を選ぶ。同点は candy > boost > shards（旧の配列順・安定ソートと同じ）。
+ */
+function pickLimitingFactor(
+  candidates: Array<{ factor: ShortageType; reached: { level: number; expInLevel: number }; isShort: boolean }>,
+): ShortageType | null {
+  let best: { factor: ShortageType; reached: { level: number; expInLevel: number } } | null = null;
+  for (const c of candidates) {
+    if (!c.isShort) continue;
+    if (best === null || cmpLevel(c.reached, best.reached) < 0) best = c;
+  }
+  return best?.factor ?? null;
+}
+
 function calcDiagnosis(pokemon: NormalizedPokemon, line: PokemonPlanLine, usage: Usage, input: NormalizedInput): { shortage: PokemonShortage; diagnosis: PokemonConstraintDiagnosis } {
   const remainingBoost = Math.max(0, input.boost.limit - usage.boost); const remainingShards = Math.max(0, input.dreamShards - usage.shards);
   const availableCandy = remainingCandyValue(input, usage, pokemon);
@@ -2347,25 +2728,40 @@ function calcDiagnosis(pokemon: NormalizedPokemon, line: PokemonPlanLine, usage:
     const total = pokemon.candyTarget.totalCandyUnits;
     const targetBoost = Math.min(candyTargetBoostCap(pokemon, pokemon.requestedBoostCandy, input.boost.kind), total);
     const boostCap = Math.min(targetBoost, remainingBoost, total);
-    const fixedBoost = hasFixedCandyTargetBoost(pokemon);
-    const byCandy = simulateCandyBudget(pokemon, Math.min(boostCap, availableCandy), Math.min(total, availableCandy), Infinity, input.boost.kind, fixedBoost);
-    const byBoost = simulateCandyBudget(pokemon, boostCap, total, Infinity, input.boost.kind, fixedBoost);
-    const byShards = simulateCandyBudget(pokemon, boostCap, total, remainingShards, input.boost.kind, fixedBoost);
-    const theoreticalShards = simulateCandyBudget(pokemon, Math.min(candyTargetBoostCap(pokemon, pokemon.requestedBoostCandy, input.boost.kind), total), total, Infinity, input.boost.kind, fixedBoost).shards;
-    const targetReached = line.targetReached;
-    const inventoryShortage = !targetReached && byCandy.boostUsed + byCandy.normalUsed < total;
-    const boostShortage = !targetReached && input.boost.kind !== 'none' && byBoost.boostUsed < targetBoost;
-    const shardsShortage = !targetReached && byShards.boostUsed + byShards.normalUsed < total;
-    const unallocatedShortage = !targetReached && !inventoryShortage && !boostShortage && !shardsShortage;
+    // **各制約を1つだけ課した到達点**を作る（個数指定なし経路と同じ構造）。
+    // byCandy / byShards にアメブ枠（boostCap）を混ぜると3つとも同じ到達点になり、
+    // `pickLimitingFactor` が同点タイブレークで常に 'candy' を返す（実測: アメブ枠0の行で
+    // 原因がアメブなのに 'candy' と出た）。
+    const byCandy = simulateCandyBudget(pokemon, Math.min(targetBoost, availableCandy), Math.min(total, availableCandy), Infinity, input.boost.kind);
+    const byBoost = simulateCandyBudget(pokemon, boostCap, total, Infinity, input.boost.kind);
+    const byShards = simulateCandyBudget(pokemon, targetBoost, total, remainingShards, input.boost.kind);
+    // 制約を1つも課さない理論到達点。かけら不足量の算出と、下の「律速なし」判定に使う。
+    const unconstrained = simulateCandyBudget(pokemon, targetBoost, total, Infinity, input.boost.kind);
+    const theoreticalShards = unconstrained.shards;
+    // 門番は「アメ到達」（§11.3）。`candyDemandMet`（＝予定アメを配れたか）を使うと、
+    // アメブ枠不足で通常アメへ置換された行が未達のまま「律速なし」になる。
+    //
+    // ただし**制約を全部外しても届かない行に律速は無い**。個数指定が目標に対して
+    // そもそも足りないだけで、資源を増やしても解決しない（`limitingFactor` は
+    // 「その制約が無ければ届いたはず」の要因を指す）。
+    const noLimitToReport = line.effectiveTargetReached || !reachedEffectiveTarget(pokemon, unconstrained);
+    // **到達点で比較する**（§11.3）。「使ったアメ数」で比べると、総アメ数が `candyTarget` に
+    // 固定されている行では常に `used === total` になり、アメブ枠・かけらの不足で
+    // アメブが通常アメへ落ちた（＝同じ個数で得られるEXPが減った）ことを検出できない。
+    // 旧仕様（`a5ca21f` の `selectFinalLevelAndExp`）と個数指定なし経路も到達点で比べている。
+    const inventoryShortage = !noLimitToReport && !reachedEffectiveTarget(pokemon, byCandy);
+    const boostShortage = !noLimitToReport && input.boost.kind !== 'none' && !reachedEffectiveTarget(pokemon, byBoost);
+    const shardsShortage = !noLimitToReport && !reachedEffectiveTarget(pokemon, byShards);
+    const unallocatedShortage = !noLimitToReport && !inventoryShortage && !boostShortage && !shardsShortage;
     const expToActualTarget = Math.max(0, calcExp(line.level, pokemon.targetLevel, pokemon.expType) + pokemon.targetExpInLevel - line.expInLevel);
     return {
       shortage: {
         expToTarget: expToActualTarget,
         candyToTarget: inventoryShortage || unallocatedShortage ? Math.max(0, total - line.totalCandyUnitsUsed) : 0,
         dreamShardShortage: shardsShortage ? Math.max(0, theoreticalShards - remainingShards) : 0,
-        boostCandyUnavailable: boostShortage ? Math.max(0, targetBoost - remainingBoost) : 0,
+        boostCandyUnavailable: boostQuotaShortfall(input, targetBoost, remainingBoost, line.boostedCandyUnits),
       },
-      diagnosis: { byCandyInventory: { level: byCandy.level, expInLevel: byCandy.expInLevel, candyUsed: byCandy.boostUsed + byCandy.normalUsed }, byBoostLimit: { level: byBoost.level, expInLevel: byBoost.expInLevel, candyUsed: byBoost.boostUsed + byBoost.normalUsed }, byDreamShards: { level: byShards.level, expInLevel: byShards.expInLevel, candyUsed: byShards.boostUsed + byShards.normalUsed }, limitingFactor: line.targetReached ? null : shardsShortage ? 'shards' : boostShortage ? 'boost' : inventoryShortage || unallocatedShortage ? 'candy' : null, isInventoryShortage: inventoryShortage || unallocatedShortage, isBoostShortage: boostShortage, isShardsShortage: shardsShortage },
+      diagnosis: { byCandyInventory: { level: byCandy.level, expInLevel: byCandy.expInLevel, candyUsed: byCandy.boostUsed + byCandy.normalUsed }, byBoostLimit: { level: byBoost.level, expInLevel: byBoost.expInLevel, candyUsed: byBoost.boostUsed + byBoost.normalUsed }, byDreamShards: { level: byShards.level, expInLevel: byShards.expInLevel, candyUsed: byShards.boostUsed + byShards.normalUsed }, limitingFactor: noLimitToReport ? null : pickLimitingFactor([{ factor: 'candy', reached: byCandy, isShort: inventoryShortage || unallocatedShortage }, { factor: 'boost', reached: byBoost, isShort: boostShortage }, { factor: 'shards', reached: byShards, isShort: shardsShortage }]), isInventoryShortage: inventoryShortage || unallocatedShortage, isBoostShortage: boostShortage, isShardsShortage: shardsShortage },
     };
   }
   const mixed = targetMixed(pokemon, input.boost.kind, Math.min(pokemon.requestedBoostCandy, remainingBoost));
@@ -2375,7 +2771,7 @@ function calcDiagnosis(pokemon: NormalizedPokemon, line: PokemonPlanLine, usage:
   const inventoryShortage = cmpLevel(byCandy, { level: pokemon.effectiveLevel, expInLevel: pokemon.effectiveExp }) < 0;
   const boostShortage = input.boost.kind !== 'none' && cmpLevel(byBoost, { level: pokemon.effectiveLevel, expInLevel: pokemon.effectiveExp }) < 0;
   const shardsShortage = cmpLevel(byShards, { level: pokemon.effectiveLevel, expInLevel: pokemon.effectiveExp }) < 0;
-  const unallocatedShortage = !line.targetReached && !inventoryShortage && !boostShortage && !shardsShortage;
+  const unallocatedShortage = !line.effectiveTargetReached && !inventoryShortage && !boostShortage && !shardsShortage;
   const expToActualTarget = Math.max(0, calcExp(line.level, pokemon.targetLevel, pokemon.expType) + pokemon.targetExpInLevel - line.expInLevel);
   const requestedTarget = targetMixed(pokemon, input.boost.kind, pokemon.requestedBoostCandy);
   const candyToTarget = inventoryShortage || unallocatedShortage
@@ -2386,9 +2782,9 @@ function calcDiagnosis(pokemon: NormalizedPokemon, line: PokemonPlanLine, usage:
       expToTarget: expToActualTarget,
       candyToTarget,
       dreamShardShortage: shardsShortage ? Math.max(0, mixed.shards - remainingShards) : 0,
-      boostCandyUnavailable: boostShortage ? Math.max(0, requestedTarget.boostCandy - remainingBoost) : 0,
+      boostCandyUnavailable: boostQuotaShortfall(input, requestedTarget.boostCandy, remainingBoost, line.boostedCandyUnits),
     },
-    diagnosis: { byCandyInventory: { level: byCandy.level, expInLevel: byCandy.expInLevel, candyUsed: byCandy.boostUsed + byCandy.normalUsed }, byBoostLimit: { level: byBoost.level, expInLevel: byBoost.expInLevel, candyUsed: byBoost.boostUsed + byBoost.normalUsed }, byDreamShards: { level: byShards.level, expInLevel: byShards.expInLevel, candyUsed: byShards.boostUsed + byShards.normalUsed }, limitingFactor: line.targetReached ? null : shardsShortage ? 'shards' : boostShortage ? 'boost' : inventoryShortage || unallocatedShortage ? 'candy' : null, isInventoryShortage: inventoryShortage || unallocatedShortage, isBoostShortage: boostShortage, isShardsShortage: shardsShortage },
+    diagnosis: { byCandyInventory: { level: byCandy.level, expInLevel: byCandy.expInLevel, candyUsed: byCandy.boostUsed + byCandy.normalUsed }, byBoostLimit: { level: byBoost.level, expInLevel: byBoost.expInLevel, candyUsed: byBoost.boostUsed + byBoost.normalUsed }, byDreamShards: { level: byShards.level, expInLevel: byShards.expInLevel, candyUsed: byShards.boostUsed + byShards.normalUsed }, limitingFactor: line.effectiveTargetReached ? null : pickLimitingFactor([{ factor: 'candy', reached: byCandy, isShort: inventoryShortage || unallocatedShortage }, { factor: 'boost', reached: byBoost, isShort: boostShortage }, { factor: 'shards', reached: byShards, isShort: shardsShortage }]), isInventoryShortage: inventoryShortage || unallocatedShortage, isBoostShortage: boostShortage, isShardsShortage: shardsShortage },
   };
 }
 function consumeInventory(inventory: CandyInventory, pokemon: NormalizedPokemon, line: PokemonPlanLine): void {
@@ -2422,13 +2818,13 @@ export function solveLevelPlan(rawInput: LevelPlannerInput): LevelPlannerResult 
   markPhase('selectChoices');
   const inventory = structuredClone(input.candyInventory); let snapshot = emptyUsage();
   const pokemonResults: PokemonPlanResult[] = choices.map((candidate, index) => {
-    const pokemon = candidate.p; const mixed = calcExpAndCandyMixed({ srcLevel: pokemon.currentLevel, dstLevel: pokemon.targetLevel, dstExpInLevel: pokemon.targetExpInLevel, expType: pokemon.expType, nature: pokemon.nature, boost: input.boost.kind, boostCandy: pokemon.requestedBoostCandy, expGot: pokemon.currentExpInLevel });
-    const candyTargetLine = pokemon.candyTarget ? displayCandyTargetLine(pokemon, input, candidate, inventory) : undefined;
-    const targetLine = displayLine(pokemon, input, inventory, mixed.boostCandy + mixed.normalCandy, mixed.boostCandy, candyTargetLine?.candySupply ?? candidate.line.candySupply);
+    const pokemon = candidate.p;
+    const planned = plannedCandyForDisplay(pokemon, input);
+    const targetLine = displayLine(pokemon, input, inventory, planned.total, planned.boost, candidate.line.candySupply, candidate.line.totalCandyUnitsUsed);
     const diagnostic = calcDiagnosis(pokemon, candidate.line, snapshot, input);
     const role = boundaryIndex === null || index < boundaryIndex ? 'upper' : index === boundaryIndex ? 'boundary' : 'lower';
     consumeInventory(inventory, pokemon, candidate.line); snapshot = mergeUsage(snapshot, candidate.usage);
-    return { pokemonId: pokemon.pokemonId, pokedexId: pokemon.pokedexId, name: pokemon.name, currentLevel: pokemon.currentLevel, currentExpInLevel: pokemon.currentExpInLevel, targetLevel: pokemon.targetLevel, targetExpInLevel: pokemon.targetExpInLevel, targetLine, candyTargetLine, reachableLine: candidate.line, targetReached: candidate.line.targetReached, shortage: diagnostic.shortage, constraintDiagnosis: diagnostic.diagnosis, role };
+    return { pokemonId: pokemon.pokemonId, pokedexId: pokemon.pokedexId, name: pokemon.name, currentLevel: pokemon.currentLevel, currentExpInLevel: pokemon.currentExpInLevel, targetLevel: pokemon.targetLevel, targetExpInLevel: pokemon.targetExpInLevel, targetLine, reachableLine: candidate.line, candyDemandMet: candidate.line.candyDemandMet, shortage: diagnostic.shortage, constraintDiagnosis: diagnostic.diagnosis, role };
   });
   markPhase('renderResults');
   const boostUsed = pokemonResults.reduce((sum, result) => sum + result.reachableLine.boostedCandyUnits, 0);
@@ -2448,6 +2844,8 @@ export function solveLevelPlan(rawInput: LevelPlannerInput): LevelPlannerResult 
         refineStatus: optimized.refineStatus,
         refineReason: optimized.refineReason,
         boundarySearch: optimized.boundarySearch,
+        prefixSearch: optimized.prefixSearch,
+        prefixSearchAttempts: optimized.prefixSearchAttempts,
       },
       lossLedger: toPublicPlannerLossLedger(lossLedger),
       cache: { candidates: candidateCache.size, supplyCandidates: supplyCandidateCache.size },
@@ -2470,6 +2868,8 @@ export function solveLevelPlan(rawInput: LevelPlannerInput): LevelPlannerResult 
       refineStatus: optimized.refineStatus,
       refineReason: optimized.refineReason,
       boundarySearch: optimized.boundarySearch,
+      prefixSearch: optimized.prefixSearch,
+      prefixSearchAttempts: optimized.prefixSearchAttempts,
     },
   };
   activeLossLedger = previousLossLedger;
@@ -2477,7 +2877,7 @@ export function solveLevelPlan(rawInput: LevelPlannerInput): LevelPlannerResult 
 }
 
 function boundaryIndexForChoices(choices: Candidate[]): number | null {
-  const index = choices.findIndex(candidate => !candidate.line.targetReached);
+  const index = choices.findIndex(candidate => !candidate.line.candyDemandMet);
   return index >= 0 ? index : null;
 }
 
@@ -2488,14 +2888,13 @@ function renderMixedResult(input: NormalizedInput, choices: Candidate[], lossLed
   let snapshot = emptyUsage();
   const pokemonResults: PokemonPlanResult[] = normalizedChoices.map((candidate, index) => {
     const pokemon = candidate.p;
-    const mixed = calcExpAndCandyMixed({ srcLevel: pokemon.currentLevel, dstLevel: pokemon.targetLevel, dstExpInLevel: pokemon.targetExpInLevel, expType: pokemon.expType, nature: pokemon.nature, boost: input.boost.kind, boostCandy: pokemon.requestedBoostCandy, expGot: pokemon.currentExpInLevel });
-    const candyTargetLine = pokemon.candyTarget ? displayCandyTargetLine(pokemon, input, candidate, inventory) : undefined;
-    const targetLine = displayLine(pokemon, input, inventory, mixed.boostCandy + mixed.normalCandy, mixed.boostCandy, candyTargetLine?.candySupply ?? candidate.line.candySupply);
+    const planned = plannedCandyForDisplay(pokemon, input);
+    const targetLine = displayLine(pokemon, input, inventory, planned.total, planned.boost, candidate.line.candySupply, candidate.line.totalCandyUnitsUsed);
     const diagnostic = calcDiagnosis(pokemon, candidate.line, snapshot, input);
     const role = boundaryIndex === null || index < boundaryIndex ? 'upper' : index === boundaryIndex ? 'boundary' : 'lower';
     consumeInventory(inventory, pokemon, candidate.line);
     snapshot = mergeUsage(snapshot, candidate.usage);
-    return { pokemonId: pokemon.pokemonId, pokedexId: pokemon.pokedexId, name: pokemon.name, currentLevel: pokemon.currentLevel, currentExpInLevel: pokemon.currentExpInLevel, targetLevel: pokemon.targetLevel, targetExpInLevel: pokemon.targetExpInLevel, targetLine, candyTargetLine, reachableLine: candidate.line, targetReached: candidate.line.targetReached, shortage: diagnostic.shortage, constraintDiagnosis: diagnostic.diagnosis, role };
+    return { pokemonId: pokemon.pokemonId, pokedexId: pokemon.pokedexId, name: pokemon.name, currentLevel: pokemon.currentLevel, currentExpInLevel: pokemon.currentExpInLevel, targetLevel: pokemon.targetLevel, targetExpInLevel: pokemon.targetExpInLevel, targetLine, reachableLine: candidate.line, candyDemandMet: candidate.line.candyDemandMet, shortage: diagnostic.shortage, constraintDiagnosis: diagnostic.diagnosis, role };
   });
   const boostUsed = pokemonResults.reduce((sum, result) => sum + result.reachableLine.boostedCandyUnits, 0);
   const candyShortages = pokemonResults.filter(result => result.shortage.candyToTarget > 0).map(result => ({ pokemonId: result.pokemonId, name: result.name, amount: result.shortage.candyToTarget }));
@@ -2591,11 +2990,11 @@ export const __levelPlannerTestHooks = {
   candidateCacheSize: () => candidateCache.size,
   fbl01dFrontierCacheSize: () => fbl01dFrontierCache.size + fbl01dGlobalPrefixCache.size + fbl01dRowFrontierCache.size,
   compareSyntheticStatesForTest: (
-    a: Array<Partial<PokemonPlanLine> & { targetReached: boolean; level: number; expInLevel: number; species?: number; surplusCandyValue?: number }>,
-    b: Array<Partial<PokemonPlanLine> & { targetReached: boolean; level: number; expInLevel: number; species?: number; surplusCandyValue?: number }>,
+    a: Array<Partial<PokemonPlanLine> & { candyDemandMet: boolean; effectiveTargetReached: boolean; level: number; expInLevel: number; species?: number; surplusCandyValue?: number }>,
+    b: Array<Partial<PokemonPlanLine> & { candyDemandMet: boolean; effectiveTargetReached: boolean; level: number; expInLevel: number; species?: number; surplusCandyValue?: number }>,
     mode: PlannerOptions['itemCompareMode'] = 'legacyImproved',
   ) => {
-    const toCandidate = (line: Partial<PokemonPlanLine> & { targetReached: boolean; level: number; expInLevel: number; species?: number; surplusCandyValue?: number }, index: number): Candidate => {
+    const toCandidate = (line: Partial<PokemonPlanLine> & { candyDemandMet: boolean; effectiveTargetReached: boolean; level: number; expInLevel: number; species?: number; surplusCandyValue?: number }, index: number): Candidate => {
       const supply = { ...emptySupply(), species: line.species ?? 0 };
       const totalCandyUnitsUsed = line.totalCandyUnitsUsed ?? 0;
       const planLine: PokemonPlanLine = {
@@ -2611,7 +3010,10 @@ export const __levelPlannerTestHooks = {
         expGained: line.expGained ?? 0,
         surplusExp: line.surplusExp ?? 0,
         surplusCandyValue: line.surplusCandyValue ?? Math.max(0, supplyValue(line.candySupply ?? supply) - totalCandyUnitsUsed),
-        targetReached: line.targetReached,
+        candyDemandMet: line.candyDemandMet,
+        // §11.3 の2述語は畳まない。`?? line.candyDemandMet` を戻すと、
+        // 2つを混同する回帰をこのフックを使うテストが構造的に検出できなくなる。
+        effectiveTargetReached: line.effectiveTargetReached,
       };
       return {
         p: {
@@ -2664,7 +3066,7 @@ export const __levelPlannerTestHooks = {
     return generatePokemonCandidates(input.pokemonList[pokemonIndex], input).map(candidate => ({
       level: candidate.line.level,
       expInLevel: candidate.line.expInLevel,
-      targetReached: candidate.line.targetReached,
+      candyDemandMet: candidate.line.candyDemandMet,
       totalCandyUnitsUsed: candidate.line.totalCandyUnitsUsed,
       boostedCandyUnits: candidate.line.boostedCandyUnits,
       surplusCandyValue: candidate.line.surplusCandyValue,

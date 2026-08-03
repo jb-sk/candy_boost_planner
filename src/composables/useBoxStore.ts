@@ -88,6 +88,8 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
   const selectedSpecialties = ref<Array<"Berries" | "Ingredients" | "Skills" | "All">>([]);
   const selectedSubSkillEns = ref<string[]>([]);
   const favoritesOnly = ref(false);
+  const inCalculatorOnly = ref(false);
+  const calculatorBoxIds = ref<ReadonlySet<string>>(new Set());
 
   const addName = ref("");
   const addNameHasFocus = ref(false);
@@ -548,7 +550,8 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     const hasFavoriteFilter = favoritesOnly.value;
     const hasSpecialtyFilter = selectedSpecialties.value.length > 0;
     const hasSubSkillFilter = selectedSubSkillEns.value.length > 0;
-    if (!hasFavoriteFilter && !hasSpecialtyFilter && !hasSubSkillFilter) return base;
+    const hasInCalculatorFilter = inCalculatorOnly.value;
+    if (!hasFavoriteFilter && !hasSpecialtyFilter && !hasSubSkillFilter && !hasInCalculatorFilter) return base;
 
     return base.filter((e) => {
       const decoded = getDecodedDetailForEntry(e);
@@ -558,6 +561,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
       const sp = (e.planner?.specialty ?? (pokedexId ? getPokemonSpecialty(pokedexId, form) : "unknown")) as PokemonSpecialty;
       const favoriteOk = !!e.favorite;
       const specialtyOk = (selectedSpecialties.value as readonly string[]).includes(sp);
+      const inCalculatorOk = calculatorBoxIds.value.has(e.id);
 
       const subEns = decoded?.subSkills?.map((s) => s.nameEn) ?? [];
       const subOk = matchSubSkills(subEns, selectedSubSkillEns.value, subSkillJoinMode.value);
@@ -566,9 +570,14 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
       if (hasFavoriteFilter) oks.push(favoriteOk);
       if (hasSpecialtyFilter) oks.push(specialtyOk);
       if (hasSubSkillFilter) oks.push(subOk);
+      if (hasInCalculatorFilter) oks.push(inCalculatorOk);
       return filterJoinMode.value === "and" ? oks.every(Boolean) : oks.some(Boolean);
     });
   });
+
+  function setCalculatorBoxIds(boxIds: Iterable<string>) {
+    calculatorBoxIds.value = new Set(boxIds);
+  }
 
   // サブスキル候補（今のボックスに存在するものだけ）
   const availableSubSkills = computed(() => {
@@ -1365,6 +1374,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     selectedSpecialties,
     selectedSubSkillEns,
     favoritesOnly,
+    inCalculatorOnly,
 
     // add form
     addName,
@@ -1436,6 +1446,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     toggleSpecialty,
     toggleSubSkill,
     toggleFavoriteFilter,
+    setCalculatorBoxIds,
     toggleSelectedFavorite,
     toggleFavoriteById,
     onRelinkInput,

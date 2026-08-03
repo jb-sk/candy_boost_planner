@@ -55,8 +55,9 @@
 
   /* Semantic Accents */
   --star-color: #f0c040;
-  --nature-up: hsl(145, 55%, 42%);
-  --nature-down: hsl(350, 60%, 50%);
+  /* ▲▲ = 赤系 / ▼▼ = 青系。暗い紙面なので明度を上げる */
+  --nature-up: #ef6b6b;
+  --nature-down: #6fa8ea;
 
   /* Border Radius */
   --radius-sm: 3px;

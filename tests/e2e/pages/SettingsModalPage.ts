@@ -39,6 +39,7 @@ export class SettingsModalPage {
   readonly overlay: Locator;
   readonly modal: Locator;
   readonly closeButton: Locator;
+  readonly defaultBoostReachLevelInput: Locator;
 
   // === タブ ===
   readonly inventoryTab: Locator;
@@ -84,6 +85,7 @@ export class SettingsModalPage {
     // グローバル設定
     this.globalSection = page.getByTestId('settings-global-section');
     this.boostCandyRemainingInput = page.getByTestId('settings-boost-remaining-input');
+    this.defaultBoostReachLevelInput = page.getByTestId('settings-default-boost-reach-input');
     this.itemCompareModeSelect = page.getByTestId('settings-item-compare-mode-select');
     this.totalShardsInput = page.getByTestId('settings-total-shards-input');
 
@@ -144,6 +146,7 @@ export class SettingsModalPage {
   // === グローバル設定の操作 ===
   async setBoostCandyRemaining(value: string) {
     await this.boostCandyRemainingInput.fill(value);
+    await this.boostCandyRemainingInput.blur();
   }
 
   async getBoostCandyRemaining(): Promise<string> {
@@ -160,6 +163,7 @@ export class SettingsModalPage {
 
   async setTotalShards(value: string) {
     await this.totalShardsInput.fill(value);
+    await this.totalShardsInput.blur();
   }
 
   async getTotalShards(): Promise<string> {
@@ -174,6 +178,7 @@ export class SettingsModalPage {
       : this.universalCandyLInput;
 
     await input.fill(value.toString());
+    await input.blur();
   }
 
   async getUniversalCandy(size: 'S' | 'M' | 'L'): Promise<number> {
@@ -226,6 +231,7 @@ export class SettingsModalPage {
     const testId = `settings-type-candy-${normalizedName}-${size.toLowerCase()}-input`;
     const input = this.page.getByTestId(testId);
     await input.fill(value.toString());
+    await input.blur();
   }
 
   /**

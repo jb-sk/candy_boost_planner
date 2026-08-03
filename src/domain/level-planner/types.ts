@@ -72,9 +72,8 @@ export type FeasibilityDemandRow = {
   shards: number;
   reachedLv: number;
   expInLevel: number;
-  targetReached: boolean;
+  candyDemandMet: boolean;
   preferZeroSurplus?: boolean;
-  speciesLexWeight?: number;
 };
 
 /** 合同 feasibility が復元する、行単位の実在供給 witness。 */
@@ -108,7 +107,17 @@ export type FeasibilitySolverOptions = {
   fallbackWitness?: FeasibilityWitness;
   /** テスト・制御経路用。状態を近似削減する cap ではなく、打ち切りを inconclusive にする境界。 */
   abortAfterTransitions?: number;
+  /**
+   * 1つの solver context に許す相対時間。**context ごとに開始時刻から測り直される。**
+   * prefix 二分探索のように context を何度も作る経路では、probe ごとに満額使えてしまうため、
+   * 全体の上限を守りたいときは `deadlineAt` を併用すること。
+   */
   deadlineMs?: number;
+  /**
+   * 全 context が共有する絶対締切（`performance.now()` 基準）。
+   * probe をいくつ作っても、合計でこの時刻を超えて探索しない。
+   */
+  deadlineAt?: number;
   logPerformance?: boolean;
   /** 検索用の安全なゲート。指定時は各行の供給余りがこの値を超える行候補を除外する。 */
   maxRowSurplus?: number;
@@ -187,24 +196,21 @@ export type ItemAllocationResult = {
   supplied: number;
 };
 
-/**
- * 万能アメのみの配分結果
- */
-export type UniversalAllocationResult = {
-  s: number;
-  m: number;
-  l: number;
-  supplied: number;
-};
-
 // ============================================================
 // 単一最適化パイプライン（fbl01）
 // ============================================================
 
-/** 個数指定行の入力。個数はすべて価値換算アメ個数。 */
+/**
+ * 個数指定（行が使うアメ数の上限＝目標）の入力。個数はすべて価値換算アメ個数。
+ *
+ * **`boostedCandyUnits` は必須。** 省略可能にしていた頃は、未設定の入力だけが
+ * 「かけら不足ならアメブを通常アメへ振り替える」経路へ落ちていた（実UIの `buildPlannerInput` は
+ * 常に設定するので、テストだけがその経路を通っていた）。アメブ／通常アメの内訳を
+ * 黙って変えないという規則を、型で守る。
+ */
 export type CandyTargetInput = {
   totalCandyUnits: number;
-  boostedCandyUnits?: number;
+  boostedCandyUnits: number;
 };
 
 export type ItemCompareMode = 'surplusFirst' | 'surplusGateFirst' | 'legacyImproved';
@@ -220,8 +226,6 @@ export type PokemonPlanInput = {
   /** 種族アメの共有資源キー。pokedexIdを資源キーへ流用しない。 */
   candyFamilyKey: CandyFamilyKey;
   name: string;
-  /** UIの入力モード。solver計算自体では使わないが、signatureの構造情報に含める。 */
-  mode?: 'targetLevel' | 'peak';
   type: PokemonType;
   currentLevel: number;
   currentExpInLevel: number;
@@ -325,7 +329,22 @@ export type PokemonPlanLine = {
   expGained: number;
   surplusExp: number;
   surplusCandyValue: number;
-  targetReached: boolean;
+  /**
+   * **需要充足**（その行が要求したアメ個数を配り終えたか）。個数指定があるときは `used >= totalCandyUnits`、
+   * 無いときは目標到達と一致する。Lv70 の硬上限に当たった行も「もう配りようがない」ため true。
+   *
+   * 在庫配分・境界判定（`boundaryIndexForChoices` / feasibility の prefix）はこちらを使う。
+   * **不足診断に使ってはいけない**（§11.3）。アメブ枠不足で通常アメへ置換された行は
+   * 予定アメを配り切っても目標Lvへ届かないので、こちらは true のまま未達になる。
+   */
+  candyDemandMet: boolean;
+  /**
+   * **アメ到達**（アメが担当する到達点 `effectiveLevel + effectiveExp` へ届いたか）。
+   *
+   * `calcDiagnosis` の門番はこちら。睡眠EXPは含まない（睡眠は目標を手前へずらすだけで、
+   * アメの担当区間が `effective*` として渡ってくる）。
+   */
+  effectiveTargetReached: boolean;
 };
 
 export type PokemonShortage = {
@@ -351,12 +370,17 @@ export type PokemonPlanResult = {
   name: string;
   currentLevel: number;
   currentExpInLevel: number;
+  /** 睡眠後の最終目標（§4.5.1）。line.level（アメを使い終えた地点）とは別物。 */
   targetLevel: number;
   targetExpInLevel: number;
+  /** 予定アメ（個数指定、なければ目標到達に必要な最小数）を使い終えた地点。 */
   targetLine: PokemonPlanLine;
-  candyTargetLine?: PokemonPlanLine;
   reachableLine: PokemonPlanLine;
-  targetReached: boolean;
+  /**
+   * **需要充足**（`reachableLine.candyDemandMet`）。`role` の算出根拠と同じ意味で、境界判定と揃えてある。
+   * 「目標Lvへ届いたか」は `reachableLine.effectiveTargetReached` を見ること（§11.3）。
+   */
+  candyDemandMet: boolean;
   shortage: PokemonShortage;
   constraintDiagnosis: PokemonConstraintDiagnosis;
   role: 'upper' | 'boundary' | 'lower';
@@ -429,6 +453,30 @@ export type PlannerLossLedger = {
   }>;
 };
 
+/**
+ * 到達 prefix 探索1周ぶんの内訳。**探索量と探索結果を決定的に見張るための診断値。**
+ *
+ * 余りゲートの下では prefix の可解性が単調にならないため、二分探索のあとに
+ * 上側を降順で確かめ直す（`fbl01d…設計書` §14.4.2）。このスキャンは最悪で `O(行数)` 回の
+ * prefix 判定を追加するので、**実時間ではなくこの回数で上限を固定する。**
+ */
+export type PrefixSearchSummary = {
+  solved: number;
+  rejected: number;
+  inconclusive: number;
+  /** 上側スキャン（降順の確かめ直し）だけで走らせた probe 数。 */
+  upperScanProbes: number;
+  /**
+   * その周の探索が返した**最大 feasible prefix 長**（`findPrefix` の返り値そのもの）。
+   *
+   * 最終到達数（`pokemonResults` から数えたもの）とは**別物**である。あいだに
+   * 2周目への fallback（§14.4.3）・refine・フェーズ3（境界より下を残資源で育てる）が挟まり、
+   * とくにフェーズ3は余りゲートの対象外なので**最終到達数のほうが大きくなりうる。**
+   * 探索そのものの正しさを検証するテストは、最終到達数ではなくこの値と突き合わせる。
+   */
+  maxFeasiblePrefix: number;
+};
+
 export type LevelPlannerResult = {
   pokemonResults: PokemonPlanResult[];
   summary: PlannerSummary;
@@ -439,6 +487,21 @@ export type LevelPlannerResult = {
     refineMs?: number;
     refineStatus?: string;
     refineReason?: string;
+    /**
+     * 到達 prefix 探索の内訳。**最後に走った attempt の値**（fallback が発火すると2周目の値になる）。
+     *
+     * **1周目の探索を検証したいなら `prefixSearchAttempts[0]` を見ること。**
+     * 上側スキャンは余りゲートがあるときだけ走るので、ゲートを外す2周目の `upperScanProbes` は
+     * 常に 0 になる。ここだけを見ると、fallback が発火した入力については**上限を何も見張れない。**
+     */
+    prefixSearch?: PrefixSearchSummary;
+    /**
+     * attempt ごとの `prefixSearch`。**`[0]` が1周目（余りゲート内）、`[1]` があれば2周目（バランス）。**
+     *
+     * `surplusFirst` は2周構えなので（`fbl01d…設計書` §14.4.3）、周ごとに探索条件が違う。
+     * `prefixSearch` は上書きされて最後の周しか残らないため、**周を特定して検証するテストはこちらを見る。**
+     */
+    prefixSearchAttempts?: PrefixSearchSummary[];
     boundarySearch?: {
       mode: ItemCompareMode;
       boundaryIndex: number;

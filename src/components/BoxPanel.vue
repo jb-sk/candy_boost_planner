@@ -361,6 +361,18 @@
             <span class="chipBtn__icon" v-html="iconAllSvg" aria-hidden="true"></span>
             <span class="chipBtn__text">{{ gt("オール") }}</span>
           </button>
+          <button
+            class="chipBtn"
+            :class="{ 'chipBtn--on': inCalculatorOnly }"
+            type="button"
+            data-testid="box-filter-calculating"
+            @click="inCalculatorOnly = !inCalculatorOnly"
+            :title="t('box.list.inCalculatorOnlyTitle')"
+            :aria-label="t('box.list.inCalculatorOnlyAria')"
+          >
+            <span class="chipBtn__icon" v-html="iconCheckSvg" aria-hidden="true"></span>
+            <span class="chipBtn__text">{{ t("box.list.calculating") }}</span>
+          </button>
         </div>
 
         <!-- 詳細設定 -->
@@ -1091,11 +1103,14 @@ const calcLinkedBoxIds = computed(() => {
   return s;
 });
 
+watch(calcLinkedBoxIds, (boxIds) => box.setCalculatorBoxIds(boxIds), { immediate: true });
+
 const importText = box.importText;
 const importStatus = box.importStatus;
 const boxFilter = box.boxFilter;
 const filterJoinMode = box.filterJoinMode;
 const favoritesOnly = box.favoritesOnly;
+const inCalculatorOnly = box.inCalculatorOnly;
 const subSkillJoinMode = box.subSkillJoinMode;
 const selectedSubSkillEns = box.selectedSubSkillEns;
 const boxSortKey = box.boxSortKey;
@@ -1203,7 +1218,7 @@ function onCreateToBox() {
     const rawCandy = String(addSpeciesCandy.value).trim();
     const parsedCandy = rawCandy === "" ? undefined : Math.max(0, Math.floor(Number(rawCandy) || 0));
     if (parsedCandy !== undefined) {
-      candyStore.updateSpeciesCandy(addLookup.value.pokedexId, parsedCandy);
+      calc.updateSpeciesCandy(addLookup.value.pokedexId, parsedCandy);
     }
   }
 

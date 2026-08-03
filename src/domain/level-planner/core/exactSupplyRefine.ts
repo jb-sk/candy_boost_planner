@@ -1,5 +1,7 @@
 import { CANDY_VALUES, MAX_ACCEPTABLE_SURPLUS } from '../constants';
 import type { CandyInventory, SolverItemCompareMode } from '../types';
+import { addItemPriority, compareItemPriority, emptyItemPriority, itemPriorityOf } from './itemPriority';
+import type { ItemPriorityTuple } from './itemPriority';
 
 export type ExactSupplyMode = SolverItemCompareMode;
 
@@ -22,15 +24,59 @@ export type ExactSupplyRow = {
   type: string;
   totalCandyCount: number;
   fixedSpecies?: number;
-  speciesLexWeight?: number;
   legacyZeroSurplusPriority?: boolean;
-  targetReached?: boolean;
+  /**
+   * **必須。** 目的関数の `reachedSurplus` は「需要を満たした行の余りだけ」を数える（§11.3）。
+   * 任意にすると、埋め忘れた行が「充足」として黙って集計され、未達行の余りが目的関数へ混ざる。
+   * §10.16 修正1（`CandyTargetInput.boostedCandyUnits` をテストだけが設定していた）と同じ形なので、
+   * 型で塞いである。
+   */
+  candyDemandMet: boolean;
   selected: ExactSupplyUsage;
 };
 
 export type ExactSupplyDemandRow = Omit<ExactSupplyRow, 'selected'> & {
   fixedSpecies: number;
 };
+
+type PreparedRow = ExactSupplyRow & {
+  readonly speciesLexOrder: number;
+};
+
+type PreparedDemandRow = ExactSupplyDemandRow & {
+  readonly speciesLexOrder: number;
+};
+
+type PreparedInputRow = PreparedRow | PreparedDemandRow;
+
+type PreparedSourceRow = {
+  candyFamilyKey: string;
+  type: string;
+  totalCandyCount: number;
+  fixedSpecies?: number;
+  id: string;
+  legacyZeroSurplusPriority?: boolean;
+  candyDemandMet: boolean;
+  readonly speciesLexOrder: number;
+};
+
+/**
+ * `exactSupplyObjectiveFor` に渡す行の最小形。
+ *
+ * **`speciesLexOrder` を任意にしないこと。** 省けると「上位から取る」という種族配分の正規形が
+ * 黙って無効化され（全行の重みが0になるので `speciesLex` が常に0）、
+ * **アイテム優先順位が種族配分を決めてしまう。** 外部型から `speciesLexWeight` を消したのは
+ * まさにこの黙った無効化を防ぐためなので、ここで任意に戻すと同じ穴が開く。
+ */
+type ObjectiveSourceRow = Pick<PreparedSourceRow, 'legacyZeroSurplusPriority' | 'candyDemandMet' | 'speciesLexOrder'>;
+
+function prepareRows(rows: ExactSupplyRow[]): PreparedRow[] {
+  return rows.map((row, originalIndex) => ({
+    ...row,
+    // 余剰プロパティとして渡された値も信用せず、配列順を唯一の入力にする。
+    speciesLexOrder: -originalIndex,
+  }));
+}
 
 export type ExactSupplyObjective = {
   rawSurplus: number;
@@ -39,8 +85,7 @@ export type ExactSupplyObjective = {
   speciesUsed: number;
   speciesLex: number;
   zeroSurplusCount: number;
-  priority: [number, number, number, number, number];
-  legacyPriority: [number, number, number, number];
+  priority: ItemPriorityTuple;
 };
 
 export type ExactSupplyStats = {
@@ -79,7 +124,7 @@ type ExactSupplyCheckpoint = () => void;
 
 type ExactSupplyComponent = {
   indexes: number[];
-  rows: Array<ExactSupplyRow | ExactSupplyDemandRow>;
+  rows: Array<PreparedInputRow>;
 };
 
 type ExactComponentOption = {
@@ -117,7 +162,7 @@ function hasDuplicate(values: string[]): boolean {
   return new Set(values).size !== values.length;
 }
 
-function buildExactSupplyComponents(rows: Array<ExactSupplyRow | ExactSupplyDemandRow>): ExactSupplyComponent[] {
+function buildExactSupplyComponents(rows: PreparedInputRow[]): ExactSupplyComponent[] {
   const parent = rows.map((_, index) => index);
   const find = (index: number): number => {
     let current = index;
@@ -169,7 +214,7 @@ export function exactSupplyUsageValue(usage: Omit<ExactSupplyUsage, 'supply' | '
 }
 
 function emptyExactSupplyObjective(): ExactSupplyObjective {
-  return { rawSurplus: 0, reachedSurplus: 0, normalizedSurplus: 0, speciesUsed: 0, speciesLex: 0, zeroSurplusCount: 0, priority: [0, 0, 0, 0, 0], legacyPriority: [0, 0, 0, 0] };
+  return { rawSurplus: 0, reachedSurplus: 0, normalizedSurplus: 0, speciesUsed: 0, speciesLex: 0, zeroSurplusCount: 0, priority: emptyItemPriority() };
 }
 
 function addExactSupplyObjective(a: ExactSupplyObjective, b: ExactSupplyObjective): ExactSupplyObjective {
@@ -180,32 +225,26 @@ function addExactSupplyObjective(a: ExactSupplyObjective, b: ExactSupplyObjectiv
     speciesUsed: a.speciesUsed + b.speciesUsed,
     speciesLex: a.speciesLex + b.speciesLex,
     zeroSurplusCount: a.zeroSurplusCount + b.zeroSurplusCount,
-    priority: a.priority.map((value, index) => value + b.priority[index]) as ExactSupplyObjective['priority'],
-    legacyPriority: a.legacyPriority.map((value, index) => value + b.legacyPriority[index]) as ExactSupplyObjective['legacyPriority'],
+    priority: addItemPriority(a.priority, b.priority),
   };
 }
 
-export function exactSupplyObjectiveFor(rows: ExactSupplyUsage[], sourceRows: Pick<ExactSupplyRow, 'legacyZeroSurplusPriority' | 'speciesLexWeight' | 'targetReached'>[] = []): ExactSupplyObjective {
+/**
+ * `rows[i]` と `sourceRows[i]` は**位置で対応する**。
+ *
+ * **`sourceRows` に既定値を置いてはいけない。** 省略できると
+ * 「対応が無い」が「全行が需要充足」へ黙って化け、未達行の余りが `reachedSurplus` に混ざる。
+ * 使用側が空配列を渡す場合は `exactSupplyObjectiveFor([], [])` のように**明示する**こと。
+ */
+export function exactSupplyObjectiveFor(rows: ExactSupplyUsage[], sourceRows: ObjectiveSourceRow[]): ExactSupplyObjective {
   return rows.reduce<ExactSupplyObjective>((acc, row, index) => ({
     rawSurplus: acc.rawSurplus + row.surplus,
-    reachedSurplus: acc.reachedSurplus + (sourceRows[index]?.targetReached === false ? 0 : row.surplus),
+    reachedSurplus: acc.reachedSurplus + (sourceRows[index]?.candyDemandMet === false ? 0 : row.surplus),
     normalizedSurplus: acc.normalizedSurplus + (row.surplus <= 2 ? 0 : row.surplus),
     speciesUsed: acc.speciesUsed + row.species,
-    speciesLex: acc.speciesLex + row.species * (sourceRows[index]?.speciesLexWeight ?? 0),
+    speciesLex: acc.speciesLex + row.species * (sourceRows[index]?.speciesLexOrder ?? 0),
     zeroSurplusCount: acc.zeroSurplusCount + (sourceRows[index]?.legacyZeroSurplusPriority && row.surplus === 0 ? 1 : 0),
-    priority: [
-      acc.priority[0] + row.typeS,
-      acc.priority[1] + row.typeM,
-      acc.priority[2] + row.universalS,
-      acc.priority[3] + row.universalM,
-      acc.priority[4] + row.universalL,
-    ],
-    legacyPriority: [
-      acc.legacyPriority[0] - row.universalL,
-      acc.legacyPriority[1] - row.universalM,
-      acc.legacyPriority[2] + row.typeS,
-      acc.legacyPriority[3] + row.typeM,
-    ],
+    priority: addItemPriority(acc.priority, itemPriorityOf(row)),
   }), emptyExactSupplyObjective());
 }
 
@@ -215,23 +254,23 @@ export function compareExactSupplyObjective(a: ExactSupplyObjective, b: ExactSup
     if (a.reachedSurplus !== b.reachedSurplus) return a.reachedSurplus < b.reachedSurplus ? 1 : -1;
     if (a.zeroSurplusCount !== b.zeroSurplusCount) return a.zeroSurplusCount > b.zeroSurplusCount ? 1 : -1;
     if (a.rawSurplus !== b.rawSurplus) return a.rawSurplus < b.rawSurplus ? 1 : -1;
-  }
-  if (isLegacyLikeMode(mode)) {
+    if (a.speciesLex !== b.speciesLex) return a.speciesLex > b.speciesLex ? 1 : -1;
+  } else if (isLegacyLikeMode(mode)) {
     if (a.zeroSurplusCount !== b.zeroSurplusCount) return a.zeroSurplusCount > b.zeroSurplusCount ? 1 : -1;
     const acceptableA = a.normalizedSurplus === 0;
     const acceptableB = b.normalizedSurplus === 0;
     if (acceptableA !== acceptableB) return acceptableA ? 1 : -1;
     if (!acceptableA && a.normalizedSurplus !== b.normalizedSurplus) return a.normalizedSurplus < b.normalizedSurplus ? 1 : -1;
-    for (let index = 0; index < a.legacyPriority.length; index++) {
-      if (a.legacyPriority[index] !== b.legacyPriority[index]) return a.legacyPriority[index] > b.legacyPriority[index] ? 1 : -1;
-    }
+    if (a.speciesLex !== b.speciesLex) return a.speciesLex > b.speciesLex ? 1 : -1;
+    const priority = compareItemPriority(a.priority, b.priority);
+    if (priority) return priority;
+    // 余り0〜2を同等扱いする分、スコア同点でも供給価値がずれる。ここで明示的に詰める。
     if (a.rawSurplus !== b.rawSurplus) return a.rawSurplus < b.rawSurplus ? 1 : -1;
+    return 0;
+  } else {
+    if (a.speciesLex !== b.speciesLex) return a.speciesLex > b.speciesLex ? 1 : -1;
   }
-  for (let index = 0; index < a.priority.length; index++) {
-    if (a.priority[index] !== b.priority[index]) return a.priority[index] > b.priority[index] ? 1 : -1;
-  }
-  if (a.speciesLex !== b.speciesLex) return a.speciesLex > b.speciesLex ? 1 : -1;
-  return 0;
+  return compareItemPriority(a.priority, b.priority);
 }
 
 function maxSpeciesPotential(rows: ExactSupplyRow[], inventory: CandyInventory): number {
@@ -323,7 +362,7 @@ function validateSelectedRows(
 }
 
 function enumerateRowOptions(
-  row: Pick<ExactSupplyRow, 'candyFamilyKey' | 'type' | 'totalCandyCount' | 'fixedSpecies' | 'id' | 'legacyZeroSurplusPriority'>,
+  row: Pick<PreparedSourceRow, 'candyFamilyKey' | 'type' | 'totalCandyCount' | 'fixedSpecies' | 'id' | 'legacyZeroSurplusPriority' | 'candyDemandMet' | 'speciesLexOrder'>,
   inventory: CandyInventory,
   maxSurplus: number,
   allowSpeciesSplit: boolean,
@@ -399,7 +438,7 @@ function enumerateRowOptions(
 }
 
 function pruneDominatedRowOptions(
-  row: Pick<ExactSupplyRow, 'legacyZeroSurplusPriority'>,
+  row: Pick<PreparedSourceRow, 'legacyZeroSurplusPriority' | 'candyDemandMet' | 'speciesLexOrder'>,
   options: ExactSupplyUsage[],
   needsSharedStockTracking: boolean,
   mode: ExactSupplyMode,
@@ -424,12 +463,12 @@ function pruneDominatedRowOptions(
 function bestObjective(options: ExactSupplyObjective[], mode: ExactSupplyMode): ExactSupplyObjective {
   return options.reduce((best, objective) => (
     compareExactSupplyObjective(objective, best, mode) > 0 ? objective : best
-  ), exactSupplyObjectiveFor([]));
+  ), exactSupplyObjectiveFor([], []));
 }
 
 function remainingUpperBounds(objectives: ExactSupplyObjective[]): ExactSupplyObjective[] {
   const bounds = Array<ExactSupplyObjective>(objectives.length + 1);
-  bounds[objectives.length] = exactSupplyObjectiveFor([]);
+  bounds[objectives.length] = exactSupplyObjectiveFor([], []);
   for (let index = objectives.length - 1; index >= 0; index--) {
     bounds[index] = addExactSupplyObjective(objectives[index], bounds[index + 1]);
   }
@@ -448,7 +487,7 @@ function cannotBeatIncumbent(
 }
 
 function solveExactSupplyRowsDirect(
-  rows: Array<ExactSupplyRow | ExactSupplyDemandRow>,
+  rows: PreparedInputRow[],
   inventory: CandyInventory,
   mode: ExactSupplyMode,
   selectedObjective?: ExactSupplyObjective,
@@ -492,7 +531,7 @@ function solveExactSupplyRowsDirect(
   };
 
   const initialState: ExactState = {
-    objective: exactSupplyObjectiveFor([]),
+    objective: exactSupplyObjectiveFor([], []),
     rows: [],
     species: {},
     typeS: {},
@@ -629,7 +668,7 @@ function solveExactSupplyComponentFrontier(
   };
 
   const initialState: ExactState = {
-    objective: exactSupplyObjectiveFor([]),
+    objective: exactSupplyObjectiveFor([], []),
     rows: [],
     species: {},
     typeS: {},
@@ -738,7 +777,7 @@ function solveExactSupplyComponentFrontier(
 }
 
 function solveExactSupplyRowsByComponents(
-  rows: Array<ExactSupplyRow | ExactSupplyDemandRow>,
+  rows: PreparedInputRow[],
   inventory: CandyInventory,
   mode: ExactSupplyMode,
   selectedObjective: ExactSupplyObjective | undefined,
@@ -780,7 +819,7 @@ function solveExactSupplyRowsByComponents(
 
   let states = new Map<string, ComponentGlobalState>();
   states.set('0|0|0', {
-    objective: exactSupplyObjectiveFor([]),
+    objective: exactSupplyObjectiveFor([], []),
     rows: [],
     universalS: 0,
     universalM: 0,
@@ -869,7 +908,7 @@ function solveExactSupplyRowsByComponents(
 }
 
 function solveExactSupplyRows(
-  rows: Array<ExactSupplyRow | ExactSupplyDemandRow>,
+  rows: PreparedInputRow[],
   inventory: CandyInventory,
   mode: ExactSupplyMode,
   selectedObjective?: ExactSupplyObjective,
@@ -885,10 +924,14 @@ export function solveExactSupplyForFixedRows(
   mode: ExactSupplyMode,
   checkpoint?: ExactSupplyCheckpoint,
 ): ExactSupplyRefineResult {
+  const preparedRows: PreparedDemandRow[] = rows.map((row, originalIndex) => ({
+    ...row,
+    speciesLexOrder: -originalIndex,
+  }));
   const speciesUsed: Record<string, number> = {};
   let totalResidual = 0;
   const residualByType: Record<string, number> = {};
-  for (const row of rows) {
+  for (const row of preparedRows) {
     const key = row.candyFamilyKey;
     speciesUsed[key] = (speciesUsed[key] ?? 0) + row.fixedSpecies;
     if (speciesUsed[key] > (inventory.species[key] ?? 0)) return { status: 'no_feasible_combination', reason: `species_stock_exceeded:${key}` };
@@ -900,29 +943,29 @@ export function solveExactSupplyForFixedRows(
     + inventory.universal.m * CANDY_VALUES.universal.m
     + inventory.universal.l * CANDY_VALUES.universal.l;
   const typeValue = Object.values(inventory.typeCandy).reduce((sum, stock) => sum + stock.s * CANDY_VALUES.type.s + stock.m * CANDY_VALUES.type.m, 0);
-  if (totalResidual > typeValue + universalValue + rows.length * CANDY_VALUES.universal.l) {
+  if (totalResidual > typeValue + universalValue + preparedRows.length * CANDY_VALUES.universal.l) {
     return { status: 'no_feasible_combination', reason: 'insufficient_total_value' };
   }
   for (const [type, residual] of Object.entries(residualByType)) {
     const stock = inventory.typeCandy[type] ?? { s: 0, m: 0 };
     const localTypeValue = stock.s * CANDY_VALUES.type.s + stock.m * CANDY_VALUES.type.m;
-    if (residual > localTypeValue + universalValue + rows.length * CANDY_VALUES.universal.l) {
+    if (residual > localTypeValue + universalValue + preparedRows.length * CANDY_VALUES.universal.l) {
       return { status: 'no_feasible_combination', reason: `insufficient_type_or_universal_value:${type}` };
     }
   }
   if (isLegacyLikeMode(mode)) {
-    const acceptable = solveExactSupplyRows(rows, inventory, mode, undefined, MAX_ACCEPTABLE_SURPLUS, checkpoint);
+    const acceptable = solveExactSupplyRows(preparedRows, inventory, mode, undefined, MAX_ACCEPTABLE_SURPLUS, checkpoint);
     if (acceptable.status === 'ok') return acceptable;
     if (acceptable.status !== 'no_feasible_combination') return acceptable;
   } else {
     for (let maxSurplus = 0; maxSurplus <= CANDY_VALUES.universal.l; maxSurplus++) {
       checkpoint?.();
-      const solved = solveExactSupplyRows(rows, inventory, mode, undefined, maxSurplus, checkpoint);
+      const solved = solveExactSupplyRows(preparedRows, inventory, mode, undefined, maxSurplus, checkpoint);
       if (solved.status === 'ok') return solved;
       if (solved.status !== 'no_feasible_combination') return solved;
     }
   }
-  return solveExactSupplyRows(rows, inventory, mode, undefined, CANDY_VALUES.universal.l, checkpoint);
+  return solveExactSupplyRows(preparedRows, inventory, mode, undefined, CANDY_VALUES.universal.l, checkpoint);
 }
 
 export function refineExactSupply(
@@ -931,20 +974,21 @@ export function refineExactSupply(
   mode: ExactSupplyMode,
   checkpoint?: ExactSupplyCheckpoint,
 ): ExactSupplyRefineResult {
-  const selectedRows = rows.map(row => row.selected);
-  const selectedObjective = exactSupplyObjectiveFor(selectedRows, rows);
-  const selectedValidation = validateSelectedRows(rows, inventory);
+  const preparedRows = prepareRows(rows);
+  const selectedRows = preparedRows.map(row => row.selected);
+  const selectedObjective = exactSupplyObjectiveFor(selectedRows, preparedRows);
+  const selectedValidation = validateSelectedRows(preparedRows, inventory);
   if (!selectedValidation.ok) {
     return { status: 'invalid_selected', reason: selectedValidation.reason, selectedObjective };
   }
 
   const run = (maxSurplus: number): ExactSupplyRefineResult => {
-    const demandRows = rows.map(row => ({ ...row, fixedSpecies: row.fixedSpecies }));
+    const demandRows: PreparedInputRow[] = preparedRows.map(row => ({ ...row, fixedSpecies: row.fixedSpecies }));
     const solved = solveExactSupplyRows(demandRows, inventory, mode, selectedObjective, maxSurplus, checkpoint);
     return solved.status === 'ok' ? { ...solved, scope: `candidate-surplus<=${maxSurplus}` } : solved;
   };
 
-  const broadMaxSurplus = maxCandidateSurplus(selectedObjective, mode, rows, inventory);
+  const broadMaxSurplus = maxCandidateSurplus(selectedObjective, mode, preparedRows, inventory);
   if (isLegacyLikeMode(mode) && selectedObjective.normalizedSurplus > 0 && broadMaxSurplus > MAX_ACCEPTABLE_SURPLUS) {
     const acceptable = run(MAX_ACCEPTABLE_SURPLUS);
     if (acceptable.status === 'ok') return acceptable;

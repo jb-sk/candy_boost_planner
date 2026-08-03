@@ -1,6 +1,9 @@
 import { CANDY_VALUES } from './constants';
 import { validateFeasibilityWitness } from './core/feasibilityWitness';
 import { getCandyFamilyKey } from '../pokesleep/candy-family';
+import { calcSleepTimeForExp, sleepExpBonusMultiplier, type SleepExpBreakdown, type SleepTimeResult } from '../pokesleep/sleep-growth';
+import { calcSleepReachLevel } from './sleepReachLevel';
+import type { ExpType } from '../types';
 import type {
   BoostKind,
   CalculationMode,
@@ -18,6 +21,36 @@ import type {
   StructuralProbeStatus,
 } from './types';
 
+/**
+ * 行ごとの睡眠EXP中間値（?perf=1 の検算用）。
+ * markForSleep が実際に返した値をそのまま持つ。`needed` は画面に出る「あと何日寝るか」。
+ */
+export type DebugExportSleepRow = {
+  /** 保存された睡眠目標時間（h） */
+  sleepTargetHours: number;
+  /** 累計睡眠時間（h） */
+  sleepHours: number;
+  /** これから寝る時間（h）= max(0, 目標 − 累計） */
+  remainingHours: number;
+  /** 目標時間を1日単位へ切り上げた日数 */
+  requiredDays: number;
+  /** 合計睡眠EXP */
+  sleepExp: number;
+  breakdown: SleepExpBreakdown;
+  /** 残EXPから逆算した所要睡眠。planner 結果がない行では undefined */
+  needed?: {
+    kind: SleepTimeResult['kind'];
+    /** 長期概算のときの日数 */
+    days?: number;
+    /** 長期概算のときの合計分数（= 日数 × 1日の睡眠時間） */
+    totalMinutes?: number;
+    /** 1回睡眠で届くときの必要スコアと分レンジ */
+    score?: number;
+    minutesMin?: number;
+    minutesMax?: number;
+  };
+};
+
 export type DebugExportRow = {
   id: string;
   name: string;
@@ -25,13 +58,16 @@ export type DebugExportRow = {
   candyFamilyKey?: string;
   type: string;
   nature: string;
-  mode: string;
+  expType: ExpType;
   currentLevel: number;
   currentExpInLevel: number;
   expRemaining: number;
   targetLevel: number;
   targetExpInLevel?: number;
   candyTarget?: number;
+  sleepTargetMode?: "all";
+  /** 睡眠目標が未設定の行では undefined */
+  sleep?: DebugExportSleepRow;
   plan: PokemonPlanResult | null;
 };
 
@@ -59,6 +95,8 @@ export type DebugExportContext = {
   inventorySnapshot: CandyInventory;
   boost: { kind: BoostKind; limit: number };
   dreamShards: number;
+  /** グローバル睡眠設定。行ごとの睡眠EXPはこれと性格から決まる */
+  sleepSettings: { dailySleepHours: number; sleepExpBonusCount: number; includeGSD: boolean };
   displayed: DebugExportDisplayedResult | null;
   performanceProfile: DebugExportPerformanceProfile;
   /** Documents that exact supply information came from the normal calculation path. */
@@ -231,7 +269,7 @@ function feasibilityDemandRow(row: DebugExportRow & { plan: PokemonPlanResult })
     shards: line.dreamShardsUsed,
     reachedLv: line.level,
     expInLevel: line.expInLevel,
-    targetReached: line.targetReached,
+    candyDemandMet: line.candyDemandMet,
   };
 }
 
@@ -277,7 +315,7 @@ function buildFeasibilityTsv(context: DebugExportContext): string[] {
     ...demandRows[index],
     supply: feasibilitySupply(row.plan.reachableLine),
   }));
-  const boundaryIndex = demandRows.findIndex(row => !row.targetReached);
+  const boundaryIndex = demandRows.findIndex(row => !row.candyDemandMet);
   const witness: FeasibilityWitness = {
     reachedCount: boundaryIndex === -1 ? demandRows.length : boundaryIndex,
     boundaryIndex: boundaryIndex === -1 ? null : boundaryIndex,
@@ -308,7 +346,7 @@ function buildFeasibilityTsv(context: DebugExportContext): string[] {
     lines.push('selectedValidation\terrors');
     lines.push(['invalid', validation.errors.join(',')].map(tsvCell).join('\t'));
   }
-  lines.push('selectedRows\tindex\tname\tcandyFamilyKey\ttotalCandy\tboostCandy\tnormalCandy\tshards\treachedLv\texpInLevel\ttargetReached\tspecies\ttypeS\ttypeM\tuniversalS\tuniversalM\tuniversalL\tsupply\tsurplus');
+  lines.push('selectedRows\tindex\tname\tcandyFamilyKey\ttotalCandy\tboostCandy\tnormalCandy\tshards\treachedLv\texpInLevel\tcandyDemandMet\tspecies\ttypeS\ttypeM\tuniversalS\tuniversalM\tuniversalL\tsupply\tsurplus');
   witness.rows.forEach((row, index) => {
     const supply = row.supply.species
       + row.supply.typeS * CANDY_VALUES.type.s
@@ -318,7 +356,7 @@ function buildFeasibilityTsv(context: DebugExportContext): string[] {
       + row.supply.universalL * CANDY_VALUES.universal.l;
     lines.push([
       'selected', index + 1, rows[index].name, row.candyFamilyKey, row.totalCandy, row.boostCandy,
-      row.normalCandy, row.shards, row.reachedLv, row.expInLevel, row.targetReached,
+      row.normalCandy, row.shards, row.reachedLv, row.expInLevel, row.candyDemandMet,
       row.supply.species, row.supply.typeS, row.supply.typeM, row.supply.universalS,
       row.supply.universalM, row.supply.universalL, supply, supply - row.totalCandy,
     ].map(tsvCell).join('\t'));
@@ -414,11 +452,137 @@ function buildBoundarySearchTsv(context: DebugExportContext): string[] {
   return lines;
 }
 
+const SLEEP_REACH_HEADERS = [
+  'sleepReachStatus', 'sleepReachReason', 'sleepReachLevel',
+  'sleepReachTenths', 'sleepReachDisplay', 'sleepReachRatio',
+] as const;
+
+/**
+ * 睡眠到達Lvの6列。**空欄と「出さないと決めた」を混ぜないため、非表示理由まで出す。**
+ *
+ * `sleepExp` を引数で受けるのは、「すべて睡眠」の行が `row.sleep` を持たないから
+ * （計画睡眠EXPが無い＝§2.3）。その行では 0 を渡し、`noSleepExp` という理由が
+ * TSV から読めるようにする。ここを空欄にすると「計算していない」と区別できない。
+ */
+function sleepReachCells(row: DebugExportRow, sleepExp: number): Array<string | number> {
+  if (!row.plan) return ['notComputed', 'planUnavailable', '', '', '', ''];
+
+  const outcome = calcSleepReachLevel({
+    reachedLevel: row.plan.reachableLine.level,
+    reachedExpInLevel: row.plan.reachableLine.expInLevel,
+    sleepExp,
+    targetLevel: row.plan.targetLevel,
+    targetExpInLevel: row.plan.targetExpInLevel,
+    expType: row.expType,
+  });
+  if (!outcome.shown) return ['hidden', outcome.reason, '', '', '', ''];
+
+  return [
+    'shown',
+    '',
+    outcome.level,
+    outcome.tenths ?? 'notApplicable',
+    outcome.tenths === null ? `${outcome.level}` : `${outcome.level}.${outcome.tenths}`,
+    outcome.ratio ?? 'notApplicable',
+  ];
+}
+
+/**
+ * 睡眠EXPの中間値（設計書§6.4）。
+ *
+ * 画面には個数指定と必要日数という下流の結果しか出ないため、
+ * どの段階で食い違っているかを切り分けられるよう入力から合計までを1行に並べる。
+ * `1日の睡眠EXP` はゲームで一晩寝れば確かめられるので、そこを起点に検算できる。
+ */
+function buildSleepExpTsv(context: DebugExportContext): string[] {
+  const s = context.sleepSettings;
+  const lines = [
+    'SLEEP_EXP',
+    'settings\tdailySleepHours\tsleepExpBonusCount\tsleepExpBonus\tincludeGSD',
+    ['settings', s.dailySleepHours, s.sleepExpBonusCount, sleepExpBonusMultiplier(s.sleepExpBonusCount), s.includeGSD].map(tsvCell).join('\t'),
+  ];
+
+  const sleepRows = context.rows
+    .map((row, index) => ({ row, index }))
+    .filter((x): x is { row: DebugExportRow & { sleep: DebugExportSleepRow }; index: number } => x.row.sleep !== undefined);
+  if (!sleepRows.length) {
+    lines.push('row\tnone');
+    return lines;
+  }
+
+  lines.push([
+    'row', 'index', 'id', 'name', 'nature', 'naturePercent',
+    'sleepTargetHours', 'sleepHours', 'remainingHours',
+    'dailySleepMinutes', 'dailyScore', 'sleepExpBonus', 'dailyExp', 'requiredDays', 'gsdExtra', 'sleepExp',
+    'candyTarget', 'targetLv', 'targetExpInLevel', 'expToTarget',
+    ...SLEEP_REACH_HEADERS,
+    'neededKind', 'neededDays', 'neededMinutes', 'neededScore', 'neededMinutesMin', 'neededMinutesMax',
+  ].join('\t'));
+
+  for (const { row, index } of sleepRows) {
+    const b = row.sleep.breakdown;
+    const n = row.sleep.needed;
+    lines.push([
+      'row', index + 1, row.id, row.name, row.nature, b.naturePercent,
+      row.sleep.sleepTargetHours, row.sleep.sleepHours, row.sleep.remainingHours,
+      b.dailySleepMinutes, b.dailyScore, b.sleepExpBonus, b.dailyExp, row.sleep.requiredDays, b.gsdExtra, row.sleep.sleepExp,
+      row.candyTarget ?? '', row.targetLevel, row.targetExpInLevel ?? '', row.plan?.shortage.expToTarget ?? '',
+      ...sleepReachCells(row, row.sleep.sleepExp),
+      n?.kind ?? '', n?.days ?? '', n?.totalMinutes ?? '', n?.score ?? '', n?.minutesMin ?? '', n?.minutesMax ?? '',
+    ].map(tsvCell).join('\t'));
+  }
+  return lines;
+}
+
+/** 「すべて睡眠」は計画睡眠EXPを持たないため、固定睡眠とは別の節に出す。 */
+function buildAllSleepTsv(context: DebugExportContext): string[] {
+  const lines = [
+    'ALL_SLEEP',
+    [
+      'row', 'index', 'id', 'name', 'nature', 'expToTarget',
+      ...SLEEP_REACH_HEADERS,
+      'neededKind', 'neededDays', 'neededMinutes', 'neededScore', 'neededMinutesMin', 'neededMinutesMax',
+    ].join('\t'),
+  ];
+  const rows = context.rows
+    .map((row, index) => ({ row, index }))
+    .filter(({ row }) => row.sleepTargetMode === "all");
+  if (!rows.length) {
+    lines.push('row\tnone');
+    return lines;
+  }
+
+  const s = context.sleepSettings;
+  const sleepExpBonus = sleepExpBonusMultiplier(s.sleepExpBonusCount);
+  for (const { row, index } of rows) {
+    const expToTarget = row.plan?.shortage.expToTarget ?? 0;
+    const needed = calcSleepTimeForExp({
+      expToTarget,
+      nature: row.nature as "down" | "normal" | "up",
+      dailySleepHours: s.dailySleepHours,
+      sleepExpBonus,
+      includeGSD: s.includeGSD,
+    });
+    lines.push([
+      'row', index + 1, row.id, row.name, row.nature, expToTarget,
+      // 「すべて睡眠」に計画睡眠EXPは無い（§2.3）。0 を渡して `noSleepExp` を明示する。
+      ...sleepReachCells(row, 0),
+      needed.kind,
+      needed.kind === 'long-term-estimate' ? needed.requiredDays : '',
+      needed.kind === 'long-term-estimate' ? needed.totalMinutes : '',
+      needed.kind === 'within-one-sleep' ? needed.requiredScore : '',
+      needed.kind === 'within-one-sleep' ? needed.minutesMin : '',
+      needed.kind === 'within-one-sleep' ? needed.minutesMax : '',
+    ].map(tsvCell).join('\t'));
+  }
+  return lines;
+}
+
 export function buildDebugExportTsv(context: DebugExportContext): string {
   const headers = [
-    'index', 'id', 'name', 'pokedexId', 'candyFamilyKey', 'type', 'nature', 'mode',
-    'currentLv', 'currentExpInLevel', 'expRemaining', 'targetLv', 'targetExpInLevel', 'candyTarget',
-    'boostKind', 'itemCompareMode', 'calculationScope', 'reachedLv', 'targetReached', 'role', 'expToNext', 'expToTarget',
+    'index', 'id', 'name', 'pokedexId', 'candyFamilyKey', 'type', 'nature',
+    'currentLv', 'currentExpInLevel', 'expRemaining', 'targetLv', 'targetExpInLevel', 'candyTarget', 'sleepTargetMode',
+    'boostKind', 'itemCompareMode', 'calculationScope', 'reachedLv', 'candyDemandMet', 'role', 'expToNext', 'expToTarget',
     'shortageCandy', 'shortageBoost', 'shortageShards', 'limitingFactor', 'initialSpeciesStock',
     'reachableBoost', 'reachableNormal', 'reachableTotalCandy', 'reachableShards',
     'reachableSpecies', 'reachableTypeS', 'reachableTypeM', 'reachableUniversalS', 'reachableUniversalM', 'reachableUniversalL',
@@ -426,9 +590,9 @@ export function buildDebugExportTsv(context: DebugExportContext): string {
     'targetBoost', 'targetNormal', 'targetTotalCandy', 'targetShards',
     'targetSpecies', 'targetTypeS', 'targetTypeM', 'targetUniversalS', 'targetUniversalM', 'targetUniversalL',
     'targetTotalSupply', 'targetItemValue', 'targetNonSpeciesItemValue', 'targetSurplus',
-    'limitBoost', 'limitNormal', 'limitTotalCandy', 'limitShards',
-    'limitSpecies', 'limitTypeS', 'limitTypeM', 'limitUniversalS', 'limitUniversalM', 'limitUniversalL',
-    'limitTotalSupply', 'limitItemValue', 'limitNonSpeciesItemValue', 'limitSurplus',
+    // targetLv/targetExpInLevel は睡眠後の最終目標。アメを使い終えた地点は別列で出す（設計書§6.4）。
+    'plannedCandyEndLevel', 'plannedCandyEndExpInLevel',
+    'reachableCandyEndLevel', 'reachableCandyEndExpInLevel',
   ];
   const lines = [headers.join('\t')];
   if (!context.result) return lines.join('\n');
@@ -436,20 +600,16 @@ export function buildDebugExportTsv(context: DebugExportContext): string {
   context.rows.forEach((row, index) => {
     const plan = row.plan;
     if (!plan) {
-      lines.push([index + 1, row.id, row.name, row.pokedexId ?? '', row.candyFamilyKey ?? (row.pokedexId ? getCandyFamilyKey(row.pokedexId) : ''), row.type, row.nature, row.mode, row.currentLevel, row.currentExpInLevel, row.expRemaining, row.targetLevel, row.targetExpInLevel ?? '', row.candyTarget ?? '', context.boost.kind, context.itemCompareMode, calculationScopeForRow(context, index)].map(tsvCell).join('\t'));
+      lines.push([index + 1, row.id, row.name, row.pokedexId ?? '', row.candyFamilyKey ?? (row.pokedexId ? getCandyFamilyKey(row.pokedexId) : ''), row.type, row.nature, row.currentLevel, row.currentExpInLevel, row.expRemaining, row.targetLevel, row.targetExpInLevel ?? '', row.candyTarget ?? '', row.sleepTargetMode ?? '', context.boost.kind, context.itemCompareMode, calculationScopeForRow(context, index)].map(tsvCell).join('\t'));
       return;
     }
     const reachable = plan.reachableLine;
     const target = plan.targetLine;
-    const limit = plan.candyTargetLine;
     const targetTotal = target.boostedCandyUnits + target.nonBoostCandyUnits;
-    const limitBoost = limit?.boostedCandyUnits ?? '';
-    const limitNormal = limit?.nonBoostCandyUnits ?? '';
-    const limitTotal = limit ? limit.boostedCandyUnits + limit.nonBoostCandyUnits : '';
     lines.push([
-      index + 1, row.id, row.name, plan.pokedexId, row.candyFamilyKey ?? getCandyFamilyKey(plan.pokedexId), row.type, row.nature, row.mode,
-      row.currentLevel, row.currentExpInLevel, row.expRemaining, row.targetLevel, plan.targetExpInLevel, row.candyTarget ?? '',
-      context.boost.kind, context.itemCompareMode, calculationScopeForRow(context, index), reachable.level, reachable.targetReached, plan.role,
+      index + 1, row.id, row.name, plan.pokedexId, row.candyFamilyKey ?? getCandyFamilyKey(plan.pokedexId), row.type, row.nature,
+      row.currentLevel, row.currentExpInLevel, row.expRemaining, row.targetLevel, plan.targetExpInLevel, row.candyTarget ?? '', row.sleepTargetMode ?? '',
+      context.boost.kind, context.itemCompareMode, calculationScopeForRow(context, index), reachable.level, reachable.candyDemandMet, plan.role,
       reachable.expToNextLevel, plan.shortage.expToTarget, plan.shortage.candyToTarget, plan.shortage.boostCandyUnavailable,
       plan.shortage.dreamShardShortage, plan.constraintDiagnosis.limitingFactor ?? '', context.inventorySnapshot.species[row.candyFamilyKey ?? getCandyFamilyKey(plan.pokedexId)] ?? 0,
       reachable.boostedCandyUnits, reachable.nonBoostCandyUnits, reachable.totalCandyUnitsUsed, reachable.dreamShardsUsed,
@@ -458,12 +618,13 @@ export function buildDebugExportTsv(context: DebugExportContext): string {
       target.boostedCandyUnits, target.nonBoostCandyUnits, targetTotal, target.dreamShardsUsed,
       target.candySupply.species, target.candySupply.type.s, target.candySupply.type.m, target.candySupply.universal.s, target.candySupply.universal.m, target.candySupply.universal.l,
       lineItemValue(target), lineItemValue(target), lineNonSpeciesItemValue(target), lineSurplus(target),
-      limitBoost, limitNormal, limitTotal, limit?.dreamShardsUsed ?? '',
-      limit?.candySupply.species ?? '', limit?.candySupply.type.s ?? '', limit?.candySupply.type.m ?? '', limit?.candySupply.universal.s ?? '', limit?.candySupply.universal.m ?? '', limit?.candySupply.universal.l ?? '',
-      limit ? lineItemValue(limit) : '', limit ? lineItemValue(limit) : '', limit ? lineNonSpeciesItemValue(limit) : '', limit ? lineSurplus(limit) : '',
+      target.level, target.expInLevel,
+      reachable.level, reachable.expInLevel,
     ].map(tsvCell).join('\t'));
   });
 
+  lines.push('', ...buildSleepExpTsv(context));
+  lines.push('', ...buildAllSleepTsv(context));
   lines.push('', ...buildCalculationPolicyTsv(context));
   lines.push('', ...buildBoundarySearchTsv(context));
   lines.push('', ...buildLossLedgerTsv(context));

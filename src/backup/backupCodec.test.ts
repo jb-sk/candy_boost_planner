@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { CalcRowV1, CalcSaveSlotV1 } from "../persistence/calc";
 import { parseBackup, stringifyBackup } from "./backupCodec";
 import { createBackup } from "./createBackup";
-import { BACKUP_MAX_BYTES, BackupValidationError, type BackupBoxEntryV1, type CandyBoostPlannerBackupV2 } from "./types";
+import { BACKUP_MAX_BYTES, BACKUP_SCHEMA_VERSION, BackupValidationError, type BackupBoxEntryV1, type CandyBoostPlannerBackupV3 } from "./types";
 
 function row(id: string, boxId?: string, pokedexId = 25): CalcRowV1 {
   return {
@@ -18,8 +18,6 @@ function row(id: string, boxId?: string, pokedexId = 25): CalcRowV1 {
     expType: 600,
     nature: "normal",
     boostReachLevel: 20,
-    boostRatioPct: 100,
-    mode: "targetLevel",
   };
 }
 
@@ -48,12 +46,13 @@ function entry(id: string, pokedexId = 25): BackupBoxEntryV1 {
   };
 }
 
-function backup(): CandyBoostPlannerBackupV2 {
+function backup(): CandyBoostPlannerBackupV3 {
   return createBackup({
     boxEntries: [],
     totalShards: 0,
     sleepSettings: { dailySleepHours: 8.5, sleepExpBonusCount: 0, includeGSD: true },
     candyInventory: { schemaVersion: 2, universal: { s: 0, m: 0, l: 0 }, typeCandy: {}, species: {} },
+    defaultBoostReachLevel: null,
     calculator: { activeSlotIndex: 0, slots: [null, null, null] },
   }, new Date("2026-07-22T07:30:00.000Z"));
 }
@@ -65,15 +64,15 @@ describe("backup codec", () => {
     expect(parseBackup(stringifyBackup(parsed.backup)).backup).toEqual(parsed.backup);
   });
 
-  it("round-trips the V2 family-key golden fixture", () => {
+  it("round-trips the V2 family-key golden fixture as the latest schema", () => {
     const text = readFileSync(new URL("../../tests/fixtures/backup-v2.golden.json", import.meta.url), "utf8");
     const parsed = parseBackup(text);
-    expect(parsed.backup.schemaVersion).toBe(2);
+    expect(parsed.backup.schemaVersion).toBe(BACKUP_SCHEMA_VERSION);
     expect(parsed.backup.data.globalSettings.candyInventory.species).toEqual({ "25": 100, "133": 240 });
     expect(parseBackup(stringifyBackup(parsed.backup)).backup).toEqual(parsed.backup);
   });
 
-  it("migrates V1 candy keys by family maximum and exports only V2", () => {
+  it("migrates V1 candy keys by family maximum and exports only the latest schema", () => {
     const legacy = JSON.parse(
       readFileSync(new URL("../../tests/fixtures/backup-v1.golden.json", import.meta.url), "utf8"),
     );
@@ -83,14 +82,94 @@ describe("backup codec", () => {
       "26": 50,
     };
     const parsed = parseBackup(JSON.stringify(legacy)).backup;
-    expect(parsed.schemaVersion).toBe(2);
+    expect(parsed.schemaVersion).toBe(BACKUP_SCHEMA_VERSION);
     expect(parsed.data.globalSettings.candyInventory).toEqual({
+      // candyInventory 自体のスキーマは V2 のまま（V3の変更は candyInventory 以外の部分のみ）。
       schemaVersion: 2,
       universal: legacy.data.globalSettings.candyInventory.universal,
       typeCandy: legacy.data.globalSettings.candyInventory.typeCandy,
       species: { "25": 100 },
     });
-    expect(JSON.parse(stringifyBackup(parsed)).schemaVersion).toBe(2);
+    expect(JSON.parse(stringifyBackup(parsed)).schemaVersion).toBe(BACKUP_SCHEMA_VERSION);
+  });
+
+  it("migrates a V2 backup (schemaVersion 2) to the latest schema, preserving rows", () => {
+    const v2 = JSON.parse(
+      readFileSync(new URL("../../tests/fixtures/backup-v2.golden.json", import.meta.url), "utf8"),
+    );
+    expect(v2.schemaVersion).toBe(2);
+    const parsed = parseBackup(JSON.stringify(v2)).backup;
+    expect(parsed.schemaVersion).toBe(BACKUP_SCHEMA_VERSION);
+    expect(parsed.data.calculator.slots).toEqual(v2.data.calculator.slots);
+  });
+
+  it("drops V2 boost values whose explicitness cannot be recovered", () => {
+    const legacy = JSON.parse(JSON.stringify(backup()));
+    legacy.schemaVersion = 2;
+    legacy.data.calculator.slots = [
+      slot("legacy-slot", [{ ...row("legacy-row"), boostOrExpAdjustment: 123 }]),
+      null,
+      null,
+    ];
+
+    const parsed = parseBackup(JSON.stringify(legacy)).backup;
+    expect(parsed.data.calculator.slots[0]?.rows[0]?.boostOrExpAdjustment).toBeUndefined();
+  });
+
+  it("preserves current-schema explicit boost values and recovers n ≤ m", () => {
+    const value = backup();
+    value.data.calculator.slots = [
+      slot("current-slot", [{
+        ...row("current-row"),
+        boostReachLevel: 40,
+        boostOrExpAdjustment: 500,
+        candyTarget: 10,
+        dstExpInLevel: 12,
+      }]),
+      null,
+      null,
+    ];
+
+    const parsed = parseBackup(stringifyBackup(value)).backup;
+    const restored = parsed.data.calculator.slots[0]!.rows[0]!;
+    expect(restored.boostOrExpAdjustment).toBe(10);
+    expect(restored.boostReachLevel).toBe(40);
+    expect(restored.dstExpInLevel).toBe(12);
+  });
+
+  it("round-trips defaultBoostReachLevel", () => {
+    const value = backup();
+    value.data.globalSettings.defaultBoostReachLevel = 35;
+
+    const parsed = parseBackup(stringifyBackup(value)).backup;
+
+    expect(parsed.data.globalSettings.defaultBoostReachLevel).toBe(35);
+  });
+
+  it("reads a backup without defaultBoostReachLevel as 未設定（目標Lvと同じ）", () => {
+    // 旧形式にはこの項目が無い。欠けていることを 0 や既定Lvへ寄せない
+    const legacy = JSON.parse(JSON.stringify(backup()));
+    legacy.schemaVersion = 2;
+    delete legacy.data.globalSettings.defaultBoostReachLevel;
+
+    const parsed = parseBackup(JSON.stringify(legacy)).backup;
+
+    expect(parsed.data.globalSettings.defaultBoostReachLevel).toBeNull();
+  });
+
+  it("requires defaultBoostReachLevel on the current schema", () => {
+    // 現行形式は必ず書き出す。欠けているのは壊れた入力なので、黙って未設定へ寄せない
+    const value = JSON.parse(JSON.stringify(backup()));
+    delete value.data.globalSettings.defaultBoostReachLevel;
+
+    expect(() => parseBackup(JSON.stringify(value))).toThrow(BackupValidationError);
+  });
+
+  it("rejects a defaultBoostReachLevel outside the level range", () => {
+    const value = JSON.parse(JSON.stringify(backup()));
+    value.data.globalSettings.defaultBoostReachLevel = 999;
+
+    expect(() => parseBackup(JSON.stringify(value))).toThrow(BackupValidationError);
   });
 
   it("accepts the box and slot maximums while preserving order and settings", () => {
@@ -108,7 +187,7 @@ describe("backup codec", () => {
   it.each([
     ["broken JSON", "{"],
     ["other format", JSON.stringify({ ...backup(), format: "other" })],
-    ["future schema", JSON.stringify({ ...backup(), schemaVersion: 3 })],
+    ["future schema", JSON.stringify({ ...backup(), schemaVersion: 5 })],
   ])("rejects %s with an item path", (_name, text) => {
     expect(() => parseBackup(text)).toThrow(BackupValidationError);
     try { parseBackup(text); } catch (error) { expect((error as Error).message).toContain("$"); }
@@ -146,6 +225,74 @@ describe("backup codec", () => {
     expect(() => parseBackup(JSON.stringify(invalidSpecies))).toThrow("$.data.globalSettings.candyInventory.species.025");
   });
 
+  it("round-trips sleepTargetHours and rejects values outside the dropdown options", () => {
+    const value = backup();
+    value.data.calculator.slots = [slot("slot-1", [{ ...row("row-1"), candyTarget: 40, sleepTargetHours: 1000 }]), null, null];
+    const parsed = parseBackup(JSON.stringify(value)).backup;
+    expect(parsed.data.calculator.slots[0]?.rows[0]?.sleepTargetHours).toBe(1000);
+
+    const withoutTarget = backup();
+    withoutTarget.data.calculator.slots = [slot("slot-1", [row("row-1")]), null, null];
+    expect(parseBackup(JSON.stringify(withoutTarget)).backup.data.calculator.slots[0]?.rows[0]?.sleepTargetHours).toBeUndefined();
+
+    const invalid = backup();
+    invalid.data.calculator.slots = [slot("slot-1", [{ ...row("row-1"), candyTarget: 40, sleepTargetHours: 999 } as CalcRowV1]), null, null];
+    expect(() => parseBackup(JSON.stringify(invalid))).toThrow("sleepTargetHours");
+  });
+
+  it("§13-3: backup V3 は all を往復し、数値との同居はモード優先、不正モードは拒否する", () => {
+    const value = backup();
+    value.data.calculator.slots = [slot("slot-1", [{
+      ...row("row-1"),
+      sleepTargetMode: "all",
+      sleepTargetHours: 1000,
+      candyTarget: 40,
+      dstExpInLevel: 10,
+      boostOrExpAdjustment: 25,
+    }]), null, null];
+    const parsed = parseBackup(JSON.stringify(value)).backup;
+    expect(parsed.schemaVersion).toBe(3);
+    expect(parsed.data.calculator.slots[0]?.rows[0]).toMatchObject({
+      sleepTargetMode: "all",
+      sleepTargetHours: undefined,
+      candyTarget: undefined,
+      dstExpInLevel: undefined,
+      boostOrExpAdjustment: 25,
+    });
+    expect(parseBackup(stringifyBackup(parsed)).backup).toEqual(parsed);
+
+    const invalid = backup();
+    invalid.data.calculator.slots = [slot("slot-1", [{
+      ...row("row-1"),
+      sleepTargetMode: "everything",
+    } as unknown as CalcRowV1]), null, null];
+    expect(() => parseBackup(JSON.stringify(invalid))).toThrow("sleepTargetMode");
+  });
+
+  it("rejects rows that violate the target invariants", () => {
+    // 個数指定なしでも睡眠目標は有効
+    const orphanSleep = backup();
+    orphanSleep.data.calculator.slots = [slot("slot-1", [{ ...row("row-1"), sleepTargetHours: 1000 }]), null, null];
+    expect(parseBackup(JSON.stringify(orphanSleep)).backup.data.calculator.slots[0]?.rows[0]?.sleepTargetHours).toBe(1000);
+
+    // 個数指定なしの目標は Lv ちょうど
+    const orphanExp = backup();
+    orphanExp.data.calculator.slots = [slot("slot-1", [{ ...row("row-1"), dstExpInLevel: 100 }]), null, null];
+    expect(() => parseBackup(JSON.stringify(orphanExp))).toThrow("dstExpInLevel");
+
+    // dstExpInLevel は次Lvまでの必要EXP未満
+    const overflow = backup();
+    overflow.data.calculator.slots = [slot("slot-1", [{ ...row("row-1"), candyTarget: 40, dstExpInLevel: 9_999_999 }]), null, null];
+    expect(() => parseBackup(JSON.stringify(overflow))).toThrow("dstExpInLevel");
+  });
+
+  it("round-trips dstExpInLevel for rows with candyTarget", () => {
+    const value = backup();
+    value.data.calculator.slots = [slot("slot-1", [{ ...row("row-1"), candyTarget: 40, dstExpInLevel: 137 }]), null, null];
+    const parsed = parseBackup(JSON.stringify(value)).backup;
+    expect(parsed.data.calculator.slots[0]?.rows[0]?.dstExpInLevel).toBe(137);
+  });
+
   it("keeps orphan and unknown pokedex references as warnings", () => {
     const value = backup();
     value.data.box.entries = [entry("box-known")];
@@ -174,6 +321,7 @@ describe("backup codec", () => {
       totalShards: 0,
       sleepSettings: { dailySleepHours: 8.5, sleepExpBonusCount: 0, includeGSD: true },
       candyInventory: { schemaVersion: 2, universal: { s: 0, m: 0, l: 0 }, typeCandy: {}, species: {} },
+      defaultBoostReachLevel: null,
       calculator: { activeSlotIndex: 0, slots: [null, null, null] },
     });
     expect(value.data.box.entries[0]).not.toHaveProperty("source");

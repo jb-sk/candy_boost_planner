@@ -1,16 +1,11 @@
 import type { BoostEvent, ExpGainNature, ExpType, SleepSettings } from "../domain/types";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
-import { defaultBoostKind } from "../domain/pokesleep/boost-config";
+import { normalizeTargetExpInLevel } from "../domain/level-planner/deriveTarget";
+import { defaultBoostKind, normalizeDefaultBoostReachLevel } from "../domain/pokesleep/boost-config";
 import type { ItemCompareMode } from "../domain/level-planner/types";
 import { toExpGainNature, toExpType, toInt } from "./shared";
+import { cryptoRandomId } from "./box";
 import { perfSpan } from "../utils/perf";
-
-/**
- * 計算モード
- * - "targetLevel": 目標Lvモード（デフォルト）- dstExpInLevel = 0
- * - "peak": ピークモード - ユーザーがアメ数を100%超に増やした
- */
-export type CalcMode = "targetLevel" | "peak";
 
 export type CalcRowV1 = {
   id: string;
@@ -24,23 +19,34 @@ export type CalcRowV1 = {
   title: string;
   srcLevel: number;
   dstLevel: number;
+  /**
+   * 最終目標のLv内EXP。dstLevel と合わせて「唯一の目標地点」を正確に表す（設計書§10改訂A）。
+   * 個数指定なしの行では常に 0（目標は Lv ちょうど。§4.5）。
+   */
+  dstExpInLevel?: number;
   /** 目標Lvの入力中テキスト（datalist表示用。確定はblurでdstLevelへ反映） */
   dstLevelText?: string;
   expRemaining: number; // ゲーム画面の「あとEXP（次Lvまで）」
   expType: ExpType;
   nature: ExpGainNature;
   boostReachLevel: number;
-  boostRatioPct: number; // 0..100（派生値、表示用）
-  /** 入力されたアメブ個数（またはEXP調整値）- 真実のソース */
+  /** 明示入力されたアメブ個数。undefined は boostReachLevel からの導出を表す。 */
   boostOrExpAdjustment?: number;
-  /** ピーク値（100%時のアメブ個数）- 入力がピークを超えたら更新 */
-  candyPeak?: number;
-  /** アメ個数指定（未設定=無制限、1以上=目標個数） */
+  /**
+   * アメ個数指定（総アメ数）。
+   * undefined = 個数指定なし（目標Lvが anchor）、値あり = 個数指定が anchor（設計書§4.3）。
+   */
   candyTarget?: number;
-  mode: CalcMode;
   /** 累計睡眠時間（時間単位、ポケモンごと） */
   sleepHours?: number;
+  /** 睡眠目標時間（時間単位）。未設定=睡眠を考慮しない。SLEEP_TARGET_HOURS_OPTIONS のいずれかのみ許可。 */
+  sleepTargetHours?: number;
+  /** アメを使わず、必要な睡眠時間だけを表示するモード。 */
+  sleepTargetMode?: "all";
 };
+
+/** 睡眠目標時間ドロップダウンの選択肢（アチーブメント区切りに対応。任意値は設けない）。 */
+export const SLEEP_TARGET_HOURS_OPTIONS = [200, 500, 1000, 2000] as const;
 
 export type CalcSaveSlotV1 = {
   /** スロット位置とは独立したセッション/保存データ上の安定ID。 */
@@ -57,31 +63,37 @@ export type CalcSaveSlotV1 = {
 };
 
 
-type CalcSlotsStoreV1 = {
-  schemaVersion: 1;
+type CalcSlotsStoreV2 = {
+  schemaVersion: 2;
   slots: Array<CalcSaveSlotV1 | null>;
 };
 
+export const CALC_SLOTS_SCHEMA_VERSION = 2 as const;
 export const CALC_SLOTS_STORAGE_KEY = "candy-boost-planner:calc:slots:v1";
 export const TOTAL_SHARDS_KEY = "candy-boost-planner:calc:totalShards";
 export const ACTIVE_SLOT_STORAGE_KEY = "candy-boost-planner:calc:activeSlot";
 export const BOOST_CANDY_REMAINING_KEY = "candy-boost-planner:calc:boostCandyRemaining";
 export const SLEEP_SETTINGS_KEY = "candy-boost-planner:calc:sleepSettings";
+export const DEFAULT_BOOST_REACH_LEVEL_KEY = "candy-boost-planner:calc:defaultBoostReachLevel";
 
 export function loadCalcSlots(): Array<CalcSaveSlotV1 | null> {
   try {
     const raw = localStorage.getItem(CALC_SLOTS_STORAGE_KEY);
     if (!raw) return [null, null, null];
     const json = JSON.parse(raw);
+    const root = json && typeof json === "object" && !Array.isArray(json)
+      ? json as Record<string, unknown>
+      : null;
+    const sourceSchemaVersion = root?.schemaVersion === CALC_SLOTS_SCHEMA_VERSION ? 2 : 1;
     const arr: unknown[] | null = Array.isArray(json)
       ? json
-      : json && typeof json === "object" && Array.isArray((json as Record<string, unknown>).slots)
-        ? (json as Record<string, unknown>).slots as unknown[]
+      : root && Array.isArray(root.slots)
+        ? root.slots as unknown[]
         : null;
     if (!arr) return [null, null, null];
     const out: Array<CalcSaveSlotV1 | null> = [];
     for (let i = 0; i < 3; i++) {
-      out.push(normalizeSlot(arr[i] ?? null));
+      out.push(normalizeSlot(arr[i] ?? null, sourceSchemaVersion));
     }
     return out;
   } catch {
@@ -101,7 +113,7 @@ export function saveCalcSlots(v: Array<CalcSaveSlotV1 | null>) {
 export function serializeCalcSlots(v: Array<CalcSaveSlotV1 | null>): string {
   const a = Array.isArray(v) ? v.slice(0, 3) : [];
   while (a.length < 3) a.push(null);
-  const store: CalcSlotsStoreV1 = { schemaVersion: 1, slots: a };
+  const store: CalcSlotsStoreV2 = { schemaVersion: CALC_SLOTS_SCHEMA_VERSION, slots: a };
   return JSON.stringify(store);
 }
 
@@ -164,6 +176,35 @@ export function saveBoostCandyRemaining(v: number | null): void {
   }
 }
 
+/**
+ * 既定のアメブ目標Lv。ポケモン追加・行リセット・全体リセットの初期値に使う。
+ *
+ * `null` は「目標Lvと同じ」（＝従来どおり目標Lvまで全部アメブで賄う意図）。
+ * スロットではなくアプリ全体の設定として持つ（好みの値であり、計画ごとに変わらないため）。
+ */
+export function loadDefaultBoostReachLevel(): number | null {
+  try {
+    const raw = localStorage.getItem(DEFAULT_BOOST_REACH_LEVEL_KEY);
+    if (!raw) return null;
+    return normalizeDefaultBoostReachLevel(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function saveDefaultBoostReachLevel(v: number | null): void {
+  try {
+    const normalized = v == null ? null : normalizeDefaultBoostReachLevel(v);
+    if (normalized === null) {
+      localStorage.removeItem(DEFAULT_BOOST_REACH_LEVEL_KEY);
+    } else {
+      localStorage.setItem(DEFAULT_BOOST_REACH_LEVEL_KEY, String(normalized));
+    }
+  } catch {
+    // localStorage can throw (quota exceeded / blocked). Persistence must not break UI.
+  }
+}
+
 /** デフォルトの睡眠設定 */
 export const DEFAULT_SLEEP_SETTINGS: SleepSettings = {
   dailySleepHours: 8.5,
@@ -196,12 +237,13 @@ export function saveSleepSettings(v: SleepSettings | undefined): void {
 }
 
 
-function normalizeSlot(x: unknown): CalcSaveSlotV1 | null {
+function normalizeSlot(x: unknown, sourceSchemaVersion: 1 | 2): CalcSaveSlotV1 | null {
   if (!x || typeof x !== "object") return null;
   const r = x as Record<string, unknown>;
   const savedAt = typeof r.savedAt === "string" ? r.savedAt : new Date().toISOString();
-  const slotId = typeof r.slotId === "string" && r.slotId.trim() ? r.slotId : undefined;
-  const rows = toRows(r.rows);
+  // 保存値としての ID の有無。**下の「空スロットか」判定に使うので、採番と混ぜないこと。**
+  const storedSlotId = typeof r.slotId === "string" && r.slotId.trim() ? r.slotId : undefined;
+  const rows = toRows(r.rows, sourceSchemaVersion);
   const activeRowId = typeof r.activeRowId === "string" && rows.some((row) => row.id === r.activeRowId)
     ? r.activeRowId
     : null;
@@ -215,13 +257,17 @@ function normalizeSlot(x: unknown): CalcSaveSlotV1 | null {
     : undefined;
   const itemCompareMode = normalizeItemCompareMode(r.itemCompareMode);
   const hasSlotSettings =
-    slotId !== undefined
+    storedSlotId !== undefined
     || r.boostKind === "full"
     || r.boostKind === "mini"
     || r.boostKind === "none"
     || boostCandyRemaining !== undefined
     || r.itemCompareMode !== undefined;
   if (!rows.length && !hasSlotSettings) return null;
+  // **中身のあるスロットには必ず ID を持たせる。** 欠けたまま通すと、一度も開いていない
+  // スロットが ID 無しでエクスポートされ、バックアップ検証（slotId 必須）が自分の書き出しを弾く。
+  // `getBackupSnapshot` が採番するのは選択中のスロットだけなので、正規化側で埋める。
+  const slotId = storedSlotId ?? cryptoRandomId();
   return { slotId, savedAt, rows, activeRowId, boostKind, boostCandyRemaining, itemCompareMode };
 }
 
@@ -234,7 +280,7 @@ function normalizeItemCompareMode(value: unknown): ItemCompareMode {
 }
 
 
-function toRows(v: unknown): CalcRowV1[] {
+function toRows(v: unknown, sourceSchemaVersion: 1 | 2): CalcRowV1[] {
   if (!Array.isArray(v)) return [];
   const out: CalcRowV1[] = [];
   for (const x of v) {
@@ -251,24 +297,44 @@ function toRows(v: unknown): CalcRowV1[] {
     // ただし undefined / null / NaN は安全なフォールバックとして 0 を設定（calcRowExpGot が toNext に補正）。
     const expRemaining = clampInt(o.expRemaining, 0, 999999, 0);
     const nature = toExpGainNature(o.nature, "normal");
-    const boostReachLevel = clampInt(o.boostReachLevel, srcLevel, dstLevel, dstLevel);
-    const boostRatioPct = clampInt(o.boostRatioPct, 0, 100, 100);
-    const mode: CalcMode = o.mode === "peak" ? "peak" : "targetLevel";
+    const boostReachLevel = clampInt(o.boostReachLevel, srcLevel, MAX_LEVEL, dstLevel);
     const boxId = typeof o.boxId === "string" && o.boxId.trim() ? o.boxId : undefined;
     const dstLevelText = typeof o.dstLevelText === "string" ? o.dstLevelText : undefined;
     const pokedexId = typeof o.pokedexId === "number" && o.pokedexId > 0 ? o.pokedexId : undefined;
     const pokemonType = typeof o.pokemonType === "string" && o.pokemonType.trim() ? o.pokemonType : undefined;
-    // boostOrExpAdjustment: 入力されたアメブ個数（真実のソース）
-    const boostOrExpAdjustment = typeof o.boostOrExpAdjustment === "number" ? Math.max(0, Math.floor(o.boostOrExpAdjustment)) : undefined;
-    // candyPeak: ピーク値
-    const candyPeak = typeof o.candyPeak === "number" ? Math.max(0, Math.floor(o.candyPeak)) : undefined;
-    // candyTarget: undefined = 無制限、1以上 = 目標個数
-    const candyTarget = typeof o.candyTarget === "number" && o.candyTarget >= 0 ? Math.floor(o.candyTarget) : undefined;
+    // V1 は自動値と明示値を区別できないため、導出モードへ移行する。
+    const storedBoostOrExpAdjustment = sourceSchemaVersion >= 2 && typeof o.boostOrExpAdjustment === "number"
+      ? Math.max(0, Math.floor(o.boostOrExpAdjustment))
+      : undefined;
+    // candyTarget: undefined = 個数指定なし（目標Lvが anchor）、0以上 = 個数指定あり
+    const storedCandyTarget = typeof o.candyTarget === "number" && o.candyTarget >= 0 ? Math.floor(o.candyTarget) : undefined;
+    const sleepTargetMode = o.sleepTargetMode === "all" ? "all" : undefined;
+    const candyTarget = sleepTargetMode === "all"
+      ? undefined
+      : storedCandyTarget ?? migrateLegacyPeakCandyTarget(o);
+    const boostOrExpAdjustment = storedBoostOrExpAdjustment === undefined
+      ? undefined
+      : candyTarget === undefined
+        ? storedBoostOrExpAdjustment
+        : Math.min(storedBoostOrExpAdjustment, candyTarget);
     // sleepHours: 累計睡眠時間（後方互換: 未設定 = undefined = 0h扱い）
     const sleepHours =
       typeof o.sleepHours === "number" && Number.isFinite(o.sleepHours)
         ? Math.max(0, Math.floor(o.sleepHours))
         : undefined;
+    // sleepTargetHours: 睡眠目標時間。ドロップダウンの選択肢のみ許可（任意値は保存データが壊れていても無視する）
+    const sleepTargetHours =
+      sleepTargetMode === undefined
+      && typeof o.sleepTargetHours === "number"
+      && (SLEEP_TARGET_HOURS_OPTIONS as readonly number[]).includes(o.sleepTargetHours)
+        ? o.sleepTargetHours
+        : undefined;
+    // 両方の個数anchorが無い目標だけ Lv ちょうどへ戻す。
+    const dstExpInLevel = sleepTargetMode === "all"
+      ? undefined
+      : candyTarget === undefined && boostOrExpAdjustment === undefined
+      ? undefined
+      : normalizeTargetExpInLevel(dstLevel, typeof o.dstExpInLevel === "number" ? o.dstExpInLevel : undefined, expType);
     out.push({
       id,
       boxId,
@@ -277,20 +343,34 @@ function toRows(v: unknown): CalcRowV1[] {
       title,
       srcLevel,
       dstLevel,
+      dstExpInLevel,
       dstLevelText,
       expRemaining,
       expType,
       nature,
       boostReachLevel,
-      boostRatioPct,
       boostOrExpAdjustment,
-      candyPeak,
       candyTarget,
-      mode,
       sleepHours,
+      sleepTargetHours,
+      sleepTargetMode,
     });
   }
   return out.slice(0, 60);
+}
+
+/**
+ * 旧 mode:"peak" 行の移行（設計書§6.1）。
+ *
+ * peak はアメ個数側が目標を規定していた状態なので、入力された総アメ数を candyTarget として引き継ぐ。
+ * undefined にすると、ユーザーが入力した総アメ数と目標Lv内EXPを失う。
+ * 旧フィールド（mode / candyPeak / boostRatioPct）はここでの移行にだけ使い、保存形式からは落とす。
+ */
+export function migrateLegacyPeakCandyTarget(o: Record<string, unknown>): number | undefined {
+  if (o.mode !== "peak") return undefined;
+  const adjustment = typeof o.boostOrExpAdjustment === "number" ? Math.max(0, Math.floor(o.boostOrExpAdjustment)) : undefined;
+  if (adjustment !== undefined) return adjustment;
+  return typeof o.candyPeak === "number" ? Math.max(0, Math.floor(o.candyPeak)) : undefined;
 }
 
 function clampInt(v: unknown, min: number, max: number, fallback: number): number {

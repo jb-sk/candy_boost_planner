@@ -100,6 +100,145 @@ describe('睡眠EXP共通計算', () => {
   });
 });
 
+/**
+ * ゲーム内実測との突き合わせ（外部妥当性）。
+ *
+ * 他のテストはコードの現在の挙動を固定しているだけなので、仕様の取り違えを検出できない。
+ * ここだけは「ゲームでこう出た」という実測値を直接置く。
+ *
+ * 実測値の出どころは .agent/sessions/残EXP睡眠時間の端数表示設計.md §3.1 に記録している。
+ */
+describe('睡眠EXP: ゲーム内実測との一致', () => {
+  /** スコアから逆算した睡眠分数（score = min(100, floor(分 / 5.1 + 0.5))） */
+  function minutesForScore(score: number): number {
+    for (let m = 0; m <= 780; m++) if (calcScoreFromMinutes(m) === score) return m;
+    throw new Error(`no minutes for score ${score}`);
+  }
+
+  // 睡眠EXPボーナス×1（1.14）＋リサーチボーナス2倍。表示は「ボーナス x2.28」だが、
+  // 2.28 を一括で掛けるのではなく 1.14 で四捨五入してから 2 倍する（式2）。
+  // 一括だと 80→182.4、20→45.6、19→43.32 となり、実測の 46 / 44 を再現できない。
+  it.each([
+    { score: 80, exp: 182 },
+    { score: 20, exp: 46 },
+    { score: 19, exp: 44 },
+  ])('スコア$score・ボーナス1.14×2倍で $exp EXP になる', ({ score, exp }) => {
+    expect(calcSleepExp({
+      sleepMinutes: minutesForScore(score),
+      sleepExpBonus: 1 + 0.14,
+      nature: 'normal',
+      eventBonus: 2,
+    })).toBe(exp);
+  });
+
+  // 性格補正は乗じた後に切り捨てる（182×0.82=149.24→149、182×1.18=214.76→214）。
+  it.each([
+    { score: 80, down: 149, up: 214 },
+    { score: 20, down: 37, up: 54 },
+    { score: 19, down: 36, up: 51 },
+  ])('スコア$scoreの性格補正後は ▼▼$down / ▲▲$up になる', ({ score, down, up }) => {
+    const shared = { sleepMinutes: minutesForScore(score), sleepExpBonus: 1 + 0.14, eventBonus: 2 };
+    expect(calcSleepExp({ ...shared, nature: 'down' })).toBe(down);
+    expect(calcSleepExp({ ...shared, nature: 'up' })).toBe(up);
+  });
+
+  // 成長のお香（EXP2倍）は四捨五入の「内側」に入る。イベント / リサーチとは段が違う。
+  //
+  //   1. score × 睡眠EXPボーナス(1.14…) × おこう2  → 四捨五入   ← おこうはここ
+  //   2. × イベント / リサーチ（整数倍率）
+  //   3. × 性格(82 or 118)/100                      → 切り捨て
+  //
+  // 2026-07-26 分（スコア95・x6.84 ＝ 1.14 × おこう2 × イベント3）と
+  // 2026-07-27 分（スコア88・x2.28 ＝ 1.14 × おこう2、イベントなし）のゲーム内実測で確定した。
+  // 7/27 分は整数倍率が ×2 ひとつしかないため、おこうを外側へ出す説（201 でなく 200 になる）を
+  // 単独で否定できる。詳細は .agent/sessions/残EXP睡眠時間の端数表示設計.md §3.1。
+  //
+  // `incenseMultiplier` はまだ実装していない。ここでは「内側の倍率は sleepExpBonus と同じ段」
+  // という構造だけを固定するため 1.14 × 2 を sleepExpBonus として渡す。新設したら
+  // その引数へ書き換えること。eventBonus へ合流させると 651 / 201 の両方が落ちる。
+  it.each([
+    { day: '2026-07-26', score: 95, eventBonus: 3, exp: 651, down: 533 },
+    { day: '2026-07-27', score: 88, eventBonus: 1, exp: 201, down: 164 },
+  ])('$day 実測: スコア$score・おこう2で $exp EXP（▼▼ $down）になる', (
+    { score, eventBonus, exp, down },
+  ) => {
+    const shared = { sleepMinutes: minutesForScore(score), sleepExpBonus: (1 + 0.14) * 2, eventBonus };
+    expect(calcSleepExp({ ...shared, nature: 'normal' })).toBe(exp);
+    expect(calcSleepExp({ ...shared, nature: 'down' })).toBe(down);
+    // おこうを外側（eventBonus 側）へ移すと実測を再現できない
+    expect(calcSleepExp({
+      sleepMinutes: minutesForScore(score),
+      sleepExpBonus: 1 + 0.14,
+      nature: 'normal',
+      eventBonus: eventBonus * 2,
+    })).not.toBe(exp);
+  });
+
+  // スコア1の睡眠は 1 EXP。EXP▼▼ では floor(1 × 0.82) = 0 となり、あとEXPが動かない。
+  it('スコア1の睡眠は EXP▼▼ では 0 EXP になる', () => {
+    const sleepMinutes = minutesForScore(1);
+    expect(calcSleepExp({ sleepMinutes, sleepExpBonus: 1, nature: 'normal' })).toBe(1);
+    expect(calcSleepExp({ sleepMinutes, sleepExpBonus: 1, nature: 'down' })).toBe(0);
+  });
+
+  // 性格補正を 0.82 / 1.18 として直接乗算すると、浮動小数の誤差で 1 少なくなる値がある
+  //（例: 300 × 0.82 → 245.999... → 245）。百分率の整数で計算していることを固定する。
+  it('性格補正は百分率の整数で計算する（直接乗算だと切り捨てが1ずれる）', () => {
+    const atScore100 = (nature: 'down' | 'up', eventBonus: number) =>
+      calcSleepExp({ sleepMinutes: minutesForScore(100), sleepExpBonus: 1, nature, eventBonus });
+    // 素の値 300（スコア100 × イベント3倍）は直接乗算だと 245 になる
+    expect(atScore100('down', 3)).toBe(246);
+    expect(Math.floor(300 * 0.82)).toBe(245);
+  });
+
+  // 四捨五入の段（スコア × 睡眠EXPボーナス）でも、浮動小数が .5 を下振れさせないことを
+  // 入力の全域（ボーナス個数 0〜5 × スコア 0〜100）で確認する。
+  it('スコア×ボーナスの四捨五入が全入力で整数計算と一致する', () => {
+    for (let count = 0; count <= 5; count++) {
+      for (let score = 0; score <= 100; score++) {
+        expect(Math.round(score * (1 + 0.14 * count)), `bonusCount=${count} score=${score}`)
+          .toBe(Math.round((score * (100 + 14 * count)) / 100));
+      }
+    }
+  });
+});
+
+describe('markForSleep の内訳（?perf=1 の検算用）', () => {
+  const cases = [
+    { label: '13h / down / GSDあり', hours: 500, nature: 'down' as const, dailySleepHours: 13, sleepExpBonus: 1, includeGSD: true },
+    { label: '8.5h / normal / GSDなし', hours: 1000, nature: 'normal' as const, dailySleepHours: 8.5, sleepExpBonus: 1, includeGSD: false },
+    { label: '6h / up / ボーナスあり', hours: 200, nature: 'up' as const, dailySleepHours: 6, sleepExpBonus: 1.28, includeGSD: true },
+    { label: '0h', hours: 0, nature: 'normal' as const, dailySleepHours: 8.5, sleepExpBonus: 1, includeGSD: true },
+  ];
+
+  it.each(cases)('$label: 内訳の合計が睡眠EXPと一致する（1日EXP × 日数 + GSD）', (c) => {
+    const r = markForSleep({ targetSleepHours: c.hours, nature: c.nature, dailySleepHours: c.dailySleepHours, sleepExpBonus: c.sleepExpBonus, includeGSD: c.includeGSD });
+    expect(r.breakdown.dailyExp * r.requiredDays + r.breakdown.gsdExtra).toBe(r.sleepExp);
+  });
+
+  it('性格補正が1日の睡眠EXPへ現れる（13h設定・スコア100）', () => {
+    const at = (nature: 'up' | 'normal' | 'down') =>
+      markForSleep({ targetSleepHours: 500, nature, dailySleepHours: 13, sleepExpBonus: 1, includeGSD: true });
+
+    // 8.5hでスコア100に達するため、13h設定でもスコアは100で頭打ち
+    expect(at('normal').breakdown.dailyScore).toBe(100);
+    expect(at('normal').breakdown.dailyExp).toBe(100);
+    expect(at('down').breakdown.dailyExp).toBe(82);
+    expect(at('up').breakdown.dailyExp).toBe(118);
+
+    // 500h ÷ 13h = 38.46日 → 39日へ切り上げ
+    expect(at('down').requiredDays).toBe(39);
+    expect(at('down').breakdown.gsdExtra).toBe(328);
+    expect(at('down').sleepExp).toBe(82 * 39 + 328);
+  });
+
+  it('GSDをオフにすると加算が消え、切り分けに使える', () => {
+    const params = { targetSleepHours: 500, nature: 'down' as const, dailySleepHours: 13, sleepExpBonus: 1 };
+    expect(markForSleep({ ...params, includeGSD: false }).breakdown.gsdExtra).toBe(0);
+    expect(markForSleep({ ...params, includeGSD: false }).sleepExp).toBe(82 * 39);
+  });
+});
+
 describe('markForSleep', () => {
   it('0hなら0日・0EXP', () => {
     expect(markForSleep({
@@ -108,7 +247,7 @@ describe('markForSleep', () => {
       dailySleepHours: 8.5,
       sleepExpBonus: 1,
       includeGSD: true,
-    })).toEqual({
+    })).toMatchObject({
       sleepExp: 0,
       requiredDays: 0,
     });
@@ -127,7 +266,7 @@ describe('markForSleep', () => {
     const off = markForSleep({ ...base, includeGSD: false });
     const on = markForSleep({ ...base, includeGSD: true });
 
-    expect(off).toEqual({ requiredDays, sleepExp: offExp });
+    expect(off).toMatchObject({ requiredDays, sleepExp: offExp });
     expect(on.sleepExp).toBe(onExp);
   });
 
@@ -142,7 +281,7 @@ describe('markForSleep', () => {
       sleepExpBonus: 1,
       includeGSD: false,
     });
-    expect(result).toEqual({ requiredDays: 1, sleepExp: 100 });
+    expect(result).toMatchObject({ requiredDays: 1, sleepExp: 100 });
   });
 
   it.each([
@@ -173,7 +312,7 @@ describe('markForSleep', () => {
       sleepExpBonus: 1,
       includeGSD: true,
     });
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       requiredDays: 77,
       sleepExp: 6970,
     });

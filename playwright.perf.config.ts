@@ -1,6 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
-if (process.env.CI) {
+import { isCI } from './tests/helpers/isCI';
+
+if (isCI()) {
   throw new Error('The interaction performance runner is local-only and must not run in CI.');
 }
 

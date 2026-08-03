@@ -6,15 +6,28 @@ import {
   solveLevelPlanWithBudget as solveLevelPlanWithBudgetCore,
 } from '../../../src/domain/level-planner/core/solveLevelPlan';
 import type { CandySupplyBreakdown, LevelPlannerInput, SolverItemCompareMode } from '../../../src/domain/level-planner/types';
-import { calcExp } from '../../../src/domain/pokesleep/exp';
+import { calcExp, calcExpAndCandy } from '../../../src/domain/pokesleep/exp';
 import { setPerfEnabled } from '../../../src/utils/perf';
 
+/**
+ * フィクスチャの定型項目を埋める。
+ *
+ * `candyTarget.boostedCandyUnits` は本来必須だが、このファイルのフィクスチャは
+ * 「アメブの内数制約なし（requestedBoostCandy が実効上限）」を意図しているので、
+ * 省略時は総数と同じ値を入れる。個別に検証したい行は明示的に指定すること。
+ */
 function withTestCandyFamilyKeys(input: LevelPlannerInput): LevelPlannerInput {
   return {
     ...input,
     pokemonList: input.pokemonList.map(row => ({
       ...row,
       candyFamilyKey: row.candyFamilyKey ?? String(row.pokedexId),
+      candyTarget: row.candyTarget === undefined
+        ? undefined
+        : {
+          ...row.candyTarget,
+          boostedCandyUnits: row.candyTarget.boostedCandyUnits ?? row.candyTarget.totalCandyUnits,
+        },
     })),
   };
 }
@@ -89,7 +102,7 @@ describe('単一最適化パイプライン', () => {
       candyInventory: inventory,
     });
     const p = result.pokemonResults[0];
-    expect(p.targetReached).toBe(true);
+    expect(p.candyDemandMet).toBe(true);
     expect(p.role).toBe('upper');
     expect(p.targetLine.level).toBe(20);
     expect(p.reachableLine.boostedCandyUnits).toBeGreaterThan(0);
@@ -109,8 +122,8 @@ describe('単一最適化パイプライン', () => {
     });
     expect(result.pokemonResults[0].role).toBe('boundary');
     expect(result.pokemonResults[1].role).toBe('lower');
-    expect(result.pokemonResults[1].targetReached).toBe(false);
-    expect(result.pokemonResults[1].reachableLine.targetReached).toBe(false);
+    expect(result.pokemonResults[1].candyDemandMet).toBe(false);
+    expect(result.pokemonResults[1].reachableLine.candyDemandMet).toBe(false);
     expect(result.pokemonResults[1].shortage.expToTarget).toBeGreaterThan(0);
     expect(result.pokemonResults[1].shortage.dreamShardShortage).toBeGreaterThan(0);
     expect(result.pokemonResults[1].constraintDiagnosis.limitingFactor).toBe('shards');
@@ -147,7 +160,7 @@ describe('単一最適化パイプライン', () => {
     expect(outcome.kind).toBe('result');
     if (outcome.kind !== 'result') return;
     const cresselia = outcome.result.pokemonResults.find(row => row.pokemonId === 'cresselia');
-    expect(cresselia?.targetReached).toBe(true);
+    expect(cresselia?.candyDemandMet).toBe(true);
     expect(cresselia?.reachableLine.level).toBe(70);
   });
 
@@ -174,9 +187,9 @@ describe('単一最適化パイプライン', () => {
     if (outcome.kind !== 'result') return;
     const cresselia = outcome.result.pokemonResults.find(row => row.pokemonId === 'cresselia');
     const lowerZero = outcome.result.pokemonResults.find(row => row.pokemonId === 'lower-zero');
-    expect(cresselia?.targetReached).toBe(true);
+    expect(cresselia?.candyDemandMet).toBe(true);
     expect(cresselia?.reachableLine.totalCandyUnitsUsed).toBeGreaterThan(0);
-    expect(lowerZero?.targetReached).toBe(false);
+    expect(lowerZero?.candyDemandMet).toBe(false);
     expect(lowerZero?.reachableLine.totalCandyUnitsUsed).toBe(0);
     expect(lowerZero?.constraintDiagnosis.limitingFactor).toBe('candy');
   });
@@ -199,7 +212,7 @@ describe('単一最適化パイプライン', () => {
 
     const boundary = result.pokemonResults.find(row => row.pokemonId === 'shared-type-boundary')?.reachableLine;
 
-    expect(boundary?.targetReached).toBe(false);
+    expect(boundary?.candyDemandMet).toBe(false);
     expect(boundary?.totalCandyUnitsUsed).toBe(40);
     expect(result.performance?.boundarySearch).toMatchObject({
       mode: itemCompareMode,
@@ -250,13 +263,13 @@ describe('単一最適化パイプライン', () => {
       id: row.pokemonId,
       level: row.reachableLine.level,
       exp: row.reachableLine.expInLevel,
-      targetReached: row.reachableLine.targetReached,
+      candyDemandMet: row.reachableLine.candyDemandMet,
       totalCandy: row.reachableLine.totalCandyUnitsUsed,
     }))).toEqual(first.result.pokemonResults.map(row => ({
       id: row.pokemonId,
       level: row.reachableLine.level,
       exp: row.reachableLine.expInLevel,
-      targetReached: row.reachableLine.targetReached,
+      candyDemandMet: row.reachableLine.candyDemandMet,
       totalCandy: row.reachableLine.totalCandyUnitsUsed,
     })));
   });
@@ -405,7 +418,7 @@ describe('単一最適化パイプライン', () => {
     });
     const line = result.pokemonResults[0].reachableLine;
     expect(line.totalCandyUnitsUsed).toBe(10);
-    expect(line.targetReached).toBe(false);
+    expect(line.candyDemandMet).toBe(false);
   });
 
   it('preferZeroSurplus 時でも種族アメを残差調整弁にしない', () => {
@@ -452,9 +465,9 @@ describe('単一最適化パイプライン', () => {
     const [upper, boundary] = result.pokemonResults;
     const actualUniversalS = upper.reachableLine.candySupply.universal.s + boundary.reachableLine.candySupply.universal.s;
     expect(upper.role).toBe('upper');
-    expect(upper.targetReached).toBe(true);
+    expect(upper.candyDemandMet).toBe(true);
     expect(boundary.role).toBe('boundary');
-    expect(boundary.targetReached).toBe(false);
+    expect(boundary.candyDemandMet).toBe(false);
     expect(actualUniversalS).toBeLessThanOrEqual(universalSStock);
     expect(boundary.reachableLine.candySupply.universal.s).toBeLessThanOrEqual(universalSStock - upper.reachableLine.candySupply.universal.s);
     expect(boundary.targetLine.candySupply.universal.s).toBeGreaterThan(universalSStock);
@@ -495,7 +508,7 @@ describe('単一最適化パイプライン', () => {
     expect(p.targetLine.candySupply.universal.s).toBeGreaterThan(0);
   });
 
-  it('個数指定行は在庫内の万能M/Lを使い切ってから不足分を万能Sで補填する', () => {
+  it('個数指定のある行は在庫内の万能M/Lを使い切ってから不足分を万能Sで補填する', () => {
     const result = solveLevelPlan({
       pokemonList: [{ pokemonId: 'candy-target-shortage', pokedexId: 25, name: '個数指定の不足補填', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 1_000 }, priorityIndex: 0 }],
       dreamShards: Infinity,
@@ -503,11 +516,41 @@ describe('単一最適化パイプライン', () => {
       candyInventory: { species: { '25': 0 }, typeCandy: { electric: { s: 0, m: 0 } }, universal: { s: 10, m: 10, l: 2 } },
       options: { itemCompareMode: 'surplusFirst' },
     });
-    const line = result.pokemonResults[0].candyTargetLine!;
+    // 新設計では個数指定＝目標なので、表示行としての「個数指定」行は廃止され、
+    // 目標まで行がその役割を兼ねる（設計書§4.2, §4.5.1）
+    const line = result.pokemonResults[0].targetLine;
     expect(line.totalCandyUnitsUsed).toBe(1_000);
     expect(line.candySupply.universal.m).toBe(10);
     expect(line.candySupply.universal.l).toBe(2);
     expect(line.candySupply.universal.s).toBeGreaterThan(10);
+  });
+
+  it('目標まで行にも「アメブ1個→通常アメ1個」置換が効き、実配分と内訳・かけらが一致する', () => {
+    // 仕様§4「余分なアメブはコアでも抑制する」/ 設計書§3.8-e。
+    // 表示行だけ全アメブで組むと、アメブ内訳とかけらが実配分とズレる。
+    const result = solveLevelPlan({
+      pokemonList: [{
+        pokemonId: 'swap-display', pokedexId: 25, candyFamilyKey: '25', name: '置換表示', type: 'electric',
+        currentLevel: 50, currentExpInLevel: 0, targetLevel: 51, targetExpInLevel: 0,
+        expType: 600, nature: 'normal', requestedBoostCandy: 9_999, boostAllowed: true, priorityIndex: 0,
+      }],
+      dreamShards: Infinity,
+      boost: { kind: 'mini', limit: 9_999 },
+      candyInventory: { species: { '25': 9_999 }, typeCandy: {}, universal: { s: 0, m: 0, l: 0 } },
+      options: { itemCompareMode: 'surplusFirst' },
+    });
+
+    const p = result.pokemonResults[0];
+    const allBoost = calcExpAndCandy({ srcLevel: 50, dstLevel: 51, dstExpInLevel: 0, expType: 600, nature: 'normal', boost: 'mini' });
+    // 総アメ数は全アメブ時と同じだが、最後の1個は通常アメへ回してかけらを節約する
+    expect(p.targetLine.totalCandyUnitsUsed).toBe(allBoost.candy);
+    expect(p.targetLine.boostedCandyUnits).toBe(allBoost.candy - 1);
+    expect(p.targetLine.nonBoostCandyUnits).toBe(1);
+    expect(p.targetLine.dreamShardsUsed).toBeLessThan(allBoost.shards);
+    // 在庫が足りるので、目標まで行と到達可能行は完全に一致する
+    expect(p.targetLine.boostedCandyUnits).toBe(p.reachableLine.boostedCandyUnits);
+    expect(p.targetLine.nonBoostCandyUnits).toBe(p.reachableLine.nonBoostCandyUnits);
+    expect(p.targetLine.dreamShardsUsed).toBe(p.reachableLine.dreamShardsUsed);
   });
 
   it('個数指定ありの目標まで行は到達可能行のタイプアメ実配分を引き継いで不足分だけ万能Sで補填する', () => {
@@ -533,14 +576,15 @@ describe('単一最適化パイプライン', () => {
       options: { itemCompareMode: 'legacyImproved' },
     });
     const p = result.pokemonResults[0];
-    expect(p.candyTargetLine?.candySupply.type.m).toBe(3);
-    expect(p.candyTargetLine?.candySupply.universal.s).toBe(475);
+    // 新設計では個数指定＝目標。目標まで行が指定1,500個ぶんの行になる（設計書§4.5.1）。
+    // タイプアメの実配分（M×3）を引き継ぎ、不足分だけを万能Sで補填する点は従来どおり。
+    expect(p.targetLine.totalCandyUnitsUsed).toBe(1_500);
     expect(p.targetLine.candySupply.type.m).toBe(3);
-    expect(p.targetLine.candySupply.universal.s).toBe(503);
+    expect(p.targetLine.candySupply.universal.s).toBe(475);
   });
 
-  it('個数指定ありの目標まで行は到達可能行の種族アメ実配分を引き継いで不足分だけ万能Sで補填する', () => {
-    const result = solveLevelPlan({
+  it('目標まで行の理論値補填は在庫に残る種族アメを先に使い、個数指定に左右されない', () => {
+    const suicune = (candyTarget?: number): LevelPlannerInput => ({
       pokemonList: [{
         pokemonId: 'suicune-target-display',
         pokedexId: 245,
@@ -553,7 +597,7 @@ describe('単一最適化パイプライン', () => {
         nature: 'down',
         requestedBoostCandy: 350,
         boostAllowed: true,
-        candyTarget: { totalCandyUnits: 50 },
+        ...(candyTarget === undefined ? {} : { candyTarget: { totalCandyUnits: candyTarget } }),
         priorityIndex: 0,
       }],
       dreamShards: 0,
@@ -561,13 +605,70 @@ describe('単一最適化パイプライン', () => {
       candyInventory: { species: { '245': 147 }, typeCandy: { Water: { s: 0, m: 0 } }, universal: { s: 0, m: 0, l: 0 } },
       options: { itemCompareMode: 'legacyImproved' },
     });
-    const p = result.pokemonResults[0];
-    expect(p.candyTargetLine?.candySupply.species).toBe(50);
-    expect(p.targetLine.candySupply.species).toBe(50);
-    expect(p.targetLine.candySupply.universal.s).toBe(394);
+    const withTarget = solveLevelPlan(suicune(50)).pokemonResults[0];
+    const withoutTarget = solveLevelPlan(suicune()).pokemonResults[0];
+    // 新設計では個数指定＝目標。指定50個の行は、その50個ぶんを種族アメで賄う（設計書§4.5.1）。
+    expect(withTarget.targetLine.totalCandyUnitsUsed).toBe(50);
+    expect(withTarget.targetLine.candySupply.species).toBe(50);
+    // 個数指定なしの行は目標Lv到達に必要な数を出し、理論値補填は
+    // 「在庫に残る種族アメ147 → 万能S」の順で行う（1230 = 147 + 361 * 3）。この順序は維持する。
+    expect(withoutTarget.targetLine.totalCandyUnitsUsed).toBe(1_230);
+    expect(withoutTarget.targetLine.candySupply.species).toBe(147);
+    expect(withoutTarget.targetLine.candySupply.universal.s).toBe(361);
+    expect(withoutTarget.targetLine.surplusCandyValue).toBe(0);
   });
 
-  it('個数指定がある場合も、サマリ集計は個数指定行ではなく到達可能行を使う', () => {
+  it('目標まで行は指定個数ちょうどを需要とし、内訳が個数指定の端数に振り回されない', () => {
+    // 報告ケース: 個数指定を1個下げただけで「目標まで」の必要アイテムと余りが変わっていた。
+    //
+    // 新設計では個数指定＝目標なので、必要アメ数が指定値に一致するのは正しい（設計書§4.5.1）。
+    // ここで守るのは 7e6224f の本質、すなわち
+    // 「需要ちょうどに対して内訳が組まれ、隣接する指定値の間で内訳が飛ばない」こと。
+    const row = (candyTarget?: number): LevelPlannerInput => ({
+      pokemonList: [{
+        pokemonId: 'cramorant',
+        pokedexId: 845,
+        name: '70ウッウ',
+        type: 'water',
+        currentLevel: 68,
+        currentExpInLevel: calcExp(68, 69, 1080) - 2_991,
+        targetLevel: 70,
+        targetExpInLevel: 0,
+        expType: 1080,
+        nature: 'normal',
+        requestedBoostCandy: 1_000,
+        boostAllowed: true,
+        ...(candyTarget === undefined ? {} : { candyTarget: { totalCandyUnits: candyTarget } }),
+        priorityIndex: 0,
+      }],
+      dreamShards: 5_000_000,
+      boost: { kind: 'full', limit: 1_000 },
+      candyInventory: { species: { '845': 0 }, typeCandy: { water: { s: 0, m: 0 } }, universal: { s: 60, m: 5, l: 1 } },
+      options: { itemCompareMode: 'surplusFirst' },
+    });
+    const base = solveLevelPlan(row()).pokemonResults[0].targetLine;
+    expect(base.surplusCandyValue).toBe(0);
+    expect(base.candySupply.universal.s).toBeGreaterThan(0);
+    const need = base.totalCandyUnitsUsed;
+
+    // 個数指定ありの行は、その指定値ちょうどを需要にする。
+    // ただしこのケースは目標がLv70（システム上限）なので、そこへ到達したあとのアメは使えない。
+    for (const candyTarget of [1, need - 10, need - 1, need, need + 1, need + 200]) {
+      const line = solveLevelPlan(row(candyTarget)).pokemonResults[0].targetLine;
+      expect(line.totalCandyUnitsUsed).toBe(Math.min(candyTarget, need));
+      // 需要ちょうどに対して組まれるので、余りは万能アメの粒度を超えない
+      expect(line.surplusCandyValue).toBeLessThanOrEqual(2);
+    }
+
+    // 隣接する指定値の間で内訳が飛ばない（1個の差が余り500のような跳ねを生まない）
+    for (const candyTarget of [need - 10, need - 1, need, need + 1]) {
+      const a = solveLevelPlan(row(candyTarget)).pokemonResults[0].targetLine;
+      const b = solveLevelPlan(row(candyTarget + 1)).pokemonResults[0].targetLine;
+      expect(Math.abs(b.surplusCandyValue - a.surplusCandyValue)).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it('個数指定がある場合も、サマリ集計は理論値行ではなく到達可能行を使う', () => {
     const result = solveLevelPlan({
       pokemonList: [{
         pokemonId: 'candy-target-summary',
@@ -590,8 +691,9 @@ describe('単一最適化パイプライン', () => {
       options: { itemCompareMode: 'surplusFirst' },
     });
     const p = result.pokemonResults[0];
-    expect(p.candyTargetLine).toBeDefined();
-    expect(p.reachableLine.totalCandyUnitsUsed).toBe(p.candyTargetLine!.totalCandyUnitsUsed);
+    // 理論値行（＝個数指定ぶん）と到達可能行が一致するケース
+    expect(p.targetLine.totalCandyUnitsUsed).toBe(20);
+    expect(p.reachableLine.totalCandyUnitsUsed).toBe(p.targetLine.totalCandyUnitsUsed);
     expect(result.summary.totalNeed.totalCandyUnits).toBe(p.reachableLine.totalCandyUnitsUsed);
     expect(result.summary.totalNeed.totalDreamShards).toBe(p.reachableLine.dreamShardsUsed);
     expect(result.summary.totalNeed.totalBoostCandyRequested).toBe(p.reachableLine.boostedCandyUnits);
@@ -608,7 +710,7 @@ describe('単一最適化パイプライン', () => {
     });
     const p = result.pokemonResults[0];
     expect(p.role).toBe('upper');
-    expect(p.targetReached).toBe(true);
+    expect(p.candyDemandMet).toBe(true);
     expect(p.shortage.candyToTarget).toBe(0);
     expect(p.targetLine.candySupply).toEqual(p.reachableLine.candySupply);
     expect(p.targetLine.surplusCandyValue).toBe(p.reachableLine.surplusCandyValue);
@@ -641,8 +743,8 @@ describe('単一最適化パイプライン', () => {
       options: { itemCompareMode: 'surplusFirst' },
     });
     const [first, second] = result.pokemonResults;
-    expect(first.targetReached).toBe(true);
-    expect(second.targetReached).toBe(true);
+    expect(first.candyDemandMet).toBe(true);
+    expect(second.candyDemandMet).toBe(true);
     expect(first.reachableLine.candySupply.species + second.reachableLine.candySupply.species).toBe(100);
     expect(first.reachableLine.candySupply.type.m + second.reachableLine.candySupply.type.m).toBe(4);
   });
@@ -668,8 +770,8 @@ describe('単一最適化パイプライン', () => {
     expect(first.reachableLine.candySupply.species).toBe(20);
     expect(second.reachableLine.candySupply.species).toBe(18);
     expect(second.reachableLine.candySupply.universal.s).toBe(1);
-    expect(first.targetReached).toBe(true);
-    expect(second.targetReached).toBe(true);
+    expect(first.candyDemandMet).toBe(true);
+    expect(second.candyDemandMet).toBe(true);
   });
 
   it('下位処理でも残りアメ在庫でちょうど止まる動的候補を生成する', () => {
@@ -712,7 +814,7 @@ describe('単一最適化パイプライン', () => {
       options: { itemCompareMode: 'surplusFirst' },
     });
     const p = result.pokemonResults[0];
-    expect(p.targetReached).toBe(true);
+    expect(p.candyDemandMet).toBe(true);
     expect(p.shortage.candyToTarget).toBe(0);
     expect(p.reachableLine.candySupply.universal.m).toBe(1);
   });
@@ -734,21 +836,35 @@ describe('単一最適化パイプライン', () => {
     expect(p.shortage.expToTarget).toBeGreaterThan(0);
   });
 
-  it.each(['legacyImproved', 'surplusFirst'] as const)('個数指定は指定総数をDP対象にし、%sで通常アメへフォールバックする', itemCompareMode => {
+  it.each(['legacyImproved', 'surplusFirst'] as const)('個数指定は指定総数をDP対象にし、%sでもかけら不足で通常アメへ振り替えない', itemCompareMode => {
+    // **回帰防止。** アメブ／通常アメの内訳を勝手に変えてよいのは、グローバル残枠を
+    // 超えてアメブが指定されているときだけ。かけらが尽きた場合は**そこで打ち切る**。
+    // 振り替えると、ユーザーが選んでいない内訳が黙って作られる。
     const result = solveLevelPlan(constrainedCandyTargetInput(itemCompareMode));
 
     const suicune = result.pokemonResults[2];
-    expect(suicune.targetReached).toBe(true);
-    expect(suicune.reachableLine.totalCandyUnitsUsed).toBe(551);
+
+    // 「目標まで」行は指定どおり551個・全部アメブの理論値
+    expect(suicune.targetLine.totalCandyUnitsUsed).toBe(551);
+    expect(suicune.targetLine.boostedCandyUnits).toBe(551);
+
+    // 到達可能行はかけらが尽きて549個で止まる。**通常アメへの振り替えはゼロ**
     expect(suicune.reachableLine.boostedCandyUnits).toBe(549);
-    expect(suicune.reachableLine.nonBoostCandyUnits).toBe(2);
-    expect(suicune.candyTargetLine?.totalCandyUnitsUsed).toBe(suicune.reachableLine.totalCandyUnitsUsed);
-    expect(suicune.candyTargetLine?.boostedCandyUnits).toBe(suicune.reachableLine.boostedCandyUnits);
-    expect(suicune.candyTargetLine?.nonBoostCandyUnits).toBe(suicune.reachableLine.nonBoostCandyUnits);
-    expect(suicune.shortage.dreamShardShortage).toBe(0);
+    expect(suicune.reachableLine.nonBoostCandyUnits).toBe(0);
+    expect(suicune.reachableLine.totalCandyUnitsUsed).toBe(549);
+
+    // 指定551個を配り切れていないので需要充足も未達も false（両者が一致する側のケース）
+    expect(suicune.reachableLine.candyDemandMet).toBe(false);
+    expect(suicune.reachableLine.effectiveTargetReached).toBe(false);
+    expect(suicune.role).toBe('boundary');
+
+    // 律速はかけら。アメブ枠は足りているので枠不足は出ない
+    expect(suicune.constraintDiagnosis.limitingFactor).toBe('shards');
+    expect(suicune.constraintDiagnosis.isShardsShortage).toBe(true);
+    expect(suicune.constraintDiagnosis.isInventoryShortage).toBe(false);
+    expect(suicune.constraintDiagnosis.isBoostShortage).toBe(false);
+    expect(suicune.shortage.dreamShardShortage).toBeGreaterThan(0);
     expect(suicune.shortage.boostCandyUnavailable).toBe(0);
-    expect(suicune.constraintDiagnosis.isShardsShortage).toBe(false);
-    expect(suicune.constraintDiagnosis.limitingFactor).toBeNull();
   });
 
   it('余り最小の供給検算中は時間deadlineで打ち切らない', () => {
@@ -787,11 +903,153 @@ describe('単一最適化パイプライン', () => {
     });
 
     const p = result.pokemonResults[0];
-    expect(p.targetReached).toBe(false);
+    expect(p.candyDemandMet).toBe(false);
     expect(p.reachableLine.boostedCandyUnits).toBeGreaterThan(0);
     expect(p.reachableLine.nonBoostCandyUnits).toBe(0);
     expect(p.constraintDiagnosis.isShardsShortage).toBe(true);
     expect(p.constraintDiagnosis.limitingFactor).toBe('shards');
+  });
+
+  it('かけら律速のとき、個数指定の有無でアメブ配分が変わらない', () => {
+    // 報告された不具合そのもの: 同じ行に「目標まで行が示す必要数」をそのまま個数指定として
+    // 入れただけで、アメブ1,728が955へ削られ通常アメ773が混ざった（設計書§10.16）。
+    // 個数指定は目的（Lv到達 or アメ消費）を変えるだけで、アメブ配分の決め方を変えてはならない。
+    const run = (candyTarget: number | undefined) => {
+      const p = solveLevelPlan({
+        pokemonList: [{
+          pokemonId: 'p', pokedexId: 780, candyFamilyKey: '780', name: '配分一致', type: 'dragon',
+          currentLevel: 25, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0,
+          expType: 900, nature: 'down', requestedBoostCandy: 1728, boostAllowed: true,
+          priorityIndex: 0,
+          ...(candyTarget === undefined
+            ? {}
+            : { candyTarget: { totalCandyUnits: candyTarget, boostedCandyUnits: 1728 } }),
+        }],
+        // かけらだけを絞る。アメ在庫とアメブ枠は潤沢
+        dreamShards: 2_005_255,
+        boost: { kind: 'full', limit: 3500 },
+        candyInventory: { species: { '780': 656 }, typeCandy: { dragon: { s: 0, m: 0 } }, universal: { s: 0, m: 0, l: 3000 } },
+        options: { itemCompareMode: 'legacyImproved' },
+      } as unknown as LevelPlannerInput).pokemonResults[0].reachableLine;
+      return { boost: p.boostedCandyUnits, normal: p.nonBoostCandyUnits };
+    };
+
+    const without = run(undefined);
+    const withTarget = run(1728);
+    // かけらで止まっても通常アメへ振り替えない
+    expect(without.normal).toBe(0);
+    expect(without.boost).toBeGreaterThan(0);
+    // 個数指定の有無で配分が一致する
+    expect(withTarget).toEqual(without);
+  });
+
+  it('個数指定なしでも、アメブがかけら上限で拒否されたら通常アメへ振り替えない', () => {
+    const result = solveLevelPlan({
+      pokemonList: [{
+        pokemonId: 'fixed-ratio-without-candy-target',
+        pokedexId: 25,
+        name: '通常目標の配分固定',
+        type: 'electric',
+        currentLevel: 10,
+        currentExpInLevel: 0,
+        targetLevel: 11,
+        expType: 600,
+        nature: 'normal',
+        requestedBoostCandy: 2,
+        boostAllowed: true,
+        priorityIndex: 0,
+      }],
+      // Lv10ではアメブ1個=250、通常アメ1個=50。旧実装は2個目のアメブを拒否した後、
+      // 残り50で通常アメを1個使い、ユーザー指定の配分を変えていた。
+      dreamShards: 300,
+      boost: { kind: 'full', limit: 2 },
+      candyInventory: { species: { '25': 100 }, typeCandy: { electric: { s: 0, m: 0 } }, universal: { s: 0, m: 0, l: 0 } },
+      options: { itemCompareMode: 'surplusFirst' },
+    });
+
+    const line = result.pokemonResults[0].reachableLine;
+    expect(line.boostedCandyUnits).toBe(1);
+    expect(line.nonBoostCandyUnits).toBe(0);
+    expect(line.dreamShardsUsed).toBe(250);
+    expect(line.candyDemandMet).toBe(false);
+  });
+
+  it('固定アメブ指定が残枠を超えた分は通常アメで補填し、個数目標を到達扱いにする', () => {
+    const result = solveLevelPlan({
+      pokemonList: [{
+        pokemonId: 'fixed-boost-clamped',
+        pokedexId: 25,
+        name: '固定アメブ枠クランプ',
+        type: 'electric',
+        currentLevel: 10,
+        currentExpInLevel: 0,
+        targetLevel: 60,
+        expType: 600,
+        nature: 'normal',
+        requestedBoostCandy: 10,
+        boostAllowed: true,
+        candyTarget: { totalCandyUnits: 12, boostedCandyUnits: 10 },
+        priorityIndex: 0,
+      }],
+      dreamShards: Infinity,
+      boost: { kind: 'full', limit: 4 },
+      candyInventory: { species: { '25': 12 }, typeCandy: { electric: { s: 0, m: 0 } }, universal: { s: 0, m: 0, l: 0 } },
+      options: { itemCompareMode: 'surplusFirst' },
+    });
+
+    const line = result.pokemonResults[0].reachableLine;
+    expect(line.boostedCandyUnits).toBe(4);
+    expect(line.nonBoostCandyUnits).toBe(8);
+    expect(line.totalCandyUnitsUsed).toBe(12);
+    expect(line.candyDemandMet).toBe(true);
+  });
+
+  it('固定アメブ指定の複数行でもグローバル残枠を負にせず、上位行から配分する', () => {
+    const result = solveLevelPlan({
+      pokemonList: [
+        { pokemonId: 'fixed-upper', pokedexId: 25, name: '固定上位', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 8, boostAllowed: true, candyTarget: { totalCandyUnits: 12, boostedCandyUnits: 8 }, priorityIndex: 0 },
+        { pokemonId: 'fixed-lower', pokedexId: 26, name: '固定下位', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 8, boostAllowed: true, candyTarget: { totalCandyUnits: 12, boostedCandyUnits: 8 }, priorityIndex: 1 },
+      ],
+      dreamShards: Infinity,
+      boost: { kind: 'full', limit: 10 },
+      candyInventory: { species: { '25': 12, '26': 12 }, typeCandy: { electric: { s: 0, m: 0 } }, universal: { s: 0, m: 0, l: 0 } },
+      options: { itemCompareMode: 'surplusFirst' },
+    });
+
+    const lines = result.pokemonResults.map(pokemon => pokemon.reachableLine);
+    expect(lines.map(line => line.boostedCandyUnits)).toEqual([8, 2]);
+    expect(lines.map(line => line.nonBoostCandyUnits)).toEqual([4, 10]);
+    expect(lines.every(line => line.candyDemandMet)).toBe(true);
+    expect(result.summary.boost.boostUsed).toBe(10);
+  });
+
+  it('個数指定を使い切る前にLv70へ到達した行も成功扱いにする', () => {
+    const result = solveLevelPlan({
+      pokemonList: [{
+        pokemonId: 'candy-target-max-level',
+        pokedexId: 25,
+        name: '個数指定Lv上限',
+        type: 'electric',
+        currentLevel: 69,
+        currentExpInLevel: 0,
+        targetLevel: 70,
+        expType: 600,
+        nature: 'normal',
+        requestedBoostCandy: 0,
+        boostAllowed: true,
+        candyTarget: { totalCandyUnits: 1_000, boostedCandyUnits: 0 },
+        priorityIndex: 0,
+      }],
+      dreamShards: Infinity,
+      boost: { kind: 'none', limit: 0 },
+      candyInventory: { species: { '25': 1_000 }, typeCandy: { electric: { s: 0, m: 0 } }, universal: { s: 0, m: 0, l: 0 } },
+      options: { itemCompareMode: 'surplusFirst' },
+    });
+
+    const line = result.pokemonResults[0].reachableLine;
+    expect(line.level).toBe(70);
+    expect(line.totalCandyUnitsUsed).toBeLessThan(1_000);
+    expect(line.candyDemandMet).toBe(true);
   });
 
   it('種族アメだけでは足りない場合も通常は種族アメを使えるだけ使う', () => {
@@ -803,7 +1061,7 @@ describe('単一最適化パイプライン', () => {
       options: { itemCompareMode: 'surplusFirst' },
     });
     const line = result.pokemonResults[0].reachableLine;
-    expect(line.targetReached).toBe(true);
+    expect(line.candyDemandMet).toBe(true);
     expect(line.candySupply.species).toBe(99);
     expect(line.candySupply.universal.m).toBe(1);
     expect(line.surplusCandyValue).toBe(16);
@@ -819,7 +1077,7 @@ describe('単一最適化パイプライン', () => {
     });
 
     const line = result.pokemonResults[0].reachableLine;
-    expect(line.targetReached).toBe(true);
+    expect(line.candyDemandMet).toBe(true);
     expect(line.candySupply.species).toBe(319);
   });
 
@@ -835,8 +1093,8 @@ describe('単一最適化パイプライン', () => {
       options: { itemCompareMode: 'surplusGateFirst' },
     });
     const [upper, lower] = result.pokemonResults;
-    expect(upper.targetReached).toBe(true);
-    expect(lower.targetReached).toBe(true);
+    expect(upper.candyDemandMet).toBe(true);
+    expect(lower.candyDemandMet).toBe(true);
     expect(lower.shortage.candyToTarget).toBe(0);
   });
 
@@ -853,7 +1111,7 @@ describe('単一最適化パイプライン', () => {
     });
     const [upper, lower] = result.pokemonResults;
     expect(upper.reachableLine.candySupply.universal.s).toBe(1);
-    expect(lower.targetReached).toBe(true);
+    expect(lower.candyDemandMet).toBe(true);
     expect(lower.reachableLine.candySupply.universal.s).toBe(0);
     expect(lower.reachableLine.candySupply.universal.m).toBe(1);
     expect(lower.reachableLine.candySupply.species).toBe(97);
@@ -959,8 +1217,8 @@ describe('単一最適化パイプライン', () => {
     expect(supplies.reduce((sum, supply) => sum + supply.species, 0)).toBe(99);
     expect(supplies[0].species).toBe(99);
     expect(supplies[1].species).toBe(0);
-    expect(result.pokemonResults[0].targetReached).toBe(true);
-    expect(result.pokemonResults[1].targetReached).toBe(true);
+    expect(result.pokemonResults[0].candyDemandMet).toBe(true);
+    expect(result.pokemonResults[1].candyDemandMet).toBe(true);
   });
 
   it('バッグ圧縮は余り2を許して万能Mを温存する', () => {
@@ -972,8 +1230,10 @@ describe('単一最適化パイプライン', () => {
     };
 
     const surplus = solveLevelPlan({ ...base, options: { itemCompareMode: 'surplusFirst' as const } }).pokemonResults[0].reachableLine;
+    // 余り0にするため万能Mを2個使う。タイプSを使い切る側を選ぶので、万能Sは14個残る
     expect(surplus.candySupply.universal.m).toBe(2);
     expect(surplus.candySupply.universal.s).toBe(51);
+    expect(surplus.candySupply.type.s).toBe(13);
     expect(surplus.surplusCandyValue).toBe(0);
 
     const legacy = solveLevelPlan({ ...base, options: { itemCompareMode: 'legacyImproved' as const } }).pokemonResults[0].reachableLine;
@@ -1082,12 +1342,12 @@ describe('単一最適化パイプライン', () => {
     });
 
     const line = result.pokemonResults[0].reachableLine;
-    expect(line.targetReached).toBe(true);
+    expect(line.candyDemandMet).toBe(true);
     expect(line.boostedCandyUnits).toBeGreaterThan(0);
     expect(line.boostedCandyUnits).toBeLessThan(10);
   });
 
-  it('通常アメで到達済みならmini上限不足をアメブ不足として表示しない', () => {
+  it('通常アメで到達済みでも、アメブ枠が0なら指定分を不足として出す（未達扱いにはしない）', () => {
     const result = solveLevelPlan({
       pokemonList: [{ pokemonId: 'mini-reached-by-normal', pokedexId: 25, name: 'mini通常到達', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 11, expType: 600, nature: 'normal', requestedBoostCandy: 10, boostAllowed: true, priorityIndex: 0 }],
       dreamShards: Infinity,
@@ -1097,11 +1357,208 @@ describe('単一最適化パイプライン', () => {
     });
 
     const p = result.pokemonResults[0];
-    expect(p.reachableLine.targetReached).toBe(true);
+    expect(p.reachableLine.candyDemandMet).toBe(true);
     expect(p.reachableLine.boostedCandyUnits).toBe(0);
     expect(p.reachableLine.nonBoostCandyUnits).toBeGreaterThan(0);
-    expect(p.shortage.boostCandyUnavailable).toBe(0);
+    // 「上限0 ＋ 行のアメブ個数あり」は保存データの復元で起こりうる。指定が満たせていないので出す。
+    expect(p.shortage.boostCandyUnavailable).toBeGreaterThan(0);
+    // ただし通常アメで目標には届いているので、未達の原因診断には出さない
     expect(p.constraintDiagnosis.limitingFactor).toBeNull();
+    expect(p.constraintDiagnosis.isBoostShortage).toBe(false);
+  });
+
+  it('目標に到達していても、上位行に枠を取られて指定アメブを使えなければ不足として出す', () => {
+    const result = solveLevelPlan({
+      pokemonList: [
+        { pokemonId: 'upper', pokedexId: 25, name: '上位', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 20, expType: 600, nature: 'normal', requestedBoostCandy: 8, boostAllowed: true, priorityIndex: 0 },
+        { pokemonId: 'lower', pokedexId: 26, name: '下位', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 20, expType: 600, nature: 'normal', requestedBoostCandy: 10, boostAllowed: true, priorityIndex: 1 },
+      ],
+      dreamShards: Infinity,
+      boost: { kind: 'mini', limit: 10 },
+      candyInventory: { species: { '25': 500, '26': 500 }, typeCandy: { electric: { s: 0, m: 0 } }, universal: { s: 0, m: 0, l: 0 } },
+      options: { itemCompareMode: 'legacyImproved' },
+    });
+
+    const lower = result.pokemonResults[1];
+    // 通常アメが潤沢なので目標には届く。それでも指定した10個ぶんの枠は回ってこない。
+    expect(lower.reachableLine.candyDemandMet).toBe(true);
+    expect(lower.reachableLine.boostedCandyUnits).toBeLessThan(10);
+    expect(lower.shortage.boostCandyUnavailable).toBeGreaterThan(0);
+    // 目標未達ではないので「アメブ律速で届かない」という診断にはしない（別概念）
+    expect(lower.constraintDiagnosis.limitingFactor).toBeNull();
+  });
+
+  it('かけら律速で止まった行はアメブ枠が余るので、アメブ不足として出さない', () => {
+    const result = solveLevelPlan({
+      pokemonList: [
+        { pokemonId: 'shard-bound', pokedexId: 25, name: 'かけら律速', type: 'electric', currentLevel: 25, currentExpInLevel: 0, targetLevel: 70, expType: 600, nature: 'normal', requestedBoostCandy: 100000, boostAllowed: true, priorityIndex: 0 },
+      ],
+      // アメブ枠は潤沢、かけらだけ絞る
+      dreamShards: 50_000,
+      boost: { kind: 'full', limit: 100000 },
+      candyInventory: { species: { '25': 5000 }, typeCandy: { electric: { s: 0, m: 0 } }, universal: { s: 0, m: 0, l: 0 } },
+      options: { itemCompareMode: 'legacyImproved' },
+    });
+
+    const p = result.pokemonResults[0];
+    expect(p.reachableLine.candyDemandMet).toBe(false);
+    expect(p.constraintDiagnosis.limitingFactor).toBe('shards');
+    // 枠を使い切っていないので、要求量が残枠を超えていてもアメブのせいではない
+    expect(p.reachableLine.boostedCandyUnits).toBeLessThan(100000);
+    expect(p.shortage.boostCandyUnavailable).toBe(0);
+  });
+
+  it('limitingFactor は固定優先順位ではなく到達点で選ぶ（アメが最も制限的なら shards にしない）', () => {
+    // アメ在庫0・かけらは必要量の約93%。かけらが「少しだけ」足りないので、
+    // 固定優先順位（shards → boost → candy）だと 'shards' になってしまう。
+    // 実際に制限しているのはアメで、アメだけを課すと元Lvから1つも上がらない。
+    const result = solveLevelPlan({
+      pokemonList: [
+        { pokemonId: 'candy-bound', pokedexId: 25, name: 'アメ律速', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 0 },
+      ],
+      dreamShards: 500_000,
+      boost: { kind: 'none', limit: 0 },
+      candyInventory: { species: { '25': 0 }, typeCandy: { electric: { s: 0, m: 0 } }, universal: { s: 0, m: 0, l: 0 } },
+      options: { itemCompareMode: 'legacyImproved' },
+    });
+
+    const p = result.pokemonResults[0];
+    const d = p.constraintDiagnosis;
+    expect(p.reachableLine.candyDemandMet).toBe(false);
+    // 両方とも不足している状況を作れていることを先に確認する
+    expect(d.isInventoryShortage).toBe(true);
+    expect(d.isShardsShortage).toBe(true);
+    // アメだけを課すと元Lv、かけらだけを課すと目標のすぐ手前。より制限的なのはアメ
+    expect(d.byCandyInventory.level).toBe(10);
+    expect(d.byDreamShards.level).toBeGreaterThan(50);
+    expect(d.limitingFactor).toBe('candy');
+  });
+
+  it('目標Lvを上げても律速要因は入れ替わらない（赤字の逆転を防ぐ）', () => {
+    // 赤字とレベルピッカーのラベルは limitingFactor で決まる（設計書§10.15）。
+    // 目標Lvを上げただけで律速がアメ→かけらへ移ると「アメ不足が悪化したのにアメが黒へ戻る」
+    // という逆転が起きる。到達点で比べる限りこれは起きない:
+    // 在庫が同じなら byCandy / byShards の到達点は目標Lvに依存せず、大小関係が保たれる。
+    const factors = [15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70].map((targetLevel) => {
+      const result = solveLevelPlan({
+        pokemonList: [
+          { pokemonId: 'sweep', pokedexId: 25, name: '掃引', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 0 },
+        ],
+        // アメは万能M×10（=200相当）だけ、かけらは60,000。低い目標ではかけらが足り、
+        // 高い目標では両方足りなくなる。それでも一貫してアメの方が制限的。
+        dreamShards: 60_000,
+        boost: { kind: 'none', limit: 0 },
+        candyInventory: { species: { '25': 0 }, typeCandy: { electric: { s: 0, m: 0 } }, universal: { s: 0, m: 10, l: 0 } },
+        options: { itemCompareMode: 'legacyImproved' },
+      }).pokemonResults[0].constraintDiagnosis.limitingFactor;
+      return { targetLevel, factor: result };
+    });
+
+    // 途中でかけらも不足し始める状況になっていることを確認（空振り防止）
+    const highest = solveLevelPlan({
+      pokemonList: [
+        { pokemonId: 'sweep', pokedexId: 25, name: '掃引', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 70, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 0 },
+      ],
+      dreamShards: 60_000,
+      boost: { kind: 'none', limit: 0 },
+      candyInventory: { species: { '25': 0 }, typeCandy: { electric: { s: 0, m: 0 } }, universal: { s: 0, m: 10, l: 0 } },
+      options: { itemCompareMode: 'legacyImproved' },
+    }).pokemonResults[0].constraintDiagnosis;
+    expect(highest.isInventoryShortage).toBe(true);
+    expect(highest.isShardsShortage).toBe(true);
+
+    // 未達になった行はすべて 'candy'。かけらも不足に転じた高目標でも 'shards' へ移らない
+    const limited = factors.filter((f) => f.factor !== null);
+    expect(limited.length).toBeGreaterThan(0);
+    expect(limited.map((f) => f.factor)).toEqual(limited.map(() => 'candy'));
+  });
+
+  it('アメブ枠を取られた行は、個数指定が無ければ通常アメで補填されて到達する', () => {
+    // 個数指定が**無い**行では総アメ数に上限が無いので、アメブ枠の不足を通常アメで
+    // 補填して到達できる（配分ポリシー仕様§4）。到達するので limitingFactor は null で、
+    // 枠不足は shortage.boostCandyUnavailable にだけ出る。
+    //
+    // **アメブ不足の可視化（設計書§10.15 / D-1）が `limitingFactor === 'boost'` ではなく
+    // `boostCandyUnavailable` を見なければならない根拠がこれ。** 到達している行にも出す必要がある。
+    //
+    // **個数指定がある行では成り立たない。** 総アメ数が固定なので補填のしようがなく、
+    // アメブ1個を通常アメ1個へ置換したぶんEXPが減って未達になる（下の §11.3 のテスト）。
+    const buildRow = (id: string, dex: number, idx: number, extra: Record<string, unknown> = {}) => ({
+      pokemonId: id, pokedexId: dex, name: id, type: 'electric',
+      currentLevel: 10, currentExpInLevel: 0, targetLevel: 60,
+      expType: 600, nature: 'normal', requestedBoostCandy: 100_000, boostAllowed: true,
+      priorityIndex: idx, ...extra,
+    });
+
+    const solveWith = (extra: Record<string, unknown>) => solveLevelPlan({
+      // 上位行が枠900を使い切り、下位行には枠が回らない
+      pokemonList: [
+        buildRow('upper', 25, 0),
+        buildRow('lower', 133, 1, extra),
+      ],
+      // アメ・かけらは潤沢。アメブ枠だけを絞る
+      dreamShards: 999_999_999,
+      boost: { kind: 'full', limit: 900 },
+      candyInventory: { species: {}, typeCandy: {}, universal: { s: 0, m: 0, l: 5000 } },
+      options: { itemCompareMode: 'legacyImproved' },
+    } as unknown as LevelPlannerInput);
+
+    const lower = solveWith({}).pokemonResults[1];
+    expect(lower.reachableLine.boostedCandyUnits).toBe(0);
+    expect(lower.reachableLine.candyDemandMet).toBe(true);
+    expect(lower.reachableLine.effectiveTargetReached).toBe(true);
+    expect(lower.reachableLine.level).toBe(60);
+    expect(lower.shortage.boostCandyUnavailable).toBeGreaterThan(0);
+    expect(lower.constraintDiagnosis.limitingFactor).toBeNull();
+    expect(lower.constraintDiagnosis.isBoostShortage).toBe(false);
+  });
+
+  it('§11.3: 個数指定のある行はアメブ枠不足で未達になり、boost が律速として出る', () => {
+    // **回帰防止（設計書§11.3）。** 総アメ数が candyTarget に固定されているため、
+    // アメブ枠が回ってこないぶんを通常アメで補填しても得られるEXPが減り、目標へ届かない。
+    //
+    // 旧実装は `candyDemandMet = used >= totalCandyUnits`（＝予定アメを配れたか）を
+    // calcDiagnosis の門番に使っていたため、配り切ってさえいれば「律速なし」になり、
+    // 不足チップ・赤字・目標Lvピッカーのラベルが**すべて消えていた**。
+    // この行を消すと limitingFactor が null に戻る。
+    const buildRow = (id: string, dex: number, idx: number, extra: Record<string, unknown> = {}) => ({
+      pokemonId: id, pokedexId: dex, name: id, type: 'electric',
+      currentLevel: 10, currentExpInLevel: 0, targetLevel: 40, targetExpInLevel: 0,
+      expType: 600, nature: 'normal', requestedBoostCandy: 300, boostAllowed: true,
+      candyTarget: { totalCandyUnits: 300, boostedCandyUnits: 300 },
+      priorityIndex: idx, ...extra,
+    });
+
+    const result = solveLevelPlan({
+      // 上位が枠300を使い、下位には100しか残らない
+      pokemonList: [buildRow('row0', 25, 0), buildRow('row1', 133, 1)],
+      dreamShards: 10_000_000,
+      boost: { kind: 'full', limit: 400 },
+      candyInventory: { species: {}, typeCandy: {}, universal: { s: 1000, m: 100, l: 10 } },
+    } as unknown as LevelPlannerInput);
+
+    const [upper, lower] = result.pokemonResults;
+
+    // 上位は指定どおりアメブ300で目標Lv40へ到達する（対照）
+    expect(upper.reachableLine.boostedCandyUnits).toBe(300);
+    expect(upper.reachableLine.level).toBe(40);
+    expect(upper.constraintDiagnosis.limitingFactor).toBeNull();
+
+    // 下位は300個を配り切っている（需要充足）が、アメブは100個しか回らず Lv34 で止まる
+    expect(lower.reachableLine.totalCandyUnitsUsed).toBe(300);
+    expect(lower.reachableLine.boostedCandyUnits).toBe(100);
+    expect(lower.reachableLine.nonBoostCandyUnits).toBe(200);
+    expect(lower.reachableLine.candyDemandMet).toBe(true);
+    expect(lower.reachableLine.level).toBeLessThan(40);
+    expect(lower.reachableLine.effectiveTargetReached).toBe(false);
+
+    // 律速はアメブ。アメ・かけらは潤沢なので他の要因は立たない
+    expect(lower.constraintDiagnosis.limitingFactor).toBe('boost');
+    expect(lower.constraintDiagnosis.isBoostShortage).toBe(true);
+    expect(lower.constraintDiagnosis.isInventoryShortage).toBe(false);
+    expect(lower.constraintDiagnosis.isShardsShortage).toBe(false);
+    expect(lower.shortage.expToTarget).toBeGreaterThan(0);
+    expect(lower.shortage.boostCandyUnavailable).toBe(200);
   });
 
   it('ブースト主体でアメ在庫律速の未達を candy と診断する（到達誤表示の回帰防止）', () => {
@@ -1114,7 +1571,7 @@ describe('単一最適化パイプライン', () => {
     });
     const p = result.pokemonResults[0];
     // ブーストアメを在庫で頭打ちにしないと isInventoryShortage=false → limitingFactor=null（到達誤表示）に落ちる
-    expect(p.reachableLine.targetReached).toBe(false);
+    expect(p.reachableLine.candyDemandMet).toBe(false);
     expect(p.shortage.candyToTarget).toBeGreaterThan(0);
     expect(p.shortage.dreamShardShortage).toBe(0);
     expect(p.constraintDiagnosis.isInventoryShortage).toBe(true);
@@ -1266,7 +1723,7 @@ describe('単一最適化パイプライン', () => {
       options: { itemCompareMode: 'surplusFirst' as const },
     });
 
-    expect(result.pokemonResults.map(row => row.targetReached)).toEqual([true, true, false]);
+    expect(result.pokemonResults.map(row => row.candyDemandMet)).toEqual([true, true, false]);
     expect(result.pokemonResults.map(row => row.reachableLine.surplusCandyValue).reduce((sum, value) => sum + value, 0)).toBe(0);
     expect(result.summary.boundaryPokemonId).toBe('surplus-drop-3');
   });
@@ -1289,12 +1746,22 @@ describe('単一最適化パイプライン', () => {
       options: { itemCompareMode: 'surplusFirst' as const },
     });
 
-    expect(result.pokemonResults.map(row => row.targetReached)).toEqual([true, true, true]);
+    expect(result.pokemonResults.map(row => row.candyDemandMet)).toEqual([true, true, true]);
     expect(result.pokemonResults.map(row => row.reachableLine.surplusCandyValue)).toEqual([1, 1, 1]);
     expect(result.summary.boundaryPokemonId).toBeUndefined();
   });
 
-  it('余り最小は万能Sなしなら粗いアイテムで余りを出さず余り0の境界進捗を採る', () => {
+  /**
+   * **⚠ 2026-08-01 に期待値を反転した（§14.4.3 の対応）。**
+   *
+   * 以前は「粗いアイテム（万能M=20）しかないなら、余りを出さず**余り0の境界進捗**を採る」を固定していた。
+   * これは `surplusFirst` の2周目（ゲート無し再探索）が `2 < 2` で死んでいたため、
+   * **ゲート内で1匹も到達できなくても、そのまま到達0で確定していた**ことの写しだった。
+   *
+   * 仕様は「余り最小で到達できるポケモンが**存在しなければバランスに切り替え**」なので、
+   * ここは pawmot が余り5で到達し、cramorant が境界になるのが正しい。
+   */
+  it('余り最小は1匹も到達できないときバランスへ切り替えて上位を到達させる', () => {
     const result = solveLevelPlan({
       pokemonList: [
         { pokemonId: 'pawmot-no-s', pokedexId: 923, name: '万能Sなしパーモット', type: 'electric' as const, currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 316, boostAllowed: true, priorityIndex: 0 },
@@ -1313,12 +1780,14 @@ describe('単一最適化パイプライン', () => {
     const boundarySearch = result.performance?.boundarySearch;
     expect(boundarySearch).toBeDefined();
     expect(boundarySearch!.maxFeasibleTotalCandy).toBeGreaterThanOrEqual(boundarySearch!.selectedTotalCandy);
-    expect(result.pokemonResults[0].targetReached).toBe(false);
-    expect(result.pokemonResults[0].reachableLine.surplusCandyValue).toBe(0);
-    expect(result.summary.boundaryPokemonId).toBe('pawmot-no-s');
+    // 上位（pawmot）がゲートを外して到達し、境界は下位（cramorant）へ移る。
+    expect(result.pokemonResults[0].candyDemandMet).toBe(true);
+    expect(result.pokemonResults[0].reachableLine.surplusCandyValue).toBe(5);
+    expect(result.summary.boundaryPokemonId).toBe('cramorant-no-s');
   });
 
-  it('余り最小は万能M/Lが潤沢でも余り0の境界進捗を優先する', () => {
+  /** 同上（§14.4.3）。在庫が潤沢な側では、切り替えの結果**両方とも到達する**。 */
+  it('余り最小は万能M/Lが潤沢ならバランスへ切り替えて2匹とも到達させる', () => {
     const result = solveLevelPlan({
       pokemonList: [
         { pokemonId: 'pawmot-no-s-rich', pokedexId: 923, name: '万能Sなし潤沢パーモット', type: 'electric' as const, currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 316, boostAllowed: true, priorityIndex: 0 },
@@ -1334,10 +1803,10 @@ describe('単一最適化パイプライン', () => {
       options: { itemCompareMode: 'surplusFirst' as const },
     });
 
-    expect(result.pokemonResults[0].targetReached).toBe(false);
-    expect(result.pokemonResults[0].reachableLine.surplusCandyValue).toBe(0);
-    expect(result.pokemonResults[0].reachableLine.candySupply.universal.m).toBe(6);
-    expect(result.summary.boundaryPokemonId).toBe('pawmot-no-s-rich');
+    expect(result.pokemonResults.map(row => row.candyDemandMet)).toEqual([true, true]);
+    expect(result.pokemonResults[0].reachableLine.surplusCandyValue).toBe(5);
+    expect(result.pokemonResults[0].reachableLine.candySupply.universal.m).toBe(7);
+    expect(result.summary.boundaryPokemonId).toBeUndefined();
   });
 
   it('余り最小は余り0の境界未達なら余り2の到達より余り0を優先する', () => {
@@ -1356,8 +1825,8 @@ describe('単一最適化パイプライン', () => {
       options: { itemCompareMode: 'surplusFirst' as const },
     });
 
-    expect(result.pokemonResults[0].targetReached).toBe(true);
-    expect(result.pokemonResults[1].targetReached).toBe(false);
+    expect(result.pokemonResults[0].candyDemandMet).toBe(true);
+    expect(result.pokemonResults[1].candyDemandMet).toBe(false);
     expect(result.pokemonResults.map(row => row.reachableLine.surplusCandyValue).reduce((sum, value) => sum + value, 0)).toBe(0);
   });
 
@@ -1395,7 +1864,7 @@ describe('単一最適化パイプライン', () => {
     });
 
     const entei = result.pokemonResults[6];
-    expect(entei.targetReached).toBe(false);
+    expect(entei.candyDemandMet).toBe(false);
     expect(entei.reachableLine.totalCandyUnitsUsed).toBeGreaterThan(922);
     expect(result.summary.universalCandyRemaining.s + result.summary.universalCandyRemaining.l).toBe(0);
   });
@@ -1437,10 +1906,10 @@ describe('単一最適化パイプライン', () => {
     const kangaskhan = result.pokemonResults.find(row => row.pokemonId === 'kangaskhan')?.reachableLine;
     const raikou = result.pokemonResults.find(row => row.pokemonId === 'raikou')?.reachableLine;
 
-    expect(kangaskhan?.targetReached).toBe(false);
+    expect(kangaskhan?.candyDemandMet).toBe(false);
     expect(kangaskhan?.level).toBe(54);
     expect(kangaskhan?.totalCandyUnitsUsed).toBe(118);
-    expect(raikou?.targetReached).toBe(false);
+    expect(raikou?.candyDemandMet).toBe(false);
     expect(raikou?.surplusCandyValue).toBeLessThanOrEqual(2);
     expect(kangaskhan?.surplusCandyValue).toBeLessThanOrEqual(2);
     expect(result.performance?.boundarySearch).toMatchObject({
@@ -1491,7 +1960,7 @@ describe('単一最適化パイプライン', () => {
     const result = solveLevelPlan(input);
     const flareon = result.pokemonResults.find(row => row.pokemonId === 'flareon')?.reachableLine;
 
-    expect(flareon?.targetReached).toBe(false);
+    expect(flareon?.candyDemandMet).toBe(false);
     expect(flareon?.totalCandyUnitsUsed).toBe(557);
     expect(result.performance?.boundarySearch).toMatchObject({
       mode: 'surplusGateFirst',
@@ -1540,7 +2009,7 @@ describe('単一最適化パイプライン', () => {
     const result = solveLevelPlan(input);
     const flareon = result.pokemonResults.find(row => row.pokemonId === 'flareon')?.reachableLine;
 
-    expect(flareon?.targetReached).toBe(false);
+    expect(flareon?.candyDemandMet).toBe(false);
     expect(flareon?.totalCandyUnitsUsed).toBe(569);
     expect(result.performance?.boundarySearch).toMatchObject({
       mode: 'legacyImproved',

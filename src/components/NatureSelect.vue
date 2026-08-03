@@ -1,5 +1,11 @@
 <template>
-  <div class="natureSelect" :class="{ 'natureSelect--open': isOpen }">
+  <div
+    class="natureSelect"
+    :class="{
+      'natureSelect--open': isOpen,
+      'natureSelect--compact': compact,
+    }"
+  >
     <button
       ref="triggerRef"
       type="button"
@@ -8,8 +14,10 @@
       @click="toggle"
       @blur="handleBlur"
       :aria-label="label"
+      :aria-expanded="isOpen"
     >
-      <span class="natureSelect__symbol" v-html="symbolSvg(modelValue)" aria-hidden="true"></span>
+      <span v-if="caption" class="natureSelect__caption" aria-hidden="true">{{ caption }}</span>
+      <span class="natureSelect__symbol" :class="`natureSelect__symbol--${modelValue}`" v-html="symbolSvg(modelValue)" aria-hidden="true"></span>
       <span class="natureSelect__sr">{{ currentLabel }}</span>
       <svg class="natureSelect__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none">
         <polyline points="6 9 12 15 18 9" stroke="currentColor" stroke-width="2" fill="none"/>
@@ -18,7 +26,9 @@
     <Teleport to="body">
       <div
         v-if="isOpen"
+        ref="dropdownRef"
         class="natureSelect__dropdown"
+        :class="{ 'natureSelect__dropdown--compact': compact }"
         data-testid="nature-select-dropdown"
         :style="dropdownStyle"
       >
@@ -31,7 +41,7 @@
           :class="{ 'natureSelect__option--selected': option.value === modelValue }"
           @mousedown.prevent="select(option.value)"
         >
-          <span class="natureSelect__symbol" v-html="symbolSvg(option.value)" aria-hidden="true"></span>
+          <span class="natureSelect__symbol" :class="`natureSelect__symbol--${option.value}`" v-html="symbolSvg(option.value)" aria-hidden="true"></span>
           <span class="natureSelect__sr">{{ option.label }}</span>
         </button>
       </div>
@@ -40,7 +50,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, nextTick } from 'vue';
 
 const props = defineProps<{
   modelValue: 'normal' | 'up' | 'down';
@@ -48,6 +58,13 @@ const props = defineProps<{
   labelNormal: string;
   labelUp: string;
   labelDown: string;
+  compact?: boolean;
+  /**
+   * 記号の上に出す小見出し。**ラベルを置く余地が無い場所でだけ使う。**
+   * 計算機の行ヘッダは他の入力と違って項目名を置く場所が無く、▲▲ だけでは
+   * 何の補正か読み取れないため「EXP」を添える。読み上げは `aria-label` が担当する。
+   */
+  caption?: string;
 }>();
 
 const emit = defineEmits<{
@@ -55,6 +72,7 @@ const emit = defineEmits<{
 }>();
 
 const triggerRef = ref<HTMLButtonElement | null>(null);
+const dropdownRef = ref<HTMLDivElement | null>(null);
 const isOpen = ref(false);
 const dropdownPos = ref({ top: 0, left: 0, width: 0 });
 
@@ -68,8 +86,14 @@ const dropdownStyle = computed(() => ({
 function updateDropdownPos() {
   if (!triggerRef.value) return;
   const rect = triggerRef.value.getBoundingClientRect();
+  const gap = 2;
+  const dropdownHeight = dropdownRef.value?.offsetHeight ?? 0;
+  const topBelow = rect.bottom + gap;
+  const top = dropdownHeight > 0 && topBelow + dropdownHeight > window.innerHeight
+    ? Math.max(gap, rect.top - gap - dropdownHeight)
+    : topBelow;
   dropdownPos.value = {
-    top: rect.bottom + 2,
+    top,
     left: rect.left,
     width: rect.width,
   };
@@ -87,18 +111,20 @@ const currentLabel = computed(() => {
 });
 
 function symbolSvg(value: 'normal' | 'up' | 'down'): string {
-  // Visible symbols only: "-", "▲", "▼" (use SVG for legibility/weight).
+  // Visible symbols only: "-", "▲▲", "▼▼" (use SVG for legibility/weight).
   if (value === "up") {
     return `
-      <svg width="14" height="14" viewBox="0 0 16 16" role="img" focusable="false" aria-hidden="true">
+      <svg width="28" height="14" viewBox="0 0 32 16" role="img" focusable="false" aria-hidden="true">
         <path d="M8 3 L14 13 H2 Z" fill="currentColor"/>
+        <path d="M24 3 L30 13 H18 Z" fill="currentColor"/>
       </svg>
     `.trim();
   }
   if (value === "down") {
     return `
-      <svg width="14" height="14" viewBox="0 0 16 16" role="img" focusable="false" aria-hidden="true">
+      <svg width="28" height="14" viewBox="0 0 32 16" role="img" focusable="false" aria-hidden="true">
         <path d="M2 3 H14 L8 13 Z" fill="currentColor"/>
+        <path d="M18 3 H30 L24 13 Z" fill="currentColor"/>
       </svg>
     `.trim();
   }
@@ -109,11 +135,16 @@ function symbolSvg(value: 'normal' | 'up' | 'down'): string {
   `.trim();
 }
 
-function toggle() {
-  if (!isOpen.value) {
-    updateDropdownPos();
+async function toggle() {
+  if (isOpen.value) {
+    isOpen.value = false;
+    return;
   }
-  isOpen.value = !isOpen.value;
+  updateDropdownPos();
+  isOpen.value = true;
+  await nextTick();
+  // Teleport 後の実寸で、画面下に収まらない場合だけトリガーの上へ出す。
+  updateDropdownPos();
 }
 
 function handleBlur() {

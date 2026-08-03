@@ -1,16 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import { compareExactSupplyObjective, exactSupplyObjectiveFor, refineExactSupply as refineExactSupplyImpl } from '../../../src/domain/level-planner/core/exactSupplyRefine';
 import type { ExactSupplyMode, ExactSupplyRow } from '../../../src/domain/level-planner/core/exactSupplyRefine';
+import { itemCountsFromPriority } from '../../../src/domain/level-planner/core/itemPriority';
 import type { CandyInventory } from '../../../src/domain/level-planner/types';
 
-type TestExactSupplyRow = Omit<ExactSupplyRow, 'candyFamilyKey'> & { candyFamilyKey?: string };
+/**
+ * このファイルの fixture は需要充足だけを扱うので、`candyDemandMet` はここで既定を与える。
+ * **本体側（`ExactSupplyRow`）は必須のまま**にしておくこと。任意にすると、未達行を
+ * 埋め忘れた呼び出しが「全行が充足」として黙って集計される。
+ */
+type TestExactSupplyRow = Omit<ExactSupplyRow, 'candyFamilyKey' | 'candyDemandMet'>
+  & { candyFamilyKey?: string; candyDemandMet?: boolean };
+
+function withTestDefaults(rows: TestExactSupplyRow[]): ExactSupplyRow[] {
+  return rows.map(row => ({
+    ...row,
+    candyFamilyKey: row.candyFamilyKey ?? String(row.pokedexId),
+    candyDemandMet: row.candyDemandMet ?? true,
+  }));
+}
 
 function refineExactSupply(rows: TestExactSupplyRow[], stock: CandyInventory, mode: ExactSupplyMode) {
-  return refineExactSupplyImpl(
-    rows.map(row => ({ ...row, candyFamilyKey: row.candyFamilyKey ?? String(row.pokedexId) })),
-    stock,
-    mode,
-  );
+  return refineExactSupplyImpl(withTestDefaults(rows), stock, mode);
 }
 
 const inventory: CandyInventory = {
@@ -45,9 +56,11 @@ describe('exactSupplyRefine', () => {
   it('surplusFirstの固定需要refineでも同じ余り合計ならLvMAX余り0達成数を優先する', () => {
     const surplusOne = { species: 0, typeS: 0, typeM: 0, universalS: 0, universalM: 0, universalL: 0, supply: 1, surplus: 1 };
     const surplusZero = { ...surplusOne, supply: 0, surplus: 0 };
+    // `speciesLexOrder` は「上位から取る」種族配分の正規形を表す内部順位（先頭が0、以降は負）。
+    // **省くと `speciesLex` が常に0になって正規形が黙って無効化される**ので、明示的に渡す。
     const sourceRows = [
-      { legacyZeroSurplusPriority: true, targetReached: true },
-      { legacyZeroSurplusPriority: false, targetReached: true },
+      { legacyZeroSurplusPriority: true, candyDemandMet: true, speciesLexOrder: 0 },
+      { legacyZeroSurplusPriority: false, candyDemandMet: true, speciesLexOrder: -1 },
     ];
     const lvMaxHasSurplus = exactSupplyObjectiveFor([surplusOne, surplusZero], sourceRows);
     const lvMaxHasZero = exactSupplyObjectiveFor([surplusZero, surplusOne], sourceRows);
@@ -132,6 +145,46 @@ describe('exactSupplyRefine', () => {
     expect(result).toMatchObject({ status: 'invalid_selected', reason: 'species_stock_exceeded:25' });
   });
 
+  it('外部からspeciesLexOrderが混入しても配列順から導出し、種族アメを上位へ配る', () => {
+    const sharedRows = withTestDefaults([
+      {
+        id: 'upper',
+        name: 'Upper',
+        pokedexId: 133,
+        candyFamilyKey: '133',
+        type: 'normal',
+        totalCandyCount: 1,
+        selected: { species: 1, typeS: 0, typeM: 0, universalS: 0, universalM: 0, universalL: 0, supply: 1, surplus: 0 },
+      },
+      {
+        id: 'lower',
+        name: 'Lower',
+        pokedexId: 133,
+        candyFamilyKey: '133',
+        type: 'normal',
+        totalCandyCount: 1,
+        selected: { species: 0, typeS: 0, typeM: 0, universalS: 1, universalM: 0, universalL: 0, supply: 3, surplus: 2 },
+      },
+    ]).map((row, index) => ({
+      ...row,
+      // 外部入力を信用すると下位行が勝つ逆順位を意図的に混入する。
+      speciesLexOrder: index === 0 ? -100 : 100,
+    }));
+
+    const result = refineExactSupplyImpl(sharedRows, {
+      species: { '133': 1 },
+      typeCandy: { normal: { s: 0, m: 0 } },
+      universal: { s: 1, m: 0, l: 0 },
+    }, 'surplusGateFirst');
+
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') return;
+    expect(result.selectedIsBest).toBe(true);
+    expect(result.bestRows[0].species).toBe(1);
+    expect(result.bestRows[1].species).toBe(0);
+    expect(result.bestObjective.speciesLex).toBe(0);
+  });
+
   it('種族アメ使用量を優先するため、余り0の非種族候補より余り1の種族候補をbestにする', () => {
     const result = refineExactSupply([{
       id: 'species-first',
@@ -155,7 +208,10 @@ describe('exactSupplyRefine', () => {
   });
 
   it('surplusFirst は余り0..2を生値で比較し、余り悪化を選ばない', () => {
-    const selected = exactSupplyObjectiveFor(rows.map(row => row.selected));
+    const selected = exactSupplyObjectiveFor(
+      rows.map(row => row.selected),
+      withTestDefaults(rows).map((row, index) => ({ ...row, speciesLexOrder: -index })),
+    );
     expect(selected.rawSurplus).toBe(1);
     expect(selected.normalizedSurplus).toBe(0);
 
@@ -284,7 +340,8 @@ describe('exactSupplyRefine', () => {
     expect(surplus.status).toBe('ok');
     if (surplus.status !== 'ok') return;
     expect(surplus.selectedIsBest).toBe(false);
-    expect(surplus.bestRows[0].universalM).toBe(2);
+    // 余り0にするには万能Mが要る。タイプSを使い切る側を選ぶので2個使い、万能Sは14個残る
+    expect(surplus.bestRows[0]).toMatchObject({ typeS: 13, universalS: 51, universalM: 2 });
     expect(surplus.bestObjective.rawSurplus).toBe(0);
   });
 
@@ -371,7 +428,9 @@ describe('exactSupplyRefine', () => {
     if (legacy.status !== 'ok') return;
     expect(legacy.selectedIsBest).toBe(true);
     expect(legacy.bestObjective.rawSurplus).toBe(3);
-    expect(legacy.bestObjective.legacyPriority).toEqual([0, -17, 13, 11]);
+    expect(itemCountsFromPriority(legacy.bestObjective.priority)).toEqual({
+      typeS: 13, typeM: 11, universalS: 428, universalM: 17, universalL: 0,
+    });
     expect(legacy.bestRows.reduce((sum, row) => sum + row.universalS, 0)).toBe(428);
     expect(legacy.bestRows.reduce((sum, row) => sum + row.universalM, 0)).toBe(17);
   });

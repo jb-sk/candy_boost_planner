@@ -1,13 +1,15 @@
 import type { PokemonBoxEntryV1, SleepSettings } from "../domain/types";
 import type { CalcSaveSlotV1 } from "../persistence/calc";
 import type { CandyInventoryV2 } from "../persistence/candy";
-import { BACKUP_FORMAT, BACKUP_SCHEMA_VERSION, type BackupBoxEntryV1, type CandyBoostPlannerBackupV2 } from "./types";
+import { BACKUP_FORMAT, BACKUP_SCHEMA_VERSION, type BackupBoxEntryV1, type CandyBoostPlannerBackupV3 } from "./types";
 
 export type BackupSnapshotSources = {
   boxEntries: readonly PokemonBoxEntryV1[];
   totalShards: number;
   sleepSettings: SleepSettings;
   candyInventory: CandyInventoryV2;
+  /** 既定のアメブ目標Lv。`null` は未設定（＝目標Lvと同じ）。 */
+  defaultBoostReachLevel: number | null;
   calculator: {
     activeSlotIndex: 0 | 1 | 2;
     slots: [CalcSaveSlotV1 | null, CalcSaveSlotV1 | null, CalcSaveSlotV1 | null];
@@ -32,7 +34,7 @@ function toBackupBoxEntry(entry: PokemonBoxEntryV1): BackupBoxEntryV1 {
   return copy as BackupBoxEntryV1;
 }
 
-export function createBackup(sources: BackupSnapshotSources, now = new Date()): CandyBoostPlannerBackupV2 {
+export function createBackup(sources: BackupSnapshotSources, now = new Date()): CandyBoostPlannerBackupV3 {
   return {
     format: BACKUP_FORMAT,
     schemaVersion: BACKUP_SCHEMA_VERSION,
@@ -43,6 +45,7 @@ export function createBackup(sources: BackupSnapshotSources, now = new Date()): 
         totalShards: sources.totalShards,
         sleepSettings: clone(sources.sleepSettings),
         candyInventory: clone(sources.candyInventory),
+        defaultBoostReachLevel: sources.defaultBoostReachLevel,
       },
       calculator: clone(sources.calculator),
     },

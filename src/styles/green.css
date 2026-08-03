@@ -55,8 +55,9 @@
 
   /* Semantic Accents */
   --star-color: #fbc02d;
-  --nature-up: #2e7d32;
-  --nature-down: #c62828;
+  /* ▲▲ = 赤系 / ▼▼ = 青系。クリーム紙で沈まないよう明るめ（対比 4.3 / 3.1） */
+  --nature-up: #D84330;
+  --nature-down: #3F97E4;
 
   /* Border Radius */
   --radius-sm: 6px;
@@ -113,7 +114,6 @@ body {
 }
 
 /* ===== Calc — Sleep Chips ===== */
-.sleepChip,
 .hintIcon {
   color: var(--ink);
 }

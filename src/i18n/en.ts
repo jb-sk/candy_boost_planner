@@ -24,13 +24,18 @@ export const en = {
   },
   settings: {
     globalTitle: "Basic Settings",
+    defaultBoostReachLevelLabel: "Default Boost target Lv",
+    defaultBoostReachLevelPlaceholder: "Same as Target Lv",
+    defaultBoostReachLevelHelp: "The Boost target Lv used when adding a Pokémon to the calculator, on Reassign Boost, and so on. When unset, it matches the Target Lv.",
     itemCompareModeLabel: "Allocation policy",
     itemCompareModeSurplusFirst: "Min Surplus",
     itemCompareModeSurplusGateFirst: "Balanced",
     itemCompareModeLegacyImproved: "Max EXP",
-    itemCompareModeSurplusFirstHelp: "Prioritizes minimizing candy surplus. When surplus is tied, it then extends reached count and the boundary Pokémon's EXP.",
-    itemCompareModeSurplusGateFirstHelp: "Prioritizes reached results where each surplus stays within 0-2, then extends the boundary Pokémon's EXP within that range. When surplus is larger, it picks the smaller surplus.",
-    itemCompareModeLegacyImprovedHelp: "Prioritizes reached count and the boundary Pokémon's EXP first, then balances surplus and item usage.",
+    // 「1匹も到達できない場合はバランスへ切り替える」は実装の縮退規則（fbl01d…設計書 §14.4.3）。
+    // 案内が無いと「余り最小なのに余りが大きい配分が出た」と読めてしまうため、ここに明記する。
+    itemCompareModeSurplusFirstHelp: "Finds allocations with surplus ≤2 per Pokémon, prioritizing surplus reduction after target Lv reach count. Falls back to \"Balanced\" if none found.",
+    itemCompareModeSurplusGateFirstHelp: "Finds allocations with surplus ≤2 per Pokémon and grows the first shortfall Pokémon as much as possible. Allows more surplus if none found.",
+    itemCompareModeLegacyImprovedHelp: "Maximizes growth of the first Pokémon that falls short of its target Lv.",
     sleepTitle: "Sleep Growth Settings",
     typeCandyTitle: "Type Candy Stock",
   },
@@ -100,6 +105,18 @@ export const en = {
     shardsUnused: "Shards unused",
     clearPokemons: "Clear Pokémon",
     clearPokemonsShort: "Clear",
+    reassignBoost: "Reassign Boost",
+    reassignBoostTitle: "Discard each row's boost amount and redistribute from the remaining cap, top row first",
+    undoLabel: {
+      rowField: "{name}: {field}",
+      rowOrder: "{name}: order",
+      rowAdd: "Add {name}",
+      rowSync: "Sync {name} from Box",
+      rowDelete: "Delete {name}",
+      slotOrder: "Slot order",
+      candyInventory: "Candy stock",
+      sleepHours: "Total Sleep Hours",
+    },
     copySlot: "Copy",
     copySlotTitle: "Copy this slot's contents",
     pasteSlot: "Paste",
@@ -118,13 +135,6 @@ export const en = {
     manualExactVerification: "Exact calculation",
     slotEmpty: "Empty",
     addHint: "How to add: In Pokémon Box details, press “Add to Calculator (Apply)” to add it to this list.",
-    candyAllocTitle: "About Handy Candy Auto-Allocation",
-    candyAllocDesc: `• Type Candy used aggressively (Handy S for fine-tuning)
-• Calculate Handy S needed (surplus 0-2 per Pokémon)
-• If S is sufficient → Use S only (save M/L)
-• If S is insufficient → Use M→L, then S for fine-tuning
-* Pokémon higher in the list get priority
-* For reference to reduce bag space`,
     emptyTitle: "No Pokémon to calculate yet.",
     emptySteps: {
       step1: "1. Add new or import from Box.",
@@ -147,23 +157,34 @@ export const en = {
       specialtyFixedHint: "Specialty is fixed by species and cannot be edited.",
       nature: "Nature (EXP gains)",
       natureNormal: "-",
-      natureUp: "▲",
-      natureDown: "▼",
+      natureUp: "▲▲",
+      natureDown: "▼▼",
+      // The calculator row header has no room for a field label, so this caption
+      // sits above the symbol.
+      natureCaption: "EXP",
       candyTarget: "Candy amount",
       candyTargetNone: "Not set",
+      sleepTarget: "Sleep target",
+      sleepTargetNone: "Not set",
+      sleepTargetAll: "All sleep",
+      sleepTargetCurrent: "(total {hours}h)",
       boostReachLevel: "Boost target Lv",
-      boostReachLevelNormal: "(Disabled)",
-      boostRatio: "Candy Boost ratio vs EXP",
-      boostRatioNormal: "(Disabled)",
-      boostCandyCount: "Candy Boost amount",
-      boostCandyCountHintLine1: "Adjust: Balance between boost and normal candy.",
-      boostCandyCountHintLine2: "Over 100%: Target Lv (EXP to next) increases.",
-      boostCandyCountHintNotePrefix: "*Set boost cap in ",
-      boostCandyCountHintSettings: "settings",
-      boostCandyCountHintNoteSuffix: " for mid-event calculations or combining multiple mini-boost events",
-      boostCandyCountReset: "Reset",
-      boostCandyCountNormal: "Target EXP adjust",
-      boostCandyCountNormalHint: "Changes Target Lv based on count. Does not affect allocation.",
+      // Keep this short: this label shares its row with two icon buttons (hint + reset),
+      // so a long string pushes the reset button onto a second line.
+      boostCandyCount: "Boost amount",
+      // Line breaks render as a bullet list (.hintPopover__note uses white-space: pre-line)
+      boostCandyCountHintNote: "When left blank, the amount up to Boost target Lv is calculated automatically.",
+      boostRemainingHintNote: "- Calculate from mid-event\n- Combine multiple mini-boost events\nSet these here.",
+      boostCandyOverQuota: "Exceeds the boost cap. Reduce the boost amount. The shortfall is covered by normal candy (you can also raise the cap from ?)",
+      // When the amount is blank (derived mode), what to lower is the Boost target Lv, not the amount.
+      boostReachOverQuota: "Exceeds the boost cap. Lower the Boost target Lv. The shortfall is covered by normal candy (you can also raise the cap from the ? next to Boost amount)",
+      boostCandyCountReset: "Return to automatic",
+      candyTargetHintNote: "Raises or lowers the target Lv (and remaining EXP).",
+      // The warning mark is rendered as a separate element (inline emoji would sit below the baseline).
+      boostSleepCapHint: "Lv{level} and above is Sleep EXP territory. To adjust Boost Candy, raise Target Lv or clear the sleep target.",
+      // Why the three candy fields are disabled under "All sleep". **Shown only inside the hint:**
+      // a title is unreadable on phones, and Boost target Lv is disabled so its picker note never opens.
+      sleepTargetAllHint: "All sleep uses no candy. Change the sleep target to use candy or boost candy.",
       shards: "Dream Shards",
       candyTotal: "Candy (total)",
       candy: "Candy",
@@ -178,9 +199,12 @@ export const en = {
       shardsShortage: "Shards short",
       speciesCandy: "Candy stock",
       required: "To Target",
-      candyTargetRow: "Limit",
       used: "Reachable",
       reachedLv: "Reached Lv",
+      candyReachedLv: "Reached Lv (candy)",
+      // Landing point including sleep EXP. Paired with the candy side (an exact value),
+      // so it is shown with "about" and one decimal place.
+      sleepReachedLv: "Reached Lv (sleep)",
       remainingExp: "Remaining EXP",
     },
     candy: {
@@ -208,9 +232,8 @@ export const en = {
       sleepExpBonusUnit: " Pokémon",
       includeGSDLabel: "GSD",
       includeGSDTitle: "Include estimated GSD EXP (side days ×2, full moon ×3)",
-      btn1000h: "1000h",
-      btn2000h: "2000h",
-      sleepBtnHintText: "Limits candy count so leveling finishes within 1000h/2000h of sleep. Requires sufficient stock (candy & shards) and daily/total sleep time settings.",
+      // Line breaks render as a bullet list (.sleepHintPopover__text uses white-space: pre-line)
+      sleepBtnHintText: "Reduces candy count so the final stretch of leveling is covered by sleep.\nRequires:\n- Sufficient stock\n- Daily sleep hours\n- Total sleep hours",
       openSettings: "Open Settings",
       currentSleepHours: "Total Sleep Hours",
       hourUnit: "h",
@@ -240,6 +263,7 @@ export const en = {
       sumBoostTotal: "Boost total",
       sumNormalTotal: "Normal total",
       sumBoostUnused: "Boost unused",
+      sumBoostShortage: "Boost short",
       colPokemon: "Pokémon",
       colLv: "Lv",
       colExpAdj: "EXP adj.",
@@ -310,6 +334,9 @@ export const en = {
       favorites: "Favorites",
       favoritesOnlyTitle: "Favorites only",
       favoritesOnlyAria: "Favorites only",
+      calculating: "Calculating",
+      inCalculatorOnlyTitle: "In calculator only",
+      inCalculatorOnlyAria: "In calculator only",
       specialty: "Specialty",
       specialtyAria: "Specialty: {name}",
       subskillFilter: "Filter by Sub Skills",
@@ -366,6 +393,8 @@ export const en = {
   status: {
     undo: "Undid the last change",
     redo: "Redid the last change",
+    undoWithLabel: "Undid {label}",
+    redoWithLabel: "Redid {label}",
     inputEmpty: "Input is empty",
     pasted: "Pasted",
     pasteNotAvailable: "Paste failed",
@@ -442,11 +471,16 @@ export const en = {
       sleepTitle: "Finish leveling with 1000h / 2000h of sleep",
       sleepDesc: "Press 1000h / 2000h button to adjust candy count so that sleeping exactly that time reaches your Target Lv. Days and hours shown are estimates.",
     },
-    candy: {
-      title: "About Auto Handy Candy Allocation",
-      item1: "Type Candy used aggressively (Handy S for fine-tuning)",
-      item2: "If S is sufficient → Use S only (save M/L)",
-      item3: "If S is insufficient → Use M→L, then S for surplus ≤2",
+    allocation: {
+      title: "About Allocation Policy",
+      // モード名と各説明は settings.* を再利用する（設定のツールチップと文言が食い違わないようにするため）
+      bagNote: "* \"Balanced\" and \"Max EXP\" use more Type Candy and Handy Candy S. Better when you want to free bag space.",
+    },
+    itemPriority: {
+      title: "Item Usage Priority",
+      item1: "Type Candy used first (S over M)",
+      item2: "Handy Candy: use S first, save M and L",
+      item3: "Fine-tuned so each Pokémon's surplus stays within 0-2",
       note1: "* Pokémon higher in the list get priority",
       note2: "* For reference to reduce bag space",
     },
@@ -459,7 +493,7 @@ export const en = {
       expTitle: "Sleep EXP",
       expFormula: "floor(round(sleepScore × sleepExpBonus) × event multiplier × nature) = sleepExp",
       bonusNote: "Bonus = 1.0 + 0.14 × bonusCount (0-5)",
-      natureNote: "Nature: ▲ = 1.18 / - = 1.0 / ▼ = 0.82",
+      natureNote: "Nature: ▲▲ = 1.18 / - = 1.0 / ▼▼ = 0.82",
       dailyTitle: "Daily Sleep EXP",
       dailyFormula: "Apply the sleep EXP formula above to the configured minutes",
       gsdTitle: "Good Sleep Day (GSD)",
