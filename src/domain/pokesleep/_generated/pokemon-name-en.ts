@@ -89,7 +89,6 @@ export const pokemonNameEnByDexNo: Record<number, string> = {
   179: "Mareep",
   180: "Flaaffy",
   181: "Ampharos",
-  185: "Sudowoodo",
   194: "Wooper",
   195: "Quagsire",
   196: "Espeon",
