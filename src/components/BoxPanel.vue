@@ -74,6 +74,8 @@
                 class="field__input"
                 data-testid="box-add-exp-remaining-input"
                 :placeholder="t('calc.row.expRemainingPh')"
+                @blur="box.onAddExpRemainingCommit()"
+                @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
               />
             </label>
             <label class="field" data-testid="box-add-nature-field">
@@ -423,9 +425,11 @@
               <option value="labelFav">{{ t("box.list.sortLabelFav") }}</option>
               <option value="levelFav">{{ t("box.list.sortLevelFav") }}</option>
               <option value="dexFav">{{ t("box.list.sortDexFav") }}</option>
+              <option value="sleepFav">{{ t("box.list.sortSleepFav") }}</option>
               <option value="label">{{ t("box.list.sortLabel") }}</option>
               <option value="level">{{ t("box.list.sortLevel") }}</option>
               <option value="dex">{{ t("box.list.sortDex") }}</option>
+              <option value="sleep">{{ t("box.list.sortSleep") }}</option>
             </select>
             <button
               class="btn"
@@ -470,6 +474,8 @@
               <button type="button" class="boxTile__select" data-testid="box-tile" @click="box.onSelectBox(e.id)">
                 <div class="boxTile__topRow">
                   <span class="boxTile__lv">Lv{{ e.planner?.level ?? e.derived?.level ?? "-" }}</span>
+                  <!-- 未設定・0h は表示しない。aria-label は付けない（付けるとタイル名から時間が消える） -->
+                  <span v-if="e.planner?.sleepHours" class="boxTile__sleep" :title="t('box.detail.sleepHours')">{{ e.planner.sleepHours }}h</span>
                   <div class="boxTile__iconRow">
                     <span v-if="calcLinkedBoxIds.has(e.id)" class="boxTile__calcMark" :aria-label="t('box.list.inCalculator')" :title="t('box.list.inCalculator')" v-html="iconCheckSvg"></span>
                     <span v-if="e.favorite" class="boxTile__fav" :aria-label="t('box.list.favorite')" :title="t('box.list.favorite')" v-html="iconStarSvg"></span>
@@ -610,8 +616,11 @@
                         min="0"
                         class="field__input"
                         data-testid="box-detail-exp-remaining-input"
-                        :value="selectedDetail?.expRemaining"
-                        @input="box.onEditSelectedExpRemaining(($event.target as HTMLInputElement).value)"
+                        :value="boxExpRemainingInputValue"
+                        @focus="onBoxExpRemainingFocus"
+                        @input="boxExpRemainingDraft = ($event.target as HTMLInputElement).value"
+                        @blur="onBoxExpRemainingBlur"
+                        @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
                         :placeholder="t('common.optional')"
                       />
                     </div>
@@ -941,6 +950,28 @@ const showRelinkSuggest = box.showRelinkSuggest;
 const relinkStatus = box.relinkStatus;
 const boxEditSubInputs = box.boxEditSubInputs;
 const boxEditSubErrors = box.boxEditSubErrors;
+/**
+ * あとEXP: フォーカス中のみ編集中の文字列を保持し、フォーカスアウト／Enter でストアへ確定する。
+ * 1文字ごとに確定させると "1500" の途中の "1" が上限クランプに巻き込まれて戻せなくなるため、
+ * CalcPanel の各入力欄（expRemainingDraftByRowId）と同じ方式に揃えている。
+ */
+const boxExpRemainingDraft = ref<string | null>(null);
+
+const boxExpRemainingInputValue = computed(() =>
+  boxExpRemainingDraft.value ?? String(selectedDetail.value?.expRemaining ?? 0),
+);
+
+function onBoxExpRemainingFocus() {
+  boxExpRemainingDraft.value = String(selectedDetail.value?.expRemaining ?? 0);
+}
+
+function onBoxExpRemainingBlur() {
+  const draft = boxExpRemainingDraft.value;
+  boxExpRemainingDraft.value = null;
+  if (draft === null) return;
+  box.onEditSelectedExpRemaining(draft);
+}
+
 /* ===== Sleep milestone calc (local state) ===== */
 const showSleepCalc = ref(false);
 const tempDailySleepHours = ref<number | null>(null);

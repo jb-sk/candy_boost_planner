@@ -385,8 +385,10 @@ export class BoxPanelPage {
     await this.detailLevelChevron.click();
   }
 
+  /** あとEXPはフォーカスアウト（またはEnter）で確定するので、blur まで行う。 */
   async fillExpRemaining(value: number) {
     await this.detailExpRemainingInput.fill(String(value));
+    await this.detailExpRemainingInput.blur();
   }
 
   async clickApplyToCalc() {
