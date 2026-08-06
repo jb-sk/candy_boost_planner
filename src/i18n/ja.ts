@@ -175,7 +175,7 @@ export const ja = {
       boostCandyOverQuota: "アメブ上限を超えています。アメブ個数を減らしてください。足りない分は通常アメで補われます（? から上限を上げることもできます）",
       // 個数が未入力（導出モード）の行では、減らす対象は個数ではなくアメブ目標Lv。
       boostReachOverQuota: "アメブ上限を超えています。アメブ目標Lvを下げてください。足りない分は通常アメで補われます（アメブ個数の ? から上限を上げることもできます）",
-      boostCandyCountReset: "未入力へ戻す",
+      boostCandyCountReset: "割り当て可能なアメブを再計算",
       candyTargetHintNote: "目標Lv（あとEXP）を上げ下げします。",
       // 警告マークは表示側で別要素として付ける（文字列に混ぜるとベースライン揃えになり下がって見える）
       boostSleepCapHint: "Lv{level} 以上は睡眠EXPの範囲です。アメブを操作するには、目標Lvを上げるか睡眠目標を解除してください。",
@@ -350,6 +350,8 @@ export const ja = {
       sortLevel: "レベル",
       sortDex: "図鑑番号",
       sortDexFav: "図鑑番号（お気に入り優先）",
+      sortSleep: "睡眠時間",
+      sortSleepFav: "睡眠時間（お気に入り優先）",
       sortAsc: "昇順",
       sortDesc: "降順",
       favorite: "お気に入り",

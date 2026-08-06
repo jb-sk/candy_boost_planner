@@ -203,7 +203,13 @@ async function main() {
       fetchCount++;
     } else {
       failCount++;
-      console.warn(`  ❌ #${dexNo} 取得失敗 (${failCount}/${MAX_FAILURES})`);
+      // 既存ファイルに名前があればそれを維持（一時的なAPI障害で誤削除しない）
+      if (existingNames.has(dexNo)) {
+        result.set(dexNo, existingNames.get(dexNo));
+        console.warn(`  ⚠️ #${dexNo} 取得失敗 → 既存名を維持 (${failCount}/${MAX_FAILURES})`);
+      } else {
+        console.warn(`  ❌ #${dexNo} 取得失敗（既存名なし） (${failCount}/${MAX_FAILURES})`);
+      }
 
       if (failCount >= MAX_FAILURES) {
         console.error(`\n❌ ${MAX_FAILURES}件以上失敗しました。更新を中断します。`);
@@ -231,7 +237,7 @@ async function main() {
   }
 
   for (const [dexNo, enName] of existingNames) {
-    if (!result.has(dexNo)) {
+    if (!targetDexNos.has(dexNo)) {
       removed.push({ dexNo, enName });
     }
   }
@@ -292,7 +298,9 @@ async function main() {
   }
 
   // Output summary line for CI parsing
-  console.log(`\n[SUMMARY] has_changes=${hasChanges} added=${added.length} changed=${changed.length} removed=${removed.length}`);
+  // failed は「取得失敗した件数」。既存名を維持したケースは added/changed/removed に
+  // 現れないため、ここに出さないと一時的なAPI障害が起きたこと自体が見えなくなる。
+  console.log(`\n[SUMMARY] has_changes=${hasChanges} added=${added.length} changed=${changed.length} removed=${removed.length} failed=${failCount}`);
 }
 
 main();

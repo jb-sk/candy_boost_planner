@@ -52,10 +52,16 @@
 /* ===== Popover Header ===== */
 .levelPick__top {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 8px;
+}
+
+/* 閉じるボタンがタイトルの警告ラベルに押されて2行に折り返されるのを防止 */
+.levelPick__top > .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* タイトル文字と、その横に並ぶ警告マーク・不足ラベルを縦中央で揃える。

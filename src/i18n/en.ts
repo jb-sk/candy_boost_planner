@@ -178,7 +178,7 @@ export const en = {
       boostCandyOverQuota: "Exceeds the boost cap. Reduce the boost amount. The shortfall is covered by normal candy (you can also raise the cap from ?)",
       // When the amount is blank (derived mode), what to lower is the Boost target Lv, not the amount.
       boostReachOverQuota: "Exceeds the boost cap. Lower the Boost target Lv. The shortfall is covered by normal candy (you can also raise the cap from the ? next to Boost amount)",
-      boostCandyCountReset: "Return to automatic",
+      boostCandyCountReset: "Recalculate from available boost candy",
       candyTargetHintNote: "Raises or lowers the target Lv (and remaining EXP).",
       // The warning mark is rendered as a separate element (inline emoji would sit below the baseline).
       boostSleepCapHint: "Lv{level} and above is Sleep EXP territory. To adjust Boost Candy, raise Target Lv or clear the sleep target.",
@@ -353,6 +353,8 @@ export const en = {
       sortLevel: "Level",
       sortDex: "Dex#",
       sortDexFav: "Dex# (Fav first)",
+      sortSleep: "Sleep hours",
+      sortSleepFav: "Sleep hours (Fav first)",
       sortAsc: "ASC",
       sortDesc: "DESC",
       favorite: "Favorite",

@@ -4,6 +4,7 @@ import type { AppLocale } from "../i18n";
 
 import { decodeNitoyonIvDetail, decodeNitoyonIvMinimal, parseNitoyonBoxLine } from "../domain/box/nitoyon";
 import { IngredientTypes, SubSkillAllJaSorted, SubSkillAllNames, SubSkillNameJaByEn, subSkillEnFromJa } from "../domain/box/nitoyon";
+import { calcExp } from "../domain/pokesleep/exp";
 import { getPokemonNameLocalized } from "../domain/pokesleep/pokemon-name-localize";
 import {
   findPokemonByNameJa,
@@ -29,6 +30,60 @@ export type BoxUndoAction =
 
 export type BoxStore = ReturnType<typeof useBoxStore>;
 
+/**
+ * ボックス一覧のソート。`〜Fav` はお気に入りを常に先頭へ寄せる派生キー。
+ * 主比較が同値のときは、どのキーでも表記名でタイブレークする。
+ */
+type BoxSortBase = "label" | "level" | "dex" | "sleep";
+type BoxSortKey = BoxSortBase | `${BoxSortBase}Fav`;
+
+const BOX_SORT_BASES = ["label", "level", "dex", "sleep"] as const;
+const DEFAULT_SORT_KEY: BoxSortKey = "labelFav";
+
+function isBoxSortKey(v: unknown): v is BoxSortKey {
+  return typeof v === "string"
+    && (BOX_SORT_BASES as readonly string[]).includes(v.replace(/Fav$/, ""));
+}
+
+/** ソートキーごとの主比較（常に昇順基準。降順は呼び出し側で符号を反転する） */
+const BOX_SORT_COMPARATORS: Record<BoxSortBase, (a: PokemonBoxEntryV1, b: PokemonBoxEntryV1) => number> = {
+  label: () => 0,
+  level: (a, b) => entryLevel(a) - entryLevel(b),
+  // 累計睡眠時間。未設定はアプリ全体と同じく 0h 扱い
+  sleep: (a, b) => (a.planner?.sleepHours ?? 0) - (b.planner?.sleepHours ?? 0),
+  // 図鑑番号 → フォーム順。種族不明は末尾へ
+  dex: (a, b) =>
+    (a.derived?.pokedexId ?? 9999) - (b.derived?.pokedexId ?? 9999)
+    || (a.derived?.form ?? 0) - (b.derived?.form ?? 0),
+};
+
+function entryLevel(e: PokemonBoxEntryV1): number {
+  return e.planner?.level ?? e.derived?.level ?? 0;
+}
+
+/**
+ * あとEXPの上限（＝現在Lvから次Lvまでに必要なEXP）。
+ * Lvが未確定で上限を出せないときは null。最大Lvでは次のLvがないので 0。
+ */
+function expToNextLevel(level: number | null | undefined, expType: ExpType): number | null {
+  const lv = Number(level);
+  if (!Number.isFinite(lv) || lv < 1) return null;
+  return Math.max(0, calcExp(lv, lv + 1, expType));
+}
+
+/**
+ * あとEXPを 0〜次Lvまでの必要EXP にクランプする。
+ *
+ * 0 は「Lvが上がった直後で次Lvまでの全EXPが残っている」を表す正当な値として扱う
+ * （読み出し側の `calcRowExpGot` も 0 を上限として解釈する）。この点で下限が 1 の
+ * 計算パネルとは異なる。上限が出せない（Lv未確定）ときはクランプしない。
+ */
+function clampExpRemaining(raw: number, level: number | null | undefined, expType: ExpType): number {
+  const n = Math.max(0, Math.floor(raw));
+  const toNext = expToNextLevel(level, expType);
+  return toNext === null ? n : Math.min(n, toNext);
+}
+
 // NOTE:
 // - This store is a direct extraction of the Pokémon Box logic from the former monolithic App.vue.
 // - It intentionally keeps behavior compatible with existing UI and persistence.
@@ -43,19 +98,18 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
 
   // ソート設定の読み込み・保存
   const SORT_STORAGE_KEY = "candy-boost-planner:box-sort";
-  type BoxSortKey = "labelFav" | "levelFav" | "label" | "level" | "dex" | "dexFav";
   type BoxSortDir = "asc" | "desc";
 
   function loadSortSettings(): { key: BoxSortKey; dir: BoxSortDir } {
     try {
       const raw = localStorage.getItem(SORT_STORAGE_KEY);
-      if (!raw) return { key: "labelFav", dir: "asc" };
+      if (!raw) return { key: DEFAULT_SORT_KEY, dir: "asc" };
       const json = JSON.parse(raw);
-      const key = ["labelFav", "levelFav", "label", "level", "dex", "dexFav"].includes(json.key) ? json.key : "labelFav";
+      const key = isBoxSortKey(json.key) ? json.key : DEFAULT_SORT_KEY;
       const dir = json.dir === "desc" ? "desc" : "asc";
       return { key, dir };
     } catch {
-      return { key: "labelFav", dir: "asc" };
+      return { key: DEFAULT_SORT_KEY, dir: "asc" };
     }
   }
 
@@ -309,7 +363,9 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     const subSkills = decoded?.subSkills?.length ? decoded.subSkills : subSkillsFromPlanner;
 
     const specialty = (e.planner?.specialty ?? (pokedexId ? getPokemonSpecialty(pokedexId, form) : "unknown")) as PokemonSpecialty;
-    const expRemaining = e.planner?.expRemaining ?? 0;
+    // Lv・EXPタイプを後から変えると上限も変わるため、保存値が新しい上限を超えていても
+    // 表示は常に有効範囲へ丸める（保存値そのものは次の確定時に正規化される）。
+    const expRemaining = clampExpRemaining(e.planner?.expRemaining ?? 0, level, expType);
     const sleepHours = e.planner?.sleepHours ?? 0;
 
     return {
@@ -614,35 +670,16 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     const list = [...filteredBoxEntries.value];
     const dir = direction === "asc" ? 1 : -1;
     const key = boxSortKey.value;
-    const favPriority = key === "labelFav" || key === "levelFav" || key === "dexFav";
-    const sortByLevel = key === "level" || key === "levelFav";
-    const sortByDex = key === "dex" || key === "dexFav";
+    const favPriority = key.endsWith("Fav");
+    const comparePrimary = BOX_SORT_COMPARATORS[key.replace(/Fav$/, "") as BoxSortBase];
+    const collation = locale.value === "en" ? "en" : "ja";
+    const compareTitle = (a: PokemonBoxEntryV1, b: PokemonBoxEntryV1) =>
+      displayBoxTitle(a).localeCompare(displayBoxTitle(b), collation);
+
     list.sort((a, b) => {
-      // お気に入り優先の場合、まずfavoriteで分ける
-      if (favPriority) {
-        const favA = a.favorite ? 1 : 0;
-        const favB = b.favorite ? 1 : 0;
-        if (favA !== favB) return (favB - favA); // favoriteは常に上（dirに関係なく）
-      }
-      // 図鑑番号順
-      if (sortByDex) {
-        const dexA = a.derived?.pokedexId ?? 9999;
-        const dexB = b.derived?.pokedexId ?? 9999;
-        if (dexA !== dexB) return (dexA - dexB) * dir;
-        // フォーム順
-        const formA = a.derived?.form ?? 0;
-        const formB = b.derived?.form ?? 0;
-        if (formA !== formB) return (formA - formB) * dir;
-        // 同じ図鑑番号・フォームなら表記名順
-        return displayBoxTitle(a).localeCompare(displayBoxTitle(b), locale.value === "en" ? "en" : "ja") * dir;
-      }
-      if (sortByLevel) {
-        const la = a.planner?.level ?? a.derived?.level ?? 0;
-        const lb = b.planner?.level ?? b.derived?.level ?? 0;
-        if (la !== lb) return (la - lb) * dir;
-        return displayBoxTitle(a).localeCompare(displayBoxTitle(b), locale.value === "en" ? "en" : "ja") * dir;
-      }
-      return displayBoxTitle(a).localeCompare(displayBoxTitle(b), locale.value === "en" ? "en" : "ja") * dir;
+      // お気に入りは昇順/降順に関係なく常に上
+      if (favPriority && !!a.favorite !== !!b.favorite) return a.favorite ? -1 : 1;
+      return (comparePrimary(a, b) || compareTitle(a, b)) * dir;
     });
     sortedBoxEntriesCache.value = list;
     importStatus.value = t("status.sorted");
@@ -974,12 +1011,19 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     writeSelectedLevel(lvl);
   }
 
+  /**
+   * あとEXPの確定（フォーカスアウト／Enter）。
+   *
+   * 1文字ごとに走らせると "1500" の途中の "1" で上限クランプが効いてしまい、
+   * 元の入力へ戻せなくなる。計算パネルの各入力欄と同じく確定時にだけ反映する。
+   */
   function onEditSelectedExpRemaining(v: string) {
     const e = selectedBox.value;
     if (!e) return;
+    const d = selectedDetail.value;
     const n = parseInt(v, 10);
     // 負の数は0、NaN（空）はundefined（未設定）として扱う
-    const val = Number.isFinite(n) && n >= 0 ? n : undefined;
+    const val = Number.isFinite(n) && n >= 0 ? clampExpRemaining(n, d?.level, d?.expType ?? 600) : undefined;
     const now = new Date().toISOString();
     boxEntries.value = boxEntries.value.map((x) => {
       if (x.id !== e.id) return x;
@@ -1139,6 +1183,22 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     validateSubSkillField(lv, v);
   }
 
+  /**
+   * 追加フォームのあとEXPの確定（フォーカスアウト／Enter）。
+   * 入力途中の値でクランプしないよう、ここでだけ有効範囲へ丸める。
+   */
+  function onAddExpRemainingCommit() {
+    const raw = String(addExpRemaining.value ?? "").trim();
+    if (raw === "") return;
+    const n = parseInt(raw, 10);
+    if (!Number.isFinite(n) || n < 0) {
+      addExpRemaining.value = "";
+      return;
+    }
+    const lvl = Math.max(1, Math.min(MAX_LEVEL, Math.floor(Number(addLevel.value))));
+    addExpRemaining.value = String(clampExpRemaining(n, lvl, addExpType.value));
+  }
+
   function onCreateManual(opts0: { mode: "toCalc" | "toBox" }) {
     const found = addLookup.value;
     const now = new Date().toISOString();
@@ -1161,7 +1221,8 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
         : undefined;
     const subSkills = buildManualPlannerSubSkills();
     const rawExpRem = parseInt(addExpRemaining.value, 10);
-    const expRem = Number.isFinite(rawExpRem) && rawExpRem > 0 ? rawExpRem : undefined;
+    // フォーカスを外さずに作成された場合もここで丸める（planner.expType は addExpType）。
+    const expRem = Number.isFinite(rawExpRem) && rawExpRem > 0 ? clampExpRemaining(rawExpRem, lvl, addExpType.value) : undefined;
     const sleepHoursVal = normalizeSleepHoursInput(addSleepHours.value);
     const entry: PokemonBoxEntryV1 = {
       id: cryptoRandomId(),
@@ -1439,6 +1500,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     onAddExpTypeChanged,
     onAddSpecialtyChanged,
     onAddIngredientTypeChanged,
+    onAddExpRemainingCommit,
     onSubBlur,
     onSelectBox,
     onClearSelection,

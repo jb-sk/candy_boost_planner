@@ -316,9 +316,22 @@ test.describe('BOX詳細パネル', () => {
     await boxPanel.selectBoxTile(0);
 
     await expect(boxPanel.detailExpRemainingInput).toBeVisible();
-    await boxPanel.fillExpRemaining(5000);
+    // 上限は「次Lvまでの必要EXP」でポケモンのLvごとに変わる。
+    // 50 は最小の Lv1→2（54EXP）にも収まるので、どのタイルを選んでもクランプされない。
+    await boxPanel.fillExpRemaining(50);
 
-    await expect(boxPanel.detailExpRemainingInput).toHaveValue('5000');
+    await expect(boxPanel.detailExpRemainingInput).toHaveValue('50');
+  });
+
+  test('あとEXPは次Lvまでの必要EXPでクランプされる', async () => {
+    await boxPanel.selectBoxTile(0);
+
+    await boxPanel.fillExpRemaining(999999);
+
+    // 上限そのものはLv依存なので、丸められたこと（0 より大きく入力値より小さい）を見る
+    const clamped = Number(await boxPanel.detailExpRemainingInput.inputValue());
+    expect(clamped).toBeGreaterThan(0);
+    expect(clamped).toBeLessThan(999999);
   });
 
   test('EXP性格補正が編集できる', async () => {

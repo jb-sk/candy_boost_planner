@@ -329,8 +329,11 @@
   color: var(--muted);
 }
 
+/* アイコンはボタンの文字色に追従させる。テーマによって ON 時の背景が
+   accent のベタ塗り（candy/green/vivid）や ink のベタ塗り（booklet）になり、
+   accent 固定だと背景と同色・低コントラストになって見えなくなるため。 */
 .chipBtn--on .chipBtn__icon {
-  color: var(--accent);
+  color: inherit;
 }
 
 /* Favorite star special color when active */
@@ -369,6 +372,18 @@
   color: var(--muted);
   cursor: pointer;
   padding: 4px 0;
+}
+
+.boxAdvanced__summary::before {
+  content: "▶ ";
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.boxAdvanced[open] > .boxAdvanced__summary::before {
+  content: "▼ ";
+  font-size: 12px;
+  color: var(--accent);
 }
 
 .boxAdvanced__summary::-webkit-details-marker {
@@ -606,12 +621,21 @@
   text-overflow: ellipsis;
 }
 
-.boxTile__lv {
+/* 1行目左側の小さな数値: Lv と、その右に続く累計睡眠時間 */
+.boxTile__lv,
+.boxTile__sleep {
   flex-shrink: 0;
   white-space: nowrap;
   font-family: var(--font-body);
   font-size: 12px;
   color: rgba(var(--ink-rgb), 0.72);
+}
+
+/* 区切りのスラッシュは一段薄く。2つの数値を主役に見せる */
+.boxTile__sleep::before {
+  content: "/";
+  margin: 0 4px;
+  color: rgba(var(--ink-rgb), 0.4);
 }
 
 /* ★お気に入り／☑計算機登録: 色以外は共通の小アイコン */
