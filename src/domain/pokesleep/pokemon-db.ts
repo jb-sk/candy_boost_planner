@@ -3972,7 +3972,7 @@ export const pokemonDb: PokemonDbEntry[] = [
     "ingCJa": [
       "とくせんエッグ"
     ],
-    "mainSkillJa": "ゆめのかけらゲットS",
+    "mainSkillJa": "はどうだん(ゆめのかけらゲットS)",
     "fp": 20,
     "helpSeconds": 2600,
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%AB%E3%82%AB%E3%83%AA%E3%82%AA"
@@ -4438,6 +4438,28 @@ export const pokemonDb: PokemonDbEntry[] = [
     "fp": 20,
     "helpSeconds": 2600,
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%8B%E3%83%B3%E3%83%95%E3%82%A3%E3%82%A2"
+  },
+  {
+    "dexNo": 701,
+    "nameJa": "ルチャブル",
+    "specialtyJa": "スキル",
+    "sleepTypeJa": "ぐっすり",
+    "berryJa": [
+      "シーヤのみ"
+    ],
+    "ingAJa": [
+      "げきからハーブ"
+    ],
+    "ingBJa": [
+      "あったかジンジャー"
+    ],
+    "ingCJa": [
+      "マメミート"
+    ],
+    "mainSkillJa": "食材セレクトS",
+    "fp": 16,
+    "helpSeconds": 2400,
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%AB%E3%83%81%E3%83%A3%E3%83%96%E3%83%AB"
   },
   {
     "dexNo": 702,
