@@ -194,6 +194,7 @@ export const pokemonNameEnByDexNo: Record<number, string> = {
   696: "Tyrunt",
   697: "Tyrantrum",
   700: "Sylveon",
+  701: "Hawlucha",
   702: "Dedenne",
   710: "Pumpkaboo",
   711: "Gourgeist",

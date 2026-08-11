@@ -3651,6 +3651,24 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%8B%E3%83%B3%E3%83%95%E3%82%A3%E3%82%A2"
   },
   {
+    "dexNo": 701,
+    "pokedexId": 701,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "ルチャブル",
+    "baseNameJa": "ルチャブル",
+    "specialty": "Skills",
+    "type": "Flying",
+    "typeJa": "ひこう",
+    "expType": 600,
+    "ingredients": {
+      "a": "herb",
+      "b": "ginger",
+      "c": "sausage"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%AB%E3%83%81%E3%83%A3%E3%83%96%E3%83%AB"
+  },
+  {
     "dexNo": 702,
     "pokedexId": 702,
     "form": 0,
