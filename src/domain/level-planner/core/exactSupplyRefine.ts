@@ -32,6 +32,8 @@ export type ExactSupplyRow = {
    * 型で塞いである。
    */
   candyDemandMet: boolean;
+  /** タイプアメ・万能アメを配ってよいか（既定 true）。`false` は種族アメだけで賄う行。 */
+  itemsAllowed?: boolean;
   selected: ExactSupplyUsage;
 };
 
@@ -57,6 +59,7 @@ type PreparedSourceRow = {
   id: string;
   legacyZeroSurplusPriority?: boolean;
   candyDemandMet: boolean;
+  itemsAllowed?: boolean;
   readonly speciesLexOrder: number;
 };
 
@@ -362,7 +365,7 @@ function validateSelectedRows(
 }
 
 function enumerateRowOptions(
-  row: Pick<PreparedSourceRow, 'candyFamilyKey' | 'type' | 'totalCandyCount' | 'fixedSpecies' | 'id' | 'legacyZeroSurplusPriority' | 'candyDemandMet' | 'speciesLexOrder'>,
+  row: Pick<PreparedSourceRow, 'candyFamilyKey' | 'type' | 'totalCandyCount' | 'fixedSpecies' | 'id' | 'legacyZeroSurplusPriority' | 'candyDemandMet' | 'itemsAllowed' | 'speciesLexOrder'>,
   inventory: CandyInventory,
   maxSurplus: number,
   allowSpeciesSplit: boolean,
@@ -381,6 +384,26 @@ function enumerateRowOptions(
   const fixedSpecies = row.fixedSpecies === undefined ? undefined : Math.max(0, Math.min(row.fixedSpecies, speciesStock, need));
   const minSpecies = fixedSpecies ?? (allowSpeciesSplit ? 0 : Math.min(speciesStock, need));
   const maxSpecies = fixedSpecies ?? Math.min(speciesStock, need);
+
+  // 種族アメだけで賄う行（睡眠目標「アメ在庫＋睡眠」）。アイテムを1個も足さないので、
+  // 余りの出しようがなく候補も1つに決まる。種族アメで需要へ届かない種族数は候補にしない。
+  if (row.itemsAllowed === false) {
+    const speciesOnly: ExactSupplyUsage[] = [];
+    for (let species = minSpecies; species <= maxSpecies; species++) {
+      if (species < need) continue;
+      speciesOnly.push({
+        species,
+        typeS: 0,
+        typeM: 0,
+        universalS: 0,
+        universalM: 0,
+        universalL: 0,
+        supply: species,
+        surplus: species - need,
+      });
+    }
+    return speciesOnly;
+  }
 
   for (let surplus = 0; surplus <= maxSurplus; surplus++) {
     checkpoint?.();

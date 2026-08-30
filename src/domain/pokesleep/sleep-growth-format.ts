@@ -6,6 +6,7 @@ export type SleepTimeFormatTokens = {
   dayUnit: string;
   hourMinuteSeparator: string;
   rangeSeparator: string;
+  exactDayJoiner: string;
   approximatePrefix: string;
   estimateOpen: string;
   estimateClose: string;
@@ -38,12 +39,21 @@ export function formatSleepTimeResult(
   }
 
   const left = formatFullDuration(result.minutesMin, tokens, false);
-  if (result.minutesMin === result.minutesMax) return left;
+  let lastNight = left;
+  if (result.minutesMin !== result.minutesMax) {
+    const leftHours = Math.floor(result.minutesMin / 60);
+    const rightHours = Math.floor(result.minutesMax / 60);
+    const right = leftHours === rightHours
+      ? `${result.minutesMax % 60}${tokens.minuteUnit}`
+      : formatFullDuration(result.minutesMax, tokens, false);
+    lastNight = `${left}${tokens.rangeSeparator}${right}`;
+  }
 
-  const leftHours = Math.floor(result.minutesMin / 60);
-  const rightHours = Math.floor(result.minutesMax / 60);
-  const right = leftHours === rightHours
-    ? `${result.minutesMax % 60}${tokens.minuteUnit}`
-    : formatFullDuration(result.minutesMax, tokens, false);
-  return `${left}${tokens.rangeSeparator}${right}`;
+  if (result.requiredDays === 1) return lastNight;
+
+  const completedDays = result.requiredDays - 1;
+  const completedDuration = formatFullDuration(result.totalMinutes - result.minutesMin, tokens, true);
+  return `${completedDays}${tokens.dayUnit}`
+    + `${tokens.estimateOpen}${completedDuration}${tokens.estimateClose}`
+    + `${tokens.exactDayJoiner}${lastNight}`;
 }

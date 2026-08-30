@@ -1,64 +1,11 @@
 /* Modern: SettingsOverlay — mobile-first, simple flat design */
-
-/* ===== Tabs (in modal__header, replaces title) ===== */
-.settingsTabs {
-  display: flex;
-  gap: 18px;
-  min-width: 0;
-  overflow-x: auto;
+.settings-overlay {
+  /* ラベル列。狭い画面では入力と単位（「個/週」等）へ幅を譲るので広げない。
+     溢れる長さのラベルは列の中で折り返す。680px 以上では 144px へ広げて1行に戻す。 */
+  --settings-label-width: 120px;
 }
 
-.settingsTab {
-  -webkit-appearance: none;
-  appearance: none;
-  font: inherit;
-  font-family: var(--font-heading);
-  border: none;
-  box-shadow: none;
-  background: transparent;
-  color: var(--muted);
-  padding: 0;
-  line-height: 1.3;
-  cursor: pointer;
-  font-weight: 700;
-  font-size: 17px;
-  white-space: nowrap;
-  flex-shrink: 0;
-  transition: color 0.15s;
-}
-
-.settingsTab:active {
-  transform: none;
-}
-
-@media (hover: hover) {
-  .settingsTab:hover {
-    color: var(--ink);
-  }
-}
-
-.settingsTab--active {
-  color: var(--accent);
-}
-
-/* Divider between tabs: a scaled box, not the "｜" glyph — that character renders with
-   uneven top/bottom padding depending on font, so it never lines up cleanly. */
-.settingsTab + .settingsTab {
-  position: relative;
-  padding-left: 18px;
-}
-
-.settingsTab + .settingsTab::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 3px;
-  bottom: 3px;
-  width: 2px;
-  transform: scaleX(0.75);
-  transform-origin: left;
-  background: rgba(var(--muted-rgb), 0.3);
-}
+/* タブの見た目は Modal.css の .modalTabs / .modalTab（ヘルプと共通） */
 
 /* ===== Section groups ===== */
 .settings-overlay .section {
@@ -87,13 +34,41 @@
 .dataBackup__fileLabel { position: relative; overflow: hidden; }
 .dataBackup__fileLabel input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .dataBackup__fileLabel.is-disabled { opacity: .5; pointer-events: none; }
-.dataBackup__status { margin: 10px 2px 0; padding: 8px 10px; border-radius: 6px; background: var(--surface); overflow-wrap: anywhere; font-size: 13px; }
-.dataBackup__preview { margin-top: 12px; padding: 12px; border: 1px solid rgba(var(--border-rgb), 0.6); border-radius: 8px; background: var(--surface); }
+/* 読み込み結果などの通知。下地と枠は `.inlineConfirm` / `.dataBackup__preview` と同じ作り方。
+   `--surface` はテーマごとに系統がばらばらで、blue では #F1F8E9（緑）のため
+   青いテーマに緑の帯が出ていた。 */
+.dataBackup__status {
+  margin: 10px 2px 0;
+  padding: 8px 10px;
+  border: var(--callout-border);
+  border-radius: 6px;
+  background-color: var(--callout-background-color);
+  background-image: var(--callout-background-image);
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+/* 復元内容の確認。下地と枠は `.inlineConfirm` と同じ作り方に揃える。
+   `--surface` / `--border-rgb` はテーマごとに別系統で、下地と枠が食い違ううえ
+   （candy は水色の下地に桃色の枠、green は黄緑の下地に茶色の枠）、
+   blue は `--surface` が #F1F8E9 と緑で、青いテーマに緑の箱が出ていた。
+   `--ink` / `--muted` は `--paper` に対して調整された色なので、下地は `--paper` で覆う。 */
+.dataBackup__preview {
+  margin-top: 12px;
+  padding: 12px;
+  border: var(--callout-border);
+  border-radius: 8px;
+  background-color: var(--callout-background-color);
+  background-image: var(--callout-background-image);
+}
 .dataBackup__preview dl { margin: 0; }
 .dataBackup__preview dl div { display: grid; grid-template-columns: minmax(100px, 1fr) 2fr; gap: 8px; }
 .dataBackup__preview dt { font-weight: 700; }
 .dataBackup__preview dd { margin: 0; overflow-wrap: anywhere; }
-.dataBackup__replaceWarning { font-weight: 700; color: var(--danger, #b42318); }
+/* 置き換えの告知。**赤にしない。** 赤は「復元する」ボタン1つに絞る
+   （文字と肯定ボタンの両方を赤にすると、どこを押すのかが読めなくなる）。 */
+.dataBackup__replaceWarning { font-weight: 700; color: var(--ink); }
+.dataBackup__migrationNotices { margin: 10px 0; padding: 10px; border: 1px solid rgba(180, 120, 0, 0.55); border-radius: 6px; background: rgba(180, 120, 0, 0.08); font-size: 12px; }
+.dataBackup__migrationNotices ul { margin: 6px 0 0; padding-left: 20px; }
 .dataBackup__warnings { max-height: 140px; overflow: auto; font-size: 12px; }
 
 .settings-overlay .section h3 {
@@ -128,7 +103,7 @@
 }
 
 .settingsField--aligned .settingsField__label {
-  min-width: 120px;
+  min-width: var(--settings-label-width, 120px);
   flex-shrink: 0;
 }
 
@@ -141,6 +116,209 @@
   font-weight: 600;
   color: var(--ink);
   white-space: nowrap;
+}
+
+/* 「ラベル ＋ ?」をひとまとめにしてラベル列そのものにする。列幅を外側が持つので、
+   ? を足しても入力の左端が他の行とずれない。中のラベルは列の残り幅で折り返す。 */
+.settingsField__labelWithHint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: var(--settings-label-width, 120px);
+  max-width: var(--settings-label-width, 120px);
+  flex-shrink: 0;
+}
+
+/* 列幅は外側（labelWithHint）が持つ。中のラベルは**縮めること**。
+   `.settingsField--aligned .settingsField__label` の `flex-shrink: 0` を打ち消さないと、
+   長いラベルが折り返さずに列から溢れ、その行だけ入力の左端が右へずれる。 */
+.settingsField--aligned .settingsField__labelWithHint .settingsField__label,
+.settingsFieldGroup .settingsField__labelWithHint .settingsField__label {
+  min-width: 0;
+  max-width: none;
+  flex-shrink: 1;
+  white-space: normal;
+}
+
+/* ヒントを開いている間の重なり順は 受け口 < ? < チップ の3段にする。
+   ? を受け口より下に埋めると、隣の説明へ移るのに2回押すことになる（3つ隣り合っている）。
+   逆にチップより上へ出すと、他の ? がチップの文字を突き抜けて見える。
+   .hintOverlay(999) と .hintPopover(1000) の間に整数が無いので、受け口を下げて隙間を作る。 */
+.settings-overlay .hintOverlay {
+  z-index: 990;
+}
+
+.settingsField__labelWithHint .hintIcon {
+  position: relative;
+  z-index: 995;
+}
+
+.settingsField__hint,
+.settingsField__status,
+.settingsField__unit {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.settingsField__unit {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.settingsLunarCalendarWarning {
+  flex-basis: 100%;
+}
+
+/* 「ラベル ＋ 入力」の1行と、その下の補足文をひとまとめにする行。
+   補足文は 680px 以上でだけ入力列の左端へ寄せる（狭い画面では字数が稼げない）。 */
+.settingsFieldGroup {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settingsFieldGroup .settingsField__hint {
+  margin: 0;
+}
+
+/* ラベルが長い行（英語だと特に）。はみ出させると入力の左端が他の行とずれるので、
+   ラベル列の幅で折り返す。 */
+.settingsFieldGroup .settingsField__label {
+  max-width: var(--settings-label-width, 120px);
+  white-space: normal;
+}
+
+.settingsTimeZoneInput {
+  width: min(240px, 55vw);
+}
+
+.settingsTimeZoneError {
+  font-size: 12px;
+}
+
+/* ===== イベント倍率（手入力）=====
+   狭い画面ではラベルを上に積み、680px 以上で他の設定と同じ「ラベル列＋入力列」に揃える。 */
+.settingsManualEvents {
+  width: 100%;
+  gap: 6px;
+}
+
+.settingsManualEventList {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settingsManualEventHead,
+.settingsManualEventRow {
+  display: grid;
+  /* 日数・倍率・削除は固定幅。auto トラックにすると余白を吸って日付欄が潰れる。 */
+  grid-template-columns: minmax(0, 1fr) 76px 84px 28px;
+  gap: 6px;
+  align-items: center;
+}
+
+.settingsManualEventHead {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/*
+ * 倍率の「×」。見出しは 12px・行は本文サイズなので、素のままだと見出しに置く
+ * スペーサーの幅が行の「×」と合わない。両方をこのサイズに固定して字送りを揃える。
+ */
+.settingsManualEventTimes {
+  font-size: 16px;
+}
+
+/* 見出し側は幅だけ borrow する（見せない・行の高さも増やさない）。 */
+.settingsManualEventHead .settingsManualEventTimes {
+  visibility: hidden;
+  line-height: 0;
+}
+
+.settingsManualEventDateInput {
+  width: 100%;
+  min-width: 0;
+}
+
+.settingsManualEventDays {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 3px;
+}
+
+.settingsManualEventDaysUnit {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.settings-overlay .settingsManualEventDaysInput {
+  width: 100%;
+  min-width: 0;
+  padding: 0 6px;
+  text-align: left;
+}
+
+.settingsManualEventMultiplier {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}
+
+.settings-overlay .settingsManualEventMultiplierInput {
+  width: 100%;
+  min-width: 0;
+  padding: 0 8px;
+  text-align: left;
+}
+
+.settingsManualEventRemove {
+  width: 28px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .settingsManualEventRemove:hover {
+    color: var(--ink);
+  }
+}
+
+.settingsManualEventError {
+  grid-column: 1 / -1;
+  font-size: 12px;
+}
+
+.settingsManualEventAdd {
+  align-self: flex-start;
+}
+
+.settingsGsdDays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.settingsGsdDay {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink);
+  font-size: 14px;
 }
 
 /* ===== Compact input variants ===== */
@@ -208,6 +386,12 @@
 
 /* ===== Responsive: 680px+ ===== */
 @media (min-width: 680px) {
+  /* 幅に余裕があるので、いちばん長いラベル（「1週間の成長のお香」＋「?」）を1行に収める。
+     狭い画面で同じ幅にすると、入力の右にある単位（「個/週」等）がはみ出す。 */
+  .settings-overlay {
+    --settings-label-width: 144px;
+  }
+
   .dataBackup__grid {
     grid-template-columns: minmax(190px, 0.8fr) minmax(360px, 1.7fr);
   }
@@ -232,6 +416,29 @@
     font-size: 14px;
   }
 
+  /* 補足文を入力列の左端に揃える */
+  .settingsFieldGroup .settingsField__hint {
+    margin-left: calc(var(--settings-label-width, 120px) + 8px);
+  }
+
+  /* 他の設定行と同じラベル列に揃える */
+  .settingsManualEvents {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .settingsManualEvents > .settingsField__label {
+    min-width: var(--settings-label-width, 120px);
+    flex-shrink: 0;
+    padding-top: 4px;
+  }
+
+  .settingsManualEventHead,
+  .settingsManualEventRow {
+    grid-template-columns: 122px 76px 84px 28px;
+  }
+
   .typeCandyGrid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -241,4 +448,9 @@
   .typeRow:last-child {
     border-bottom: 1px solid rgba(var(--border-rgb), 0.5);
   }
+}
+
+/* 設定のリセット。`.settingsField` は縦積みなので、放っておくとボタンが全幅の赤帯になる。 */
+.settingsResetButton {
+  align-self: flex-start;
 }

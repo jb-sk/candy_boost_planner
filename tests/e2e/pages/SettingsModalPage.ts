@@ -60,11 +60,43 @@ export class SettingsModalPage {
   readonly sleepSection: Locator;
   readonly dailySleepHoursInput: Locator;
   readonly sleepExpBonusSelect: Locator;
+  readonly sleepExpBonusUnit: Locator;
   readonly includeGSDCheckbox: Locator;
+  readonly projectedEventsCheckbox: Locator;
+  readonly blueSeedWeekdaySelect: Locator;
+  readonly blueSeedIncenseDaysSelect: Locator;
+  readonly blueSeedIncenseDaysUnit: Locator;
+  readonly growthIncenseNormalHintButton: Locator;
+  readonly growthIncenseGsdHintButton: Locator;
+  readonly growthIncenseStockHintButton: Locator;
+  readonly projectedEventsHintButton: Locator;
+  readonly blueSeedWeekdayHintButton: Locator;
+  readonly blueSeedIncenseDaysHintButton: Locator;
+  readonly hintPopover: Locator;
+  readonly lunarCalendarWarning: Locator;
+  readonly timeZoneInput: Locator;
+  readonly timeZoneError: Locator;
+  readonly currentGameDate: Locator;
+  readonly growthIncenseGsdBeforeCheckbox: Locator;
+  readonly growthIncenseGsdFullMoonCheckbox: Locator;
+  readonly growthIncenseGsdAfterCheckbox: Locator;
+  readonly growthIncenseNormalSelect: Locator;
+  readonly growthIncenseNormalUnit: Locator;
+  readonly growthIncenseStockInput: Locator;
+  readonly growthIncenseStockUnit: Locator;
 
   // === タイプアメ設定セクション ===
   readonly typeCandySection: Locator;
   readonly typeCandyGrid: Locator;
+
+  // === 設定リセットセクション ===
+  readonly resetSection: Locator;
+  readonly resetButton: Locator;
+  readonly resetConfirm: Locator;
+  readonly resetConfirmQuestion: Locator;
+  readonly resetConfirmNote: Locator;
+  readonly resetConfirmYesButton: Locator;
+  readonly resetConfirmNoButton: Locator;
 
   // === 設定ボタン ===
   readonly desktopSettingsButton: Locator;
@@ -98,11 +130,43 @@ export class SettingsModalPage {
     this.sleepSection = page.getByTestId('settings-sleep-section');
     this.dailySleepHoursInput = page.getByTestId('settings-daily-sleep-hours-input');
     this.sleepExpBonusSelect = page.getByTestId('settings-sleep-exp-bonus-select');
+    this.sleepExpBonusUnit = page.getByTestId('settings-sleep-exp-bonus-unit');
     this.includeGSDCheckbox = page.getByTestId('settings-include-gsd-checkbox');
+    this.projectedEventsCheckbox = page.getByTestId('settings-use-projected-events');
+    this.blueSeedWeekdaySelect = page.getByTestId('blue-seed-weekday');
+    this.blueSeedIncenseDaysSelect = page.getByTestId('blue-seed-incense-days');
+    this.blueSeedIncenseDaysUnit = page.getByTestId('settings-blue-seed-incense-days-unit');
+    this.growthIncenseNormalHintButton = page.getByTestId('settings-hint-btn-growthIncenseNormal');
+    this.growthIncenseGsdHintButton = page.getByTestId('settings-hint-btn-growthIncenseGsd');
+    this.growthIncenseStockHintButton = page.getByTestId('settings-hint-btn-growthIncenseStock');
+    this.projectedEventsHintButton = page.getByTestId('settings-hint-btn-projectedEvents');
+    this.blueSeedWeekdayHintButton = page.getByTestId('settings-hint-btn-blueSeed');
+    this.blueSeedIncenseDaysHintButton = page.getByTestId('settings-hint-btn-blueSeedIncense');
+    this.hintPopover = page.getByTestId('settings-hint-popover');
+    this.lunarCalendarWarning = page.getByTestId('settings-lunar-calendar-warning');
+    this.timeZoneInput = page.getByTestId('settings-time-zone-input');
+    this.timeZoneError = page.getByTestId('settings-time-zone-error');
+    this.currentGameDate = page.getByTestId('settings-current-game-date');
+    this.growthIncenseGsdBeforeCheckbox = page.getByTestId('settings-growth-incense-gsd-beforeFullMoon');
+    this.growthIncenseGsdFullMoonCheckbox = page.getByTestId('settings-growth-incense-gsd-fullMoon');
+    this.growthIncenseGsdAfterCheckbox = page.getByTestId('settings-growth-incense-gsd-afterFullMoon');
+    this.growthIncenseNormalSelect = page.getByTestId('settings-growth-incense-normal-select');
+    this.growthIncenseNormalUnit = page.getByTestId('settings-growth-incense-normal-unit');
+    this.growthIncenseStockInput = page.getByTestId('settings-growth-incense-stock-input');
+    this.growthIncenseStockUnit = page.getByTestId('settings-growth-incense-stock-unit');
 
     // タイプアメ設定
     this.typeCandySection = page.getByTestId('settings-type-candy-section');
     this.typeCandyGrid = page.getByTestId('settings-type-candy-grid');
+
+    // 設定リセット
+    this.resetSection = page.getByTestId('settings-reset-section');
+    this.resetButton = page.getByTestId('settings-reset-button');
+    this.resetConfirm = page.getByTestId('settings-reset-confirm');
+    this.resetConfirmQuestion = page.locator('#settings-reset-confirm-question');
+    this.resetConfirmNote = page.locator('#settings-reset-confirm-note');
+    this.resetConfirmYesButton = page.getByTestId('settings-reset-confirm-yes');
+    this.resetConfirmNoButton = page.getByTestId('settings-reset-confirm-no');
 
     // 設定ボタン
     this.desktopSettingsButton = page.getByTestId('settings-open-button-desktop');
@@ -219,6 +283,31 @@ export class SettingsModalPage {
     return await this.includeGSDCheckbox.isChecked();
   }
 
+  async setTimeZone(timeZone: string) {
+    await this.timeZoneInput.fill(timeZone);
+    await this.timeZoneInput.blur();
+  }
+
+  async setGrowthIncenseGsd(days: { beforeFullMoon: boolean; fullMoon: boolean; afterFullMoon: boolean }) {
+    for (const [checkbox, checked] of [
+      [this.growthIncenseGsdBeforeCheckbox, days.beforeFullMoon],
+      [this.growthIncenseGsdFullMoonCheckbox, days.fullMoon],
+      [this.growthIncenseGsdAfterCheckbox, days.afterFullMoon],
+    ] as const) {
+      await checkbox.setChecked(checked);
+    }
+  }
+
+  async setGrowthIncenseNormalPerWeek(count: number) {
+    await this.growthIncenseNormalSelect.selectOption(String(count));
+  }
+
+  /** 空文字で「無制限」。0 は「1個も使わない」なので区別して入れられるようにする。 */
+  async setGrowthIncenseStock(value: string) {
+    await this.growthIncenseStockInput.fill(value);
+    await this.growthIncenseStockInput.blur();
+  }
+
   // === タイプアメ設定の操作 ===
   /**
    * タイプアメの値を設定
@@ -252,6 +341,12 @@ export class SettingsModalPage {
    */
   async getTypeCandyCount(): Promise<number> {
     return await this.page.locator('[data-testid^="settings-type-row-"]').count();
+  }
+
+  /** リセットはその場のインライン確認を挟む（`window.confirm` は使っていない）。 */
+  async resetSettings() {
+    await this.resetButton.click();
+    await this.resetConfirmYesButton.click();
   }
 
   // === 検証ヘルパー ===

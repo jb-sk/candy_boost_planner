@@ -135,7 +135,10 @@ describe('fbl01d feasibility witness', () => {
       const expected = solveFeasibilityDecisionForFixedRows(rows.slice(0, length), inventory, options);
       const actual = session.canSolvePrefix(length);
       expect(actual.status).toBe(expected.status);
-      if (actual.status !== 'feasible') expect(actual.reason).toBe(expected.reason);
+      if (actual.status !== 'feasible') {
+        expect(expected.status).not.toBe('feasible');
+        if (expected.status !== 'feasible') expect(actual.reason).toBe(expected.reason);
+      }
     }
   });
 
@@ -578,6 +581,7 @@ describe('fbl01d feasibility witness', () => {
       const session = createPrefixDecisionSession(rows, inventory, { ...noBoost, itemCompareMode: mode });
       const zeroPrefix = session.canSolvePrefix(2);
       expect(zeroPrefix.status).toBe('feasible');
+      if (zeroPrefix.status !== 'feasible') return;
       expect(zeroPrefix.toWitness).toBeDefined();
       const zeroWitnessResult = zeroPrefix.toWitness!();
       expect(zeroWitnessResult.status).toBe('feasible');
@@ -590,6 +594,7 @@ describe('fbl01d feasibility witness', () => {
 
       const neededPrefix = session.canSolvePrefix(3);
       expect(neededPrefix.status).toBe('feasible');
+      if (neededPrefix.status !== 'feasible') return;
       expect(neededPrefix.toWitness).toBeDefined();
       const neededWitnessResult = neededPrefix.toWitness!();
       expect(neededWitnessResult.status).toBe('feasible');
@@ -985,7 +990,7 @@ describe('fbl01d feasibility witness', () => {
       universal: { s: 0, m: 1, l: 0 },
     };
     const blockedSession = createIndependentBoundaryFeasibilitySession(prefixRows, blockedInventory, noBoost);
-    expect(blockedSession?.canSolve(boundaryRow).status).toBe('infeasible');
+    expect(blockedSession?.canSolve(boundaryRow)?.status).toBe('infeasible');
     expect(solveFeasibilityForFixedRows([...prefixRows, boundaryRow], blockedInventory, noBoost).status).toBe('infeasible');
 
     const feasibleInventory: CandyInventory = {
@@ -993,7 +998,7 @@ describe('fbl01d feasibility witness', () => {
       universal: { s: 0, m: 2, l: 0 },
     };
     const feasibleSession = createIndependentBoundaryFeasibilitySession(prefixRows, feasibleInventory, noBoost);
-    expect(feasibleSession?.canSolve(boundaryRow).status).toBe('feasible');
+    expect(feasibleSession?.canSolve(boundaryRow)?.status).toBe('feasible');
     expectFeasible(solveFeasibilityForFixedRows([...prefixRows, boundaryRow], feasibleInventory, noBoost));
   });
 
@@ -1008,7 +1013,7 @@ describe('fbl01d feasibility witness', () => {
     const options = { ...noBoost, itemCompareMode: 'surplusFirst' as const, maxRowSurplus: 2 };
     const session = createIndependentBoundaryFeasibilitySession(prefixRows, inventory, options);
 
-    expect(session?.canSolve(boundaryRow, { maxReachedSurplus: 0 }).status).toBe('infeasible');
+    expect(session?.canSolve(boundaryRow, { maxReachedSurplus: 0 })?.status).toBe('infeasible');
     expect(solveFeasibilityForFixedRows([...prefixRows, boundaryRow], inventory, {
       ...options,
       maxReachedSurplus: 0,
@@ -1378,9 +1383,9 @@ describe('fbl01d feasibility witness', () => {
   it('feasibility witnessの出力を固定需要行へ変換し、合同solverとrefineを検証できる', () => {
     const input: LevelPlannerInput = {
       pokemonList: [
-        { pokemonId: 'upper', pokedexId: 501, candyFamilyKey: '501', name: '上位', type: 'alpha', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 4 }, priorityIndex: 0 },
-        { pokemonId: 'second', pokedexId: 502, candyFamilyKey: '502', name: '二体目', type: 'alpha', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 25 }, priorityIndex: 1 },
-        { pokemonId: 'boundary', pokedexId: 503, candyFamilyKey: '503', name: '境界', type: 'alpha', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 4 }, priorityIndex: 2 },
+        { pokemonId: 'upper', pokedexId: 501, candyFamilyKey: '501', name: '上位', type: 'alpha', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 4, boostedCandyUnits: 0 }, priorityIndex: 0 },
+        { pokemonId: 'second', pokedexId: 502, candyFamilyKey: '502', name: '二体目', type: 'alpha', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 25, boostedCandyUnits: 0 }, priorityIndex: 1 },
+        { pokemonId: 'boundary', pokedexId: 503, candyFamilyKey: '503', name: '境界', type: 'alpha', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 4, boostedCandyUnits: 0 }, priorityIndex: 2 },
       ],
       dreamShards: Infinity,
       boost: { kind: 'none', limit: 0 },
@@ -1429,6 +1434,7 @@ describe('fbl01d feasibility witness', () => {
         candyFamilyKey: row.candyFamilyKey,
         type: row.type,
         totalCandyCount: row.totalCandy,
+        candyDemandMet: row.candyDemandMet,
         fixedSpecies: row.supply.species,
         selected: {
           species: row.supply.species,
@@ -1575,6 +1581,7 @@ describe('fbl01d feasibility witness', () => {
         candyFamilyKey: row.candyFamilyKey,
         type: row.type,
         totalCandyCount: row.totalCandy,
+        candyDemandMet: row.candyDemandMet,
         fixedSpecies: row.supply.species,
         selected: { ...row.supply, supply, surplus: supply - row.totalCandy },
       };

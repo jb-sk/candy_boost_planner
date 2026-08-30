@@ -29,7 +29,13 @@ export type PlannerInputRowDto = {
   readonly candyTarget?: number;
   readonly boostCandyInput: number;
   readonly sleepExp: number;
-  readonly sleepTargetMode?: "all";
+  readonly sleepTargetMode?: "all" | "stock";
+  /**
+   * 睡眠目標「アメ在庫＋睡眠」の行が使うアメ数。**在庫の取り合いは呼び出し側が解く**
+   * （`useCalcStore.stockCandyTargetByRowId` が正本）。ここで数え直すと、画面に出ている
+   * 個数とソルバーの需要がずれる。`sleepTargetMode !== "stock"` の行では読まない。
+   */
+  readonly stockCandyTarget?: number;
 };
 
 export type PlannerCandyInventorySnapshotDto = {
@@ -96,9 +102,17 @@ export function buildPlannerInput(
       expType: row.expType,
     });
     const allSleep = row.sleepTargetMode === "all";
-    const requestedBoostCandy = allSleep ? 0 : row.boostCandyInput;
+    // 「アメ在庫＋睡眠」は在庫が使うアメ数を決める。数えるのは呼び出し側で、ここは受け取るだけ。
+    // 残りは睡眠が担当するので、この個数がそのままこの行の需要になる。
+    const stockCandyTarget = row.sleepTargetMode === "stock"
+      ? Math.max(0, Math.floor(row.stockCandyTarget ?? 0))
+      : undefined;
+    // アメブは総アメ数の内数（型が `boostedCandyUnits ≤ totalCandyUnits` を前提にしている）。
+    const requestedBoostCandy = allSleep
+      ? 0
+      : Math.min(row.boostCandyInput, stockCandyTarget ?? Number.POSITIVE_INFINITY);
     const sleepExp = allSleep ? 0 : row.sleepExp;
-    const candyTarget = allSleep ? 0 : row.candyTarget ?? (sleepExp > 0
+    const candyTarget = allSleep ? 0 : stockCandyTarget ?? row.candyTarget ?? (sleepExp > 0
       ? calcCandyTargetFromSleepExp({
         srcLevel: row.srcLevel,
         dstLevel: targetLevel,
@@ -127,6 +141,7 @@ export function buildPlannerInput(
       nature: row.nature,
       requestedBoostCandy,
       boostAllowed: true,
+      itemsAllowed: stockCandyTarget === undefined,
       candyTarget: candyTarget === undefined
         ? undefined
         : { totalCandyUnits: candyTarget, boostedCandyUnits: requestedBoostCandy },

@@ -5,7 +5,12 @@ import {
   solveLevelPlan as solveLevelPlanCore,
   solveLevelPlanWithBudget as solveLevelPlanWithBudgetCore,
 } from '../../../src/domain/level-planner/core/solveLevelPlan';
-import type { CandySupplyBreakdown, LevelPlannerInput, SolverItemCompareMode } from '../../../src/domain/level-planner/types';
+import type {
+  CandySupplyBreakdown,
+  LevelPlannerInput,
+  PokemonPlanInput,
+  SolverItemCompareMode,
+} from '../../../src/domain/level-planner/types';
 import { calcExp, calcExpAndCandy } from '../../../src/domain/pokesleep/exp';
 import { setPerfEnabled } from '../../../src/utils/perf';
 
@@ -16,7 +21,19 @@ import { setPerfEnabled } from '../../../src/utils/perf';
  * 「アメブの内数制約なし（requestedBoostCandy が実効上限）」を意図しているので、
  * 省略時は総数と同じ値を入れる。個別に検証したい行は明示的に指定すること。
  */
-function withTestCandyFamilyKeys(input: LevelPlannerInput): LevelPlannerInput {
+type TestPokemonPlanInput = Omit<PokemonPlanInput, 'candyFamilyKey' | 'candyTarget'> & {
+  candyFamilyKey?: PokemonPlanInput['candyFamilyKey'];
+  candyTarget?: {
+    totalCandyUnits: number;
+    boostedCandyUnits?: number;
+  };
+};
+
+type TestLevelPlannerInput = Omit<LevelPlannerInput, 'pokemonList'> & {
+  pokemonList: TestPokemonPlanInput[];
+};
+
+function withTestCandyFamilyKeys(input: TestLevelPlannerInput): LevelPlannerInput {
   return {
     ...input,
     pokemonList: input.pokemonList.map(row => ({
@@ -32,12 +49,12 @@ function withTestCandyFamilyKeys(input: LevelPlannerInput): LevelPlannerInput {
   };
 }
 
-function solveLevelPlan(input: LevelPlannerInput) {
+function solveLevelPlan(input: TestLevelPlannerInput) {
   return solveLevelPlanCore(withTestCandyFamilyKeys(input));
 }
 
 function solveLevelPlanWithBudget(
-  input: LevelPlannerInput,
+  input: TestLevelPlannerInput,
   budget: Parameters<typeof solveLevelPlanWithBudgetCore>[1],
 ) {
   return solveLevelPlanWithBudgetCore(withTestCandyFamilyKeys(input), budget);
@@ -45,10 +62,10 @@ function solveLevelPlanWithBudget(
 
 const __levelPlannerTestHooks = {
   ...rawLevelPlannerTestHooks,
-  speciesNeedsForTest(input: LevelPlannerInput) {
+  speciesNeedsForTest(input: TestLevelPlannerInput) {
     return rawLevelPlannerTestHooks.speciesNeedsForTest(withTestCandyFamilyKeys(input));
   },
-  supplyCandidatesForTest(input: LevelPlannerInput, pokemonIndex: number, totalCandy: number) {
+  supplyCandidatesForTest(input: TestLevelPlannerInput, pokemonIndex: number, totalCandy: number) {
     return rawLevelPlannerTestHooks.supplyCandidatesForTest(
       withTestCandyFamilyKeys(input),
       pokemonIndex,
@@ -75,7 +92,7 @@ function stableSupplies(supplies: CandySupplyBreakdown[]): string[] {
   return supplies.map(supply => JSON.stringify(supply)).sort();
 }
 
-function constrainedCandyTargetInput(itemCompareMode: SolverItemCompareMode): LevelPlannerInput {
+function constrainedCandyTargetInput(itemCompareMode: SolverItemCompareMode): TestLevelPlannerInput {
   return {
     pokemonList: [
       { pokemonId: 'latias', pokedexId: 380, name: '70ラティアス', type: 'dragon', currentLevel: 55, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0, expType: 1080, nature: 'normal', requestedBoostCandy: 1561, boostAllowed: true, priorityIndex: 0 },
@@ -224,7 +241,7 @@ describe('単一最適化パイプライン', () => {
 
   it('fbl01d frontier cacheは連続solveで厳密保証軸を変えない', () => {
     __levelPlannerTestHooks.clearCandidateCache();
-    const input: LevelPlannerInput = {
+    const input: TestLevelPlannerInput = {
       pokemonList: [
         { pokemonId: 'pawmot', pokedexId: 923, name: '80パーモット', type: 'electric', currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, expType: 1080, nature: 'normal', requestedBoostCandy: 316, boostAllowed: true, priorityIndex: 0 },
         { pokemonId: 'cramorant', pokedexId: 845, name: '70ウッウ（油）', type: 'flying', currentLevel: 68, currentExpInLevel: 198, targetLevel: 70, expType: 900, nature: 'down', requestedBoostCandy: 264, boostAllowed: true, priorityIndex: 1 },
@@ -584,7 +601,7 @@ describe('単一最適化パイプライン', () => {
   });
 
   it('目標まで行の理論値補填は在庫に残る種族アメを先に使い、個数指定に左右されない', () => {
-    const suicune = (candyTarget?: number): LevelPlannerInput => ({
+    const suicune = (candyTarget?: number): TestLevelPlannerInput => ({
       pokemonList: [{
         pokemonId: 'suicune-target-display',
         pokedexId: 245,
@@ -624,7 +641,7 @@ describe('単一最適化パイプライン', () => {
     // 新設計では個数指定＝目標なので、必要アメ数が指定値に一致するのは正しい（設計書§4.5.1）。
     // ここで守るのは 7e6224f の本質、すなわち
     // 「需要ちょうどに対して内訳が組まれ、隣接する指定値の間で内訳が飛ばない」こと。
-    const row = (candyTarget?: number): LevelPlannerInput => ({
+    const row = (candyTarget?: number): TestLevelPlannerInput => ({
       pokemonList: [{
         pokemonId: 'cramorant',
         pokedexId: 845,
@@ -1156,7 +1173,7 @@ describe('単一最適化パイプライン', () => {
   });
 
   it('供給候補キャッシュは列挙上限を超える在庫差だけを同一視する', () => {
-    const base: LevelPlannerInput = {
+    const base: TestLevelPlannerInput = {
       pokemonList: [{ pokemonId: 'cache-rounding', pokedexId: 10491, name: 'キャッシュ丸め', type: 'cache_type' as const, currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 75 }, priorityIndex: 0 }],
       dreamShards: Infinity,
       boost: { kind: 'none' as const, limit: 0 },
@@ -1167,7 +1184,7 @@ describe('単一最適化パイプライン', () => {
       },
       options: { itemCompareMode: 'surplusFirst' as const },
     };
-    const abundant: LevelPlannerInput = {
+    const abundant: TestLevelPlannerInput = {
       ...base,
       candyInventory: {
         species: { '10491': 12 },
@@ -1579,7 +1596,7 @@ describe('単一最適化パイプライン', () => {
   });
 
   it.each(['none', 'mini', 'full'] as const)('バッグ圧縮は%sでも通常アメだけの目標Lv行を余り0..2ゲートに通す', boostKind => {
-    const base: LevelPlannerInput = {
+    const base: TestLevelPlannerInput = {
       pokemonList: [
         { pokemonId: `swalot-target-${boostKind}-gate`, pokedexId: 317, name: '70マルノーム', type: 'poison' as const, currentLevel: 57, currentExpInLevel: 1553, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 0 },
       ],
@@ -1668,7 +1685,7 @@ describe('単一最適化パイプライン', () => {
   });
 
   it('余り最小は粗い在庫でも余り0〜2ゲート内の全体余りを優先する', () => {
-    const base: LevelPlannerInput = {
+    const base: TestLevelPlannerInput = {
       pokemonList: [
         { pokemonId: 'surplus-first-upper', pokedexId: 317, name: '上位マルノーム', type: 'poison' as const, currentLevel: 57, currentExpInLevel: 1553, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'down' as const, candyTarget: { totalCandyUnits: 308 }, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 0 },
         { pokemonId: 'surplus-first-boundary', pokedexId: 244, name: '境界エンテイ', type: 'fire' as const, currentLevel: 50, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'down' as const, candyTarget: { totalCandyUnits: 24 }, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 1 },
@@ -1870,7 +1887,7 @@ describe('単一最適化パイプライン', () => {
   });
 
   it('余り0〜2優先は余りゲート内で境界EXPを伸ばしつつ境界を到達済みにしない', () => {
-    const input: LevelPlannerInput = {
+    const input: TestLevelPlannerInput = {
       pokemonList: [
         { pokemonId: 'pawmot', pokedexId: 923, name: '80パーモット', type: 'electric' as const, currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 316, boostAllowed: true, priorityIndex: 0 },
         { pokemonId: 'cramorant', pokedexId: 845, name: '70ウッウ（油）', type: 'flying' as const, currentLevel: 68, currentExpInLevel: 198, targetLevel: 70, targetExpInLevel: 0, expType: 600 as const, nature: 'down' as const, requestedBoostCandy: 34, boostAllowed: true, priorityIndex: 1 },
@@ -1925,7 +1942,7 @@ describe('単一最適化パイプライン', () => {
   });
 
   it('バランスは同タイプ境界の最大到達量を逐次降下せず求める', () => {
-    const input: LevelPlannerInput = {
+    const input: TestLevelPlannerInput = {
       pokemonList: [
         { pokemonId: 'pawmot', pokedexId: 923, name: '80パーモット', type: 'electric' as const, currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 0 },
         { pokemonId: 'cramorant', pokedexId: 845, name: '70ウッウ（油）', type: 'flying' as const, currentLevel: 68, currentExpInLevel: 198, targetLevel: 70, targetExpInLevel: 0, expType: 600 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 1 },
@@ -1974,7 +1991,7 @@ describe('単一最適化パイプライン', () => {
   });
 
   it('EXP最大はタイプ在庫ゼロの同タイプ境界を独立境界として扱う', () => {
-    const input: LevelPlannerInput = {
+    const input: TestLevelPlannerInput = {
       pokemonList: [
         { pokemonId: 'pawmot', pokedexId: 923, name: '80パーモット', type: 'electric' as const, currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 0 },
         { pokemonId: 'cramorant', pokedexId: 845, name: '70ウッウ（油）', type: 'flying' as const, currentLevel: 68, currentExpInLevel: 198, targetLevel: 70, targetExpInLevel: 0, expType: 600 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 1 },

@@ -1,0 +1,63 @@
+{
+  "$comment": "generate-events.mjs の手動確定値。Wikiから機械的に読めないものだけをここに書く。ignore はページ単位の除外、segments は自動抽出を丸ごと置き換える。",
+  "ignore": {
+    "グッドスリープデー": {
+      "reason": "月齢から求まる常設イベント。倍率は lunar-calendar.ts / sleep-schedule.ts が扱うため、ここに入れると二重適用になる",
+      "source": "https://wikiwiki.jp/poke_sleep/イベント/グッドスリープデー"
+    },
+    "ニュームーンデー": {
+      "reason": "月齢から求まる常設イベント。睡眠EXPボーナスは無いが、開催期間が日付で書かれておらず一覧からも解決できない",
+      "source": "https://wikiwiki.jp/poke_sleep/イベント/ニュームーンデー"
+    }
+  },
+  "periodFixes": [
+    {
+      "name": "ポケモンすくすくウィーク",
+      "from": "2024-07-01",
+      "to": "2024-07-07",
+      "reason": "一覧ページは「2024年7月1日(月)～7月8日(日)」だが 2024-07-08 は月曜で曜日表記と矛盾する。イベントページの開催履歴表は「7月7日(日)」で曜日が一致し、他の全4回も月曜～日曜の7日間。履歴表を採用する",
+      "source": "https://wikiwiki.jp/poke_sleep/イベント/ポケモンすくすくウィーク"
+    }
+  ],
+  "segments": {},
+  "anchors": [
+    {
+      "match": "周年記念フェスティバル",
+      "month": 7,
+      "day": 17,
+      "reason": "1〜3周年の3回とも7月17日を含む月曜始まりの週から開始し、第N月曜では一致しないため",
+      "source": "https://www.pokemonsleep.net/news/343138353434383532363837333838363733/"
+    },
+    {
+      "match": "ポケモンデー",
+      "month": 2,
+      "day": 27,
+      "reason": "Pokémon Dayを含む週を基準にし、実績の週オフセットを自動適用するため",
+      "source": "https://www.pokemonsleep.net/news/333731313234333430373437343033323636/"
+    }
+  ],
+  "flowers": [
+    {
+      "match": "周年記念フェスティバル",
+      "days": 7,
+      "reason": "周年フェスは2週間開催で、睡眠EXP1.5倍は1週目、おいわいフラワーは2週目のため",
+      "source": "https://www.pokemonsleep.net/news/343138353434383532363837333838363733/"
+    }
+  ],
+  "nameEn": [
+    {
+      "name": "ポケモンすくすくウィーク",
+      "from": "2024-08-05",
+      "en": "Pokémon Growth Week Vol. 2",
+      "reason": "公式英語ニュースの見出しが「Event: Pokémon Growth Week Vol. 2」。PokéSleep Super Wiki は「No. 2」だが、他の回（Vol.3〜Vol.5）とも表記が揃わない",
+      "source": "https://web.archive.org/web/20250217074506/https://www.pokemonsleep.net/en/news/313630393538373733363232343732373035/"
+    },
+    {
+      "name": "ホリデー2023：ダブルゆめのかけらリサーチ",
+      "from": "2023-12-18",
+      "en": "Holiday 2023 — Double Dream Shard Research",
+      "reason": "公式英語ニュースの見出しが「Event Notice: Holiday 2023 — Double Dream Shard Research」。PokéSleep Super Wiki は副題を落とした「Holiday 2023」で、2024・2025年の回とも表記が揃わない",
+      "source": "https://web.archive.org/web/20240914152739/https://www.pokemonsleep.net/en/news/3736313136353239363434353638353737/"
+    }
+  ]
+}

@@ -401,6 +401,24 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%94%E3%82%AB%E3%83%81%E3%83%A5%E3%82%A6%28%E3%83%9B%E3%83%AA%E3%83%87%E3%83%BC%29"
   },
   {
+    "dexNo": 25,
+    "pokedexId": 25,
+    "form": 11,
+    "formLabelJa": "キャプテン",
+    "nameJa": "ピカチュウ(キャプテン)",
+    "baseNameJa": "ピカチュウ",
+    "specialty": "Berries",
+    "type": "Electric",
+    "typeJa": "でんき",
+    "expType": 600,
+    "ingredients": {
+      "a": "apple",
+      "b": "ginger",
+      "c": "egg"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%94%E3%82%AB%E3%83%81%E3%83%A5%E3%82%A6%28%E3%82%AD%E3%83%A3%E3%83%97%E3%83%86%E3%83%B3%29"
+  },
+  {
     "dexNo": 26,
     "pokedexId": 26,
     "form": 0,
@@ -4351,6 +4369,60 @@ export const pokemonMaster: PokemonMasterEntry[] = [
       "c": "egg"
     },
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%91%E3%83%BC%E3%83%A2%E3%83%83%E3%83%88"
+  },
+  {
+    "dexNo": 957,
+    "pokedexId": 957,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "カヌチャン",
+    "baseNameJa": "カヌチャン",
+    "specialty": "Berries",
+    "type": "Fairy",
+    "typeJa": "フェアリー",
+    "expType": 600,
+    "ingredients": {
+      "a": "tomato",
+      "b": "cacao",
+      "c": "potato"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%AB%E3%83%8C%E3%83%81%E3%83%A3%E3%83%B3"
+  },
+  {
+    "dexNo": 958,
+    "pokedexId": 958,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "ナカヌチャン",
+    "baseNameJa": "ナカヌチャン",
+    "specialty": "Berries",
+    "type": "Fairy",
+    "typeJa": "フェアリー",
+    "expType": 600,
+    "ingredients": {
+      "a": "tomato",
+      "b": "cacao",
+      "c": "potato"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%8A%E3%82%AB%E3%83%8C%E3%83%81%E3%83%A3%E3%83%B3"
+  },
+  {
+    "dexNo": 959,
+    "pokedexId": 959,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "デカヌチャン",
+    "baseNameJa": "デカヌチャン",
+    "specialty": "Berries",
+    "type": "Fairy",
+    "typeJa": "フェアリー",
+    "expType": 600,
+    "ingredients": {
+      "a": "tomato",
+      "b": "cacao",
+      "c": "potato"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%87%E3%82%AB%E3%83%8C%E3%83%81%E3%83%A3%E3%83%B3"
   },
   {
     "dexNo": 974,

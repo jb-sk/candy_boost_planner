@@ -32,17 +32,42 @@ describe("persistence/calc sleepSettings", () => {
   it("returns defaults when nothing is stored", () => {
     const settings = loadSleepSettings();
     expect(settings).toEqual(DEFAULT_SLEEP_SETTINGS);
+    expect(settings.growthIncenseGsdDays).toEqual({
+      beforeFullMoon: false,
+      fullMoon: false,
+      afterFullMoon: false,
+    });
   });
 
   it("round-trips saved settings", () => {
-    const custom = { dailySleepHours: 7, sleepExpBonusCount: 3, includeGSD: false };
+    const custom = {
+      dailySleepHours: 7,
+      sleepExpBonusCount: 3,
+      includeGSD: false,
+      timeZone: "Asia/Tokyo",
+      growthIncenseGsdDays: { beforeFullMoon: true, fullMoon: false, afterFullMoon: true },
+      growthIncenseNormalPerWeek: 3 as const,
+      growthIncenseStock: 9,
+      manualEventBonuses: [
+        { from: "2026-08-25", to: "2026-08-27", multiplier: 3 },
+        { from: "2026-09-01", to: "2026-09-07", multiplier: 1.5 },
+      ],
+      useProjectedEvents: true,
+      blueSeedPlantWeekday: 3 as const,
+      blueSeedIncenseDays: 4 as const,
+    };
     saveSleepSettings(custom);
     const loaded = loadSleepSettings();
     expect(loaded).toEqual(custom);
   });
 
   it("returns defaults after removing settings", () => {
-    saveSleepSettings({ dailySleepHours: 6, sleepExpBonusCount: 2, includeGSD: true });
+    saveSleepSettings({
+      ...DEFAULT_SLEEP_SETTINGS,
+      dailySleepHours: 6,
+      sleepExpBonusCount: 2,
+      includeGSD: true,
+    });
     saveSleepSettings(undefined);
     expect(loadSleepSettings()).toEqual(DEFAULT_SLEEP_SETTINGS);
   });
@@ -69,6 +94,99 @@ describe("persistence/calc sleepSettings", () => {
     expect(loaded.dailySleepHours).toBe(10);
     expect(loaded.sleepExpBonusCount).toBe(DEFAULT_SLEEP_SETTINGS.sleepExpBonusCount);
     expect(loaded.includeGSD).toBe(DEFAULT_SLEEP_SETTINGS.includeGSD);
+    expect(loaded.timeZone).toBe(DEFAULT_SLEEP_SETTINGS.timeZone);
+    expect(loaded.growthIncenseGsdDays).toEqual(DEFAULT_SLEEP_SETTINGS.growthIncenseGsdDays);
+    expect(loaded.growthIncenseNormalPerWeek).toBe(0);
+    expect(loaded.growthIncenseStock).toBeNull();
+    expect(loaded.manualEventBonuses).toEqual([]);
+    expect(loaded.blueSeedIncenseDays).toBe("auto");
+  });
+
+  it("旧データではあおいタネのお香併用をautoで補う", () => {
+    localStorage.setItem(
+      "candy-boost-planner:calc:sleepSettings",
+      JSON.stringify({ ...DEFAULT_SLEEP_SETTINGS, blueSeedIncenseDays: undefined }),
+    );
+    expect(loadSleepSettings().blueSeedIncenseDays).toBe("auto");
+  });
+
+  it("旧データでは手入力イベント倍率を空配列で補う", () => {
+    localStorage.setItem(
+      "candy-boost-planner:calc:sleepSettings",
+      JSON.stringify({ ...DEFAULT_SLEEP_SETTINGS, manualEventBonuses: undefined }),
+    );
+    expect(loadSleepSettings().manualEventBonuses).toEqual([]);
+  });
+
+  it.each([
+    [{ from: "2026-02-30", to: "2026-03-01", multiplier: 1.5 }],
+    [{ from: "2026-03-02", to: "2026-03-01", multiplier: 1.5 }],
+    [{ from: "2026-03-01", to: "2026-03-02", multiplier: 0 }],
+    [{ from: "2026-03-01", to: "2026-03-02", multiplier: 10.1 }],
+  ])("不正な手入力イベント倍率は空配列へ戻す", (invalidBonus) => {
+    localStorage.setItem(
+      "candy-boost-planner:calc:sleepSettings",
+      JSON.stringify({ ...DEFAULT_SLEEP_SETTINGS, manualEventBonuses: [invalidBonus] }),
+    );
+    expect(loadSleepSettings().manualEventBonuses).toEqual([]);
+  });
+
+  it("不正な手入力イベント倍率だけを除き、有効な行は保持する", () => {
+    const validBonus = { from: "2026-03-01", to: "2026-03-02", multiplier: 1.5 };
+    localStorage.setItem(
+      "candy-boost-planner:calc:sleepSettings",
+      JSON.stringify({
+        ...DEFAULT_SLEEP_SETTINGS,
+        manualEventBonuses: [
+          validBonus,
+          { from: "2026-02-30", to: "2026-03-01", multiplier: 3 },
+        ],
+      }),
+    );
+    expect(loadSleepSettings().manualEventBonuses).toEqual([validBonus]);
+  });
+
+  it("手入力イベント倍率が10件を超える場合は先頭10件を保持する", () => {
+    const validBonus = { from: "2026-03-01", to: "2026-03-02", multiplier: 1.5 };
+    localStorage.setItem(
+      "candy-boost-planner:calc:sleepSettings",
+      JSON.stringify({
+        ...DEFAULT_SLEEP_SETTINGS,
+        manualEventBonuses: Array.from({ length: 11 }, () => validBonus),
+      }),
+    );
+    expect(loadSleepSettings().manualEventBonuses).toEqual(
+      Array.from({ length: 10 }, () => validBonus),
+    );
+  });
+
+  it("不正な行を除外してから有効な手入力イベント倍率を10件まで保持する", () => {
+    const validBonus = { from: "2026-03-01", to: "2026-03-02", multiplier: 1.5 };
+    localStorage.setItem(
+      "candy-boost-planner:calc:sleepSettings",
+      JSON.stringify({
+        ...DEFAULT_SLEEP_SETTINGS,
+        manualEventBonuses: [
+          { from: "2026-02-30", to: "2026-03-01", multiplier: 3 },
+          ...Array.from({ length: 10 }, () => validBonus),
+        ],
+      }),
+    );
+    expect(loadSleepSettings().manualEventBonuses).toEqual(
+      Array.from({ length: 10 }, () => validBonus),
+    );
+  });
+
+  it("未リリース版の5択GSD設定を3日指定へ移行する", () => {
+    localStorage.setItem(
+      "candy-boost-planner:calc:sleepSettings",
+      JSON.stringify({ growthIncenseGsdPolicy: "bothFlanks" }),
+    );
+    expect(loadSleepSettings().growthIncenseGsdDays).toEqual({
+      beforeFullMoon: true,
+      fullMoon: false,
+      afterFullMoon: true,
+    });
   });
 });
 
@@ -267,6 +385,30 @@ describe("persistence/calc slots", () => {
     });
     expect(rows[1]!.sleepTargetMode).toBeUndefined();
     expect(rows[1]!.sleepTargetHours).toBe(1000);
+  });
+
+  it("localStorage は stock も読み、all と同じく数値・個数指定より優先する", () => {
+    localStorage.setItem(
+      "candy-boost-planner:calc:slots:v1",
+      JSON.stringify({
+        schemaVersion: 2,
+        slots: [{
+          savedAt: "2026-08-20T00:00:00.000Z",
+          rows: [
+            { ...row, id: "stock", sleepTargetMode: "stock", sleepTargetHours: 500, candyTarget: 40, dstExpInLevel: 10 },
+          ],
+          activeRowId: "stock",
+          boostKind: "full",
+        }, null, null],
+      }),
+    );
+
+    expect(loadCalcSlots()[0]!.rows[0]).toMatchObject({
+      sleepTargetMode: "stock",
+      sleepTargetHours: undefined,
+      candyTarget: undefined,
+      dstExpInLevel: undefined,
+    });
   });
 
   it("normalizes dstExpInLevel: drops it without candyTarget and clamps it below the next level requirement", () => {

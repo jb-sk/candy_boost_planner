@@ -1,3 +1,5 @@
+import { addGameDays, formatGameDateForDisplay, type GameDate } from "../pokesleep/game-date";
+
 export const SLEEP_MILESTONE_TARGETS = [200, 500, 1000, 2000] as const;
 
 export type SleepMilestoneResult = {
@@ -32,20 +34,12 @@ export function normalizeDailySleepInput(v: number | null | undefined): number |
   return v;
 }
 
-/* ---------- 日付フォーマット (YYYY/MM/DD 固定) ---------- */
-function formatDateYMD(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}/${m}/${day}`;
-}
-
 export function calcSleepMilestones(params: {
   currentSleepHours: number;
   dailySleepHours: number;
-  now?: Date;
+  startGameDate: GameDate;
 }): SleepMilestoneResult[] {
-  const { currentSleepHours, dailySleepHours, now } = params;
+  const { currentSleepHours, dailySleepHours, startGameDate } = params;
   const current = normalizeSleepHoursValue(currentSleepHours);
   const safeDaily = normalizeDailySleepInput(dailySleepHours) ?? 8.5;
 
@@ -55,14 +49,12 @@ export function calcSleepMilestones(params: {
     }
     const remainingHours = target - current;
     const remainingDays = Math.ceil(remainingHours / safeDaily);
-    const estimatedDate = new Date(now ?? Date.now());
-    estimatedDate.setDate(estimatedDate.getDate() + remainingDays);
     return {
       hours: target,
       index: i + 1,
       achieved: false,
       remainingDays,
-      estimatedDate: formatDateYMD(estimatedDate),
+      estimatedDate: formatGameDateForDisplay(addGameDays(startGameDate, remainingDays)),
     };
   });
 }

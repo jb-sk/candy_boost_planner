@@ -11,5 +11,6 @@ export const formLabelJaToEn: Record<string, string> = {
   "こだま": "Small",
   "ちゅうだま": "Medium",
   "おおだま": "Large",
-  "ギガだま": "Jumbo"
+  "ギガだま": "Jumbo",
+  "キャプテン": "Captain"
 };

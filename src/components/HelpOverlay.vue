@@ -1,12 +1,11 @@
 <template>
   <div class="modal-overlay help-overlay" @click.self="$emit('close')">
-    <div class="modal">
+    <div class="modal" role="dialog" aria-modal="true" :aria-label="t('help.title')">
       <header class="modal__header">
         <h2 class="modal__title">{{ t("help.title") }}</h2>
         <button class="modal__close" type="button" @click="$emit('close')" :aria-label="t('common.close')">×</button>
       </header>
-      <div class="modal__body">
-
+      <div class="modal__body" data-testid="help-panel-usage">
         <section class="section section--basic">
           <h3>{{ t("help.basic.title") }}</h3>
           <dl class="helpDl helpDl--table">
@@ -32,6 +31,8 @@
             <dd>{{ t("help.basic.exportDesc") }}</dd>
             <dt>{{ t("help.basic.dataTitle") }}</dt>
             <dd>{{ t("help.basic.dataDesc") }}</dd>
+            <dt>{{ t("help.basic.backupTitle") }}</dt>
+            <dd>{{ t("help.basic.backupDesc") }}</dd>
             <dt>{{ t("help.basic.themeTitle") }}</dt>
             <dd>{{ t("help.basic.themeDesc") }}</dd>
           </dl>
@@ -42,8 +43,6 @@
           <dl class="helpDl helpDl--stacked">
             <dt>{{ t("help.purpose.targetTitle") }}</dt>
             <dd>{{ t("help.purpose.targetDesc") }}</dd>
-            <dt>{{ t("help.purpose.currentTitle") }}</dt>
-            <dd>{{ t("help.purpose.currentDesc") }}</dd>
             <dt>{{ t("help.purpose.simulateTitle") }}</dt>
             <dd>{{ t("help.purpose.simulateDesc") }}</dd>
             <dt>{{ t("help.purpose.sleepTitle") }}</dt>
@@ -93,10 +92,18 @@
               <span class="formula__note">{{ t("help.sleepFormula.natureNote") }}</span>
             </li>
             <li>
-              <strong>{{ t("help.sleepFormula.gsdTitle") }}</strong>
-              <code>{{ t("help.sleepFormula.gsdFormula") }}</code>
-              <span class="formula__note">{{ t("help.sleepFormula.gsdNote") }}</span>
-              <span class="formula__note">{{ t("help.sleepFormula.gsdNote2") }}</span>
+              <strong>{{ t("help.sleepFormula.outerTitle") }}</strong>
+              <code>{{ t("help.sleepFormula.outerFormula") }}</code>
+              <span class="formula__note">{{ t("help.sleepFormula.gsdFormula") }}</span>
+              <span class="formula__note">{{ t("help.sleepFormula.outerNote") }}</span>
+            </li>
+            <li>
+              <strong>{{ t("help.sleepFormula.incenseTitle") }}</strong>
+              <code>{{ t("help.sleepFormula.incenseFormula") }}</code>
+              <span class="formula__note">{{ t("help.sleepFormula.incenseNote1") }}</span>
+              <span class="formula__note">{{ t("help.sleepFormula.incenseNote2") }}</span>
+              <span class="formula__note">{{ t("help.sleepFormula.incenseNote3") }}</span>
+              <span class="formula__note">{{ t("help.sleepFormula.incenseNote4") }}</span>
             </li>
           </ul>
         </section>
@@ -113,18 +120,32 @@
               <a href="https://pks.raenonx.cc/" target="_blank" rel="noopener noreferrer">{{ t("help.credits.raenonx") }}</a>
               <span class="credits__note">{{ t("help.credits.expTable") }}</span>
             </li>
+            <li>
+              <a href="https://wikiwiki.jp/poke_sleep/" target="_blank" rel="noopener noreferrer">{{ t("help.credits.pokeSleepWiki") }}</a>
+              <span class="credits__note">{{ t("help.credits.pokeSleepWikiNote") }}</span>
+            </li>
+            <li>
+              <a :href="readmeUrl" target="_blank" rel="noopener noreferrer">{{ t("help.credits.readme") }}</a>
+              <span class="credits__note">{{ t("help.credits.readmeNote") }}</span>
+            </li>
           </ul>
         </section>
-
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted } from "vue";
+import { computed, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
-const { t } = useI18n();
+const { t, locale } = useI18n();
+
+// 参照元の全一覧はREADMEにしかない。日本語UIでは日本語版READMEへ送る。
+const readmeUrl = computed(() => (
+  locale.value === "ja"
+    ? "https://github.com/jb-sk/candy_boost_planner/blob/main/README.ja.md"
+    : "https://github.com/jb-sk/candy_boost_planner/blob/main/README.md"
+));
 
 // ESCキーで閉じる
 const emit = defineEmits<{ (e: "close"): void }>();

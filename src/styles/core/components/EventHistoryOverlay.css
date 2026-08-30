@@ -1,0 +1,306 @@
+/* EventHistoryOverlay — イベント履歴モーダル（2026-08-28 に HelpOverlay から分離）。
+   既定は4列の表。狭い画面だけ 1件2行のカードへ組み替える（末尾のブロック）。 */
+
+/* ===== モーダルの器 =====
+   680px以上は**表の幅ぴったりのカード**にして中央へ置く。全画面のままだと表の右に大きな余白が残る
+   （AddPokemonModal と同じ流儀。Modal.css のポップオーバー化を参照）。 */
+@media (min-width: 680px) {
+  .modal-overlay:has(.eventHistoryModal) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .eventHistoryModal {
+    position: relative;
+    inset: auto;
+    width: max-content;
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+  }
+}
+
+/* ===== 見出し下の件数（全期間 / 直近1年） =====
+   幅は表と同じく中身ぶん。片方だけ全幅だと表が左半分に寄って見える。 */
+.eventHistory__counts {
+  width: max-content;
+  max-width: 100%;
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: rgba(var(--accent-rgb), 0.07);
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.eventHistory__countRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+.eventHistory__countRow dt {
+  flex: 0 0 auto;
+  min-width: 5em;
+  font-weight: 700;
+}
+
+.eventHistory__countRow dd {
+  margin: 0;
+}
+
+.eventHistory__countRange {
+  opacity: 0.75;
+}
+
+.eventHistory__note {
+  margin: 8px 2px 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ===== 表 =====
+   幅は中身で止める。`width: 100%` だと余りをイベント名の列が全部吸い、名前と倍率が遠く離れる。 */
+.eventHistory__tableWrap {
+  margin: 12px 0 18px;
+  overflow-x: auto;
+}
+
+.eventHistory__table {
+  width: max-content;
+  min-width: 480px;
+  max-width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.eventHistory__table th,
+.eventHistory__table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(var(--ink-rgb), 0.08);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.eventHistory__table th {
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.eventHistory__period,
+.eventHistory__exp,
+.eventHistory__boost {
+  white-space: nowrap;
+}
+
+/* ブーストは下端へ。周年フェス（睡眠EXPが1週目・2週目の2段になる回）でミニブが2週目の行に並ぶ */
+.eventHistory__boost {
+  vertical-align: bottom;
+}
+
+.eventHistory__table tbody tr:hover th,
+.eventHistory__table tbody tr:hover td {
+  background: rgba(var(--accent-rgb), 0.05);
+}
+
+/* 年見出し行。帯は行の端まで通したいのでセル側へ塗る（`tr` の背景は border-collapse で消える） */
+.eventHistory__yearRow > *,
+.eventHistory__yearRow:hover > * {
+  padding-block: 5px;
+  background: rgba(var(--accent-rgb), 0.1);
+  border-top: 1px solid rgba(var(--accent-rgb), 0.25);
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.25);
+  white-space: nowrap;
+}
+
+.eventHistory__yearBadge {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--btn-ink);
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.eventHistory__yearSummary {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* 年合計に添える列名は、列見出しの無いカードでだけ出す */
+.eventHistory__yearLabel {
+  display: none;
+  margin-right: 4px;
+  font-weight: 400;
+}
+
+/* ===== 倍率・ブーストのチップ ===== */
+.eventHistory__chip {
+  display: inline-block;
+  min-width: 4em;
+  padding: 1px 9px;
+  border-radius: var(--radius-pill);
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.eventHistory__chip--exp {
+  background: rgba(var(--accent-rgb), 0.16);
+  color: var(--accent-strong);
+}
+
+/* 花（×3）は淡い×濃いの強弱で区別する。**別の色トークンに頼らないこと** ──
+   candy / dark / booklet は `--bar-fill` が `--accent` と同色で、色差が消える */
+.eventHistory__chip--flower {
+  background: var(--accent);
+  color: var(--btn-ink);
+}
+
+.eventHistory__chip--mini {
+  background: rgba(var(--muted-rgb), 0.16);
+  color: var(--muted);
+}
+
+.eventHistory__chip--full {
+  background: rgba(var(--ink-rgb), 0.75);
+  color: var(--paper);
+}
+
+/* 表は左寄せなので「チップ → 週の断り」。こうすると列見出しとチップの左端が揃う
+   （DOMは断りが先。狭い画面は右寄せで逆順にしたいので、順序は CSS が決める） */
+.eventHistory__expLine {
+  display: flex;
+  align-items: center;
+}
+
+.eventHistory__weekTag {
+  order: 1;
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ===== 狭い画面（〜679px）: 1件を2行のカードへ =====
+   4列のままでは iPhone 幅（393px）で必ず横スクロールになる。`table` のまま `display` だけ変える。
+   **このファイルだけ `max-width` で書く。** 表が本体で、カードが例外という関係を保つため
+   （mobile-first で書くと「表へ戻す」打ち消しが十数行になり、どちらが本体か読めなくなる）。 */
+@media (max-width: 679px) {
+  .eventHistory__counts {
+    font-size: 13px;
+  }
+
+  .eventHistory__table {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .eventHistory__table thead {
+    display: none;
+  }
+
+  .eventHistory__table th,
+  .eventHistory__table td {
+    padding: 0;
+    border: 0;
+  }
+
+  /* 左＝期間の下にイベント名、右＝睡眠EXPとアメブを横に並べる。
+     **右のセルは行の高さぶん（`span 2`）を取ること。** 上下2段にすると、睡眠EXPが2チップの回
+     （周年フェス）で1段目が伸び、日付とイベント名が離れる */
+  .eventHistory__table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: start;
+    column-gap: 8px;
+    padding: 8px 2px;
+    border-bottom: 1px solid rgba(var(--ink-rgb), 0.08);
+  }
+
+  /* 列トラックを全行で共有する。**行ごとの `grid` だけでは縦のラインが揃わない** ── チップ列の幅が
+     その行の中身で決まるため、ブーストが無い回だけ倍率チップが数px横へずれる。
+     非対応ブラウザは上の行ごと `grid` のまま（並びは崩れず、幅の揃いだけ諦める） */
+  @supports (grid-template-columns: subgrid) {
+    .eventHistory__table tbody {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+    }
+
+    .eventHistory__table tr {
+      grid-column: 1 / -1;
+      grid-template-columns: subgrid;
+    }
+  }
+
+  .eventHistory__period {
+    grid-area: 1 / 1;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .eventHistory__name {
+    grid-area: 2 / 1;
+  }
+
+  .eventHistory__exp,
+  .eventHistory__boost {
+    grid-row: 1 / span 2;
+    justify-self: end;
+    text-align: right;
+  }
+
+  .eventHistory__exp {
+    grid-column: 2;
+  }
+
+  .eventHistory__boost {
+    grid-column: 3;
+    align-self: end;
+  }
+
+  /* 右寄せなので「週の断り → チップ」。チップが右端に来て縦のラインが揃う */
+  .eventHistory__expLine {
+    justify-content: flex-end;
+  }
+
+  .eventHistory__weekTag {
+    order: 0;
+    margin: 0 6px 0 0;
+  }
+
+  /* 年見出しは列に乗せず1本の帯にする。**`.eventHistory__table tr` と同じ詳細度以上で書くこと** ──
+     クラス単独だと `display: grid` に負けて、年合計が列トラックへ散る（実際に踏んだ） */
+  .eventHistory__table .eventHistory__yearRow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 10px;
+    margin-top: 6px;
+    padding: 6px 8px;
+    background: rgba(var(--accent-rgb), 0.1);
+    border-top: 1px solid rgba(var(--accent-rgb), 0.25);
+    border-bottom: 1px solid rgba(var(--accent-rgb), 0.25);
+  }
+
+  .eventHistory__yearRow > *,
+  .eventHistory__yearRow:hover > * {
+    padding-block: 0;
+    background: none;
+    border: 0;
+  }
+
+  .eventHistory__yearLabel {
+    display: inline;
+  }
+}

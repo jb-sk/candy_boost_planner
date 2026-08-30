@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { nextTick, ref } from "vue";
+import { readFileSync } from "node:fs";
+import { nextTick, ref, type Ref } from "vue";
 import type { Composer } from "vue-i18n";
 import { useCalcStore, type CalcRow } from "./useCalcStore";
+import { buildGeneratedProjectedSleepExpEvents, buildPlannerEventSegments, buildRealEventOccurrences, buildSleepScheduleCacheKey } from "../domain/pokesleep/sleep-planning";
+import { buildEventChipList } from "../utils/bonusPanelView";
 import { useCandyStore } from "./useCandyStore";
 import { useToast } from "./useToast";
 import { solveLevelPlanWithBudget } from "../domain/level-planner/core/solveLevelPlan";
@@ -10,9 +13,14 @@ import { minCandyForTarget } from "../domain/pokesleep/minCandyForTarget";
 import { calcExp, calcExpAndCandy, calcLevelByCandy } from "../domain/pokesleep/exp";
 import { minBoostForTarget } from "../domain/pokesleep/minBoostForTarget";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
-import type { LevelPlannerInput } from "../domain/level-planner/types";
+import { detectTimeZone, normalizeTimeZone, type GameDate } from "../domain/pokesleep/game-date";
+import { projectPastYearEvents } from "../domain/pokesleep/projected-events";
+import { sleepExpEventAnchors, sleepExpEventSegments, wikiKnownThrough } from "../domain/pokesleep/_generated/sleep-exp-events";
+import { resolveEventMultiplier } from "../domain/pokesleep/sleep-schedule";
+import type { LevelPlannerInput, LevelPlannerResult } from "../domain/level-planner/types";
 import { buildPlannerInput as buildLevelPlannerInput } from "../domain/level-planner/buildPlannerInput";
 import { cancelPersist, flushPersist } from "../persistence/deferredPersist";
+import { defaultSleepSettings } from "../persistence/calc";
 
 function installLocalStorageMock() {
   const store = new Map<string, string>();
@@ -43,6 +51,173 @@ describe("useCalcStore", () => {
 
   afterEach(() => {
     cancelPersist();
+  });
+
+  it("自動取得と手入力のイベント区間を結合し、重複日は最大倍率を採る", () => {
+    const segments = buildPlannerEventSegments([
+      { from: "2026-08-20", to: "2026-08-20", multiplier: 3 },
+      { from: "2026-09-01", to: "2026-09-07", multiplier: 1.5 },
+    ]);
+
+    expect(resolveEventMultiplier("2026-08-20", segments)).toBe(3);
+    expect(resolveEventMultiplier("2026-08-21", segments)).toBe(1.25);
+    expect(resolveEventMultiplier("2026-09-03", segments)).toBe(1.5);
+    expect(resolveEventMultiplier("2026-09-08", segments)).toBe(1);
+  });
+
+  it("仮イベントは現在ゲーム日を窓の左端、wikiKnownThroughを右端に使う", () => {
+    const currentGameDate = "2026-08-29" as const;
+    const until = "2032-01-01" as const;
+    expect(buildGeneratedProjectedSleepExpEvents(currentGameDate, until)).toEqual(projectPastYearEvents({
+      segments: sleepExpEventSegments,
+      currentGameDate,
+      knownThrough: wikiKnownThrough as typeof currentGameDate,
+      realEvents: sleepExpEventSegments,
+      realSleepExpSegments: sleepExpEventSegments,
+      anchors: sleepExpEventAnchors,
+      until,
+    }));
+  });
+
+  it("計算ストアはeventHistoryを計算依存へ取り込まない", () => {
+    const source = readFileSync(new URL("./useCalcStore.ts", import.meta.url), "utf8");
+    expect(source).not.toContain("eventHistory");
+  });
+
+  it("仮イベントの設定をオフにすると区間ゼロ、オンにすると生成区間が使われる", () => {
+    const t = ((key: string) => key) as unknown as Composer["t"];
+    const store = useCalcStore({ locale: ref("ja"), t });
+
+    // 既定オン。オフへ倒したときだけ区間が消える。
+    expect(store.projectedOccurrences.value.length).toBeGreaterThan(0);
+    store.updateSleepSettings({ useProjectedEvents: false });
+    expect(store.projectedOccurrences.value).toEqual([]);
+    store.updateSleepSettings({ useProjectedEvents: true });
+    expect(store.projectedOccurrences.value.length).toBeGreaterThan(0);
+  });
+
+  it("仮イベントのオン/オフで花区間の出自が実だけ→実と仮の両方になる", () => {
+    const t = ((key: string) => key) as unknown as Composer["t"];
+    // 実の周年（2026-07-13〜07-19）の開催中。2週目の花は計画期間の内側に入る。
+    const store = useCalcStore({ locale: ref("ja"), t, currentGameDate: "2026-07-13" });
+    const sources = () => new Set(store.blueSeedSegments.value.map(segment => segment.source));
+
+    // 花は仮イベント設定に連動しない。オフでも実の周年には生える。
+    store.updateSleepSettings({ useProjectedEvents: false });
+    expect(sources()).toEqual(new Set(["flower"]));
+
+    // オンにすると、写した将来の周年から生えた花が `projectedFlower` として増える。
+    // 内訳はこの出自で「イベント」と「仮イベント」へ振り分かれる（sleep-growth 側で固定）。
+    store.updateSleepSettings({ useProjectedEvents: true });
+    expect(sources()).toEqual(new Set(["flower", "projectedFlower"]));
+  });
+
+  it("固定イベント入力はneeded期間を共有し、GSDに負けても仮イベントをチップ対象に残す", async () => {
+    const t = ((key: string) => key) as unknown as Composer["t"];
+    const projectedEvent = {
+      name: "fixture projected anniversary",
+      sourceFrom: "2026-07-18" as const,
+      from: "2027-07-18" as const,
+      to: "2027-07-18" as const,
+      multiplier: 1.5,
+      month: 7,
+      weekOfMonth: 3,
+    };
+    const store = useCalcStore({
+      locale: ref("ja"),
+      t,
+      currentGameDate: "2027-07-18",
+      sleepEventFixture: {
+        projectedOccurrences: [projectedEvent],
+        blueSeedSegments: [],
+        blueSeedShifts: [],
+      },
+    });
+    store.upsertFromBox({
+      boxId: "projected-fixture",
+      pokedexId: 25,
+      srcLevel: 10,
+      dstLevelDefault: 40,
+      expType: 600,
+      nature: "normal",
+    });
+    const id = store.rows.value[0]!.id;
+    store.setRowSleepTarget(id, "all");
+    await vi.waitFor(() => {
+      expect(store.planResult.value?.pokemonResults).toHaveLength(1);
+    }, { timeout: 10_000 });
+
+    store.updateSleepSettings({ useProjectedEvents: false });
+    expect(store.projectedOccurrences.value).toEqual([]);
+    store.updateSleepSettings({ useProjectedEvents: true });
+
+    // 一覧は内訳と同じ needed 期間で切る。GSDに負けて内訳へ出ない仮イベントも一覧には残す。
+    const breakdown = store.rowSleepBonusBreakdownFor(id);
+    expect(breakdown.neededFrom).toBe("2027-07-18");
+    expect(breakdown.neededTo).toBeTruthy();
+    expect(breakdown.contributions.some(contribution => contribution.kind === "gsd")).toBe(true);
+    expect(breakdown.contributions.some(contribution => contribution.kind === "projectedEvent")).toBe(false);
+
+    const list = buildEventChipList({
+      realEvents: [],
+      projectedEvents: store.projectedOccurrences.value,
+      neededFrom: breakdown.neededFrom!,
+      neededTo: breakdown.neededTo!,
+      flowers: [],
+      flowerSegments: [],
+      t: (key: string) => key,
+      locale: "ja",
+    });
+    expect(list.chips.map(chip => chip.name)).toEqual([projectedEvent.name]);
+    expect(list.hasProjected).toBe(true);
+  });
+
+  it("一覧用の実イベントは自動取得と手入力を開始日順に並べ、手入力は名前を持たない", () => {
+    const occurrences = buildRealEventOccurrences([
+      { from: "2026-09-10", to: "2026-09-16", multiplier: 2 },
+      { from: "1999-01-01", to: "1998-12-31", multiplier: 2 },
+    ]);
+
+    // 日付が読めない（from > to）区間は落とし、残りは開始日の昇順。
+    expect(occurrences).toHaveLength(sleepExpEventSegments.length + 1);
+    expect(occurrences.map(event => event.from)).toEqual([...occurrences.map(event => event.from)].sort());
+    expect(occurrences.find(event => event.from === "2026-09-10")).toEqual({
+      name: "",
+      from: "2026-09-10",
+      to: "2026-09-16",
+      multiplier: 2,
+      month: 9,
+      weekOfMonth: 2,
+    });
+  });
+
+  it("睡眠スケジュールのキャッシュキーに設定・仮区間・花区間の署名を含める", () => {
+    const base: Parameters<typeof buildSleepScheduleCacheKey>[0] = {
+      currentGameDate: "2026-01-01",
+      timeZone: "UTC",
+      includeGSD: true,
+      growthIncenseGsdDays: { beforeFullMoon: false, fullMoon: true, afterFullMoon: true },
+      growthIncenseNormalPerWeek: 1,
+      growthIncenseStock: null,
+      manualEventBonuses: [],
+      useProjectedEvents: false,
+      blueSeedPlantWeekday: 1,
+      blueSeedIncenseDays: "auto",
+      projectedOccurrences: [],
+      blueSeedSegments: [],
+    };
+    const key = buildSleepScheduleCacheKey(base);
+    expect(buildSleepScheduleCacheKey({ ...base, useProjectedEvents: true })).not.toBe(key);
+    expect(buildSleepScheduleCacheKey({ ...base, blueSeedPlantWeekday: 2 })).not.toBe(key);
+    expect(buildSleepScheduleCacheKey({ ...base, blueSeedIncenseDays: 3 })).not.toBe(key);
+    expect(buildSleepScheduleCacheKey({
+      ...base,
+      projectedOccurrences: [{ name: "projected", sourceFrom: "2026-07-13", from: "2027-07-12", to: "2027-07-18", multiplier: 1.5, month: 7, weekOfMonth: 2 }],
+    })).not.toBe(key);
+    expect(buildSleepScheduleCacheKey({
+      ...base,
+      blueSeedSegments: [{ from: "2027-07-19", to: "2027-07-25", multiplier: 3, source: "flower" }],
+    })).not.toBe(key);
   });
 
   it("preserves sleepHours=0 when importing from box", () => {
@@ -154,6 +329,39 @@ describe("useCalcStore", () => {
     await expect(store.buildDebugExportTsv()).resolves.toMatch(/^index\tid\tname\t/);
   });
 
+  /**
+   * 「すべて睡眠 / アメ在庫＋睡眠」は残EXPから必要日数を逆算する行で、計画睡眠EXPを持たない。
+   * それでも日別スケジュールを検算できないと最終日が何の日かを追えないため、SLEEP_EXP 節へ出す。
+   */
+  it("puts sleep-target-mode rows into the SLEEP_EXP section with the reversed derivation source", async () => {
+    const t = ((key: string) => key) as unknown as Composer["t"];
+    const store = useCalcStore({ locale: ref("ja"), t });
+    // 月齢エンジンの読み込み状態に左右されないよう、GSDは外して日別スケジュールだけ見る。
+    store.updateSleepSettings({ includeGSD: false });
+    store.upsertFromBox({ boxId: "sleep-mode", pokedexId: 25, srcLevel: 10, dstLevelDefault: 40, expType: 600, nature: "normal" });
+    const id = store.rows.value[0]!.id;
+    store.setRowSleepTarget(id, "all");
+    await vi.waitFor(() => {
+      expect(store.planResult.value?.pokemonResults).toHaveLength(1);
+    }, { timeout: 10_000 });
+
+    const tsv = await store.buildDebugExportTsv();
+    const sleepSection = tsv.split("\n\n").find(section => section.startsWith("SLEEP_EXP"))!;
+    const lines = sleepSection.split("\n");
+    const headers = lines[3]!.split("\t");
+    const cells = Object.fromEntries(
+      lines[4]!.split("\t").map((value, index) => [headers[index], value]),
+    );
+
+    expect(cells.sleepTargetMode).toBe("all");
+    expect(cells.sleepSource).toBe("expToTarget");
+    // 睡眠目標時間の無い経路なので空。0 と混ぜない。
+    expect(cells.sleepTargetHours).toBe("");
+    expect(Number(cells.requiredDays)).toBeGreaterThan(0);
+    expect(cells.schedulePreview).not.toBe("");
+    expect(tsv).not.toContain("ALL_SLEEP");
+  });
+
   it("loads the exact planner only when the Worker fallback is required", async () => {
     const t = ((key: string) => key) as unknown as Composer["t"];
     const previousWorker = globalThis.Worker;
@@ -248,15 +456,11 @@ describe("useCalcStore", () => {
   it("keeps automatic calculation exact after fbl01c replaces deadline fallback", async () => {
     const t = ((key: string) => key) as unknown as Composer["t"];
     const previousWorker = globalThis.Worker;
-    const workers: Array<{ onmessage: ((event: MessageEvent) => void) | null; postMessage: (message: unknown) => void; terminate: () => void }> = [];
-    const requests: Array<Record<string, unknown>> = [];
+    const requests: Array<{ worker: FakeWorker; message: Record<string, unknown> }> = [];
     class FakeWorker {
       onmessage: ((event: MessageEvent) => void) | null = null;
-      constructor() {
-        workers.push(this);
-      }
       postMessage(message: unknown) {
-        requests.push(message as Record<string, unknown>);
+        requests.push({ worker: this, message: message as Record<string, unknown> });
       }
       terminate() {}
     }
@@ -268,13 +472,20 @@ describe("useCalcStore", () => {
       store.upsertFromBox({ boxId: "worker-2", pokedexId: 26, srcLevel: 10, dstLevelDefault: 30, expType: 600, nature: "normal" });
       await new Promise(resolve => setTimeout(resolve, 20));
 
-      expect(requests).toHaveLength(1);
-      const request = requests[0];
+      // 前のテストで破棄待ちだったストアのtimerがFakeWorkerへ到達しても、このストアの入力だけを見る。
+      const rowIds = new Set(store.rows.value.map(row => row.id));
+      const ownRequests = requests.filter(({ message }) => {
+        const input = message.input as LevelPlannerInput;
+        return input.pokemonList.length === rowIds.size
+          && input.pokemonList.every(row => rowIds.has(row.pokemonId));
+      });
+      expect(ownRequests).toHaveLength(1);
+      const { message: request, worker } = ownRequests[0]!;
       const outcome = solveLevelPlanWithBudget(request.input as LevelPlannerInput, { deadlineMs: 60_000, abortAfterExpansions: 1 });
       expect(outcome.kind).toBe("result");
       if (outcome.kind !== "result") return;
 
-      workers[0]?.onmessage?.({ data: {
+      worker.onmessage?.({ data: {
         kind: "result",
         slotId: request.slotId,
         requestId: request.requestId,
@@ -289,7 +500,6 @@ describe("useCalcStore", () => {
       expect(store.calculationPerformanceProfile.value.lastCalculationMode).toBe("exact");
       expect(store.calculationPerformanceProfile.value.mixedPrefixCount).toBeUndefined();
       expect(store.showManualExactVerification.value).toBe(false);
-      expect(workers).toHaveLength(1);
     } finally {
       Object.defineProperty(globalThis, "Worker", { value: previousWorker, configurable: true, writable: true });
     }
@@ -676,8 +886,20 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     expect(withSleep.candyTarget).toBeUndefined();
     expect(withSleep.targetExpToNextLevel).toBe(fullLevelExp(withSleep.dstLevel));
 
+    // ④ すべて睡眠 → 保存目標から。Lv ちょうどなので満EXP
+    store.setRowSleepTarget(id, "all");
+    const allSleep = view();
+    expect(allSleep.candyTarget).toBeUndefined();
+    expect(allSleep.targetExpToNextLevel).toBe(fullLevelExp(allSleep.dstLevel));
+
+    // ⑤ アメ在庫＋睡眠 → 保存目標から。Lv ちょうどなので満EXP
+    store.setRowSleepTarget(id, "stock");
+    const stockSleep = view();
+    expect(stockSleep.candyTarget).toBeUndefined();
+    expect(stockSleep.targetExpToNextLevel).toBe(fullLevelExp(stockSleep.dstLevel));
+
     // 解除すると①へ戻り、出どころも値も戻る（睡眠操作はアメブ個数に触れない）
-    store.setRowSleepTargetHours(id, undefined);
+    store.setRowSleepTarget(id, undefined);
     expect(view().targetExpToNextLevel).toBe(plainExp);
 
     // ② 個数指定あり → 保存目標から。Lv内EXPが付くので満EXPより小さい
@@ -863,6 +1085,35 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     expect(withSleep.dstLevel > withoutSleep.dstLevel
       || (withSleep.dstLevel === withoutSleep.dstLevel
         && (withSleep.dstExpInLevel ?? 0) > (withoutSleep.dstExpInLevel ?? 0))).toBe(true);
+  });
+
+  it("睡眠目標ありでも個数指定後のアメブ個数を反復せず直接入力できる", () => {
+    const store = useCalcStore({ locale: ref("ja"), t });
+    store.setSlotBoostKind("full");
+    store.onBoostCandyRemainingInput("500");
+    store.upsertFromBox({
+      boxId: "latias-sleep-candy",
+      title: "70ラティアス",
+      pokedexId: 380,
+      pokemonType: "Psychic",
+      srcLevel: 61,
+      dstLevelDefault: 70,
+      expRemaining: 3164,
+      sleepHours: 1387,
+      expType: 1080,
+      nature: "normal",
+    });
+    const id = store.rows.value[0]!.id;
+
+    store.setRowSleepTargetHours(id, 2000);
+    store.onRowCandyTarget(id, "50");
+    expect(rowOf(store, id).candyTarget).toBe(50);
+    expect(store.rowsView.value[0]!.ui.boostCandyInputMax).toBeGreaterThanOrEqual(50);
+
+    store.onRowBoostCandy(id, "50");
+    const afterBoost = rowOf(store, id);
+    expect(afterBoost.boostOrExpAdjustment).toBe(50);
+    expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(50);
   });
 
   it("個数指定ありで性格を変えると最終目標が追従する", () => {
@@ -1099,6 +1350,9 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
    */
   function makeSleepRowWithBoostIntent() {
     const { store, id } = makeStore();
+    store.updateSleepSettings({
+      growthIncenseGsdDays: { beforeFullMoon: false, fullMoon: false, afterFullMoon: false },
+    });
     store.setSlotBoostKind("full");
     store.setDstLevel(id, 60);
     store.setSrcLevel(id, 50);
@@ -1160,6 +1414,40 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     expect(store.rowsView.value.find((row) => row.id === id)!.ui.boostCandyInput).toBe(derivedBefore);
   });
 
+  it("アメブなしでは個数を入力しても明示的な0を保存しない", () => {
+    const { store, id } = makeStore();
+    store.setSlotBoostKind("none");
+
+    store.onRowBoostCandy(id, "500");
+
+    expect(rowOf(store, id).boostOrExpAdjustment).toBeUndefined();
+  });
+
+  it("Lv70では個数を入力しても明示的な0を保存しない", () => {
+    const { store, id } = makeStore();
+    store.setSlotBoostKind("full");
+    store.setDstLevel(id, MAX_LEVEL);
+    store.setSrcLevel(id, MAX_LEVEL);
+    expect(store.rowsView.value.find((row) => row.id === id)!.ui.boostCandyInputMax).toBe(0);
+
+    store.onRowBoostCandy(id, "500");
+
+    expect(rowOf(store, id).boostOrExpAdjustment).toBeUndefined();
+  });
+
+  it("上限が1以上ならアメブ個数を保存し、超過分は上限へクランプする", () => {
+    const { store, id } = makeStore();
+    store.setSlotBoostKind("full");
+    const inputMax = store.rowsView.value.find((row) => row.id === id)!.ui.boostCandyInputMax;
+    expect(inputMax).toBeGreaterThan(0);
+
+    store.onRowBoostCandy(id, "1");
+    expect(rowOf(store, id).boostOrExpAdjustment).toBe(1);
+
+    store.onRowBoostCandy(id, String(inputMax + 100));
+    expect(rowOf(store, id).boostOrExpAdjustment).toBe(inputMax);
+  });
+
   it("睡眠EXPだけで目標に届く行はアメブ目標Lvの操作を受け付けず、保存された意図が残る", () => {
     const { store, id } = makeStore();
     store.setSlotBoostKind("full");
@@ -1185,6 +1473,9 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
 
   it("押し下げられた範囲だけが動かせず、T' 以下のアメブ目標Lvは上げ下げできる", () => {
     const { store, id } = makeStore();
+    store.updateSleepSettings({
+      growthIncenseGsdDays: { beforeFullMoon: false, fullMoon: false, afterFullMoon: false },
+    });
     store.setSlotBoostKind("full");
     store.setDstLevel(id, 60);
     store.setSrcLevel(id, 50);
@@ -1220,9 +1511,11 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     const inputMax = store.rowsView.value.find((row) => row.id === id)!.ui.boostCandyInputMax;
     expect(inputMax).toBeGreaterThan(0);
 
-    // 上限超はクランプせず捨てる（§11.11）。
+    // 上限超は上限へクランプする（2026-08-25 ユーザー規則）。
+    // かつては捨てていた（§11.11）が、拒否された入力は導出値（多くは0）で再描画されるため、
+    // ユーザーには「大きい数を入れたら0になった」としか見えなかった。
     store.onRowBoostCandy(id, String(inputMax + 100));
-    expect(rowOf(store, id).boostOrExpAdjustment).toBeUndefined();
+    expect(rowOf(store, id).boostOrExpAdjustment).toBe(inputMax);
 
     store.onRowBoostCandy(id, String(inputMax));
     expect(rowOf(store, id).boostOrExpAdjustment).toBe(inputMax);
@@ -1265,7 +1558,7 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     // まだ 30Lv 以上ぶん上げられる。ここで「目標Lvを上げるか睡眠目標を解除してください」を
     // 出すと、操作できるのにできないと読ませることになる
     expect(last.ui.boostReachLevelMax).toBeGreaterThan(40);
-    expect(last.ui.boostSleepCapActive).toBe(false);
+    expect(last.ui.boostCapActive).toBe(false);
     expect(last.ui.boostSleepCapped).toBe(false);
     // 保存値も元Lvへ戻っている（案内が出るのは「古い目標Lvが残っているから」ではない）
     expect(store.rows.value[2]!.boostReachLevel).toBe(28);
@@ -1278,10 +1571,10 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     expect(max).toBeLessThan(MAX_LEVEL);
 
     store.setBoostLevel(id, max - 1);
-    expect(store.rowsView.value[0]!.ui.boostSleepCapActive).toBe(false);
+    expect(store.rowsView.value[0]!.ui.boostCapActive).toBe(false);
 
     store.setBoostLevel(id, max);
-    expect(store.rowsView.value[0]!.ui.boostSleepCapActive).toBe(true);
+    expect(store.rowsView.value[0]!.ui.boostCapActive).toBe(true);
     // 上限ちょうどは押し下げられていないので破線は出ない（案内だけ出す）
     expect(store.rowsView.value[0]!.ui.boostSleepCapped).toBe(false);
   });
@@ -1299,7 +1592,7 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     expect(ui.boostSleepCapped).toBe(true);
     // 表示値は上限へクランプされるので、押し下げ行は必ず案内側にも入る
     expect(ui.boostReachLevel).toBe(ui.boostReachLevelMax);
-    expect(ui.boostSleepCapActive).toBe(true);
+    expect(ui.boostCapActive).toBe(true);
   });
 
   it("睡眠EXPだけで目標に届く行も案内を出す（アメブ区間が消えた行）", () => {
@@ -1313,10 +1606,10 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
 
     const ui = store.rowsView.value.find((row) => row.id === id)!.ui;
     expect(ui.boostInputDisabled).toBe(true);
-    expect(ui.boostSleepCapActive).toBe(true);
+    expect(ui.boostCapActive).toBe(true);
   });
 
-  it("睡眠目標を設定しても通常アメを混ぜず、アメブから賄う（2026-07-29）", async () => {
+  it("睡眠目標がある行もアメブは Lv ちょうどまで、端数は通常アメが賄う（2026-08-15）", async () => {
     const previousWorker = globalThis.Worker;
     const requests: Array<Record<string, unknown>> = [];
     class FakeWorker {
@@ -1333,21 +1626,28 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
       store.setRowSleepTargetHours(id, 2000);
       await new Promise((resolve) => setTimeout(resolve, 30));
 
-      // アメが担当する終端 T' は Lv の途中（端数EXP付き）。そこまでアメブが賄う。
-      // Lv ちょうどで切ると端数が通常アメへ回り、ここが 40 個以上ひらく。
-      // **睡眠がある行では「アメブ1個 → 通常アメ1個」置換もしない**ので差は 0（2026-07-30）。
+      // アメが担当する終端 T' は Lv の途中（端数EXP付き）。**アメブが賄うのは Lv ちょうどまで**で、
+      // 端数は通常アメの担当（2026-08-15 に端数賄いを廃止）。入力欄の上限は端数込みのままなので、
+      // 導出値はそれより小さくなる。**睡眠がある行では「アメブ1個 → 通常アメ1個」置換はしない**
+      // （2026-07-30）ので、導出値は Lv ちょうどまでの必要数ぴったりになる。
       const ui = store.rowsView.value[0]!.ui;
       expect(ui.boostReachLevelMax).toBeLessThan(MAX_LEVEL);
-      expect(ui.boostCandyInputMax - ui.boostCandyInput).toBe(0);
+      expect(ui.boostCandyInput).toBe(
+        calcExpAndCandy({
+          srcLevel: 50, dstLevel: ui.boostReachLevelMax, dstExpInLevel: 0,
+          expType: 1080, nature: "normal", boost: "full", expGot: 0,
+        }).candy,
+      );
+      expect(ui.boostCandyInputMax).toBeGreaterThan(ui.boostCandyInput);
 
       const request = requests[requests.length - 1]!;
       const outcome = solveLevelPlanWithBudget(request.input as LevelPlannerInput, { deadlineMs: 60_000 });
       expect(outcome.kind).toBe("result");
       if (outcome.kind !== "result") return;
-      // 削るのは通常アメが先。睡眠がある行に通常アメは1個も混ざらない
+      // 実配分の内訳は UI の導出値と一致する。端数ぶんだけ通常アメが乗る
       const line = outcome.result.pokemonResults[0]!.targetLine;
       expect(line.boostedCandyUnits).toBe(ui.boostCandyInput);
-      expect(line.nonBoostCandyUnits).toBe(0);
+      expect(line.nonBoostCandyUnits).toBeGreaterThan(0);
     } finally {
       Object.defineProperty(globalThis, "Worker", { value: previousWorker, configurable: true, writable: true });
     }
@@ -1376,8 +1676,11 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
 
   /**
    * §15.7 の「個数指定があるとき」。睡眠目標があると、必要数をそのまま個数指定へ入れたときに
-   * 担当終端 `T'` の端数が通常アメへ落ち、同じアメ数なのに到達点が下がっていた
-   * （実測: アメブ1530+通常1 → Lv70 が、アメブ1421+通常110 → Lv69+3155）。
+   * 同じアメ数なのに内訳と到達点が変わっていた。
+   *
+   * 端数賄い（旧 `coverTargetExp`）は廃止したので、**アメブ／通常アメの内訳は導出モードでも
+   * 個数指定モードでも同じ規則で決まる**（アメブは Lv ちょうどまで）。ここで見るのはその一致性で、
+   * 「通常アメが 0 個か」ではない。
    */
   it("睡眠目標があるとき、必要数をそのまま個数指定へ入れても内訳と到達点が一致する（2026-07-30）", async () => {
     const previousWorker = globalThis.Worker;
@@ -1420,7 +1723,8 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
       };
 
       const auto = await measure();
-      expect(auto.normal).toBe(0);
+      // 端数は通常アメの担当（2026-08-15）。0 個ではなく、目標到達は変わらないことを見る
+      expect(auto.normal).toBeGreaterThan(0);
       expect(auto.targetLevel).toBe(MAX_LEVEL);
       // 同じ需要を個数指定で表現しただけなので、内訳・かけら・到達点まで完全に一致する
       expect(await measure(auto.boost + auto.normal)).toEqual(auto);
@@ -1428,6 +1732,90 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
       Object.defineProperty(globalThis, "Worker", { value: previousWorker, configurable: true, writable: true });
     }
   }, 60_000);
+
+  /**
+   * 端数賄い（旧 `coverTargetExp`）の回帰。目標Lv = 現在Lv の行（アメブの担当範囲が幅ゼロ）に
+   * 個数指定だけを入れると、m から作った目標の端数EXPを賄うアメブが勝手に湧いていた
+   * （実測: バリヤード Lv60 / m=75 で アメブ37 + 通常38、到達点が目標を Lv1 ぶん超過）。
+   */
+  it("目標Lv = 現在Lv の行に個数指定だけを入れてもアメブは湧かない（2026-08-15）", () => {
+    const { store, id } = makeStore();
+    store.setSlotBoostKind("mini");
+    store.setDstLevel(id, 10); // 目標Lv = 現在Lv。アメブの担当範囲は幅ゼロ
+    store.onRowCandyTarget(id, "75");
+
+    const r = rowOf(store, id);
+    const ui = store.rowsView.value.find((row) => row.id === id)!.ui;
+    // アメブ目標Lvが現在Lvと同じ＝賄う範囲が無いので、導出値は 0 個
+    expect(ui.boostCandyInput).toBe(0);
+    // 保存された目標は「通常アメ75個の到達点」。表示値で引き直しても同じ地点になる
+    const expected = targetFromCandy({
+      srcLevel: r.srcLevel, expGot: 0, candyTarget: 75, boostCandy: ui.boostCandyInput,
+      expType: r.expType, nature: r.nature, boostKind: store.boostKind.value,
+    });
+    expect(r.dstLevel).toBe(expected.level);
+    expect(r.dstExpInLevel).toBe(expected.expInLevel);
+  });
+
+  /**
+   * §15.11 の回帰。**`T` は `(m, n)` の出力**なので、`T` を作るときに使ったアメブ個数 `n` と、
+   * 表示・ソルバーが使う `n` は必ず一致しなければならない。食い違うと、保存された目標へ
+   * その `m` 個では届かなくなる（実測: Lv10→20 / expType 600 / full / m=50 で、
+   * 保存 `Lv19+178` に対し実配分は アメブ48 + 通常2 の `Lv19+98`）。
+   *
+   * 表示経路が `reachLevel` を `T` 由来の値（`dstLevel` / `T'`）で抑えていたのが原因。
+   * 端数賄い（旧 `coverTargetExp`）がその食い違いを覆い隠していたので §15.10 で表面化した。
+   * 掃引で確認: 修正前は 2520 件中 1233 件、§15.10 以前でも 558 件がずれていた。
+   */
+  it("個数指定のある行は、保存された目標に個数指定ぶんで到達できる（2026-08-15）", () => {
+    const mismatches: string[] = [];
+    let cases = 0;
+    for (const kind of ["full", "mini"] as const) {
+      for (const expType of [600, 900, 1080] as const) {
+        for (const src of [1, 10, 35, 60]) {
+          for (const dstDelta of [0, 1, 5, 10, 20]) {
+            for (const m of [1, 10, 40, 50, 100, 200, 999]) {
+              // アメブ目標Lv: 既定のまま / 目標Lvちょうど / 目標Lvより下（その先は通常アメ）
+              for (const reachDelta of [undefined, 0, -3]) {
+                const dst = Math.min(MAX_LEVEL, src + dstDelta);
+                const store = useCalcStore({ locale: ref("ja"), t });
+                store.setSlotBoostKind(kind);
+                store.upsertFromBox({
+                  boxId: `probe-${cases}`, pokedexId: 25,
+                  srcLevel: src, dstLevelDefault: dst, expType, nature: "normal",
+                });
+                const id = store.rows.value[0]!.id;
+                store.setDstLevel(id, dst);
+                if (reachDelta !== undefined) {
+                  store.setBoostLevel(id, Math.max(src, Math.min(MAX_LEVEL, dst + reachDelta)));
+                }
+                store.onRowCandyTarget(id, String(m));
+
+                const r = rowOf(store, id);
+                const ui = store.rowsView.value.find((row) => row.id === id)!.ui;
+                // 表示されているアメブ個数で「個数指定ぶんを使い切った到達点」を引き直す
+                const redrawn = targetFromCandy({
+                  srcLevel: r.srcLevel, expGot: 0, candyTarget: r.candyTarget ?? 0,
+                  boostCandy: ui.boostCandyInput,
+                  expType: r.expType, nature: r.nature, boostKind: store.boostKind.value,
+                });
+                cases++;
+                if (r.dstLevel !== redrawn.level || r.dstExpInLevel !== redrawn.expInLevel) {
+                  mismatches.push(
+                    `${kind}/exp${expType}/src${src}/dst${dst}/reach${r.boostReachLevel}/m${r.candyTarget}`
+                    + ` boost=${ui.boostCandyInput} 保存=${r.dstLevel}+${r.dstExpInLevel}`
+                    + ` 引き直し=${redrawn.level}+${redrawn.expInLevel}`,
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    expect(cases).toBe(2520);
+    expect(mismatches.slice(0, 10)).toEqual([]);
+  });
 
   it("睡眠目標が無いときは「アメブ1個 → 通常アメ1個」置換を維持する（対照）", () => {
     const store = useCalcStore({ locale: ref("ja"), t });
@@ -1568,6 +1956,88 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     expect(store.boostCandyRemaining.value).toBe(1234);
   });
 
+  it("設定リセットは対象だけを既定値へ戻し、undo / redo できる", () => {
+    const candyStore = useCandyStore();
+    const originalInventory = candyStore.getInventory();
+    candyStore.resetInventory();
+    const store = useCalcStore({ locale: ref("ja"), t });
+
+    try {
+      store.upsertFromBox({ boxId: "settings-reset", pokedexId: 25, srcLevel: 10, dstLevelDefault: 40, expType: 600, nature: "normal" });
+      const rowId = store.rows.value[0]!.id;
+      store.onRowCandyTarget(rowId, "100");
+      store.updateSleepSettings({
+        dailySleepHours: 6,
+        sleepExpBonusCount: 5,
+        includeGSD: false,
+        timeZone: "America/New_York",
+        growthIncenseStock: 12,
+        growthIncenseNormalPerWeek: 4,
+        useProjectedEvents: false,
+      });
+      store.setDefaultBoostReachLevel(25);
+      store.setItemCompareMode("legacyImproved");
+      store.onTotalShardsInput("123456");
+      store.onBoostCandyRemainingInput("321");
+      store.updateUniversalCandy({ s: 11, m: 12, l: 13 });
+      store.updateTypeCandy("Electric", { s: 21, m: 22 });
+      store.updateSpeciesCandy(25, 31);
+
+      const beforeSettings = JSON.parse(JSON.stringify(store.sleepSettings.value));
+      const beforeRows = JSON.parse(JSON.stringify(store.rows.value));
+      const beforeInventory = candyStore.getInventory();
+
+      store.resetSettings();
+
+      const expectedSettings = { ...defaultSleepSettings(), timeZone: detectTimeZone() };
+      expect(store.sleepSettings.value).toEqual(expectedSettings);
+      expect(store.sleepSettings.value.growthIncenseStock).toBeNull();
+      expect(store.defaultBoostReachLevel.value).toBeNull();
+      expect(store.itemCompareMode.value).toBe("surplusFirst");
+      expect(store.totalShards.value).toBe(123456);
+      expect(store.boostCandyRemaining.value).toBe(321);
+      expect(candyStore.getInventory()).toEqual(beforeInventory);
+      expect(store.rows.value).toHaveLength(1);
+
+      const resetRows = JSON.parse(JSON.stringify(store.rows.value));
+      store.undo();
+      expect(store.sleepSettings.value).toEqual(beforeSettings);
+      expect(store.defaultBoostReachLevel.value).toBe(25);
+      expect(store.itemCompareMode.value).toBe("legacyImproved");
+      expect(store.rows.value).toEqual(beforeRows);
+      expect(store.totalShards.value).toBe(123456);
+      expect(store.boostCandyRemaining.value).toBe(321);
+      expect(candyStore.getInventory()).toEqual(beforeInventory);
+
+      store.redo();
+      expect(store.sleepSettings.value).toEqual(expectedSettings);
+      expect(store.defaultBoostReachLevel.value).toBeNull();
+      expect(store.itemCompareMode.value).toBe("surplusFirst");
+      expect(store.rows.value).toEqual(resetRows);
+      expect(store.totalShards.value).toBe(123456);
+      expect(store.boostCandyRemaining.value).toBe(321);
+      expect(candyStore.getInventory()).toEqual(beforeInventory);
+    } finally {
+      candyStore.restoreInventory(originalInventory);
+    }
+  });
+
+  it("既定値での設定リセットは空の undo を積まず、既存の redo を消さない", () => {
+    const store = useCalcStore({ locale: ref("ja"), t });
+    store.setItemCompareMode("legacyImproved");
+    store.undo();
+    expect(store.isSettingsDefault.value).toBe(true);
+    expect(store.canUndo.value).toBe(false);
+    expect(store.canRedo.value).toBe(true);
+
+    store.resetSettings();
+
+    expect(store.canUndo.value).toBe(false);
+    expect(store.canRedo.value).toBe(true);
+    store.redo();
+    expect(store.itemCompareMode.value).toBe("legacyImproved");
+  });
+
   it("再割当後の目標Lv変更は最新の1操作として undo し、再割当結果まで巻き戻さない", () => {
     const store = makeQuotaStore();
     const rowId = store.rows.value[0]!.id;
@@ -1650,6 +2120,103 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     expect(store.itemCompareMode.value).toBe("legacyImproved");
   });
 
+  it("月齢・成長のお香設定を正規化して更新し、まとめて undo できる", () => {
+    const { store } = makeStore();
+    const before = { ...store.sleepSettings.value };
+
+    store.updateSleepSettings({
+      timeZone: "america/new_york",
+      growthIncenseGsdDays: { beforeFullMoon: true, fullMoon: false, afterFullMoon: true },
+      growthIncenseNormalPerWeek: 4,
+    });
+    expect(store.sleepSettings.value).toMatchObject({
+      timeZone: "America/New_York",
+      growthIncenseGsdDays: { beforeFullMoon: true, fullMoon: false, afterFullMoon: true },
+      growthIncenseNormalPerWeek: 4,
+    });
+    expect(store.currentGameDate.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+    store.undo();
+    expect(store.sleepSettings.value).toEqual(before);
+  });
+
+  it("固定UTCオフセットをタイムゾーン設定として保存しない", () => {
+    const { store } = makeStore();
+    const before = { ...store.sleepSettings.value };
+    store.updateSleepSettings({ timeZone: "UTC+09:00" });
+    expect(store.sleepSettings.value).toEqual(before);
+  });
+
+  it("不正なタイムゾーンと同時に渡した他の睡眠設定は更新する", () => {
+    const { store } = makeStore();
+    const beforeTimeZone = store.sleepSettings.value.timeZone;
+
+    store.updateSleepSettings({ timeZone: "UTC+09:00", dailySleepHours: 9 });
+
+    expect(store.sleepSettings.value.dailySleepHours).toBe(9);
+    expect(store.sleepSettings.value.timeZone).toBe(beforeTimeZone);
+  });
+
+  it("既存タイムゾーンだけが壊れていても他の睡眠設定を更新して自己修復する", () => {
+    const { store } = makeStore();
+    store.sleepSettings.value = { ...store.sleepSettings.value, timeZone: "Not/A_Zone" };
+
+    store.updateSleepSettings({ dailySleepHours: 9 });
+
+    expect(store.sleepSettings.value.dailySleepHours).toBe(9);
+    expect(store.sleepSettings.value.timeZone).not.toBe("Not/A_Zone");
+    expect(normalizeTimeZone(store.sleepSettings.value.timeZone)).not.toBeNull();
+  });
+
+  it("公開refへ不正なタイムゾーンを直接入れても日付更新時に自己修復する", async () => {
+    const { store } = makeStore();
+    store.sleepSettings.value = { ...store.sleepSettings.value, timeZone: "Not/A_Zone" };
+
+    await nextTick();
+
+    expect(normalizeTimeZone(store.sleepSettings.value.timeZone)).not.toBeNull();
+    expect(store.currentGameDate.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(() => store.rowsView.value).not.toThrow();
+  });
+
+  it("月齢カレンダー状態はGSDを使う行があるときだけreadyになる", () => {
+    const { store } = makeStore();
+    expect(store.lunarCalendarStatus.value).toBe("ready");
+
+    store.updateSleepSettings({ includeGSD: false });
+
+    expect(store.lunarCalendarStatus.value).toBe("idle");
+  });
+
+  it("仮イベント既定オンで花が月齢範囲外でも未処理例外にせずエラー状態へ合流する", async () => {
+    const store = useCalcStore({ locale: ref("ja"), t, currentGameDate: "2046-12-31" });
+    expect(store.sleepSettings.value.useProjectedEvents).toBe(true);
+    expect(() => store.blueSeedSegments.value).not.toThrow();
+
+    store.upsertFromBox({ boxId: "range-error", pokedexId: 25, srcLevel: 10, dstLevelDefault: 30, expType: 600, nature: "normal" });
+    const id = store.rows.value[0]!.id;
+    store.setRowSleepTargetHours(id, 1000);
+
+    // 範囲外を通常日扱いせず、睡眠計算自体を利用不可にする。
+    expect(store.rowSleepExpFor(id)).toBe(0);
+    await vi.waitFor(() => expect(store.lunarCalendarStatus.value).toBe("error"));
+  });
+
+  it("範囲外エラーの記録前に設定が変わったら古いmicrotaskを破棄する", async () => {
+    const store = useCalcStore({ locale: ref("ja"), t, currentGameDate: "2046-12-31" });
+    store.upsertFromBox({ boxId: "stale-range-error", pokedexId: 25, srcLevel: 10, dstLevelDefault: 30, expType: 600, nature: "normal" });
+    const id = store.rows.value[0]!.id;
+    store.setRowSleepTargetHours(id, 1000);
+
+    expect(store.rowSleepExpFor(id)).toBe(0);
+    // updateSleepSettingsのエラー消去へ依存せず、microtaskより先に入力スナップショットだけを変える。
+    store.sleepSettings.value = { ...store.sleepSettings.value, includeGSD: false };
+    await nextTick();
+    store.sleepSettings.value = { ...store.sleepSettings.value, includeGSD: true };
+
+    expect(store.lunarCalendarStatus.value).toBe("ready");
+  });
+
   it("rowSleepExpFor は残る睡眠EXPだけを既存計算から公開する", () => {
     const { store, id } = makeStore();
     expect(store.rowSleepExpFor(id)).toBe(0);
@@ -1671,6 +2238,139 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
 
     store.setRowSleepHours(id, 2500);
     expect(store.rowSleepRemainingHoursFor(id)).toBe(0);
+  });
+
+  /**
+   * 成長のお香は1回の睡眠につき1個なので、**使用日数がそのまま個数**。
+   *
+   * 数えるのは「**目標へ届くまでに寝る日数**」で、睡眠目標時間を寝きる日数ではない。
+   * 実測したバグ（2026-08-20）: Lv69 → Lv70（あと98EXP）の行に睡眠目標2000h（残358h）を
+   * 設定すると、358hぶんの28日を数えてお香2個と出ていた。Lv70 は硬上限なので8時間半で終わる。
+   */
+  it("rowExceedsSleepTeamLimit は睡眠目標のある6匹目以降だけ true にする", () => {
+    const store = useCalcStore({ locale: ref("ja"), t });
+    const ids: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      store.upsertFromBox({ boxId: `team-${i}`, pokedexId: 25, srcLevel: 10, dstLevelDefault: 70, expType: 600, nature: "normal" });
+      ids.push(store.rows.value[store.rows.value.length - 1]!.id);
+    }
+
+    // 睡眠目標が無いうちは何匹並べても対象外
+    expect(ids.every(id => store.rowExceedsSleepTeamLimit(id) === false)).toBe(true);
+
+    // 睡眠目標を付けた順に数える。6匹目以降だけ true
+    ids.forEach(id => store.setRowSleepTargetHours(id, 1000));
+    expect(ids.map(id => store.rowExceedsSleepTeamLimit(id)))
+      .toEqual([false, false, false, false, false, true, true]);
+
+    // 睡眠目標を外した行は数えないので、後ろの行が枠に入る
+    store.setRowSleepTargetHours(ids[0]!, undefined);
+    expect(store.rowExceedsSleepTeamLimit(ids[5]!)).toBe(false);
+    expect(store.rowExceedsSleepTeamLimit(ids[6]!)).toBe(true);
+  });
+
+  it("rowGrowthIncenseCountFor は目標へ届くまでの日数で数える（睡眠目標を寝きる日数ではない）", () => {
+    const store = useCalcStore({ locale: ref("ja"), t });
+    store.upsertFromBox({ boxId: "incense-cap", pokedexId: 25, srcLevel: 69, dstLevelDefault: 70, expType: 600, nature: "normal" });
+    const id = store.rows.value[0]!.id;
+    store.onRowExpRemaining(id, "1");
+    // 毎日お香を使う設定にする。**寝る日数がそのまま個数になる**ので、日数の取り違えが必ず表に出る。
+    store.updateSleepSettings({
+      includeGSD: true,
+      growthIncenseGsdDays: { beforeFullMoon: true, fullMoon: true, afterFullMoon: true },
+      growthIncenseNormalPerWeek: 7,
+    });
+
+    // 睡眠目標が無い行は 0（そもそも睡眠を計画に入れない）
+    expect(store.rowGrowthIncenseCountFor(id)).toBe(0);
+
+    store.setRowSleepTargetHours(id, 2000);
+    // plan が無いうちは 0（画面も plan が無ければ結果行ごと出さない）
+    expect(store.rowGrowthIncenseCountFor(id)).toBe(0);
+
+    applyPlanSynchronously(store);
+    // 睡眠EXPは目標（あと1EXP）を桁違いに超える。**その差がバグの温床だった。**
+    expect(store.rowSleepExpFor(id)).toBeGreaterThan(1_000);
+    // 残り1EXPは1晩で終わる。2000hを寝きる日数を数えてはいけない。
+    // **お香なしで届くので0個**（最終日のお香は使わずに済むなら使わない）。
+    // 日数を取り違えていれば毎日お香の設定なので大きな数になり、必ず表に出る。
+    expect(store.rowGrowthIncenseCountFor(id)).toBe(0);
+
+    // 数値目標を寝きった後は、アメ不足が残っていても追加の睡眠を計画しない。
+    store.setRowSleepHours(id, 2000);
+    applyPlanSynchronously(store);
+    expect(store.rowSleepExpFor(id)).toBe(0);
+    expect(store.rowGrowthIncenseCountFor(id)).toBe(0);
+
+    // 1個も使わない設定なら 0
+    store.updateSleepSettings({
+      growthIncenseGsdDays: { beforeFullMoon: false, fullMoon: false, afterFullMoon: false },
+      growthIncenseNormalPerWeek: 0,
+    });
+    expect(store.rowGrowthIncenseCountFor(id)).toBe(0);
+  });
+
+  it("rowGrowthIncenseCountFor は数値目標の予定睡眠を超えてアメ不足分を数えない", () => {
+    const store = useCalcStore({ locale: ref("ja"), t });
+    store.upsertFromBox({ boxId: "incense-shortage", pokedexId: 25, srcLevel: 10, dstLevelDefault: 70, expType: 600, nature: "normal" });
+    const id = store.rows.value[0]!.id;
+    store.updateSleepSettings({
+      includeGSD: false,
+      dailySleepHours: 8.5,
+      growthIncenseNormalPerWeek: 7,
+    });
+    store.setRowSleepTargetHours(id, 200);
+
+    applyPlanSynchronously(store);
+    // 在庫0なので目標までの残EXPは予定睡眠EXPより大きいが、お香は200hぶんの24晩まで。
+    expect(store.rowGrowthIncenseCountFor(id)).toBe(Math.ceil(200 / 8.5));
+  });
+
+  /** plan は debounce 越しに入るので、テストでは同じ入力から解いた結果を直接流し込む。 */
+  function applyPlanSynchronously(store: ReturnType<typeof useCalcStore>): void {
+    const input = buildLevelPlannerInput(store.rowsView.value.map((row) => ({
+      id: row.id,
+      pokedexId: row.pokedexId,
+      title: row.title,
+      pokemonType: row.pokemonType,
+      srcLevel: row.srcLevel,
+      dstLevel: row.dstLevel,
+      dstExpInLevel: row.dstExpInLevel,
+      expRemaining: row.expRemaining,
+      expType: row.expType,
+      nature: row.nature,
+      boostReachLevel: row.boostReachLevel,
+      candyTarget: row.candyTarget,
+      boostCandyInput: row.ui.boostCandyInput,
+      sleepExp: store.rowSleepExpFor(row.id),
+      sleepTargetMode: row.sleepTargetMode,
+    })), {
+      candyInventory: { species: {}, typeCandy: {}, universal: { s: 0, m: 0, l: 0 } },
+      dreamShards: 0,
+      boost: { kind: store.boostKind.value, limit: 0 },
+      itemCompareMode: "surplusFirst",
+    })!;
+    const outcome = solveLevelPlanWithBudget(input, { deadlineMs: 60_000 });
+    if (outcome.kind !== "result") throw new Error("planner did not return a result");
+    (store.planResult as unknown as Ref<LevelPlannerResult | null>).value = outcome.result;
+  }
+
+  /**
+   * 「すべて睡眠」は睡眠EXPを導出しない（設計書§11）ので `markForSleep` を通らない。
+   * 個数は「残EXPから逆算した必要日数」の経路（`calcSleepTimeForExp`）から取る。
+   * その経路が個数を返すこと自体は `sleep-growth.test.ts` が固定している。
+   * ここでは **plan が無いうちは 0** を固定する（画面も plan が無ければ結果行ごと出さない）。
+   */
+  it("rowGrowthIncenseCountFor は plan の無い「すべて睡眠」の行では 0 を返す", () => {
+    const { store, id } = makeStore();
+    store.setDstLevel(id, 30);
+    store.setRowSleepTarget(id, "all");
+    store.updateSleepSettings({
+      includeGSD: true,
+      growthIncenseGsdDays: { beforeFullMoon: true, fullMoon: true, afterFullMoon: true },
+      growthIncenseNormalPerWeek: 7,
+    });
+    expect(store.rowGrowthIncenseCountFor(id)).toBe(0);
   });
 
   it("既定アメブ目標Lvの undo は無関係なかけら在庫を動かさない", () => {
@@ -2205,6 +2905,7 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     store.onRowCandyTarget(id, "");
     expect(snap()).toEqual(baseline);
   });
+
 });
 
 describe("useCalcStore: すべて睡眠", () => {
@@ -2439,6 +3140,307 @@ describe("useCalcStore: すべて睡眠", () => {
     expect(store.rows.value[0]).toEqual(before);
   });
 
+  it("アメ在庫＋睡眠: 4状態として排他になり、個数指定だけが失効してアメブは残る", () => {
+    const store = addRows(1);
+    const id = store.rows.value[0]!.id;
+    store.updateSpeciesCandy(25, 100);
+    store.onRowBoostCandy(id, "25");
+    const dormant = store.rows.value[0]!.boostOrExpAdjustment;
+    store.onRowCandyTarget(id, "40");
+    expect(store.rows.value[0]!.candyTarget).toBe(40);
+
+    store.setRowSleepTarget(id, "stock");
+    expect(store.rows.value[0]).toMatchObject({
+      sleepTargetMode: "stock",
+      sleepTargetHours: undefined,
+      // 個数指定は在庫が決めるので失効する（操作仕様§4.7）
+      candyTarget: undefined,
+      // stock も Lv ちょうど宣言なので、Lv内EXPは正規形の未設定へ戻す
+      dstExpInLevel: undefined,
+      // アメブは使えるので保存値も残る
+      boostOrExpAdjustment: dormant,
+    });
+
+    // 個数指定はストアAPIからも受け付けない
+    store.onRowCandyTarget(id, "100");
+    expect(store.rows.value[0]!.candyTarget).toBeUndefined();
+
+    // アメブは操作できる（睡眠EXPが 0 なので睡眠側の上限はかからない）。
+    // ただし使えるアメは在庫までなので、在庫を入れてから操作する（在庫0の行は下のテストを参照）。
+    store.onRowBoostCandy(id, "30");
+    expect(store.rows.value[0]!.boostOrExpAdjustment).toBe(30);
+
+    store.setRowSleepTarget(id, 1000);
+    expect(store.rows.value[0]!.sleepTargetMode).toBeUndefined();
+    expect(store.rows.value[0]!.sleepTargetHours).toBe(1000);
+    store.setRowSleepTarget(id, "stock");
+    expect(store.rows.value[0]!.sleepTargetHours).toBeUndefined();
+    store.undo();
+    expect(store.rows.value[0]!.sleepTargetHours).toBe(1000);
+    store.redo();
+    expect(store.rows.value[0]!.sleepTargetMode).toBe("stock");
+  });
+
+  it("アメ在庫＋睡眠: 正規化の防御層が個数指定とLv内EXPを破棄する", () => {
+    const store = addRows(1);
+    const id = store.rows.value[0]!.id;
+    store.setRowSleepTarget(id, "stock");
+
+    // 永続化データや将来の呼び出しから不正なanchorが入った状態を再現する。
+    Object.assign(store.rows.value[0]!, { candyTarget: 40, dstExpInLevel: 123 });
+    store.setNature(id, "up");
+
+    expect(store.rows.value[0]!.candyTarget).toBeUndefined();
+    expect(store.rows.value[0]!.dstExpInLevel).toBeUndefined();
+  });
+
+  it("アメ在庫＋睡眠: 使うアメ数は min(在庫, 目標に要る数) で、同系統は上の行から順に取る", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = useCalcStore({ locale: ref("ja"), t });
+      store.setSlotBoostKind("none");
+      // 26 は 25 と同じ系統なので、種族アメ在庫を取り合う。
+      store.upsertFromBox({ boxId: "upper", pokedexId: 25, srcLevel: 10, dstLevelDefault: 30, expType: 600, nature: "normal" });
+      store.upsertFromBox({ boxId: "lower", pokedexId: 26, srcLevel: 10, dstLevelDefault: 30, expType: 600, nature: "normal" });
+      const [upper, lower] = store.rows.value.map((row) => row.id);
+      store.setRowSleepTarget(upper!, "stock");
+      store.setRowSleepTarget(lower!, "stock");
+
+      // 在庫が足りないときは上の行が取り切り、下の行へは回らない
+      store.updateSpeciesCandy(25, 20);
+      expect(store.rowStockCandyTargetFor(upper!)).toBe(20);
+      expect(store.rowStockCandyTargetFor(lower!)).toBe(0);
+
+      // 在庫が余るときは使い切らない。上が必要ぶんだけ取るので、下にも同じだけ回る
+      store.updateSpeciesCandy(25, 100_000);
+      const need = store.rowStockCandyTargetFor(upper!)!;
+      expect(need).toBeGreaterThan(0);
+      expect(need).toBeLessThan(100_000);
+      expect(store.rowStockCandyTargetFor(lower!)).toBe(need);
+
+      // 「アメ在庫＋睡眠」でない行は対象外
+      store.setRowSleepTarget(lower!, undefined);
+      expect(store.rowStockCandyTargetFor(lower!)).toBeUndefined();
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  /**
+   * 「アメ在庫＋睡眠」の行が使えるアメは在庫まで。アメブはその内数（`n ≤ m`）なので、
+   * **入力欄の上限も在庫で止める**（2026-08-25 ユーザー指摘）。
+   *
+   * 以前は MAX_LEVEL 基準の上限しか見ていなかったため、在庫256の行に400と入力でき、
+   * 欄は400のまま結果だけ256になった（`resolveEffectiveBoostCandy` が実効値だけを絞るため）。
+   */
+  it("アメ在庫＋睡眠: 在庫減少は保存値を変えず、実効値・max・警告だけを半ロックする", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = useCalcStore({ locale: ref("ja"), t });
+      store.setSlotBoostKind("full");
+      store.onBoostCandyRemainingInput("500");
+      store.upsertFromBox({ boxId: "stock-cap", pokedexId: 25, srcLevel: 10, dstLevelDefault: 40, expType: 600, nature: "normal" });
+      const id = store.rows.value[0]!.id;
+      store.setDstLevel(id, 70);
+      store.updateSpeciesCandy(25, 350);
+      store.setRowSleepTarget(id, "stock");
+      const ui = () => store.rowsView.value.find((row) => row.id === id)!.ui;
+      store.onRowBoostCandy(id, "300");
+      expect(store.rows.value[0]!.boostOrExpAdjustment).toBe(300);
+
+      store.updateSpeciesCandy(25, 250);
+      expect(store.rows.value[0]!.boostOrExpAdjustment).toBe(300);
+      expect(ui().boostCandyInput).toBe(250);
+      expect(ui().boostCandyInputMax).toBe(250);
+      expect(ui().boostCapActive).toBe(true);
+      expect(ui().boostCapKind).toBe("stock");
+      expect(ui().boostSleepCapped).toBe(false);
+      expect(ui().boostInputDisabled).toBe(false);
+
+      // アメブ目標Lvは個数と同じ在庫上限を使うが、個数と違って超過値をクランプせず拒否する。
+      const savedReachLevel = store.rows.value[0]!.boostReachLevel;
+      store.setBoostLevel(id, ui().boostReachLevelMax + 1);
+      expect(store.rows.value[0]!.boostReachLevel).toBe(savedReachLevel);
+
+      // 上限超過中の下方向スピン相当も、大きい直接入力も在庫上限へ収束する。
+      store.onRowBoostCandy(id, "299");
+      expect(store.rows.value[0]!.boostOrExpAdjustment).toBe(250);
+      store.onRowBoostCandy(id, "999");
+      expect(store.rows.value[0]!.boostOrExpAdjustment).toBe(250);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("アメ在庫＋睡眠: 在庫が潤沢なら警告せず、アメブ目標Lvから目標Lvも上げられる", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = useCalcStore({ locale: ref("ja"), t });
+      store.setSlotBoostKind("full");
+      store.onBoostCandyRemainingInput("500");
+      store.upsertFromBox({ boxId: "stock-plenty", pokedexId: 25, srcLevel: 10, dstLevelDefault: 30, expType: 600, nature: "normal" });
+      const id = store.rows.value[0]!.id;
+      store.updateSpeciesCandy(25, 100_000);
+      store.setRowSleepTarget(id, "stock");
+
+      expect(store.rowStockCandyTargetFor(id)).toBeLessThan(100_000);
+      expect(store.rowStockCandyAvailableFor(id)).toBe(100_000);
+      expect(store.rowsView.value[0]!.ui.boostReachLevelMax).toBe(MAX_LEVEL);
+      expect(store.rowsView.value[0]!.ui.boostCapActive).toBe(false);
+      expect(store.rowsView.value[0]!.ui.boostCapKind).toBeNull();
+
+      store.setBoostLevel(id, 45);
+      expect(store.rows.value[0]!.boostReachLevel).toBe(45);
+      expect(store.rows.value[0]!.dstLevel).toBe(45);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("アメ在庫＋睡眠: 利用可能在庫が需要ちょうどなら上限が効く", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = useCalcStore({ locale: ref("ja"), t });
+      store.setSlotBoostKind("full");
+      store.onBoostCandyRemainingInput("500");
+      store.upsertFromBox({ boxId: "stock-exact", pokedexId: 25, srcLevel: 10, dstLevelDefault: 30, expType: 600, nature: "normal" });
+      const id = store.rows.value[0]!.id;
+      store.updateSpeciesCandy(25, 100_000);
+      store.setRowSleepTarget(id, "stock");
+      const exactNeed = store.rowStockCandyTargetFor(id)!;
+
+      store.updateSpeciesCandy(25, exactNeed);
+      const ui = store.rowsView.value[0]!.ui;
+      expect(store.rowStockCandyAvailableFor(id)).toBe(exactNeed);
+      expect(ui.boostCapActive).toBe(true);
+      expect(ui.boostCapKind).toBe("stock");
+      const before = { ...store.rows.value[0]! };
+      store.setBoostLevel(id, ui.boostReachLevelMax + 1);
+      expect(store.rows.value[0]!.boostReachLevel).toBe(before.boostReachLevel);
+      expect(store.rows.value[0]!.dstLevel).toBe(before.dstLevel);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("アメ在庫＋睡眠: 在庫0でも欄を無効化せず、入力は明示0へクランプする", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = useCalcStore({ locale: ref("ja"), t });
+      store.setSlotBoostKind("full");
+      store.onBoostCandyRemainingInput("500");
+      store.upsertFromBox({ boxId: "stock-zero", pokedexId: 25, srcLevel: 10, dstLevelDefault: 40, expType: 600, nature: "normal" });
+      const id = store.rows.value[0]!.id;
+      store.updateSpeciesCandy(25, 0);
+      store.setRowSleepTarget(id, "stock");
+      expect(store.rowsView.value[0]!.ui.boostInputDisabled).toBe(false);
+      expect(store.rowsView.value[0]!.ui.boostCandyInputMax).toBe(0);
+
+      store.onRowBoostCandy(id, "10");
+      expect(store.rows.value[0]!.boostOrExpAdjustment).toBe(0);
+      store.setRowSleepTarget(id, undefined);
+      expect(store.rows.value[0]!.boostOrExpAdjustment).toBe(0);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("アメ在庫＋睡眠: m を解決できない行を在庫0扱いせず、上限も警告も付けない", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = useCalcStore({ locale: ref("ja"), t });
+      store.setSlotBoostKind("full");
+      store.onBoostCandyRemainingInput("500");
+      store.upsertFromBox({ boxId: "dangling-stock", srcLevel: 10, dstLevelDefault: 40, expType: 600, nature: "normal" });
+      const id = store.rows.value[0]!.id;
+      store.onRowBoostCandy(id, "10");
+      store.setRowSleepTarget(id, "stock");
+
+      expect(store.rowStockCandyTargetFor(id)).toBeUndefined();
+      expect(store.rows.value[0]!.boostOrExpAdjustment).toBe(10);
+      expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(10);
+      expect(store.rowsView.value[0]!.ui.boostCandyInputMax).toBeGreaterThan(0);
+      expect(store.rowsView.value[0]!.ui.boostInputDisabled).toBe(false);
+      expect(store.rowsView.value[0]!.ui.boostCapActive).toBe(false);
+      expect(store.rowsView.value[0]!.ui.boostCapKind).toBeNull();
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("アメ在庫＋睡眠: 在庫変更の undo は在庫だけを戻し、保存したアメブ個数には触れない", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = useCalcStore({ locale: ref("ja"), t });
+      store.setSlotBoostKind("full");
+      store.onBoostCandyRemainingInput("500");
+      store.upsertFromBox({ boxId: "stock-undo", pokedexId: 25, srcLevel: 10, dstLevelDefault: 40, expType: 600, nature: "normal" });
+      const id = store.rows.value[0]!.id;
+      store.setDstLevel(id, 70);
+      store.updateSpeciesCandy(25, 350);
+      store.setRowSleepTarget(id, "stock");
+      store.onRowBoostCandy(id, "300");
+
+      store.updateSpeciesCandy(25, 250);
+      expect(store.rows.value[0]!.boostOrExpAdjustment).toBe(300);
+      expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(250);
+
+      store.undo();
+      expect(candyStore.getSpeciesCandyFor(25)).toBe(350);
+      expect(store.rows.value[0]!.boostOrExpAdjustment).toBe(300);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+
+  });
+
+  it("アメ在庫＋睡眠: 実効アメブ個数は在庫から回るアメ数を超えない", () => {
+    const store = addRows(1);
+    const id = store.rows.value[0]!.id;
+    const pokedexId = store.rows.value[0]!.pokedexId!;
+    store.updateSpeciesCandy(pokedexId, 12);
+
+    // 睡眠目標なしの行では、目標Lv40 まで賄うぶんのアメブが導出される（在庫では抑えない）。
+    const withoutMode = store.rowsView.value[0]!.ui.boostCandyInput;
+    expect(withoutMode).toBeGreaterThan(12);
+
+    store.setRowSleepTarget(id, "stock");
+    // アメブは総アメ数の内数。使えるアメが12個なら、アメブも12個を超えない。
+    expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(12);
+
+    store.updateSpeciesCandy(pokedexId, 0);
+    expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(0);
+  });
+
+  it("アメ在庫＋睡眠: すべて睡眠から切り替えるとアメブ目標Lvが目標Lv以下へ戻る", () => {
+    const store = addRows(1);
+    const id = store.rows.value[0]!.id;
+    store.setDstLevel(id, 60);
+    store.setBoostLevel(id, 60);
+    store.setRowSleepTarget(id, "all");
+    store.setDstLevel(id, 40);
+    // すべて睡眠の間はアメブ目標Lvを目標Lv変更で動かさない（操作仕様§4.7）
+    expect(store.rows.value[0]!.boostReachLevel).toBe(60);
+
+    store.setRowSleepTarget(id, "stock");
+    expect(store.rows.value[0]!.sleepTargetMode).toBe("stock");
+    expect(store.rows.value[0]!.boostReachLevel).toBe(40);
+  });
+
   it("§13-2/3: 3状態の切替・undo/redo・スロットコピーで排他と休眠値を保つ", () => {
     const store = addRows(1);
     const id = store.rows.value[0]!.id;
@@ -2473,4 +3475,109 @@ describe("useCalcStore: すべて睡眠", () => {
     });
     expect(store.rows.value[0]!.sleepTargetHours).toBeUndefined();
   });
+
+
+});
+
+describe("useCalcStore: ボーナス内訳の日数・睡眠スコア", () => {
+  beforeEach(() => {
+    cancelPersist();
+    installLocalStorageMock();
+  });
+
+  afterEach(() => {
+    cancelPersist();
+  });
+
+  const t = ((key: string) => key) as unknown as Composer["t"];
+
+  // planResult は debounce + Worker で後から入る。入るまでは内訳も空なので待つ。
+  async function makeSleepRow(opts: {
+    dstLevelDefault: number;
+    expRemaining?: number;
+    currentGameDate?: GameDate;
+  }) {
+    const store = useCalcStore({
+      locale: ref("ja"),
+      t,
+      currentGameDate: opts.currentGameDate,
+    });
+    store.upsertFromBox({
+      boxId: "bonus-days",
+      pokedexId: 25,
+      srcLevel: 10,
+      dstLevelDefault: opts.dstLevelDefault,
+      expType: 600,
+      nature: "normal",
+      expRemaining: opts.expRemaining,
+    });
+    const id = store.rows.value[0]!.id;
+    store.setRowSleepTarget(id, "all");
+    await vi.waitFor(() => {
+      expect(store.planResult.value?.pokemonResults).toHaveLength(1);
+    }, { timeout: 10_000 });
+    return { store, id };
+  }
+
+  it("1回の睡眠は日別だけを返す（種類別は作らない）", async () => {
+    const { store, id } = await makeSleepRow({ dstLevelDefault: 11, expRemaining: 50 });
+    const breakdown = store.rowSleepBonusBreakdownFor(id);
+
+    expect(breakdown.contributions).toEqual([]);
+    expect(breakdown.nights).toHaveLength(1);
+    expect(breakdown.nights[0]!.minutes).toBeGreaterThan(0);
+    // 素EXPと総額の両方を持つ（画面では「114＋28EXP」と分けて出す）。
+    expect(breakdown.nights[0]!.baseExp).toBeGreaterThan(0);
+    expect(breakdown.nights[0]!.exp).toBeGreaterThanOrEqual(breakdown.nights[0]!.baseExp);
+  });
+
+  it("4晩以上かかる長期計画は種類別だけを返す", async () => {
+    const { store, id } = await makeSleepRow({ dstLevelDefault: 40 });
+    const breakdown = store.rowSleepBonusBreakdownFor(id);
+
+    expect(breakdown.contributions.length).toBeGreaterThan(0);
+    // 先頭は素EXPの行。全睡眠日が対象なので必ず2日以上になる
+    expect(breakdown.contributions[0]!.days).toBeGreaterThan(1);
+    expect(breakdown.nights).toEqual([]);
+  });
+
+  it("2～3晩の正確計画は日付順の日別だけを返す", async () => {
+    const { store, id } = await makeSleepRow({
+      dstLevelDefault: 11,
+      expRemaining: 250,
+      // GSD・イベントの無い平常日に固定し、実時刻の満月×3で1晩へ縮まないようにする。
+      currentGameDate: "2026-09-29" as GameDate,
+    });
+    const breakdown = store.rowSleepBonusBreakdownFor(id);
+
+    expect(breakdown.contributions).toEqual([]);
+    expect(breakdown.nights).toHaveLength(3);
+    expect(breakdown.nights.map((night) => night.date)).toEqual([
+      "2026-09-29",
+      "2026-09-30",
+      "2026-10-01",
+    ]);
+    expect(breakdown.nights.reduce((sum, night) => sum + night.score, 0)).toBe(250);
+    // 先行の晩は設定どおりの睡眠時間、最後の晩だけ短い。
+    expect(breakdown.nights.map((night) => night.minutes)).toEqual([510, 510, 253]);
+  });
+
+  it("睡眠計画の無い行は空で返す", () => {
+    const store = useCalcStore({ locale: ref("ja"), t });
+    store.upsertFromBox({
+      boxId: "bonus-days-none",
+      pokedexId: 25,
+      srcLevel: 10,
+      dstLevelDefault: 40,
+      expType: 600,
+      nature: "normal",
+    });
+    const id = store.rows.value[0]!.id;
+
+    expect(store.rowSleepBonusBreakdownFor(id)).toEqual({
+      contributions: [],
+      nights: [],
+    });
+  });
+
 });

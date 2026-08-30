@@ -9,7 +9,6 @@ export default tseslint.config(
     ignores: [
       "dist/**",
       "node_modules/**",
-      "scripts/**",
       "src/domain/pokesleep/_generated/**",
       "src/i18n/_generated/**",
     ],
@@ -26,10 +25,28 @@ export default tseslint.config(
 
   // Browser globals (window, document, navigator, etc.)
   {
+    files: ["src/**/*.{ts,vue}", "tests/**/*.{ts,vue}"],
     languageOptions: {
       globals: {
         ...globals.browser,
       },
+    },
+  },
+
+  // Operational Node.js scripts are production tooling. Keep no-undef and the
+  // other recommended correctness rules enabled while tolerating source-data
+  // regexes and whitespace that are intentionally copied verbatim.
+  {
+    files: ["scripts/**/*.{mjs,mts}"],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+      sourceType: "module",
+    },
+    rules: {
+      "no-useless-escape": "off",
+      "no-irregular-whitespace": "off",
     },
   },
 
@@ -74,6 +91,38 @@ export default tseslint.config(
       "vue/require-prop-types": "off",
       "vue/attributes-order": "off",
       "vue/no-v-html": "off",
+    },
+  },
+
+  // astronomy-engine は生成・正当性テスト専用。src の実行時コードへ再導入しない。
+  {
+    files: ["src/**/*.{ts,vue}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "astronomy-engine",
+              message: "Runtime code must use the generated full-moon date table.",
+            },
+          ],
+          // `paths` は完全一致しか見ないため、サブパス（astronomy-engine/esm/astronomy）が素通りする。
+          patterns: [
+            {
+              group: ["astronomy-engine/*"],
+              message: "Runtime code must use the generated full-moon date table.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  // 生成物を独立に照合する正当性テストだけはdevDependencyを直接使う。
+  {
+    files: ["src/domain/pokesleep/__tests__/lunar-calendar.test.ts"],
+    rules: {
+      "no-restricted-imports": "off",
     },
   },
 );

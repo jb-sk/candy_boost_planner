@@ -278,6 +278,7 @@ function detectFailure({ seed, input, tags }: RandomCase, mode: SolverItemCompar
       candyFamilyKey: source?.candyFamilyKey ?? String(pokemon.pokedexId),
       type: source?.type ?? '',
       totalCandyCount: pokemon.reachableLine.totalCandyUnitsUsed,
+      candyDemandMet: pokemon.reachableLine.candyDemandMet,
       selected: {
         species: supply.species,
         typeS: supply.type.s,
@@ -401,13 +402,15 @@ function shrinkCase(original: RandomCase, mode: SolverItemCompareMode, kind: Fai
       if (changed) break;
       if (current.input.pokemonList[index].candyTarget) {
         changed = reduceNumber(input => input.pokemonList[index].candyTarget?.totalCandyUnits ?? 0, (input, value) => {
-          if (!input.pokemonList[index].candyTarget) return;
-          input.pokemonList[index].candyTarget.totalCandyUnits = Math.max(1, value);
+          const candyTarget = input.pokemonList[index]?.candyTarget;
+          if (!candyTarget) return;
+          candyTarget.totalCandyUnits = Math.max(1, value);
         }) || changed;
         if (changed) break;
         changed = reduceNumber(input => input.pokemonList[index].candyTarget?.boostedCandyUnits ?? 0, (input, value) => {
-          if (!input.pokemonList[index].candyTarget) return;
-          input.pokemonList[index].candyTarget.boostedCandyUnits = value;
+          const candyTarget = input.pokemonList[index]?.candyTarget;
+          if (!candyTarget) return;
+          candyTarget.boostedCandyUnits = value;
         }) || changed;
         if (changed) break;
       }
@@ -461,11 +464,11 @@ function verifyCase(current: RandomCase, mode: SolverItemCompareMode): void {
 
 const realCaseBaseInput = {
   pokemonList: [
-    { pokemonId: 'id_z4cy1n49yzj_mrg52n3n', pokedexId: 923, candyFamilyKey: getCandyFamilyKey(923), name: '80パーモット', type: 'electric' as const, currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0, candyTarget: { totalCandyUnits: 632 }, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 0 },
-    { pokemonId: 'id_5tlnyjy0ssi_mrg53aly', pokedexId: 845, candyFamilyKey: getCandyFamilyKey(845), name: '70ウッウ（油）', type: 'flying' as const, currentLevel: 68, currentExpInLevel: 198, targetLevel: 70, targetExpInLevel: 0, candyTarget: { totalCandyUnits: 298 }, expType: 600 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 1 },
-    { pokemonId: 'id_sds1zvu57t_mrg54714', pokedexId: 700, candyFamilyKey: getCandyFamilyKey(700), name: '70仮ニンフィア', type: 'fairy' as const, currentLevel: 16, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0, candyTarget: { totalCandyUnits: 3598 }, expType: 600 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 2 },
-    { pokemonId: 'id_q0yknqotgp_mrg5jsml', pokedexId: 149, candyFamilyKey: getCandyFamilyKey(149), name: '80カイリュー', type: 'dragon' as const, currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0, candyTarget: { totalCandyUnits: 948 }, expType: 900 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 3 },
-    { pokemonId: 'id_kwjj92i5lf_mrgdh5jn', pokedexId: 317, candyFamilyKey: getCandyFamilyKey(317), name: '70マルノーム', type: 'poison' as const, currentLevel: 57, currentExpInLevel: 1553, targetLevel: 60, targetExpInLevel: 0, candyTarget: { totalCandyUnits: 308 }, expType: 600 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 4 },
+    { pokemonId: 'id_z4cy1n49yzj_mrg52n3n', pokedexId: 923, candyFamilyKey: getCandyFamilyKey(923), name: '80パーモット', type: 'electric' as const, currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0, candyTarget: { totalCandyUnits: 632, boostedCandyUnits: 0 }, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 0 },
+    { pokemonId: 'id_5tlnyjy0ssi_mrg53aly', pokedexId: 845, candyFamilyKey: getCandyFamilyKey(845), name: '70ウッウ（油）', type: 'flying' as const, currentLevel: 68, currentExpInLevel: 198, targetLevel: 70, targetExpInLevel: 0, candyTarget: { totalCandyUnits: 298, boostedCandyUnits: 0 }, expType: 600 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 1 },
+    { pokemonId: 'id_sds1zvu57t_mrg54714', pokedexId: 700, candyFamilyKey: getCandyFamilyKey(700), name: '70仮ニンフィア', type: 'fairy' as const, currentLevel: 16, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0, candyTarget: { totalCandyUnits: 3598, boostedCandyUnits: 0 }, expType: 600 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 2 },
+    { pokemonId: 'id_q0yknqotgp_mrg5jsml', pokedexId: 149, candyFamilyKey: getCandyFamilyKey(149), name: '80カイリュー', type: 'dragon' as const, currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0, candyTarget: { totalCandyUnits: 948, boostedCandyUnits: 0 }, expType: 900 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 3 },
+    { pokemonId: 'id_kwjj92i5lf_mrgdh5jn', pokedexId: 317, candyFamilyKey: getCandyFamilyKey(317), name: '70マルノーム', type: 'poison' as const, currentLevel: 57, currentExpInLevel: 1553, targetLevel: 60, targetExpInLevel: 0, candyTarget: { totalCandyUnits: 308, boostedCandyUnits: 0 }, expType: 600 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 4 },
   ],
   dreamShards: Number.MAX_SAFE_INTEGER,
   boost: { kind: 'none' as const, limit: 0 },
@@ -492,6 +495,7 @@ function expectedRowsForInput(input: LevelPlannerInput, expected: ExpectedUsage[
     candyFamilyKey: pokemon.candyFamilyKey,
     type: pokemon.type,
     totalCandyCount: pokemon.candyTarget?.totalCandyUnits ?? 0,
+    candyDemandMet: expected[index].supply >= (pokemon.candyTarget?.totalCandyUnits ?? 0),
     legacyZeroSurplusPriority: pokemon.targetLevel >= 70 && (pokemon.targetExpInLevel ?? 0) === 0,
     selected: expected[index],
   }));
@@ -508,6 +512,7 @@ function rowForResult(input: LevelPlannerInput, result: ReturnType<typeof solveL
       candyFamilyKey: source?.candyFamilyKey ?? String(pokemon.pokedexId),
       type: source?.type ?? '',
       totalCandyCount: pokemon.reachableLine.totalCandyUnitsUsed,
+      candyDemandMet: pokemon.reachableLine.candyDemandMet,
       legacyZeroSurplusPriority: pokemon.reachableLine.level >= 70 && pokemon.reachableLine.expInLevel === 0,
       selected: {
         species: supply.species,

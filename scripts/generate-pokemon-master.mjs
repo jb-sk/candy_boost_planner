@@ -3,6 +3,11 @@ import path from "node:path";
 import process from "node:process";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
+import {
+  assertNoUnknownFormLabels,
+  collectUnknownFormLabels,
+  splitPokemonNameAndForm,
+} from "./pokemon-form-resolution.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -77,11 +82,6 @@ const args = parseArgs(process.argv);
 
 function readJson(p) {
   return JSON.parse(fs.readFileSync(p, "utf8"));
-}
-
-function writeText(p, content) {
-  fs.mkdirSync(path.dirname(p), { recursive: true });
-  fs.writeFileSync(p, content, "utf8");
 }
 
 function writeTextIfChanged(p, content) {
@@ -198,23 +198,6 @@ const formLabelJaToEnPath = path.resolve(DEFAULT_FORM_LABEL_JA_TO_EN);
 const formLabelJaToEn = fs.existsSync(formLabelJaToEnPath) ? readJson(formLabelJaToEnPath) : {};
 let formLabelJaToEnChanged = false;
 
-const unknownFormLabels = new Set(); // 未知のフォーム名を記録
-
-
-function splitNameAndForm(nameJa) {
-  const m = normalize(nameJa).match(/^(.+?)\s*[\(（]([^)）]+)[\)）]\s*$/);
-  if (!m) return { baseNameJa: normalize(nameJa), form: 0, formLabelJa: null };
-  const base = normalize(m[1]);
-  const formLabelJa = normalize(m[2]);
-  const form = formJaToNumber[formLabelJa] ?? 0;
-  // 未知のフォーム名を記録
-  if (formLabelJa && form === 0 && !formJaToNumber.hasOwnProperty(formLabelJa)) {
-    unknownFormLabels.add(formLabelJa);
-  }
-  return { baseNameJa: base, form, formLabelJa };
-}
-
-
 function toIdForm(pokedexId, form) {
   return (pokedexId | 0) + ((form | 0) << 12);
 }
@@ -307,7 +290,6 @@ async function resolveExpTypeForDexNo({ dexNo, nameJa, overrides, interactive, n
   const ask = createAsk();
   try {
     // a/b/cショートカット（空入力は受け付けない）
-    // eslint-disable-next-line no-constant-condition
     while (true) {
       const ans = normalize(
         await ask.question(
@@ -346,6 +328,101 @@ const knownPath = path.resolve(args.known);
 const knownArr = fs.existsSync(knownPath) ? readJson(knownPath) : [];
 const knownDexNos = new Set(Array.isArray(knownArr) ? knownArr.map(Number).filter(Number.isFinite) : []);
 
+// ---------------------------------------------------------------------------
+// Pre-scan: メインループ前に未知フォーム名を検出し、対話で解決する
+// ---------------------------------------------------------------------------
+// メインループ内で未知フォームが form=0 にフォールバックされると、通常フォームの
+// インデックスを上書きしてしまう。これを防ぐため、メインループの前にフォーム名を
+// 走査し、未登録のものがあれば先に解決する。
+const preUnknownFormLabels = collectUnknownFormLabels(items, formJaToNumber);
+if (preUnknownFormLabels.size > 0 && !(args.interactive && process.stdin.isTTY && process.stdout.isTTY)) {
+  // 非対話モード: 未知フォーム名があればエラー終了
+  const unknownList = [...preUnknownFormLabels].sort();
+  console.error(`\n[ERROR] 未知のフォーム名が ${unknownList.length} 件あります。`);
+  console.error(`form-ja-to-number.json に登録されていないフォーム名が Wiki データに含まれています。`);
+  console.error(`該当するフォーム名を form-ja-to-number.json と form-label-ja-to-en.json に追加してください。\n`);
+  for (const label of unknownList) {
+    // 該当ポケモンを特定
+    const affected = items.filter(it => {
+      const { formLabelJa } = splitPokemonNameAndForm(it.nameJa, formJaToNumber);
+      return formLabelJa === label;
+    });
+    const examples = affected.slice(0, 3).map(x => `#${x.dexNo} ${normalize(x.nameJa)}`).join(", ");
+    console.error(`  "${label}" → form=0 にフォールバック中 (例: ${examples})`);
+  }
+  console.error(``);
+  process.exit(1);
+}
+
+if (preUnknownFormLabels.size > 0 && args.interactive && process.stdin.isTTY && process.stdout.isTTY) {
+  const unknownList = [...preUnknownFormLabels].sort();
+
+  console.log(`\n[未知のフォーム名] ${unknownList.length}件`);
+  for (const label of unknownList) {
+    console.log(`  ${label}`);
+  }
+
+  const ask = createAsk();
+  try {
+    while (true) {
+      const ans = normalize(
+        await ask.question(`\nこれらをフォームリスト (form-ja-to-number.json) に追加しますか？ [y/n]\n> `)
+      ).toLowerCase();
+      if (ans === "y" || ans === "yes") {
+        for (const label of unknownList) {
+          // フォーム番号を手動入力（にとよんツール側の番号に合わせる必要があるため自動採番しない）
+          while (true) {
+            const numAns = normalize(
+              await ask.question(`  "${label}" のフォーム番号を入力してください (にとよんツール PokemonIv.ts の formMap 参照): `)
+            );
+            const num = Number(numAns);
+            if (Number.isFinite(num) && num > 0 && Number.isInteger(num)) {
+              formJaToNumber[label] = num;
+              console.log(`[generate-pokemon-master] "${label}" を form=${num} で追加`);
+              break;
+            }
+            console.log("  正の整数を入力してください。");
+          }
+
+          // 英訳も聞く（必須）
+          while (true) {
+            const enAns = normalize(
+              await ask.question(`  "${label}" の英訳を入力してください: `)
+            );
+            if (enAns) {
+              formLabelJaToEn[label] = enAns;
+              formLabelJaToEnChanged = true;
+              console.log(`[generate-pokemon-master] "${label}" → "${enAns}" を英訳リストに追加`);
+              break;
+            }
+            console.log("  入力が必要です。英訳を入力してください。");
+          }
+        }
+        formJaToNumberChanged = true;
+        break;
+      }
+      if (ans === "n" || ans === "no") {
+        // 未知フォームを未解決のまま生成すると form=0 の通常フォームと衝突するため、
+        // 登録しない場合は生成処理自体を中断する。
+        const confirm = normalize(
+          await ask.question(`⚠️  未知フォームを登録せず、MasterDB の生成を中断しますか？ [y/n]\n> `)
+        ).toLowerCase();
+        if (confirm === "y" || confirm === "yes") {
+          break;
+        }
+        // n なら最初の質問に戻る
+        continue;
+      }
+      console.log("入力が必要です。y または n を入力してください。");
+    }
+  } finally {
+    ask.close();
+  }
+}
+
+// 対話で登録しなかった場合を含め、未知フォームを残したまま生成へ進ませない。
+assertNoUnknownFormLabels(items, formJaToNumber);
+
 const master = [];
 const nameJaByIdForm = {};
 const expTypeByIdForm = {};
@@ -361,7 +438,7 @@ for (const it of items) {
   if (!Number.isFinite(dexNo)) continue;
   const nameJa = normalize(it.nameJa);
   if (!nameJa) continue;
-  const { form, formLabelJa, baseNameJa } = splitNameAndForm(nameJa);
+  const { form, formLabelJa, baseNameJa } = splitPokemonNameAndForm(nameJa, formJaToNumber);
   const idForm = toIdForm(dexNo, form);
 
   const specialty = normalizeSpecialtyJa(it.specialtyJa);
@@ -556,7 +633,7 @@ details += `- ingredients.c:null (新規): ${ingredientCNullNew.length}\n`;
 details += `- link:null: ${linkNullCount}\n`;
 details += `- ingredient mapping issues (A/B missing): ${issuesAB.length}\n`;
 details += `- ingredient mapping issues (C unknown but present): ${issuesC.length}\n`;
-details += `- unknown form labels: ${unknownFormLabels.size}\n`;
+details += `- unknown form labels (解決済み): ${preUnknownFormLabels.size}\n`;
 if (formAliasCount > 0) {
   details += `- form aliases applied: ${formAliasCount}\n`;
 }
@@ -604,7 +681,7 @@ if (issuesC.length) {
 // 変更・警告がすべてゼロなら確認をスキップ
 const hasChanges = addedEntries.length > 0 || removedIdForms.length > 0 ||
   ingredientsNullNew.length > 0 || ingredientCNullNew.length > 0 ||
-  issuesAB.length > 0 || issuesC.length > 0 || unknownFormLabels.size > 0;
+  issuesAB.length > 0 || issuesC.length > 0;
 
 // CI用の機械可読サマリー行
 console.log(`[SUMMARY] has_changes=${hasChanges} 追加: ${addedEntries.length} 削除: ${removedIdForms.length}`);
@@ -630,7 +707,6 @@ if (ingredientCNullNew.length > 0 && args.interactive && process.stdin.isTTY && 
     for (const x of ingredientCNullNew) {
       console.log(`  #${x.dexNo} ${x.nameJa}`);
     }
-    // eslint-disable-next-line no-constant-condition
     while (true) {
       const ans = normalize(
         await ask.question(`\nこれらを既知リスト (ing-c-null-known.json) に追加しますか？ [y/n]\n> `)
@@ -661,93 +737,6 @@ if (ingredientCNullNew.length > 0 && args.interactive && process.stdin.isTTY && 
     ask.close();
   }
 }
-
-// 未知のフォーム名の検出と警告
-if (unknownFormLabels.size > 0 && !(args.interactive && process.stdin.isTTY && process.stdout.isTTY)) {
-  // 非対話モード: 未知フォーム名があればエラー終了
-  const unknownList = [...unknownFormLabels].sort();
-  console.error(`\n[ERROR] 未知のフォーム名が ${unknownList.length} 件あります。`);
-  console.error(`form-ja-to-number.json に登録されていないフォーム名が Wiki データに含まれています。`);
-  console.error(`該当するフォーム名を form-ja-to-number.json と form-label-ja-to-en.json に追加してください。\n`);
-  for (const label of unknownList) {
-    // 該当ポケモンを特定
-    const affected = master.filter(x => x.formLabelJa === label);
-    const examples = affected.slice(0, 3).map(x => `#${x.dexNo} ${x.nameJa}`).join(", ");
-    console.error(`  "${label}" → form=0 にフォールバック中 (例: ${examples})`);
-  }
-  console.error(``);
-  process.exit(1);
-}
-
-if (unknownFormLabels.size > 0 && args.interactive && process.stdin.isTTY && process.stdout.isTTY) {
-  const unknownList = [...unknownFormLabels].sort();
-
-  console.log(`\n[未知のフォーム名] ${unknownList.length}件`);
-  for (const label of unknownList) {
-    console.log(`  ${label}`);
-  }
-
-  const ask = createAsk();
-  try {
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const ans = normalize(
-        await ask.question(`\nこれらをフォームリスト (form-ja-to-number.json) に追加しますか？ [y/n]\n> `)
-      ).toLowerCase();
-      if (ans === "y" || ans === "yes") {
-        for (const label of unknownList) {
-          // フォーム番号を手動入力（にとよんツール側の番号に合わせる必要があるため自動採番しない）
-          // eslint-disable-next-line no-constant-condition
-          while (true) {
-            const numAns = normalize(
-              await ask.question(`  "${label}" のフォーム番号を入力してください (にとよんツール PokemonIv.ts の formMap 参照): `)
-            );
-            const num = Number(numAns);
-            if (Number.isFinite(num) && num > 0 && Number.isInteger(num)) {
-              formJaToNumber[label] = num;
-              console.log(`[generate-pokemon-master] "${label}" を form=${num} で追加`);
-              break;
-            }
-            console.log("  正の整数を入力してください。");
-          }
-
-          // 英訳も聞く（必須）
-          // eslint-disable-next-line no-constant-condition
-          while (true) {
-            const enAns = normalize(
-              await ask.question(`  "${label}" の英訳を入力してください: `)
-            );
-            if (enAns) {
-              formLabelJaToEn[label] = enAns;
-              formLabelJaToEnChanged = true;
-              console.log(`[generate-pokemon-master] "${label}" → "${enAns}" を英訳リストに追加`);
-              break;
-            }
-            console.log("  入力が必要です。英訳を入力してください。");
-          }
-        }
-        formJaToNumberChanged = true;
-        break;
-      }
-      if (ans === "n" || ans === "no") {
-        // 確認警告
-        const confirm = normalize(
-          await ask.question(`⚠️  本当にスキップしますか？ 例外処理がある場合、後で scripts/form-ja-to-number.json と form-label-ja-to-en.json の手動更新が必要です [y/n]\n> `)
-        ).toLowerCase();
-        if (confirm === "y" || confirm === "yes") {
-          console.log(`[generate-pokemon-master] スキップしました`);
-          break;
-        }
-        // n なら最初の質問に戻る
-        continue;
-      }
-      console.log("入力が必要です。y または n を入力してください。");
-    }
-  } finally {
-    ask.close();
-  }
-}
-
 
 master.sort((a, b) => (a.dexNo - b.dexNo) || (a.form - b.form) || a.nameJa.localeCompare(b.nameJa, "ja"));
 

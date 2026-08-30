@@ -1,0 +1,256 @@
+# イベント睡眠EXPボーナス自動更新ワークフロー
+# Wikiのイベント一覧・各イベントページから期間と倍率を取り出し、差分があればPRを自動作成
+name: Auto Update Event Bonuses
+
+on:
+  schedule:
+    # 毎日 UTC 02:00 (JST 11:00) に実行
+    # イベントの切り替わりは月曜 4:00 JST だが、Wikiの更新は有志なので当日午前に見る
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auto-update-events
+  cancel-in-progress: false
+
+jobs:
+  update-event-bonuses:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '24'
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Get pnpm store path
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate event bonuses
+        id: generate
+        run: |
+          echo "=== イベント睡眠EXPボーナス取得 ==="
+          set +e
+          OUTPUT=$(pnpm run generate:events 2>&1)
+          EXIT_CODE=$?
+          set -e
+          echo "$OUTPUT"
+
+          if [ "$EXIT_CODE" -ne 0 ]; then
+            # パースの破綻（期間の重なり、表構造の変化など）は黙って通さない
+            echo "❌ 生成に失敗しました（exit=$EXIT_CODE）"
+            {
+              echo 'failure_log<<FAILEOF'
+              echo "$OUTPUT" | tail -30
+              echo 'FAILEOF'
+            } >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          # 取得した区間の一覧（PR本文用）
+          {
+            echo 'segments<<SEGEOF'
+            echo "$OUTPUT" | grep -E '^  [0-9]{4}-[0-9]{2}-[0-9]{2}\.\.' || echo '(区間なし)'
+            echo 'SEGEOF'
+          } >> "$GITHUB_OUTPUT"
+
+          # 要確認（人手で events-overrides.json に書くべきもの）
+          if echo "$OUTPUT" | grep -q '要確認'; then
+            {
+              echo 'warnings<<WARNEOF'
+              echo "$OUTPUT" | grep -E '^  ! ' || true
+              echo 'WARNEOF'
+            } >> "$GITHUB_OUTPUT"
+            echo "has_warnings=true" >> "$GITHUB_OUTPUT"
+          else
+            echo 'warnings=' >> "$GITHUB_OUTPUT"
+            echo "has_warnings=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check pending English names
+        id: pending_en
+        run: |
+          OUTPUT=$(pnpm run check:event-names-en 2>&1)
+          echo "$OUTPUT"
+          PENDING=$(echo "$OUTPUT" | sed -n 's/^\[SUMMARY\] pending=//p' | tail -1)
+          if [ "$PENDING" = "0" ]; then
+            echo "has_pending=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_pending=true" >> "$GITHUB_OUTPUT"
+          fi
+          {
+            echo 'result<<PENDINGEOF'
+            echo "$OUTPUT" | grep -E '^\[check-event-names-en\]|^  \? ' || true
+            echo 'PENDINGEOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Generate English event names
+        id: generate_en
+        if: steps.pending_en.outputs.has_pending == 'true'
+        continue-on-error: true
+        run: |
+          set +e
+          OUTPUT=$(pnpm run generate:event-names-en -- --refresh 2>&1)
+          EXIT_CODE=$?
+          set -e
+          echo "$OUTPUT"
+          echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+
+          if echo "$OUTPUT" | grep -q '要確認'; then
+            {
+              echo 'warnings<<ENWARNEOF'
+              echo "$OUTPUT" | grep -E '^  ! ' || true
+              echo 'ENWARNEOF'
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo 'warnings=' >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$EXIT_CODE" -ne 0 ]; then
+            {
+              echo 'failure_log<<ENFAILEOF'
+              echo "$OUTPUT" | tail -30
+              echo 'ENFAILEOF'
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo 'failure_log=' >> "$GITHUB_OUTPUT"
+          fi
+          exit "$EXIT_CODE"
+
+      - name: Check remaining English names
+        id: pending_en_after
+        run: |
+          OUTPUT=$(pnpm run check:event-names-en 2>&1)
+          echo "$OUTPUT"
+          PENDING=$(echo "$OUTPUT" | sed -n 's/^\[SUMMARY\] pending=//p' | tail -1)
+          if [ "$PENDING" = "0" ]; then
+            echo "has_pending=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_pending=true" >> "$GITHUB_OUTPUT"
+          fi
+          {
+            echo 'result<<PENDINGAFTEREOF'
+            echo "$OUTPUT" | grep -E '^\[check-event-names-en\]|^  \? ' || true
+            echo 'PENDINGAFTEREOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check for changes
+        id: diff
+        run: |
+          if git diff --quiet -- src/domain/pokesleep/_generated/sleep-exp-events.ts src/i18n/_generated/event-name-en.ts; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "変更なし"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            {
+              echo 'diff<<DIFFEOF'
+              git diff -- src/domain/pokesleep/_generated/sleep-exp-events.ts src/i18n/_generated/event-name-en.ts | head -80
+              echo 'DIFFEOF'
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run unit tests for the parser
+        if: steps.diff.outputs.has_changes == 'true'
+        run: npx vitest run tests/unit/event-bonus-parser.test.ts tests/unit/event-name-en-parser.test.ts tests/unit/generated-events.test.ts
+
+      - name: Create Pull Request
+        if: steps.diff.outputs.has_changes == 'true'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          token: ${{ secrets.PR_PAT }}
+          commit-message: "feat: イベント睡眠EXPボーナス自動更新"
+          title: "🌙 イベント睡眠EXPボーナス自動更新"
+          body: |
+            ## 自動更新: イベントの睡眠EXPボーナス
+
+            このPRはGitHub Actionsにより自動生成されました。
+            出典: [ポケモンスリープ攻略Wiki / イベント](https://wikiwiki.jp/poke_sleep/%E3%82%A4%E3%83%99%E3%83%B3%E3%83%88)
+
+            ### 取得した区間（ゲーム日・両端を含む）
+            ```
+            ${{ steps.generate.outputs.segments }}
+            ```
+
+            ### 差分
+            ```diff
+            ${{ steps.diff.outputs.diff }}
+            ```
+
+            ### ⚠️ 要確認
+            ```
+            ${{ steps.generate.outputs.warnings }}
+            ```
+
+            ### 英語イベント名
+
+            生成ステップ結果: `${{ steps.generate_en.outcome }}`
+
+            #### 未解決チェック（生成前）
+            ```
+            ${{ steps.pending_en.outputs.result }}
+            ```
+
+            #### 未解決チェック（生成後）
+            ```
+            ${{ steps.pending_en_after.outputs.result }}
+            ```
+
+            #### 英語名生成の要確認
+            ```
+            ${{ steps.generate_en.outputs.warnings }}
+            ```
+
+            #### 英語名生成に失敗した場合のログ末尾
+            ```
+            ${{ steps.generate_en.outputs.failure_log }}
+            ```
+
+            ### マージ前に見るところ
+            - **倍率が非整数（1.25倍など）でもそのまま使えます。** 計算順は確定済みで、外側の倍率として掛けたあと切り捨てます（`.agent/sessions/睡眠EXP実測記録.md` §1 / §2.7）
+            - **グッドスリープデーと期間が重なる日は「大きい方だけ」が適用されます**（ゲーム内明文。掛け算ではありません）。倍率の合成は `sleep-schedule.ts` が `max` で解決するので、このPRでは期間と倍率をそのまま記録すれば足ります
+            - 「要確認」に行がある場合は `scripts/events-overrides.json` に人手で確定値を書いてから再実行してください
+            - グッドスリープデーは月齢から求まるため、ここには入りません（`lunar-calendar.ts` が扱う）
+
+            ---
+            *Generated by [Auto Update Event Bonuses](.github/workflows/auto-update-events.yml)*
+          branch: auto-update/event-bonuses
+          delete-branch: true
+          labels: |
+            automated
+            data-update
+
+      - name: Warn if manual confirmation is needed
+        if: steps.generate.outputs.has_warnings == 'true'
+        run: |
+          echo "::warning::events-overrides.json で確定すべき項目があります"
+          echo "${{ steps.generate.outputs.warnings }}"
+
+      - name: Warn if English event names remain unresolved
+        if: steps.pending_en_after.outputs.has_pending == 'true'
+        run: |
+          echo "::warning::未解決の英語イベント名があります。scripts/events-overrides.json の nameEn に手で書けばリトライは止まります"
+          echo "${{ steps.pending_en_after.outputs.result }}"

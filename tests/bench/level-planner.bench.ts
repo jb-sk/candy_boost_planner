@@ -48,7 +48,7 @@ function highLevelFixture(): LevelPlannerInput {
         nature: 'normal',
         requestedBoostCandy: 350,
         boostAllowed: true,
-        candyTarget: { totalCandyUnits: 350 },
+        candyTarget: { totalCandyUnits: 350, boostedCandyUnits: 350 },
         priorityIndex: 0,
       },
       {
@@ -98,8 +98,8 @@ function highLevelFixture(): LevelPlannerInput {
 
 describe('level planner reference fixtures (not a CI gate)', () => {
   for (const count of [5, 10, 20]) {
-    bench(`${count} Pokémon / uncontended`, () => solveLevelPlan(fixture(count, false)));
-    bench(`${count} Pokémon / contended`, () => solveLevelPlan(fixture(count, true)));
+    bench(`${count} Pokémon / uncontended`, () => { solveLevelPlan(fixture(count, false)); });
+    bench(`${count} Pokémon / contended`, () => { solveLevelPlan(fixture(count, true)); });
   }
-  bench('3 Pokémon / high level reload case', () => solveLevelPlan(highLevelFixture()));
+  bench('3 Pokémon / high level reload case', () => { solveLevelPlan(highLevelFixture()); });
 });

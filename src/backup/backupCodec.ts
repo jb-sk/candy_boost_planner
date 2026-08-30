@@ -1,9 +1,15 @@
-import type { BoxSubSkillSlotV1, IngredientType, PokemonSpecialty } from "../domain/types";
+import { MAX_GROWTH_INCENSE_STOCK, normalizeBlueSeedIncenseDays, normalizeBlueSeedPlantWeekday, normalizeUseProjectedEvents, type BoxSubSkillSlotV1, type IngredientType, type ManualEventBonus, type PokemonSpecialty, type SleepSettings } from "../domain/types";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { maxTargetExpInLevel } from "../domain/level-planner/deriveTarget";
 import { pokemonMaster } from "../domain/pokesleep/pokemon-master";
 import { PokemonTypes } from "../domain/pokesleep/pokemon-types";
-import { migrateLegacyPeakCandyTarget, SLEEP_TARGET_HOURS_OPTIONS, type CalcRowV1, type CalcSaveSlotV1 } from "../persistence/calc";
+import { DEFAULT_SLEEP_SETTINGS, migrateLegacyPeakCandyTarget, SLEEP_TARGET_HOURS_OPTIONS, type CalcRowV1, type CalcSaveSlotV1 } from "../persistence/calc";
+import { compareGameDates, normalizeGameDate, normalizeTimeZone } from "../domain/pokesleep/game-date";
+import {
+  DEFAULT_GROWTH_INCENSE_GSD_DAYS,
+  migrateGrowthIncenseGsdPolicy,
+  normalizeGrowthIncenseGsdDays,
+} from "../domain/pokesleep/growth-incense";
 import {
   migrateCandyInventoryV1,
   normalizeCandyInventoryV2,
@@ -18,6 +24,7 @@ import {
   BACKUP_SCHEMA_VERSION,
   BackupValidationError,
   type BackupBoxEntryV1,
+  type BackupMigrationNotice,
   type BackupWarning,
   type CandyBoostPlannerBackupV3,
   type ValidatedBackup,
@@ -30,7 +37,7 @@ const natures = new Set(["down", "normal", "up"]);
 const boostKinds = new Set(["none", "mini", "full"]);
 const compareModes = new Set(["surplusFirst", "surplusGateFirst", "legacyImproved"]);
 const sleepTargetHoursValues = new Set<number>(SLEEP_TARGET_HOURS_OPTIONS);
-const sleepTargetModes = new Set<"all">(["all"]);
+const sleepTargetModes = new Set<"all" | "stock">(["all", "stock"]);
 const specialties = new Set(["Berries", "Ingredients", "Skills", "All", "unknown"]);
 const ingredientTypes = new Set(["AAA", "AAB", "AAC", "ABA", "ABB", "ABC"]);
 const subSkillLevels = new Set([10, 25, 50, 70, 80]);
@@ -77,6 +84,88 @@ function optionalString(value: unknown, path: string): string | undefined {
 
 function optionalNumber(value: unknown, path: string, min: number, max = Number.MAX_SAFE_INTEGER): number | undefined {
   return value === undefined ? undefined : numberAt(value, path, min, max);
+}
+
+function backupTimeZone(value: unknown, path: string): string {
+  if (value === undefined) return DEFAULT_SLEEP_SETTINGS.timeZone;
+  const normalized = normalizeTimeZone(value);
+  if (!normalized) fail(path, "valid IANA time zone is required");
+  return normalized;
+}
+
+function backupGrowthIncenseGsdDays(
+  value: unknown,
+  legacyPolicy: unknown,
+  path: string,
+): SleepSettings["growthIncenseGsdDays"] {
+  if (value !== undefined) {
+    const normalized = normalizeGrowthIncenseGsdDays(value);
+    if (!normalized) fail(path, "three boolean day flags are required");
+    return normalized;
+  }
+  if (legacyPolicy !== undefined) {
+    const migrated = migrateGrowthIncenseGsdPolicy(legacyPolicy);
+    if (!migrated) fail(path.replace(/growthIncenseGsdDays$/, "growthIncenseGsdPolicy"), "unsupported value");
+    return migrated;
+  }
+  return { ...DEFAULT_GROWTH_INCENSE_GSD_DAYS };
+}
+
+function backupGrowthIncenseNormalPerWeek(value: unknown, path: string): SleepSettings["growthIncenseNormalPerWeek"] {
+  if (value === undefined) return 0;
+  return numberAt(value, path, 0, 7) as SleepSettings["growthIncenseNormalPerWeek"];
+}
+
+/** 手持ちのお香。未設定と `null` はどちらも無制限。 */
+function backupGrowthIncenseStock(value: unknown, path: string): SleepSettings["growthIncenseStock"] {
+  if (value === undefined || value === null) return null;
+  return numberAt(value, path, 0, MAX_GROWTH_INCENSE_STOCK);
+}
+
+function backupUseProjectedEvents(value: unknown, path: string): SleepSettings["useProjectedEvents"] {
+  if (value === undefined) return DEFAULT_SLEEP_SETTINGS.useProjectedEvents;
+  const normalized = normalizeUseProjectedEvents(value);
+  if (normalized === undefined) fail(path, "unsupported value");
+  return normalized;
+}
+
+function backupBlueSeedPlantWeekday(value: unknown, path: string): SleepSettings["blueSeedPlantWeekday"] {
+  if (value === undefined) return DEFAULT_SLEEP_SETTINGS.blueSeedPlantWeekday;
+  const normalized = normalizeBlueSeedPlantWeekday(value);
+  if (normalized === undefined) fail(path, "unsupported value");
+  return normalized;
+}
+
+function backupBlueSeedIncenseDays(value: unknown, path: string): SleepSettings["blueSeedIncenseDays"] {
+  if (value === undefined) return DEFAULT_SLEEP_SETTINGS.blueSeedIncenseDays;
+  const normalized = normalizeBlueSeedIncenseDays(value);
+  if (normalized === undefined) fail(path, "unsupported value");
+  return normalized;
+}
+
+function backupManualEventBonuses(
+  value: unknown,
+  path: string,
+): ManualEventBonus[] {
+  // schemaVersion 3 は manualEventBonuses の公開前から使われていたため、
+  // 現行版番号でも項目が無いバックアップを旧形式として受け入れる。
+  if (value === undefined) return [];
+  const rows = arrayAt(value, path);
+  if (rows.length > 10) fail(path, "maximum is 10");
+  return rows.map((item, index) => {
+    const rowPath = `${path}[${index}]`;
+    const row = objectAt(item, rowPath);
+    const from = normalizeGameDate(row.from);
+    const to = normalizeGameDate(row.to);
+    if (!from) fail(`${rowPath}.from`, "valid game date is required");
+    if (!to) fail(`${rowPath}.to`, "valid game date is required");
+    if (compareGameDates(from, to) > 0) fail(rowPath, "from must not be after to");
+    return {
+      from,
+      to,
+      multiplier: numberAt(row.multiplier, `${rowPath}.multiplier`, Number.MIN_VALUE, 10, false),
+    };
+  });
 }
 
 function validateIso(value: unknown, path: string): string {
@@ -158,11 +247,11 @@ function validateRow(value: unknown, path: string, sourceSchemaVersion: 1 | 2 | 
     : enumAt(row.sleepTargetMode, `${path}.sleepTargetMode`, sleepTargetModes);
   // 旧 mode:"peak" 行は candyTarget へ移行する（設計書§6.1）。
   // mode / candyPeak / boostRatioPct は V3 で廃止したため、あっても読み捨てる。
-  const candyTarget = sleepTargetMode === "all"
+  const candyTarget = sleepTargetMode !== undefined
     ? undefined
     : optionalNumber(row.candyTarget, `${path}.candyTarget`, 0) ?? migrateLegacyPeakCandyTarget(row);
   // 不変条件（設計書§4.3 / §10改訂A）。バックアップは正規化せず、違反を拒否する。
-  const dstExpInLevel = sleepTargetMode === "all" || row.dstExpInLevel === undefined
+  const dstExpInLevel = sleepTargetMode !== undefined || row.dstExpInLevel === undefined
     ? undefined
     : numberAt(row.dstExpInLevel, `${path}.dstExpInLevel`, 0, maxTargetExpInLevel(dstLevel, expType));
   // V2 以前は導出値と手入力値を保存値から区別できない（旧仕様では自動最大化が既定で、
@@ -195,7 +284,7 @@ function validateRow(value: unknown, path: string, sourceSchemaVersion: 1 | 2 | 
     boostOrExpAdjustment,
     candyTarget,
     sleepHours: optionalNumber(row.sleepHours, `${path}.sleepHours`, 0),
-    sleepTargetHours: sleepTargetMode === "all" || row.sleepTargetHours === undefined
+    sleepTargetHours: sleepTargetMode !== undefined || row.sleepTargetHours === undefined
       ? undefined
       : enumAt(row.sleepTargetHours, `${path}.sleepTargetHours`, sleepTargetHoursValues),
     sleepTargetMode,
@@ -325,6 +414,20 @@ export function parseBackup(text: string): ValidatedBackup {
   const rawSlots = arrayAt(calculator.slots, "$.data.calculator.slots");
   if (rawSlots.length !== 3) fail("$.data.calculator.slots", "exactly 3 slots are required");
   const slots = rawSlots.map((slot, index) => validateSlot(slot, `$.data.calculator.slots[${index}]`, sourceSchemaVersion)) as [CalcSaveSlotV1 | null, CalcSaveSlotV1 | null, CalcSaveSlotV1 | null];
+  let legacyBoostValueCount = 0;
+  if (sourceSchemaVersion < 3) {
+    rawSlots.forEach((slot, slotIndex) => {
+      if (slot === null) return;
+      const rawSlot = objectAt(slot, `$.data.calculator.slots[${slotIndex}]`);
+      const rawRows = arrayAt(rawSlot.rows, `$.data.calculator.slots[${slotIndex}].rows`);
+      rawRows.forEach((row, rowIndex) => {
+        const rawRow = objectAt(row, `$.data.calculator.slots[${slotIndex}].rows[${rowIndex}]`);
+        if (typeof rawRow.boostOrExpAdjustment === "number" && rawRow.boostOrExpAdjustment > 0) {
+          legacyBoostValueCount++;
+        }
+      });
+    });
+  }
   const slotIds = new Set<string>();
   slots.forEach((slot, index) => {
     if (!slot?.slotId) return;
@@ -344,6 +447,30 @@ export function parseBackup(text: string): ValidatedBackup {
           dailySleepHours: numberAt(sleep.dailySleepHours, "$.data.globalSettings.sleepSettings.dailySleepHours", 1, 13, false),
           sleepExpBonusCount: numberAt(sleep.sleepExpBonusCount, "$.data.globalSettings.sleepSettings.sleepExpBonusCount", 0, 5),
           includeGSD: booleanAt(sleep.includeGSD, "$.data.globalSettings.sleepSettings.includeGSD"),
+          timeZone: backupTimeZone(sleep.timeZone, "$.data.globalSettings.sleepSettings.timeZone"),
+          growthIncenseGsdDays: backupGrowthIncenseGsdDays(
+            sleep.growthIncenseGsdDays,
+            sleep.growthIncenseGsdPolicy,
+            "$.data.globalSettings.sleepSettings.growthIncenseGsdDays",
+          ),
+          growthIncenseNormalPerWeek: backupGrowthIncenseNormalPerWeek(sleep.growthIncenseNormalPerWeek, "$.data.globalSettings.sleepSettings.growthIncenseNormalPerWeek"),
+          growthIncenseStock: backupGrowthIncenseStock(sleep.growthIncenseStock, "$.data.globalSettings.sleepSettings.growthIncenseStock"),
+          manualEventBonuses: backupManualEventBonuses(
+            sleep.manualEventBonuses,
+            "$.data.globalSettings.sleepSettings.manualEventBonuses",
+          ),
+          useProjectedEvents: backupUseProjectedEvents(
+            sleep.useProjectedEvents,
+            "$.data.globalSettings.sleepSettings.useProjectedEvents",
+          ),
+          blueSeedPlantWeekday: backupBlueSeedPlantWeekday(
+            sleep.blueSeedPlantWeekday,
+            "$.data.globalSettings.sleepSettings.blueSeedPlantWeekday",
+          ),
+          blueSeedIncenseDays: backupBlueSeedIncenseDays(
+            sleep.blueSeedIncenseDays,
+            "$.data.globalSettings.sleepSettings.blueSeedIncenseDays",
+          ),
         },
         candyInventory: validateCandy(
           globals.candyInventory,
@@ -370,7 +497,10 @@ export function parseBackup(text: string): ValidatedBackup {
   Object.keys(backup.data.globalSettings.candyInventory.species).forEach((id) => {
     if (!knownPokedexIds.has(Number(id))) warnings.push({ path: `$.data.globalSettings.candyInventory.species.${id}`, code: "unknown-pokedex-id" });
   });
-  return { backup, warnings };
+  const migrationNotices: BackupMigrationNotice[] = legacyBoostValueCount > 0
+    ? [{ code: "legacy-boost-values-rederived", affectedRowCount: legacyBoostValueCount }]
+    : [];
+  return { backup, warnings, migrationNotices };
 }
 
 export function stringifyBackup(backup: CandyBoostPlannerBackupV3): string {

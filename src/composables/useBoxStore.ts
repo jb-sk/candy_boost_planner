@@ -23,10 +23,10 @@ import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { normalizeSleepHoursInput } from "../domain/box/sleep-milestones";
 type FilterJoinMode = "and" | "or";
 
-export type BoxUndoAction =
-  | { kind: "delete"; entry: PokemonBoxEntryV1; index: number; selectedId: string | null }
-  | { kind: "add" | "import"; addedIds: string[]; selectedId: string | null }
-  | { kind: "clear"; entries: PokemonBoxEntryV1[]; selectedId: string | null };
+type BoxSnapshot = {
+  entries: PokemonBoxEntryV1[];
+  selectedId: string | null;
+};
 
 export type BoxStore = ReturnType<typeof useBoxStore>;
 
@@ -792,13 +792,20 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
 
   // Undo / Redo / persistence
   const UNDO_LIMIT = 3;
-  const boxUndoStack = ref<BoxUndoAction[]>([]);
-  const boxRedoStack = ref<BoxUndoAction[]>([]);
+  const boxUndoStack = ref<BoxSnapshot[]>([]);
+  const boxRedoStack = ref<BoxSnapshot[]>([]);
   const canUndo = computed(() => boxUndoStack.value.length > 0);
   const canRedo = computed(() => boxRedoStack.value.length > 0);
 
-  function pushUndoAction(action: BoxUndoAction) {
-    boxUndoStack.value = [...boxUndoStack.value, action].slice(-UNDO_LIMIT);
+  function captureBoxSnapshot(): BoxSnapshot {
+    return {
+      entries: cloneBoxEntries(boxEntries.value),
+      selectedId: selectedBoxId.value,
+    };
+  }
+
+  function pushUndoSnapshot() {
+    boxUndoStack.value = [...boxUndoStack.value, captureBoxSnapshot()].slice(-UNDO_LIMIT);
     boxRedoStack.value = [];  // 新しい操作があるとredoスタックをクリア
   }
 
@@ -810,48 +817,16 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     return es.map(cloneBoxEntry);
   }
 
-  // 現在の状態からundoアクションの逆操作を作成
-  function createReverseAction(a: BoxUndoAction): BoxUndoAction {
-    if (a.kind === "delete") {
-      // delete をundoすると add になる
-      return { kind: "add", addedIds: [a.entry.id], selectedId: selectedBoxId.value };
-    } else if (a.kind === "add" || a.kind === "import") {
-      // add/import をundoすると delete（複数削除）になる
-      // 簡易的にclearで代用（正確ではないが機能的には問題ない）
-      const entriesToRestore = boxEntries.value.filter(x => a.addedIds.includes(x.id));
-      if (entriesToRestore.length === 1) {
-        const entry = entriesToRestore[0];
-        const idx = boxEntries.value.findIndex(x => x.id === entry.id);
-        return { kind: "delete", entry: cloneBoxEntry(entry), index: idx, selectedId: selectedBoxId.value };
-      }
-      return { kind: "import", addedIds: a.addedIds, selectedId: selectedBoxId.value };
-    } else if (a.kind === "clear") {
-      // clear をundoすると... 空に戻す
-      return { kind: "clear", entries: [], selectedId: selectedBoxId.value };
-    }
-    return a;
+  function applyBoxSnapshot(snapshot: BoxSnapshot) {
+    boxEntries.value = cloneBoxEntries(snapshot.entries);
+    selectedBoxId.value = snapshot.selectedId;
   }
 
   function onUndo() {
-    const a = boxUndoStack.value.pop();
-    if (!a) return;
-    // 逆操作をredoスタックにプッシュ
-    boxRedoStack.value = [...boxRedoStack.value, createReverseAction(a)].slice(-UNDO_LIMIT);
-
-    if (a.kind === "delete") {
-      const next = [...boxEntries.value];
-      const idx = Math.max(0, Math.min(next.length, a.index));
-      next.splice(idx, 0, a.entry);
-      boxEntries.value = next.slice(0, 300);
-      selectedBoxId.value = a.selectedId;
-    } else if (a.kind === "add" || a.kind === "import") {
-      const set = new Set(a.addedIds);
-      boxEntries.value = boxEntries.value.filter((x) => !set.has(x.id));
-      selectedBoxId.value = a.selectedId;
-    } else if (a.kind === "clear") {
-      boxEntries.value = a.entries;
-      selectedBoxId.value = a.selectedId;
-    }
+    const snapshot = boxUndoStack.value.pop();
+    if (!snapshot) return;
+    boxRedoStack.value = [...boxRedoStack.value, captureBoxSnapshot()].slice(-UNDO_LIMIT);
+    applyBoxSnapshot(snapshot);
     importStatus.value = t("status.undo");
     nextTick(() => {
       syncBoxEditSubInputsFromSelected();
@@ -859,25 +834,10 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
   }
 
   function onRedo() {
-    const a = boxRedoStack.value.pop();
-    if (!a) return;
-    // 逆操作をundoスタックにプッシュ（redoStackはクリアしない）
-    boxUndoStack.value = [...boxUndoStack.value, createReverseAction(a)].slice(-UNDO_LIMIT);
-
-    if (a.kind === "delete") {
-      const next = [...boxEntries.value];
-      const idx = Math.max(0, Math.min(next.length, a.index));
-      next.splice(idx, 0, a.entry);
-      boxEntries.value = next.slice(0, 300);
-      selectedBoxId.value = a.selectedId;
-    } else if (a.kind === "add" || a.kind === "import") {
-      const set = new Set(a.addedIds);
-      boxEntries.value = boxEntries.value.filter((x) => !set.has(x.id));
-      selectedBoxId.value = a.selectedId;
-    } else if (a.kind === "clear") {
-      boxEntries.value = a.entries;
-      selectedBoxId.value = a.selectedId;
-    }
+    const snapshot = boxRedoStack.value.pop();
+    if (!snapshot) return;
+    boxUndoStack.value = [...boxUndoStack.value, captureBoxSnapshot()].slice(-UNDO_LIMIT);
+    applyBoxSnapshot(snapshot);
     importStatus.value = t("status.redo");
     nextTick(() => {
       syncBoxEditSubInputsFromSelected();
@@ -1209,7 +1169,6 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
       importStatus.value = t("status.nameEmpty");
       return;
     }
-    const undoSelectedId = selectedBoxId.value;
     const pokedexId = found?.pokedexId ?? 0;
     const form = found?.form ?? 0;
     const speciesName = found ? getPokemonNameLocalized(pokedexId, form, locale.value) : null;
@@ -1251,8 +1210,8 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
       createdAt: now,
       updatedAt: now,
     };
+    pushUndoSnapshot();
     boxEntries.value = [entry, ...boxEntries.value].slice(0, 300);
-    pushUndoAction({ kind: "add", addedIds: [entry.id], selectedId: undoSelectedId });
     selectedBoxId.value = entry.id;
 
     // opts0.mode は呼び出し側が処理（計算機反映など）
@@ -1288,8 +1247,6 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
       importStatus.value = t("status.inputEmpty");
       return 0;
     }
-    const undoSelectedId = selectedBoxId.value;
-
     const existing = new Set(boxEntries.value.map((e) => e.rawText));
     let added = 0;
     let skipped = 0;
@@ -1336,8 +1293,8 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
       if (next.length >= 300) break;
     }
 
+    if (addedIds.length) pushUndoSnapshot();
     boxEntries.value = next;
-    if (addedIds.length) pushUndoAction({ kind: "import", addedIds, selectedId: undoSelectedId });
     importStatus.value = t("status.importResult", { added, skipped });
     return added;
   }
@@ -1345,18 +1302,16 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
   function onDeleteSelected() {
     const e = selectedBox.value;
     if (!e) return;
-    const idx = boxEntries.value.findIndex((x) => x.id === e.id);
-    pushUndoAction({ kind: "delete", entry: cloneBoxEntry(e), index: Math.max(0, idx), selectedId: selectedBoxId.value });
+    pushUndoSnapshot();
     boxEntries.value = boxEntries.value.filter((x) => x.id !== e.id);
     selectedBoxId.value = null;
     importStatus.value = t("status.deleted");
   }
 
+  /** 確認は呼び出し側（押した場所に出すインライン確認）の担当。ここでは確認しない。 */
   function onClearBox() {
     if (!boxEntries.value.length) return;
-    const ok = confirm(t("confirm.clearBox", { n: boxEntries.value.length }));
-    if (!ok) return;
-    pushUndoAction({ kind: "clear", entries: cloneBoxEntries(boxEntries.value), selectedId: selectedBoxId.value });
+    pushUndoSnapshot();
     boxEntries.value = [];
     selectedBoxId.value = null;
     boxFilter.value = "";

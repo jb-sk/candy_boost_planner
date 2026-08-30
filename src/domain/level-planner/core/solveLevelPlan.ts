@@ -318,6 +318,8 @@ function analyzeContention(input: Pick<NormalizedInput, 'pokemonList' | 'boost' 
     upper.shards += mixed.shards;
     const key = speciesKey(pokemon);
     upper.species[key] = (upper.species[key] ?? 0) + Math.min(input.candyInventory.species[key] ?? 0, total);
+    // 種族アメだけで賄う行はタイプアメ・万能アメを取り合わない。
+    if (pokemon.itemsAllowed === false) continue;
     const typeStock = input.candyInventory.typeCandy[pokemon.type] ?? { s: 0, m: 0 };
     addType(upper.type, pokemon.type, Math.min(typeStock.s, Math.ceil(total / CANDY_VALUES.type.s)), Math.min(typeStock.m, Math.ceil(total / CANDY_VALUES.type.m)));
     upper.universal.s += Math.min(input.candyInventory.universal.s, Math.ceil(total / CANDY_VALUES.universal.s));
@@ -406,6 +408,7 @@ function supplyCacheKey(total: number, pokemon: NormalizedPokemon, input: Normal
     species,
     type: pokemon.type,
     preferZeroSurplus: Boolean(pokemon.preferZeroSurplus),
+    itemsAllowed: pokemon.itemsAllowed !== false,
     inventory: {
       species: Math.min(input.candyInventory.species[species] ?? 0, total),
       type: {
@@ -621,6 +624,9 @@ function enumerateCandySupplyCandidates(total: number, pokemon: NormalizedPokemo
   const keySpecies = speciesKey(pokemon);
   const speciesStock = input.candyInventory.species[keySpecies] ?? 0;
   const speciesMax = Math.min(speciesStock, total);
+  // 種族アメだけで賄う行（睡眠目標「アメ在庫＋睡眠」）。候補は在庫から取れる種族アメ1通りに決まる。
+  // 需要へ届かないぶんはアイテムで埋めず、睡眠が担当する。
+  if (pokemon.itemsAllowed === false) return [{ ...emptySupply(), species: speciesMax }];
   const hasSharedSpecies = Boolean(input.contention.species[keySpecies]);
   if (!hasSharedSpecies && speciesMax >= total) {
     const resolved = [{ ...emptySupply(), species: total }];
@@ -678,6 +684,7 @@ function resolveDisplayCandySupply(total: number, pokemon: NormalizedPokemon, in
   if (total === 0) return emptySupply();
   const type = inventory.typeCandy[pokemon.type] ?? { s: 0, m: 0 };
   const species = Math.min(inventory.species[speciesKey(pokemon)] ?? 0, total);
+  if (pokemon.itemsAllowed === false) return { ...emptySupply(), species };
   const remaining = total - species;
   const allocation = findBestItemAllocation(remaining, type, inventory.universal, preferMinSurplus);
   const missing = Math.max(0, remaining - allocation.supplied);
@@ -704,10 +711,13 @@ function addTheoreticalSupplyFill(supply: CandySupplyBreakdown, total: number, p
   const speciesLeft = Math.max(0, (inventory.species[speciesKey(pokemon)] ?? 0) - supply.species);
   const speciesFill = Math.min(speciesLeft, shortfall);
   const missing = shortfall - speciesFill;
+  // 種族アメだけで賄う行は理論値行でも万能Sで埋めない。埋めると「必要アイテム」へ
+  // 使わないと宣言したアメが並ぶ。
+  const universalFill = pokemon.itemsAllowed === false ? 0 : Math.ceil(missing / CANDY_VALUES.universal.s);
   return {
     species: supply.species + speciesFill,
     type: { ...supply.type },
-    universal: { ...supply.universal, s: supply.universal.s + Math.ceil(missing / CANDY_VALUES.universal.s) },
+    universal: { ...supply.universal, s: supply.universal.s + universalFill },
   };
 }
 
@@ -732,6 +742,9 @@ function mergeUsage(a: Usage, b: Usage): Usage {
 }
 function remainingCandyValue(input: NormalizedInput, usage: Usage, pokemon: NormalizedPokemon): number {
   const species = Math.max(0, (input.candyInventory.species[speciesKey(pokemon)] ?? 0) - (usage.species[speciesKey(pokemon)] ?? 0));
+  // 種族アメだけで賄う行は、残りアイテムをどれだけ持っていても在庫上限は種族アメだけ。
+  // 混ぜると律速診断が「在庫は足りている」と出て、睡眠が担当する未達の理由を隠す。
+  if (pokemon.itemsAllowed === false) return species;
   const type = input.candyInventory.typeCandy[pokemon.type] ?? { s: 0, m: 0 };
   const usedType = usage.type[pokemon.type] ?? { s: 0, m: 0 };
   return species + Math.max(0, type.s - usedType.s) * CANDY_VALUES.type.s + Math.max(0, type.m - usedType.m) * CANDY_VALUES.type.m
@@ -786,6 +799,7 @@ function staticBoostValues(pokemon: NormalizedPokemon, input: NormalizedInput): 
   return [maxBoostFor(pokemon, input.boost.kind, input.boost.limit)];
 }
 function availableInventoryValue(input: NormalizedInput, pokemon: NormalizedPokemon): number {
+  if (pokemon.itemsAllowed === false) return input.candyInventory.species[speciesKey(pokemon)] ?? 0;
   const type = input.candyInventory.typeCandy[pokemon.type] ?? { s: 0, m: 0 };
   return (input.candyInventory.species[speciesKey(pokemon)] ?? 0)
     + type.s * CANDY_VALUES.type.s + type.m * CANDY_VALUES.type.m
@@ -1179,6 +1193,7 @@ function targetDemandRowForPokemon(
       expInLevel: reached.expInLevel,
       candyDemandMet,
       preferZeroSurplus: feasibilityPreferZeroSurplus(pokemon, input, reached.level, reached.expInLevel),
+      itemsAllowed: pokemon.itemsAllowed,
     };
   }
   const boost = maxBoostFor(pokemon, input.boost.kind, remainingBoost);
@@ -1198,6 +1213,7 @@ function targetDemandRowForPokemon(
     expInLevel: reached.expInLevel,
     candyDemandMet,
     preferZeroSurplus: feasibilityPreferZeroSurplus(pokemon, input, reached.level, reached.expInLevel),
+    itemsAllowed: pokemon.itemsAllowed,
   };
 }
 
@@ -1227,6 +1243,7 @@ function demandRowForCandyBudget(
       expInLevel: reached.expInLevel,
       candyDemandMet,
       preferZeroSurplus: feasibilityPreferZeroSurplus(pokemon, input, reached.level, reached.expInLevel),
+      itemsAllowed: pokemon.itemsAllowed,
     };
   }
   const boost = Math.min(maxBoostFor(pokemon, input.boost.kind, remainingBoost), total);
@@ -1244,6 +1261,7 @@ function demandRowForCandyBudget(
     expInLevel: reached.expInLevel,
     candyDemandMet: cmpLevel(reached, { level: pokemon.effectiveLevel, expInLevel: pokemon.effectiveExp }) >= 0,
     preferZeroSurplus: feasibilityPreferZeroSurplus(pokemon, input, reached.level, reached.expInLevel),
+    itemsAllowed: pokemon.itemsAllowed,
   };
 }
 
@@ -1620,6 +1638,14 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
       upperScanProbes: number;
       limits: SurplusLimits;
     };
+    const relaxationRejectsPrefix = (length: number): boolean => {
+      if (length <= 0 || length > targetRows.length) return false;
+      return fixedRowsFailFeasibilityRelaxation(
+        targetRows.slice(0, length),
+        input.candyInventory,
+        mainOptions(),
+      );
+    };
     const findPrefix = (
       rawLimits: SurplusLimits = {},
       restoreWitness = true,
@@ -1632,7 +1658,18 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
         ...(limits.maxReachedSurplus === undefined ? {} : { maxReachedSurplus: limits.maxReachedSurplus }),
       });
       let low = 0;
-      let high = targetRows.length;
+      // The relaxation is a necessary condition only: rejection proves that
+      // exact feasibility is impossible, while acceptance says nothing. Check
+      // each trailing prefix explicitly, then probe the largest remaining
+      // candidate first. When that candidate is exact-feasible it is already
+      // the global maximum, so an expensive intermediate full frontier is not
+      // needed. If it is not feasible, the existing lower-prefix search and
+      // non-monotonic surplus-gate scan continue unchanged below this ceiling.
+      let relaxationCeiling = targetRows.length;
+      while (relaxationCeiling > 0 && relaxationRejectsPrefix(relaxationCeiling)) {
+        relaxationCeiling--;
+      }
+      let high = relaxationCeiling;
       let solved = 0;
       let rejected = 0;
       let inconclusive = 0;
@@ -1640,6 +1677,19 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
       const prefixDecisionSession = createPrefixDecisionSession(targetRows, input.candyInventory, prefixOptions());
       let bestPrefixDecision: ReturnType<typeof solveFeasibilityDecisionForFixedRows> | null = null;
       let bestPrefixDecisionLength = 0;
+      if (high > 0) {
+        const result = prefixDecisionSession.canSolvePrefix(high);
+        if (result.status === 'feasible') {
+          solved++;
+          bestPrefixDecision = result;
+          bestPrefixDecisionLength = high;
+          low = high;
+        } else {
+          if (result.status === 'inconclusive') inconclusive++;
+          else rejected++;
+          high--;
+        }
+      }
       while (low < high) {
         const mid = Math.ceil((low + high) / 2);
         const result = prefixDecisionSession.canSolvePrefix(mid);
@@ -1668,8 +1718,8 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
       const hasSurplusGate = limits.maxRowSurplus !== undefined
         || limits.maxTotalSurplus !== undefined
         || limits.maxReachedSurplus !== undefined;
-      if (hasSurplusGate && inconclusive === 0 && low < targetRows.length) {
-        for (let length = targetRows.length; length > low; length--) {
+      if (hasSurplusGate && inconclusive === 0 && low < relaxationCeiling) {
+        for (let length = relaxationCeiling; length > low; length--) {
           const result = prefixDecisionSession.canSolvePrefix(length);
           upperScanProbes++;
           if (result.status === 'feasible') {
@@ -1699,15 +1749,6 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
     const findSurplusFirstPrefix = (): PrefixSearchResult => findPrefix({
       maxRowSurplus: MAX_ACCEPTABLE_SURPLUS,
     });
-
-    const relaxationRejectsPrefix = (length: number): boolean => {
-      if (length <= 0 || length > targetRows.length) return false;
-      return fixedRowsFailFeasibilityRelaxation(
-        targetRows.slice(0, length),
-        input.candyInventory,
-        mainOptions(),
-      );
-    };
     let prefix: PrefixSearchResult;
     if (input.options.itemCompareMode === 'surplusFirst' && attemptMaxRowSurplus !== undefined) {
       prefix = findSurplusFirstPrefix();

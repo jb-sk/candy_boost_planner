@@ -60,6 +60,9 @@ export class BoxPanelPage {
   readonly undoButton: Locator;
   readonly redoButton: Locator;
   readonly clearAllBoxButton: Locator;
+  readonly clearConfirm: Locator;
+  readonly clearConfirmYesButton: Locator;
+  readonly clearConfirmNoButton: Locator;
 
   // === BOX詳細パネル ===
   readonly detailPanel: Locator;
@@ -151,6 +154,9 @@ export class BoxPanelPage {
     this.undoButton = page.getByTestId('box-undo');
     this.redoButton = page.getByTestId('box-redo');
     this.clearAllBoxButton = page.getByTestId('box-clear-all');
+    this.clearConfirm = page.getByTestId('box-clear-confirm');
+    this.clearConfirmYesButton = page.getByTestId('box-clear-confirm-yes');
+    this.clearConfirmNoButton = page.getByTestId('box-clear-confirm-no');
 
     // BOX詳細パネル
     this.detailPanel = page.getByTestId('box-detail-panel');
@@ -257,7 +263,8 @@ export class BoxPanelPage {
   // === インポートパネル操作 ===
 
   async openImportPanel() {
-    if (!(await this.importPanel.getAttribute('open'))) {
+    // `open` は属性があると空文字を返す。真偽で見ると「開いている」を閉じてしまう。
+    if ((await this.importPanel.getAttribute('open')) === null) {
       await this.importSummary.click();
     }
     await expect(this.importPanel).toHaveAttribute('open', '');
@@ -399,8 +406,10 @@ export class BoxPanelPage {
     await this.deleteFromBoxButton.click();
   }
 
+  /** 全消去はその場のインライン確認を挟む（`window.confirm` は使っていない）。 */
   async clickClearAllBox() {
     await this.clearAllBoxButton.click();
+    await this.clearConfirmYesButton.click();
   }
 
   async clickUndo() {

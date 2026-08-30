@@ -75,9 +75,7 @@ function buildStoredRow(row: FixtureRow): CalcRowV1 {
     expType: row.expType,
     nature: row.nature,
     boostReachLevel: row.targetLevel,
-    boostRatioPct: 100,
     boostOrExpAdjustment: row.requestedBoostCandy,
-    mode: 'targetLevel',
   };
 }
 

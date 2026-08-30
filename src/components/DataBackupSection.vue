@@ -63,6 +63,18 @@
         <div><dt>{{ t("backup.targets") }}</dt><dd>{{ t("backup.targetList") }}</dd></div>
       </dl>
       <p class="dataBackup__replaceWarning">{{ t("backup.replaceWarning") }}</p>
+      <div
+        v-if="preview.migrationNotices.length"
+        class="dataBackup__migrationNotices"
+        data-testid="data-backup-migration-notices"
+      >
+        <strong>{{ t("backup.migrationNoticeTitle") }}</strong>
+        <ul>
+          <li v-for="notice in preview.migrationNotices" :key="notice.code">
+            {{ t(`backup.migrationNotice.${notice.code}`, { count: notice.affectedRowCount }) }}
+          </li>
+        </ul>
+      </div>
       <div v-if="preview.warnings.length" class="dataBackup__warnings" data-testid="data-backup-warnings">
         {{ t("backup.warningCount", { count: preview.warnings.length }) }}
         <ul><li v-for="warning in preview.warnings" :key="warning.path + warning.code">{{ warning.path }}: {{ t(`backup.warning.${warning.code}`) }}</li></ul>
@@ -71,10 +83,10 @@
         <button class="btn btn--ghost" type="button" data-testid="data-backup-export-current" :disabled="busy" @click="onDownload">
           {{ t("backup.exportCurrent") }}
         </button>
-        <button class="btn btn--ghost" type="button" data-testid="data-backup-cancel" :disabled="busy" @click="onCancelPreview">
+        <button class="btn btn--neutral" type="button" data-testid="data-backup-cancel" :disabled="busy" @click="onCancelPreview">
           {{ t("backup.cancel") }}
         </button>
-        <button class="btn btn--primary" type="button" data-testid="data-backup-restore" :disabled="busy" @click="onRestore">
+        <button class="btn btn--danger" type="button" data-testid="data-backup-restore" :disabled="busy" @click="onRestore">
           {{ t("backup.restore") }}
         </button>
       </div>

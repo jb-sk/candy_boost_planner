@@ -261,6 +261,30 @@
   gap: 4px;
 }
 
+/* ?perf=1 のデバッグ用「現在日時」。隠した入力欄を重ねるためのアンカー。 */
+.calcActions__debugNow {
+  position: relative;
+}
+
+/* 入力欄そのものは見せない。ボタン全面を覆い、タップの受け口とピッカーの表示位置を兼ねる。 */
+.calcActions__debugNowInput {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* 上書き中はボタンが「解除」になるので、タップはボタンへ通す。 */
+.calcActions__debugNowInput--inert {
+  pointer-events: none;
+}
+
 .calcActions__status {
   font-size: 12px;
   font-weight: 700;
@@ -622,7 +646,6 @@ button.calcRow__dragHandle:active {
 }
 
 @media (min-width: 680px) {
-
   .calcRow__grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
@@ -640,8 +663,9 @@ button.calcRow__dragHandle:active {
   }
 }
 
-/* Compact inputs inside calc rows */
-/* Compact padding for calc row inputs (height & font-size inherited from core .field__input) */
+/* ===== 計算機の入力欄 ===== */
+
+/* 内側の余白。Lvピッカーは右にシェブロンが乗るので左だけ詰める。 */
 .calcRow .field--sm .field__input:not(.levelPick__input),
 .calcRow .field--sm select.field__input {
   padding: 0 10px;
@@ -652,7 +676,46 @@ button.calcRow__dragHandle:active {
   padding-left: 10px;
 }
 
+/*
+ * **欄の縦の骨格 ── ラベル 18px → 間隔 2px → 入力欄 34px。全欄で共有する。**
+ *
+ * 1つでも成り行きに任せた寸法があると、そこだけ隣の欄とずれる。実機で3回踏んだ:
+ *
+ * | 症状 | 原因 |
+ * |---|---|
+ * | iOS 15: 睡眠目標だけ下がる | select の高さが内容任せ（`height` だけでは効かない） |
+ * | iOS 15: まだ 1px 下がる | 累計リンクの既定 `line-height` が 19px（`?` は 18px） |
+ * | iPhone 15: Lvピッカーだけ高い | 高さ指定がパディング用の `:not(.levelPick__input)` に乗っていた |
+ *
+ * だから、
+ * - **高さはセレクタを分けない。** パディングは Lvピッカーだけ違うが、高さは共通
+ * - **`min/max-height` を添える。** フォームコントロールは既定の最小高さや内容が
+ *   `height` より優先されることがある
+ * - **ラベルは素の欄にも底上げを効かせる。** 添え物（`?` 18px / 累計リンク）を持つ欄だけ
+ *   高くなると入力欄が押し下げられる。素の文字は 12px × 1.4 = 16.8px しかない
+ * - **`align-self: start`。** 行が入力欄より高いとき、余りを上下へ配るブラウザがある
+ *
+ * 18px は `.hintIcon`（`?`）の高さ。`.field__labelLink` もここへ合わせる。
+ * 間隔が 2px なのはラベルを底上げしたぶんの調整（素の文字＋3px と同じ見え方になる）。
+ */
+.calcRow .field--sm {
+  gap: 2px;
+}
+
+.calcRow .field--sm .field__label,
+.calcRow .field--sm .field__labelRow {
+  min-height: 18px;
+}
+
+.calcRow .field--sm .field__input {
+  height: 34px;
+  min-height: 34px;
+  max-height: 34px;
+  align-self: start;
+}
+
 /* ===== Field Utilities (CalcPanel specific) ===== */
+/* ラベルと添え物の行。 */
 .field__labelRow {
   display: flex;
   align-items: center;
@@ -662,10 +725,18 @@ button.calcRow__dragHandle:active {
 
 /* ラベルに添える累計睡眠時間リンク（クリックで編集ポップオーバー）。
    目標Lv横の「（あとEXP N）」と同じ見え方に揃える。
-   .field__label の兄弟要素なので font は継承できず、同じ値を明示する。 */
+   .field__label の兄弟要素なので font は継承できず、同じ値を明示する。
+
+   **高さと行送りを明示する**（ラベル行の 18px に合わせる。上の「欄の縦の骨格」を参照）。
+   ボタンの既定 `line-height: normal` はブラウザで値が違い、iOS 15 Safari では
+   このリンクだけ 19px になってラベル行を押し広げていた。 */
 .field__labelLink {
   -webkit-appearance: none;
   appearance: none;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  line-height: 1.4;
   font-family: inherit;
   font-size: 12px;
   font-weight: normal;
@@ -761,45 +832,25 @@ button.calcRow__dragHandle:active {
   margin-top: 8px;
 }
 
+/* 背景の濃さは `--calc-result-tint` だけで決める（背景の宣言は基底の1箇所）。
+   0.16 目標まで行 … 2行のときの主役。常時展開前の `.is-expanded` と同じ濃さ
+   0.10 到達可能行が単独 … 1行に畳まれた＝この行が結果そのもの。常時展開前の通常時と同じ
+   0.06 到達可能行が2行目 … 目標まで行との対比で控えめに */
 .calcRow__resultRow {
+  --calc-result-tint: 0.06;
   display: block;
   line-height: 1.6;
   padding: 8px 10px;
   border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: background-color 0.15s ease;
+  background: rgba(var(--accent-rgb), var(--calc-result-tint));
 }
 
 .calcRow__resultRow--required {
-  background: rgba(var(--accent-rgb), 0.1);
+  --calc-result-tint: 0.16;
 }
 
-.calcRow__resultRow--required:hover {
-  background: rgba(var(--accent-rgb), 0.16);
-}
-
-.calcRow__resultRow--required.is-expanded {
-  background: rgba(var(--accent-rgb), 0.16);
-}
-
-.calcRow__resultRow--used {
-  background: rgba(var(--accent-rgb), 0.06);
-  cursor: default;
-}
-
-.calcRow__expandIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-  width: 16px;
-  height: 16px;
-  border-radius: 3px;
-  background: rgba(var(--accent-rgb), 0.15);
-  color: var(--accent);
-  border: 1px solid rgba(var(--accent-rgb), 0.25);
-  vertical-align: middle;
-  margin-right: 4px;
+.calcRow__resultRow--used:only-child {
+  --calc-result-tint: 0.1;
 }
 
 .calcRow__resultLabel {
@@ -870,6 +921,412 @@ button.calcRow__dragHandle:active {
   margin-left: 6px;
 }
 
+/*
+ * 睡眠チーム（1晩5匹）からあふれた行の注意マーク。結果行の最後尾に置くボタンで、
+ * 押すとヒントが開く（説明は title に入れない。スマホでは読めない）。
+ *
+ * **枠や面で囲わない。** 結果行はチップが横に並ぶ密度の高い場所で、囲うと1つだけ
+ * 重い箱が浮いて見える。色は絵文字（⚠️＝U+FE0F 付き）任せ。テーマの黄色に寄せると
+ * 明るいテーマで背景へ沈むため、`color` は単色表示になる環境向けの保険だけ。
+ */
+.calcRow__sleepTeamWarn {
+  display: inline-block;
+  /* button の既定を落とす（.linkBtn と同じ並び）。box-shadow を書かないと、
+     Blue テーマの `:where(button, .btn)` が付ける影でアイコンの後ろに箱が出る。 */
+  -webkit-appearance: none;
+  appearance: none;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: none;
+  color: var(--star-color);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  /* 絵文字はグリフが下寄りなので baseline では沈む。箱の中心を隣の「内訳」へ
+     合わせ（middle）、残る 2px を持ち上げる（.hintPopover__warnMark と同じ手当て）。 */
+  vertical-align: middle;
+  position: relative;
+  top: -2px;
+}
+
+.calcRow__sleepTeamWarn:hover,
+.calcRow__sleepTeamWarn:focus-visible {
+  opacity: 0.75;
+}
+
+/* ===== 睡眠EXPボーナスの内訳（展開リンクと明細） ===== */
+/* `.linkBtn` は core/components.css の**後ろ**で定義される（CalcPanel.css は先に @import される）。
+   同じ詳細度だと後勝ちで負けるため、ここは祖先クラスを足して勝たせる。 */
+.calcRow__resultItems .calcRow__bonusToggle {
+  /* linkBtn の既定パディングを外し、結果行のチップ並みの密度へ */
+  padding: 0;
+  /* 睡眠関連の数値（`.calcRow__num--info`）と同じ色。既定の `--muted` は
+     隣の睡眠時間より濃く、結果行の中でここだけ目立ってしまう。
+     hover の `var(--accent)` はそのまま（押せることの手がかりとして濃くなる）。 */
+  color: rgba(var(--accent-rgb), 0.8);
+  /* linkBtn 既定の 12px のままだと、ベースラインが合っていても字面が小さいぶん
+     **沈んで見える**（隣の .calcRow__sleepTime は 14px、数値は 15px）。 */
+  font-size: 13px;
+  /* button は inline-block。middle だと隣の文字より約0.6px下がるのでベースライン揃えにする。 */
+  vertical-align: baseline;
+  /* ベースラインを揃えてもなお、隣の 14〜15px の文字より 1px 沈んで見える
+     （button の行ボックスの高さが字面より大きいぶん）。行送りへ影響しない
+     relative で 1px 持ち上げる。 */
+  position: relative;
+  top: -1px;
+}
+
+/*
+ * このチップは結果行の最後尾。`.calcRow__res` の末尾 4px マージンを残すと、
+ * 折返し判定にだけ効いて「畳んだときだけ次行へ落ちる」幅の窓ができる。
+ */
+.calcRow__resultItems .calcRow__res:has(.calcRow__bonusToggle) {
+  margin-right: 0;
+}
+
+/*
+ * 明細は「到達可能」行の**内側**へ縦に開く（DOM も内側。CalcPanel.vue の注記を参照）。
+ * 項目は最大5行になり得るので横へは流さない。
+ *
+ * 親（`--used`）が accent 0.06 の面なので、paper 寄りの面＋枠線で
+ * 「行の中の小さな表」として一段沈める。同じ色を重ねると境目が消える。
+ * 影は付けない（Blue テーマの --shadow-sm は 2px ずらしのハードシャドウで、
+ * 行の中の小さな表に付けると浮いて見える。枠線だけで面は十分分かれる）。
+ *
+ * **箱はひとつ。** ブロックごとにカードへ割ると、PC幅で「種類別＋イベント／日別」が
+ * かぎ括弧型に並び、外形が崩れてまとまりを欠く（カード分割は試して戻した）。
+ * 中の区切りは各ブロックの見出しが担う。
+ */
+.calcRow__bonusDetails {
+  /* 中身ぶんだけの幅（行ごとに伸縮させる）。**縦積みのときは .calcRow__bonusLayout も
+     縦並びにしておくこと。** 横並びのまま折り返すと「1行に並べたときの幅」で箱が決まり、
+     表の右に使われない余白が残る。 */
+  width: fit-content;
+  /*
+   * 狭い画面では、**足りないときだけ右へ伸ばせる**ようにする（結果行のパディング 10px ぶん）。
+   * 伸ばさないと、長期計画（6桁EXP × 4桁日数）や英語の長い種類名で横スクロールになる。
+   *
+   * - **左は動かさない。** 左にも負マージンを付けると、短い明細まで左端へ寄って
+   *   行の枠線に重なる（実際に踏んだ）。開始位置は他の結果テキストと揃える
+   * - 幅は `fit-content` のままなので、**収まる明細はこれまでと同じ幅・同じ位置**。
+   *   伸びるのは中身が入りきらない行だけで、右端は結果行の外枠で止まる
+   */
+  /* 結果テキストより少しだけ右へ寄せる。右は行の内側パディングぶん食って幅を稼ぐ。 */
+  margin: 6px -10px 0 6px;
+  max-width: calc(100% + 10px);
+  padding: 11px 12px;
+  background: rgba(var(--paper-rgb), 0.85);
+  border: 1px solid rgba(var(--accent-rgb), 0.28);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  overflow-x: auto;
+}
+
+/*
+ * 明細の置き場所。**列数はここの実幅で決める**（画面幅ではない）。
+ *
+ * 画面幅で決めると、同じ 600px でも「1カラム表示のスマホ」と「左右に分かれたタブレット」で
+ * 使える幅が全く違うのに同じ列数になる。ここを見れば実際に置ける幅だけを見られる。
+ *
+ * **基準を明細の箱（`.calcRow__bonusDetails`）にしないこと。** あちらは中身ぶんの幅なので、
+ * 「箱の幅で列数が決まり、列数で箱の幅が決まる」循環になる。
+ *
+ * `container-type: inline-size` はクエリのためではなく、**中身が置き場所の幅へ跳ね返らない
+ * 保証**として残している（JS 計測が ResizeObserver のループにならない）。
+ */
+.calcRow__bonusDetailsSlot {
+  container-type: inline-size;
+}
+
+/*
+ * 列数は `BonusDetails.vue` が `data-columns` で決める。**CSS では書けない。**
+ * `flex-wrap: wrap` に任せると折り返し位置は内容ベースで正しくなるが、
+ * 箱（`fit-content`）の幅は「1行に並べたときの合計幅」で決まるため、
+ * 折り返した瞬間に箱だけが広がり、縦積みの右へ使われない余白が残る。
+ * CSS には「折り返した後の実際の内容幅へ箱を縮める」手段が無い。
+ */
+.calcRow__bonusLayout {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+/*
+ * 内訳表の右にイベント一覧。JS が「収まる」と判定したときだけ。
+ *
+ * **どちらの列も縮めない**（`flex: 0 0 auto` / `max-width: none`）。
+ * 縮めると、収まらない内容が「はみ出し」ではなく「潰れ」として出るため、
+ * 上の判定（2列に組んではみ出しを見る）が常に「収まった」と答えてしまう。
+ * 横の間隔は仕切り線の代わり。詰めると表の4列目と一覧が地続きに見える。
+ */
+.calcRow__bonusLayout[data-columns="2"] {
+  flex-direction: row;
+  gap: 10px 28px;
+}
+
+.calcRow__bonusLayout[data-columns="2"] > * {
+  flex: 0 0 auto;
+  max-width: none;
+}
+
+/* 明細表とその注記。イベントの左に置く列。 */
+.calcRow__bonusMain {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+/*
+ * 行の入れ物（`role="row"`）。**レイアウトには出さない。**
+ * 見た目は4列のグリッドなので、セルは行ではなくグリッド直下に並ぶ必要がある。
+ * 行と列の関係は role が持ち、`display: contents` で箱としては消える。
+ */
+.calcRow__bonusTableRow {
+  display: contents;
+}
+
+.calcRow__bonusTable {
+  display: grid;
+  /*
+   * 名前 / 倍率 / 量 / EXP。**列数と並びは軸によらず同じ**（中身は計画の長さで変わる。
+   * 3晩以内は 日付 / 倍率 / 睡眠時間 / EXP、4晩以上は 種類 / 倍率 / 日数 / EXP。§10.5）。
+   */
+  grid-template-columns: auto auto auto auto;
+  justify-content: start;
+  /* 行間は文字の行送りと合わせて 5px。3px だと4行が塊に見え、行の対応を目で追えない。 */
+  gap: 5px 12px;
+  align-items: baseline;
+}
+
+.calcRow__bonusChips {
+  min-width: 0;
+  max-width: 100%;
+  color: var(--muted);
+}
+
+/*
+ * 件をまたいで倍率の桁を揃えるため、チップ群だけを1つのグリッドにする
+ * （件ごとの入れ物では列幅が件ごとに決まってしまい揃わない）。
+ * 列は内容ぶんだけ。1fr にすると横幅の広い画面で名前と倍率が大きく離れる。
+ */
+.calcRow__bonusChipGrid {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) auto;
+  justify-content: start;
+  gap: 1px 8px;
+  align-items: baseline;
+}
+
+/* 明細表と続けて読ませたいので、表側の見出しと同じ体裁にする。 */
+.calcRow__bonusChipsHeading {
+  /* 見出しと中身の間は行間より広く。同じだと見出しが1行目と同じ塊に見える。 */
+  margin-bottom: 6px;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* 一覧の最後の件とくっつけない（件と件の間隔より広く取る）。 */
+.calcRow__bonusChipsNote {
+  margin-top: 9px;
+}
+
+/* 1件が2行（時期 / 名前＋倍率）。中身を一覧のグリッドへ直接乗せる。 */
+.calcRow__bonusChip {
+  display: contents;
+}
+
+.calcRow__bonusChipLabel,
+.calcRow__bonusChipName {
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.calcRow__bonusChipLabel {
+  grid-column: 1 / -1;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/*
+ * 種類名や時期ラベルへ添える小さなチップ（`＋お香` / `仮`）。
+ *
+ * **枠を持たせないこと。** 枠を付けて中を中央揃えにすると、「字面の中心」と
+ * 「フォントの行ボックスの中心」の差（CJKで 0.3〜0.5px）が枠との余白差になって見える。
+ * ずれ幅も向きもフォントごとに違うので、PCで合わせるとモバイルで狂う
+ * （`text-box-edge: ideographic-ink` が使えれば解決するが Chrome 150 でも未実装）。
+ * 塗りだけなら、周りの文字と同じ行に敷かれるだけなのでズレようが無い。
+ */
+.calcRow__bonusSubLabel,
+.calcRow__bonusIncenseTag,
+.calcRow__bonusChipTag {
+  margin-left: 5px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: rgba(var(--muted-rgb), 0.16);
+  color: var(--muted);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/*
+ * 「仮」は**文字サイズも行の高さもラベルと同じ**にする。
+ * 小さくすると、同じベースラインに乗った小さい字だけが沈んで見える（実際に踏んだ）。
+ */
+.calcRow__bonusChipTag {
+  display: inline;
+}
+
+/* 件と件のあいだ。display: contents でもセレクタは DOM の並びどおりに効く。 */
+.calcRow__bonusChip + .calcRow__bonusChip .calcRow__bonusChipLabel {
+  margin-top: 5px;
+}
+
+.calcRow__bonusChipNote {
+  grid-column: 1;
+}
+
+/* 明細内の注記（表の下 / 一覧の下 / 件の補足）。 */
+.calcRow__blueSeedNotes,
+.calcRow__bonusChipsNote,
+.calcRow__bonusChipNote {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/*
+ * どれも一文が長い。素のままだと親の幅計算に効いて、この1行だけで箱や一覧の幅が決まる。
+ * width: 0 + min-width: 100% で幅計算から外し、実幅は親に従わせる
+ * （箱の幅は明細表、一覧の幅はチップで決める）。
+ * 件の補足（.calcRow__bonusChipNote）はグリッドの1列目で、短いので対象外。
+ */
+.calcRow__blueSeedNotes,
+.calcRow__bonusChipsNote {
+  width: 0;
+  min-width: 100%;
+}
+
+/* 種類別カードの中で表の下に置く。表の行間より広く取って、表の続きに見せない。 */
+.calcRow__blueSeedNotes {
+  margin-top: 9px;
+}
+
+.calcRow__bonusName {
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* 倍率のセル。チップは右寄せ。お香の行と合計行は空セル。 */
+.calcRow__bonusMult {
+  justify-self: end;
+}
+
+.calcRow__bonusMultChip {
+  display: inline-block;
+  /* イベント一覧では2列目のグリッドアイテム。明細表と同じく桁を右端で揃える
+     （明細表側はセルの justify-self: end。こちらはチップ自身が列に乗る）。 */
+  justify-self: end;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: rgba(var(--accent-rgb), 0.13);
+  color: var(--accent-strong);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 「＋お香」は倍率ではないので、チップの色を変えて種類名へ添える（体裁は「仮」と共通）。 */
+.calcRow__bonusIncenseTag {
+  display: inline-block;
+  font-size: 10px;
+}
+
+.calcRow__bonusSubLabel {
+  display: inline-block;
+  font-size: 10px;
+}
+
+/* 日別の日付。表の種類名と同じ体裁（1列目の見出しとして読ませる）。 */
+.calcRow__bonusNightDate {
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* 倍率のセル。チップは右寄せ。倍率の無い晩は空セル。 */
+.calcRow__bonusNightMult {
+  justify-self: end;
+}
+
+/* 第3列（種類別は日数、日別は睡眠時間）。桁を右で揃える。 */
+.calcRow__bonusAmount,
+.calcRow__bonusNightTime {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.calcRow__bonusAmount {
+  color: var(--muted);
+}
+
+/* 睡眠時間はその晩に実行する値なので、日数より一段強く出す。 */
+.calcRow__bonusNightTime {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* 見た目は短い「8h30m」のまま、支援技術には意味を補った文を読ませる。 */
+.calcRow__visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.calcRow__bonusExp,
+.calcRow__bonusNightExp {
+  font-weight: 700;
+  color: rgba(var(--accent-rgb), 0.9);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/*
+ * 「素EXP」の行は加算ぶんではないので accent を外す（素EXPが一番大きい数なので、
+ * 同じ色にすると「+」の付く加算行が埋もれる）。
+ * 兄弟セレクタで隣を塗ろうとしないこと（grid の全セルが兄弟なので後続行まで巻き込む）。
+ */
+.calcRow__bonusExp--base {
+  color: var(--ink);
+}
+
+/* 合計行の区切り線。全列をまたぐ1本にして、列ごとのズレを作らない。 */
+.calcRow__bonusRule {
+  grid-column: 1 / -1;
+  height: 0;
+  margin: 7px 0 5px;
+  border-top: 1px solid rgba(var(--accent-rgb), 0.25);
+}
+
+.calcRow__bonusTotal {
+  font-weight: 700;
+}
+
+.calcRow__bonusExp.calcRow__bonusTotal {
+  font-size: 13px;
+  color: var(--accent-strong);
+}
+
 /* ===== Hint Tooltip Overlay ===== */
 .hintOverlay {
   position: fixed;
@@ -930,6 +1387,11 @@ button.calcRow__dragHandle:active {
   border-radius: var(--radius-sm);
   background: rgba(var(--danger-rgb), 0.1);
   color: var(--danger);
+}
+
+/* 本文がこの1段落だけのヒント（睡眠チームの警告など）では下の余白を残さない。 */
+.hintPopover__warn:only-child {
+  margin-bottom: 0;
 }
 
 /* float した要素は親の高さに含まれないので、1行で収まったときのために clear する。 */
@@ -1000,6 +1462,24 @@ button.calcRow__dragHandle:active {
 .hintPopover__unit {
   font-size: var(--font-sm);
   color: var(--ink-muted);
+}
+
+/*
+ * タブレット以上の見た目。**列数（1列/2列）はここでは決めない** ──
+ * 置き場所の実幅と中身の自然幅を比べる `BonusDetails.vue` の計測が正本。
+ * 仕切り線は引かない。イベント名は可変長で、幅が足りずに折り返したときに
+ * 縦罫だけが表の下に残って崩れて見える。区切りは gap で足りる。
+ */
+@media (min-width: 680px) {
+  /*
+   * 左端は結果テキストと揃える（字下げしない）。カードの面と枠で「行の中の別ブロック」
+   * だと分かるので、字下げを足すと左だけ余白が二重になる。
+   * 狭い画面での「行の外へ広げる」扱いはここで戻す（幅が足りているのではみ出させない）。
+   */
+  .calcRow__bonusDetails {
+    margin: 6px -6px 0 6px;
+    max-width: calc(100% + 6px);
+  }
 }
 
 /* ===== PC desktop Summary enlargement (≥ 1400px) ===== */

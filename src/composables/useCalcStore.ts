@@ -1,22 +1,29 @@
-import { computed, ref, toRaw, watch, type Ref } from "vue";
+import { computed, getCurrentScope, onScopeDispose, ref, toRaw, watch, type ComputedRef, type Ref } from "vue";
 import type { Composer } from "vue-i18n";
 import type { AppLocale } from "../i18n";
-import type { BoostEvent, ExpGainNature, ExpType, SleepSettings } from "../domain/types";
+import { MAX_SLEEP_TEAM_SIZE, type BoostEvent, type ExpGainNature, type ExpType, type SleepSettings } from "../domain/types";
 import { calcExp, calcExpAndCandy, calcExpAndCandyMixed, calcLevelByCandy } from "../domain/pokesleep";
 import { minBoostForTarget } from "../domain/pokesleep/minBoostForTarget";
 import { minCandyForTarget } from "../domain/pokesleep/minCandyForTarget";
-import { calcSleepTimeForExp, markForSleep, sleepExpBonusMultiplier, type MarkForSleepResult } from "../domain/pokesleep/sleep-growth";
+import { attributeSleepBonusExpByNight, attributeSleepBonusExpForDays, calcSleepExpBreakdownForDays, calcSleepTimeForExp, isSleepPlan, markForSleep, sleepExpBonusMultiplier, type MarkForSleepResult, type SleepBonusContribution, type SleepNightContribution, type SleepPlanResult, type SleepTimeResult } from "../domain/pokesleep/sleep-growth";
+import { detectTimeZone, findNextGameDateChange, gameDateFromWallClock, normalizeGameDate, normalizeTimeZone, resolveGameDate, type GameDate } from "../domain/pokesleep/game-date";
+import type { EventMultiplierSegment } from "../domain/pokesleep/sleep-schedule";
+import { wikiKnownThrough } from "../domain/pokesleep/_generated/sleep-exp-events";
+import type { EventOccurrence, ProjectedEventOccurrence } from "../domain/pokesleep/projected-events";
+import type { BlueSeedShift } from "../domain/pokesleep/growth-flower";
+import type { SleepEventFixture } from "../domain/pokesleep/sleep-planning";
 import { deriveTarget, normalizeTargetExpInLevel, targetFromCandy } from "../domain/level-planner/deriveTarget";
 import { boostRules, defaultBoostKind, normalizeDefaultBoostReachLevel } from "../domain/pokesleep/boost-config";
 import type { CalcRowV1, CalcSaveSlotV1 } from "../persistence/calc";
-import { loadActiveSlot, loadCalcSlots, loadTotalShards, saveActiveSlot, saveCalcSlots, saveTotalShards, loadBoostCandyRemaining, saveBoostCandyRemaining, loadSleepSettings, saveSleepSettings, loadDefaultBoostReachLevel, saveDefaultBoostReachLevel } from "../persistence/calc";
+import { defaultSleepSettings, loadActiveSlot, loadCalcSlots, loadTotalShards, saveActiveSlot, saveCalcSlots, saveTotalShards, loadBoostCandyRemaining, saveBoostCandyRemaining, loadSleepSettings, saveSleepSettings, loadDefaultBoostReachLevel, saveDefaultBoostReachLevel } from "../persistence/calc";
 import { deferPersistUntilReleased, schedulePersist } from "../persistence/deferredPersist";
 import { cryptoRandomId } from "../persistence/box";
 import { useCandyStore } from "./useCandyStore";
 import { showToast } from "./useToast";
-import type { CandyInventoryV2, TypeCandyInventory, UniversalCandyInventory } from "../persistence/candy";
+import { useSleepSchedulePlanning } from "./useSleepSchedulePlanning";
+import { type CandyInventoryV2, type TypeCandyInventory, type UniversalCandyInventory } from "../persistence/candy";
 import { getPokemonType } from "../domain/pokesleep/pokemon-names";
-import { getCandyFamilyKey } from "../domain/pokesleep/candy-family";
+import { getCandyFamilyKey, normalizeSpeciesCandyByFamily } from "../domain/pokesleep/candy-family";
 import { CANDY_VALUES } from "../domain/level-planner/constants";
 import type { DebugExportContext, DebugExportSleepRow } from "../domain/level-planner/debugExport";
 import { buildPlannerInput as buildLevelPlannerInput } from "../domain/level-planner/buildPlannerInput";
@@ -29,12 +36,47 @@ export type CalcRow = CalcRowV1;
 
 /** 目標計算へ触れず、睡眠目標の排他だけを回復する。 */
 export function normalizeCalcRowStructure(row: CalcRow): CalcRow {
-  if (row.sleepTargetMode !== "all" || row.sleepTargetHours === undefined) return row;
+  if (row.sleepTargetMode === undefined || row.sleepTargetHours === undefined) return row;
   return { ...row, sleepTargetHours: undefined };
 }
 
 const PLAN_RESULT_PERF_ENABLED = isPerfEnabled();
 const PLAN_RESULT_EXACT_VERIFICATION_ENABLED = PLAN_RESULT_PERF_ENABLED;
+
+function debugGameDateOverride(): GameDate | null {
+  if (!import.meta.env.DEV || typeof window === "undefined") return null;
+  return normalizeGameDate(new URLSearchParams(window.location.search).get("gameDate"));
+}
+
+/**
+ * デバッグ用「現在日時」の置き場所はURL（`?perf=1&now=2026-08-28T13:19`）。
+ *
+ * リロードで消えると使いづらい一方、localStorage だと上書きしたまま忘れる事故が起きる。
+ * URLなら `?perf=1` と同じ流儀で、上書き中であることがアドレスバーに出たままになる。
+ */
+const DEBUG_NOW_QUERY_KEY = "now";
+
+/**
+ * 手書きされうるので、ゲーム内日へ落とせない値は無かったことにする。
+ * URLは「上書き中」の表示も兼ねているので、無効値はアドレスバーからも消す。
+ */
+function debugNowFromQuery(): string {
+  if (typeof window === "undefined") return "";
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get(DEBUG_NOW_QUERY_KEY) ?? "";
+  if (gameDateFromWallClock(raw)) return raw;
+  // `?now=`（空値）も消す対象なので、値ではなくキーの有無で判定する。
+  if (params.has(DEBUG_NOW_QUERY_KEY)) syncDebugNowQuery("");
+  return "";
+}
+
+function syncDebugNowQuery(text: string): void {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (text) url.searchParams.set(DEBUG_NOW_QUERY_KEY, text);
+  else url.searchParams.delete(DEBUG_NOW_QUERY_KEY);
+  window.history.replaceState(null, "", url);
+}
 
 let plannerFallbackModulePromise: Promise<typeof import("../domain/level-planner/core/solveLevelPlan")> | null = null;
 let debugExportModulePromise: Promise<typeof import("../domain/level-planner/debugExport")> | null = null;
@@ -67,10 +109,12 @@ export type CalcRowView = CalcRow & {
     boostReachLevelMax: number;
     boostCandyInputMax: number;
     /**
-     * 睡眠EXPによる上限が効いている（案内文を用意する条件）。
+     * 睡眠EXPまたは stock 在庫による上限が効いている（案内文を用意する条件）。
      * 上限ちょうどの行でも「これ以上上げられない」理由は要るので、押し下げの有無は問わない。
      */
-    boostSleepCapActive: boolean;
+    boostCapActive: boolean;
+    /** 案内文を切り替えるための上限の由来。上限が効いていなければ null。 */
+    boostCapKind: 'sleep' | 'stock' | null;
     /**
      * 睡眠EXPでアメブの担当範囲が押し下げられている状態（破線を出す条件）。
      * 動かせないのは押し下げられた範囲だけで、`boostReachLevelMax` 以下は操作できる。
@@ -162,6 +206,17 @@ export type CalcBoxPlannerPatch = {
   sleepHours?: number;
 };
 
+/** 行の睡眠EXPボーナス内訳と、その内訳が何を数えたか。 */
+export type RowSleepBonusBreakdown = {
+  /** 種類別の内訳。**4晩以上だけ**。3晩以内は日別が内訳そのものになるので空。 */
+  contributions: SleepBonusContribution[];
+  /** 日付順の日別内訳。**3晩以内だけ**。4晩以上は日付列が長大になるので空。 */
+  nights: SleepNightContribution[];
+  /** `needed` の初日と最終日。仮イベント/花の表示を同じ期間へ揃える。 */
+  neededFrom?: GameDate;
+  neededTo?: GameDate;
+};
+
 type UndoField =
   | "rows"
   | "slots"
@@ -211,6 +266,10 @@ export type CalcStore = {
   setDefaultBoostReachLevel: (v: unknown) => void;
   /** 全行のアメブ個数を破棄し、残数から配り直す（全体リセット）。 */
   resetAllBoostCandy: () => void;
+  /** 睡眠・既定目標Lv・配分方針を既定値へ戻す。在庫・行・スロットは保持する。 */
+  resetSettings: () => void;
+  /** リセット対象の設定がすべて既定値なら true。 */
+  isSettingsDefault: Readonly<Ref<boolean>>;
   boostCandyDefaultCap: Readonly<Ref<number>>;
   slots: Ref<Array<CalcSaveSlotV1 | null>>;
   rows: Ref<CalcRow[]>;
@@ -224,6 +283,13 @@ export type CalcStore = {
   // 睡眠育成設定
   sleepSettings: Ref<SleepSettings>;
   updateSleepSettings: (patch: Partial<SleepSettings>) => void;
+  currentGameDate: Readonly<Ref<GameDate>>;
+  /** `?perf=1` のときだけ真。デバッグ用「現在日時」入力の表示ゲート。 */
+  debugNowEnabled: boolean;
+  /** デバッグ用「現在日時」の入力値（`datetime-local` の文字列。空＝実時刻）。 */
+  debugNowText: Ref<string>;
+  sleepCalculationError: Readonly<Ref<string | null>>;
+  lunarCalendarStatus: Readonly<Ref<"idle" | "ready" | "error">>;
 
   // UI state
   exportOpen: Ref<boolean>;
@@ -368,10 +434,31 @@ export type CalcStore = {
   }) => void;
   buildPlannerPatchFromRow: (rowId?: string) => CalcBoxPlannerPatch | null;
   setRowSleepHours: (rowId: string, sleepHours: number | undefined) => void;
-  setRowSleepTarget: (rowId: string, target: number | "all" | undefined) => void;
+  setRowSleepTarget: (rowId: string, target: number | "all" | "stock" | undefined) => void;
+  /** 「アメ在庫＋睡眠」の行が使うアメ数。それ以外の行では undefined。 */
+  rowStockCandyTargetFor: (rowId: string) => number | undefined;
+  /** 上位行の取り分を除いた、この stock 行が使える種族アメ在庫。 */
+  rowStockCandyAvailableFor: (rowId: string) => number | undefined;
   setRowSleepTargetHours: (rowId: string, hours: number | undefined) => void;
   rowSleepExpFor: (rowId: string) => number;
   rowSleepRemainingHoursFor: (rowId: string) => number;
+  /** 行の計画で使う成長のお香の個数（＝お香を使う睡眠日数）。睡眠目標が無い行は 0。 */
+  rowGrowthIncenseCountFor: (rowId: string) => number;
+  /** 行の計画期間に効いた睡眠EXPボーナスの内訳。睡眠計画の無い行は空。 */
+  rowSleepBonusBreakdownFor: (rowId: string) => RowSleepBonusBreakdown;
+  /**
+   * 全行共有のイベント区間（一覧表示用）。**行の計画期間での絞り込みはUI側**
+   * （`buildEventChipList`）で行う。内訳と同じ `needed` 期間を1か所から渡すため。
+   */
+  realOccurrences: ComputedRef<readonly EventOccurrence[]>;
+  projectedOccurrences: ComputedRef<readonly ProjectedEventOccurrence[]>;
+  /** 全行共有のあおいタネ区間。UIは再計算せずこの値を使う。 */
+  blueSeedSegments: ComputedRef<readonly EventMultiplierSegment[]>;
+  /** 全行共有のあおいタネずらし情報。行期間による絞り込みはUI側で行う。 */
+  blueSeedShifts: ComputedRef<readonly BlueSeedShift[]>;
+  /** 睡眠チーム（1晩5匹）に収まらない行か。6匹目以降の睡眠計画で true。 */
+  rowExceedsSleepTeamLimit: (rowId: string) => boolean;
+  calcSleepTimeForRow: (rowId: string, expToTarget: number) => SleepTimeResult;
 };
 
 export function useCalcStore(opts: {
@@ -379,6 +466,10 @@ export function useCalcStore(opts: {
   t: Composer["t"];
   resolveTitleByBoxId?: (boxId: string) => string | null;
   resolvePokedexIdByBoxId?: (boxId: string) => number | undefined;
+  /** テストで生成物に依存しない睡眠イベント入力を流し込む。通常は未指定。 */
+  sleepEventFixture?: SleepEventFixture;
+  /** テストで睡眠計画の開始日を固定する。通常は未指定。 */
+  currentGameDate?: GameDate;
 }): CalcStore {
   const { locale, t, resolveTitleByBoxId, resolvePokedexIdByBoxId } = opts;
 
@@ -424,14 +515,58 @@ export function useCalcStore(opts: {
 
   // 睡眠育成設定
   const sleepSettings = ref<SleepSettings>(loadSleepSettings());
-
+  function settingsResetValues(): SleepSettings {
+    return { ...defaultSleepSettings(), timeZone: detectTimeZone() };
+  }
+  function settingsMatchResetValues(nextSettings: SleepSettings): boolean {
+    return JSON.stringify(sleepSettings.value) === JSON.stringify(nextSettings)
+      && defaultBoostReachLevel.value === null
+      && itemCompareMode.value === "surplusFirst";
+  }
+  const isSettingsDefault = computed(() => settingsMatchResetValues(settingsResetValues()));
+  const fixedGameDate = debugGameDateOverride();
+  /**
+   * `?perf=1` のときだけ出すデバッグ用「現在日時」（`datetime-local` の文字列。空＝実時刻）。
+   *
+   * 睡眠EXPのボーナスは日によって変わるので、満月日やイベント期間へ時計を進めて内訳を
+   * 確かめるためのスイッチ。値は瞬間ではなく**ゲーム内タイムゾーンの壁時計**として読む
+   * （端末ゾーンと設定ゾーンの差で日付がずれない）。AM4:00 の日境界はそのまま効く。
+   */
+  const debugNowEnabled = PLAN_RESULT_PERF_ENABLED;
+  const debugNowText = ref<string>(debugNowEnabled ? debugNowFromQuery() : "");
+  const debugGameDate = computed<GameDate | null>(() => gameDateFromWallClock(debugNowText.value));
+  function effectiveTimeZone(): string {
+    return normalizeTimeZone(sleepSettings.value.timeZone) ?? detectTimeZone();
+  }
+  /** 現在のゲーム内日。デバッグ日時 ＞ `?gameDate=` の固定日 ＞ 実時刻。 */
+  function resolveCurrentGameDate(): GameDate {
+    return debugGameDate.value ?? fixedGameDate ?? opts.currentGameDate ?? resolveGameDate(new Date(), effectiveTimeZone());
+  }
+  const currentGameDate = ref<GameDate>(resolveCurrentGameDate());
   /** グローバル睡眠設定の変更。個数指定があるときは最終目標を新しい睡眠EXPで引き直す。 */
   function updateSleepSettings(patch: Partial<SleepSettings>) {
-    const nextSettings = { ...sleepSettings.value, ...patch };
+    const patchTimeZone = patch.timeZone === undefined ? undefined : normalizeTimeZone(patch.timeZone);
+    const { timeZone: _ignoredTimeZone, ...patchWithoutTimeZone } = patch;
+    const merged = {
+      ...sleepSettings.value,
+      ...patchWithoutTimeZone,
+      ...(patchTimeZone ? { timeZone: patchTimeZone } : {}),
+    };
+    const normalizedTimeZone = normalizeTimeZone(merged.timeZone);
+    // ユーザーが今入力した不正値は保存しない。既存保存値だけが壊れている場合は、
+    // 無関係な設定変更まで捨てず、実行環境の有効な IANA ゾーンへ自己修復する。
+    const timeZone = normalizedTimeZone ?? detectTimeZone();
+    const nextSettings: SleepSettings = { ...merged, timeZone };
     if (JSON.stringify(nextSettings) === JSON.stringify(sleepSettings.value)) return;
     beginUndo(t("settings.sleepTitle"), ["sleepSettings", "rows"]);
     sleepSettings.value = nextSettings;
-    rows.value = rows.value.map((row) =>
+    applySleepSettingsEffects();
+  }
+
+  function applySleepSettingsEffects() {
+    currentGameDate.value = resolveCurrentGameDate();
+    clearSleepCalculationErrors();
+    rows.value = rows.value.map(row =>
       row.candyTarget === undefined ? row : normalizeRowState(row)
     );
   }
@@ -439,12 +574,110 @@ export function useCalcStore(opts: {
   // sleepSettings の自動保存
   watch(sleepSettings, (v) => saveSleepSettings(v), { deep: true });
 
+  // アメ在庫。実効アメブ個数の解決（`resolveEffectiveBoostCandy`）が種族アメを読むので、
+  // 行より先に用意しておく。
+  const candyStore = useCandyStore();
+
   const rows = ref<CalcRow[]>(
     slot0?.rows
       ? (JSON.parse(JSON.stringify(slot0.rows)) as CalcRow[]).map(normalizeCalcRowStructure)
       : [],
   );
+
+  const {
+    sleepSchedule,
+    realOccurrences,
+    projectedOccurrences,
+    blueSeedSegments,
+    blueSeedShifts,
+    sleepCalculationError,
+    lunarCalendarStatus,
+    recordSleepCalculationError,
+    clearSleepCalculationErrors,
+  } = useSleepSchedulePlanning({
+    sleepSettings,
+    currentGameDate,
+    effectiveTimeZone,
+    hasRows: () => rows.value.length > 0,
+    sleepEventFixture: opts.sleepEventFixture,
+  });
+
   const activeRowId = ref<string | null>(slot0?.activeRowId ?? rows.value[0]?.id ?? null);
+
+  let gameDateTimer: ReturnType<typeof setTimeout> | null = null;
+  const lifecycleScope = getCurrentScope();
+
+  function refreshGameDate(): void {
+    const next = resolveCurrentGameDate();
+    if (next === currentGameDate.value) return;
+    currentGameDate.value = next;
+    clearSleepCalculationErrors();
+    // 個数指定行の T = 個数到達点 + S を保つ。時計更新なのでundoには積まない。
+    rows.value = rows.value.map(row =>
+      row.candyTarget === undefined ? row : normalizeRowState(row)
+    );
+  }
+
+  function armGameDateTimer(): void {
+    if (gameDateTimer) clearTimeout(gameDateTimer);
+    gameDateTimer = null;
+    if (
+      !lifecycleScope
+      || fixedGameDate
+      || debugGameDate.value
+      || import.meta.env.MODE === "test"
+      || typeof window === "undefined"
+    ) return;
+    const now = new Date();
+    let next: Date;
+    try {
+      next = findNextGameDateChange(now, effectiveTimeZone());
+    } catch {
+      // 可視化復帰または次の有効な設定変更で再試行する。
+      return;
+    }
+    const delay = Math.max(1, next.getTime() - now.getTime() + 50);
+    gameDateTimer = setTimeout(() => {
+      try {
+        refreshGameDate();
+      } finally {
+        // 早発・遅発やDSTの一時的な逆行を含め、発火後は必ず次を予約する。
+        armGameDateTimer();
+      }
+    }, delay);
+  }
+
+  // 上書き中はタイマーを止め、解除したら実時刻の日付変更を拾い直す。時計操作なのでundoには積まない。
+  watch(debugNowText, text => {
+    syncDebugNowQuery(text);
+    refreshGameDate();
+    armGameDateTimer();
+  });
+
+  function onVisibilityChange(): void {
+    if (typeof document === "undefined" || document.visibilityState !== "visible") return;
+    refreshGameDate();
+    armGameDateTimer();
+  }
+
+  watch(() => sleepSettings.value.timeZone, () => {
+    const timeZone = effectiveTimeZone();
+    if (sleepSettings.value.timeZone !== timeZone) {
+      sleepSettings.value = { ...sleepSettings.value, timeZone };
+    }
+    refreshGameDate();
+    armGameDateTimer();
+  });
+  if (lifecycleScope) {
+    if (typeof document !== "undefined" && import.meta.env.MODE !== "test") {
+      document.addEventListener("visibilitychange", onVisibilityChange);
+    }
+    armGameDateTimer();
+    onScopeDispose(() => {
+      if (gameDateTimer) clearTimeout(gameDateTimer);
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisibilityChange);
+    });
+  }
 
   function clampNonNegInt(n: unknown): number {
     return Math.max(0, Math.floor(Number(n) || 0));
@@ -615,6 +848,21 @@ export function useCalcStore(opts: {
     if (!rows.value.length) return;
     const next = allocateBoostCandyFromQuota(rows.value);
     commitRows(next, t("calc.reassignBoost"));
+  }
+
+  function resetSettings() {
+    const nextSettings = settingsResetValues();
+    if (settingsMatchResetValues(nextSettings)) return;
+    beginUndo(t("settings.resetUndoLabel"), [
+      "sleepSettings",
+      "defaultBoostReachLevel",
+      "itemCompareMode",
+      "rows",
+    ]);
+    sleepSettings.value = nextSettings;
+    defaultBoostReachLevel.value = null;
+    itemCompareMode.value = "surplusFirst";
+    applySleepSettingsEffects();
   }
 
   /** 既定のアメブ目標Lv（設定）。`null` は「目標Lvと同じ」。既存行は書き換えない。 */
@@ -1130,6 +1378,33 @@ export function useCalcStore(opts: {
     return row ? rowSleepExp(row) : 0;
   }
 
+  function rowHasSleepPlan(row: CalcRow): boolean {
+    return row.sleepTargetMode !== undefined || row.sleepTargetHours !== undefined;
+  }
+
+  /** お香個数とボーナス内訳が必ず同じ到達日数を使うための単一解決経路。 */
+  function resolveRowSleepPlan(rowId: string): { row: CalcRow; needed: SleepPlanResult } | null {
+    const row = rows.value.find((candidate) => candidate.id === rowId);
+    if (!row || !rowHasSleepPlan(row)) return null;
+    const plan = getPokemonResult(rowId);
+    if (!plan) return null;
+    const plannedSleepExp = row.sleepTargetHours === undefined
+      ? Number.POSITIVE_INFINITY
+      : rowSleepExp(row);
+    const expCoveredByPlannedSleep = Math.min(plan.shortage.expToTarget, plannedSleepExp);
+    if (!(expCoveredByPlannedSleep > 0)) return null;
+    const needed = calcSleepTimeFor(row, expCoveredByPlannedSleep);
+    return isSleepPlan(needed) ? { row, needed } : null;
+  }
+
+  /**
+   * 行の計画で使う成長のお香の個数。1回の睡眠につき1個なので、使用日数がそのまま個数になる。
+   * 到達までの日数を数え、数値の睡眠目標では予定睡眠EXPを超えない期間に制限する。
+   */
+  function rowGrowthIncenseCountFor(rowId: string): number {
+    return resolveRowSleepPlan(rowId)?.needed.growthIncenseCount ?? 0;
+  }
+
   /**
    * 「これから寝る時間」を表示側へ公開する（睡眠到達Lvの横に添える時間）。
    * 累計との差と 0 クランプは `rowMarkForSleep` が正本。ここで引き算を書き直さない。
@@ -1147,16 +1422,115 @@ export function useCalcStore(opts: {
     if (r.sleepTargetHours === undefined) return null;
     const remainingHours = Math.max(0, r.sleepTargetHours - (r.sleepHours ?? 0));
     const s = sleepSettings.value;
-    return {
-      remainingHours,
-      mark: markForSleep({
+    try {
+      const mark = markForSleep({
         targetSleepHours: remainingHours,
         nature: r.nature,
         dailySleepHours: s.dailySleepHours,
         sleepExpBonus: sleepExpBonusMultiplier(s.sleepExpBonusCount),
-        includeGSD: s.includeGSD,
-      }),
+        schedule: sleepSchedule.value,
+      });
+      return {
+        remainingHours,
+        mark,
+      };
+    } catch (error) {
+      recordSleepCalculationError(error);
+      return null;
+    }
+  }
+
+  function calcSleepTimeForRow(rowId: string, expToTarget: number): SleepTimeResult {
+    const row = rows.value.find((candidate) => candidate.id === rowId);
+    if (!row) return { kind: "unavailable" };
+    return calcSleepTimeFor(row, expToTarget);
+  }
+
+  function calcSleepTimeFor(row: CalcRow, expToTarget: number): SleepTimeResult {
+    const s = sleepSettings.value;
+    try {
+      const result = calcSleepTimeForExp({
+        expToTarget,
+        nature: row.nature,
+        dailySleepHours: s.dailySleepHours,
+        sleepExpBonus: sleepExpBonusMultiplier(s.sleepExpBonusCount),
+        schedule: sleepSchedule.value,
+      });
+      return result;
+    } catch (error) {
+      recordSleepCalculationError(error);
+      return { kind: "unavailable" };
+    }
+  }
+
+  /**
+   * 睡眠チーム（1晩5匹）からあふれる行か。
+   *
+   * 睡眠EXPは1晩に5匹までしか得られないので、睡眠目標を付けた6行目以降は
+   * **同時には実行できない計画**になる。行順で数え、6匹目以降を true にする。
+   * アメ不足で「残EXP 約N日」が出ているだけの行は睡眠計画ではないので数えない
+   * （正本は `rowHasSleepPlan`）。
+   */
+  function rowExceedsSleepTeamLimit(rowId: string): boolean {
+    let planned = 0;
+    for (const row of rows.value) {
+      if (!rowHasSleepPlan(row)) continue;
+      planned++;
+      if (row.id === rowId) return planned > MAX_SLEEP_TEAM_SIZE;
+    }
+    return false;
+  }
+
+  /**
+   * 行の睡眠計画に効いたボーナスの内訳（結果行の「内訳」表示用）。
+   *
+   * 数える日数は `resolveRowSleepPlan` の正本（目標へ届くまでに寝る日数）から取り、
+   * お香の個数と同じ期間で「どのボーナスが何日効いて、いくら増えたか」を見せる。
+   *
+   * **最終日の扱いは画面の睡眠時間表示に合わせる。**
+   * - 1回で届く行（`6時間41分 ～ 45分`）… その実分数で計算する
+   * - 長期の行（`約269日`）… 日数を切り上げて出しているので、最終日も丸ごと1日として数える
+   *
+   * 混ぜると「日数とお香個数は269日ぶん、EXPだけ268日＋端数」というちぐはぐな表になる。
+   */
+  function rowSleepBonusBreakdownFor(rowId: string): RowSleepBonusBreakdown {
+    const empty: RowSleepBonusBreakdown = {
+      contributions: [],
+      nights: [],
     };
+    const resolved = resolveRowSleepPlan(rowId);
+    if (!resolved) return empty;
+    const { row, needed } = resolved;
+    const days = needed.requiredDays;
+    const s = sleepSettings.value;
+    const dailySleepMinutes = Math.round(s.dailySleepHours * 60);
+    const sleepExpBonus = sleepExpBonusMultiplier(s.sleepExpBonusCount);
+    // 3晩以内は最後の晩だけ実際に寝る分数で数える。長期は丸ごと1日（undefined＝1日分）。
+    const lastDaySleepMinutes = needed.kind === "exact-nights" ? needed.minutesMin : undefined;
+    try {
+      const schedule = sleepSchedule.value;
+      const shared = {
+        days,
+        dailySleepMinutes,
+        sleepExpBonus,
+        nature: row.nature,
+        schedule,
+        lastDaySleepMinutes,
+        // お香を外す判断は calcSleepTimeForExp が正本。個数表示と食い違わせない。
+        skipLastDayIncense: needed.skipsLastDayIncense,
+      };
+      // 3晩以内は日別、4晩以上は種類別。**どちらか一方だけ**を渡す（§10.5）。
+      const showsNights = needed.kind === "exact-nights";
+      return {
+        contributions: showsNights ? [] : attributeSleepBonusExpForDays(shared),
+        nights: showsNights ? attributeSleepBonusExpByNight(shared) : [],
+        neededFrom: schedule.dayAt(0).date,
+        neededTo: schedule.dayAt(days - 1).date,
+      };
+    } catch (error) {
+      recordSleepCalculationError(error);
+      return empty;
+    }
   }
 
   /** 保存された最終目標のLv内EXP（導出規則は deriveTarget が正本）。 */
@@ -1227,6 +1601,71 @@ export function useCalcStore(opts: {
   }
 
   /**
+   * 「アメ在庫＋睡眠」の行が使うアメ数と、その行へ回る利用可能在庫。**この1箇所が正本。**
+   *
+   * 実効アメブ個数の内数クランプ・入力欄のプレースホルダ・ソルバーへ渡す需要が、
+   * すべてここを読む。`buildPlannerInput` にも同じ歩き方を書くと、画面とソルバーで
+   * 使うアメ数がずれる（操作仕様§9「同じ判定を2箇所に書かない」）。
+   *
+   * 上の行から順に「その行が使いうる最大」を種族アメから引く（ソルバーの top-down 配分と
+   * 同じ順序）。引く量は必ずその行の必要アメ数以下なので、**下の行へ回る量を過大に見積もらない**
+   * ＝ここで決めた数は在庫の範囲に必ず収まる。収まらない数を渡すと、その行は供給候補が空になり
+   * 境界として下の行を丸ごとブロックする。
+   *
+   * 歩くときの需要は**在庫で抑える前の**実効アメブ個数から引く（`ignoreStockBudget`）。
+   * 抑えた値を使うと `使うアメ数 → 実効アメブ → 使うアメ数` の循環になる。
+   * 切っても値は変わらない: 在庫が需要に届く行では抑制が働かず、届かない行では
+   * アメブが減っても必要アメ数は増えるだけで、`min(残り在庫, 需要)` は残り在庫のまま。
+   */
+  const stockCandyAllocationByRowId = computed<{
+    target: Record<string, number>;
+    available: Record<string, number>;
+  }>(() => {
+    if (!rows.value.some(row => row.sleepTargetMode === "stock")) {
+      return { target: {}, available: {} };
+    }
+    const left: Record<string, number> = {
+      ...normalizeSpeciesCandyByFamily(candyStore.inventorySnapshot.value.species),
+    };
+    const resolved: Record<string, number> = {};
+    const available: Record<string, number> = {};
+    for (const row of rows.value) {
+      const pokedexId = getRowPokedexId(row);
+      if (pokedexId === undefined || pokedexId <= 0) continue;
+      const key = getCandyFamilyKey(pokedexId);
+      const target = deriveTarget(row);
+      const need = row.candyTarget ?? minCandyForTarget({
+        srcLevel: row.srcLevel,
+        targetLevel: target.targetLevel,
+        targetExpInLevel: target.targetExpInLevel,
+        expType: row.expType,
+        nature: row.nature,
+        boostKind: boostKind.value,
+        boostCandy: resolveEffectiveBoostCandy(row, false, true),
+        expGot: rowExpGot(row),
+      });
+      const rowAvailable = Math.max(0, left[key] ?? 0);
+      const claim = Math.min(rowAvailable, Math.max(0, need));
+      if (row.sleepTargetMode === "stock") {
+        resolved[row.id] = claim;
+        available[row.id] = rowAvailable;
+      }
+      left[key] = Math.max(0, rowAvailable - claim);
+    }
+    return { target: resolved, available };
+  });
+
+  /** 「アメ在庫＋睡眠」の行が使うアメ数。それ以外の行では undefined。 */
+  function rowStockCandyTargetFor(rowId: string): number | undefined {
+    return stockCandyAllocationByRowId.value.target[rowId];
+  }
+
+  /** 上位行の取り分を除いた、この stock 行が使える種族アメ在庫。 */
+  function rowStockCandyAvailableFor(rowId: string): number | undefined {
+    return stockCandyAllocationByRowId.value.available[rowId];
+  }
+
+  /**
    * 実効アメブ個数の唯一の読み口（操作仕様 §6）。
    *
    * - 明示値があればその値を使う
@@ -1241,6 +1680,8 @@ export function useCalcStore(opts: {
   function resolveEffectiveBoostCandy(
     r: CalcRow,
     forCandyTargetNormalization = false,
+    /** 使うアメ数を数えている最中だけ true。`stockCandyAllocationByRowId` の説明を参照。 */
+    ignoreStockBudget = false,
   ): number {
     if (r.sleepTargetMode === "all" || boostKind.value === "none" || r.srcLevel >= MAX_LEVEL) return 0;
 
@@ -1248,32 +1689,45 @@ export function useCalcStore(opts: {
     // **`T` を導出している最中は `dstLevel` も `T'` もその計算の出力**なので、入力として参照できない
     // （§10.18 の例外）。参照すると `T → n → T'` の循環になり、§11.4 / §15.7 が再発する。
     // その間は保存された `boostReachLevel`（ユーザーの意図）だけを使い、個数指定と理論上限で抑える。
-    // それ以外の経路では `T` は保存済みで確定しているため、担当終端 `T'` の端数まで賄ってよい。
-    const derivingTarget = forCandyTargetNormalization;
+    // **同じことが「個数指定 `m` のある行」全体に言える**（§15.11）。`T` は `(m, n)` の**出力**で、
+    // `m` を入れると `T` が決まり、`n` が増えれば `T` が伸びる。`T` を `n` の入力に混ぜると、
+    // 導出経路（`T` を作る側）と表示・ソルバー経路とで `n` が食い違い、保存した `T` に `m` 個で
+    // 届かなくなる。**`T` が出力になる行では、両経路とも入力（`boostReachLevel` と `m`）だけで
+    // `n` を決める。** 個数 anchor の無い行だけ `T` が入力なので、担当終端 `T'` と目標Lvで抑える。
+    // **どちらの経路でもアメブは Lv ちょうどまでしか賄わない**（端数賄いは廃止。§15.7 撤回）。
+    //
+    // 睡眠の頭打ちだけは `T` が出力の行でも要る（保存された `boostReachLevel` は入力時にしか
+    // cap されないので、睡眠時間を後から変えると `T'` を超えたままになる）。そこでは `T` から
+    // 引いた `T'` ではなく、**`Lv70` から睡眠EXPを戻した `T'max`** を使う。こちらは `T` に依らない。
+    const derivingTarget = forCandyTargetNormalization || r.candyTarget !== undefined;
+    const sleepCap = derivingTarget
+      ? locateExpTargetFromSrc(r, rowExpGot(r), rowSleepExp(r))
+      : null;
     const reachLevel = clampInt(
       derivingTarget
-        ? (r.boostReachLevel ?? r.dstLevel)
+        ? Math.min(r.boostReachLevel ?? r.dstLevel, sleepCap?.level ?? r.srcLevel)
         : Math.min(r.boostReachLevel ?? r.dstLevel, r.dstLevel, candyTarget.level),
       r.srcLevel,
       MAX_LEVEL,
       r.srcLevel,
     );
-    // `T` の導出中は「アメブ目標Lv ちょうどまで賄う」だけを見る（§10.18 の状態モデル）。
-    // 担当範囲の全体を賄う形なので、導出モードの置換（§10.5）もここで効く。
+    // アメブが賄うのはどちらの経路でも「アメブ目標Lv ちょうどまで」。
+    // `T` が出力になる行では担当範囲の全体を賄う形になるので、導出モードの置換（§10.5）もここで効く。
     const derived = boostCandyForReachLevel(
       r,
       reachLevel,
       derivingTarget ? reachLevel : candyTarget.level,
       derivingTarget ? 0 : candyTarget.expInLevel,
-      !derivingTarget,
     );
     const requested = Math.max(0, Math.floor(r.boostOrExpAdjustment ?? derived));
+    // アメブは総アメ数の内数（不変条件 `n ≤ m`）。「アメ在庫＋睡眠」では在庫が `m` を決めるので、
+    // 個数指定とまったく同じ枠で抑える。抑えないと、12個しか使えない行がアメブ枠を
+    // 数百個ぶん予約して下の行を飢えさせる。**保存値は抑えない**（意図として残す）。
+    const candyBudget = r.candyTarget
+      ?? (r.sleepTargetMode === "stock" && !ignoreStockBudget ? rowStockCandyTargetFor(r.id) : undefined)
+      ?? Number.POSITIVE_INFINITY;
     if (derivingTarget) {
-      return Math.min(
-        requested,
-        r.candyTarget ?? Number.POSITIVE_INFINITY,
-        boostCandyToMaxLevel(r),
-      );
+      return Math.min(requested, candyBudget, boostCandyToMaxLevel(r));
     }
     const targetCandyCap = minCandyForTarget({
       srcLevel: r.srcLevel,
@@ -1285,12 +1739,7 @@ export function useCalcStore(opts: {
       boostCandy: requested,
       expGot: rowExpGot(r),
     });
-    const effective = Math.min(
-      requested,
-      r.candyTarget ?? Number.POSITIVE_INFINITY,
-      targetCandyCap,
-      boostCandyToMaxLevel(r),
-    );
+    const effective = Math.min(requested, candyBudget, targetCandyCap, boostCandyToMaxLevel(r));
     return Math.max(0, Math.floor(effective));
   }
 
@@ -1298,7 +1747,7 @@ export function useCalcStore(opts: {
    * 行の不変条件をここ1箇所で回復する（設計書§10.10）。
    *
    * - `n ≤ m`（アメブは総アメ数の内数）
-   * - 両方の個数anchorが無い場合だけ dstExpInLevel を落とす
+   * - 睡眠目標モード、または両方の個数anchorが無い場合だけ dstExpInLevel を落とす
    * - 個数指定ありでは T を (m, effectiveN, S) から再保存する
    * - アメブ個数だけがanchorなら、Tを上方向にだけ押し上げる
    */
@@ -1309,7 +1758,7 @@ export function useCalcStore(opts: {
     if (next.boostOrExpAdjustment !== undefined) {
       next.boostOrExpAdjustment = Math.max(0, Math.floor(next.boostOrExpAdjustment));
     }
-    if (next.sleepTargetMode === "all") {
+    if (next.sleepTargetMode !== undefined) {
       next.candyTarget = undefined;
       next.dstExpInLevel = undefined;
       return next;
@@ -1608,7 +2057,8 @@ export function useCalcStore(opts: {
   function onRowCandyTarget(id: string, v: string) {
     activeRowId.value = id;
     const r = rows.value.find((x) => x.id === id);
-    if (!r || r.sleepTargetMode === "all") return;
+    // 「すべて睡眠」はアメを配らず、「アメ在庫＋睡眠」は在庫が個数を決めるので、どちらも入力させない。
+    if (!r || r.sleepTargetMode !== undefined) return;
 
     if (v.trim() === "") {
       commitRow(id, { candyTarget: undefined }, rowFieldUndoLabel(r, t("calc.row.candyTarget")));
@@ -1624,8 +2074,14 @@ export function useCalcStore(opts: {
     );
   }
 
-  /** 3状態の睡眠目標を排他的に切り替える。 */
-  function setRowSleepTarget(id: string, target: number | "all" | undefined) {
+  /**
+   * 4状態の睡眠目標を排他的に切り替える（未設定 / 数値 / すべて睡眠 / アメ在庫＋睡眠）。
+   *
+   * 「アメ在庫＋睡眠」は睡眠目標時間を持たない（`S = 0`）ので、**睡眠EXP由来の上限（`T'`）は
+   * 「未設定」とまったく同じ**に振る舞う。違うのは個数指定を在庫から決めること、
+   * および**アメブ個数の入力上限も在庫で止まること**（2026-08-25 追加。`maxBoostCandyInputFor`）。
+   */
+  function setRowSleepTarget(id: string, target: number | "all" | "stock" | undefined) {
     activeRowId.value = id;
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
@@ -1642,8 +2098,8 @@ export function useCalcStore(opts: {
     }
 
     const patch: Partial<CalcRow> = {
-      sleepTargetMode: undefined,
-      sleepTargetHours: target,
+      sleepTargetMode: target === "stock" ? "stock" : undefined,
+      sleepTargetHours: typeof target === "number" ? target : undefined,
     };
     if (target !== undefined) {
       patch.candyTarget = undefined;
@@ -1651,6 +2107,7 @@ export function useCalcStore(opts: {
     }
 
     // モード中に保留した目標Lv変更の規則を、OFF と同じ1回の履歴へまとめて適用する。
+    // 「アメ在庫＋睡眠」へ移るときもアメブが使えるようになるので、同じ復帰処理を通す。
     if (r.sleepTargetMode === "all") {
       patch.boostReachLevel = Math.min(r.boostReachLevel, r.dstLevel);
       if (r.boostOrExpAdjustment !== undefined) {
@@ -1692,9 +2149,15 @@ export function useCalcStore(opts: {
    * アメブが駆動側なので、増やして総アメ数を超えたら個数指定の方を引き上げる。
    * （逆に個数指定を減らしたときは、そちらが駆動側なのでアメブを内数へクランプする）
    *
-   * **睡眠EXPが賄う範囲を超える入力は受け取らずに戻す。** 睡眠ありの行でクランプすると、
-   * 上限が 0 の行では何を入力しても「明示的に0個」が確定し、睡眠目標を解除しても
-   * 導出モードへ戻らなくなる（§10.18 / §11.11）。上限内の値は今までどおり保存する。
+   * **上限を超える入力は上限へクランプする（2026-08-25 ユーザー規則）。**
+   *
+   * 以前は睡眠ありの行だけ「受け取らずに戻す」形にしていた。上限0の行でクランプすると
+   * 「明示的に0個」が確定してしまうためだが、拒否された入力は導出モードの値（多くは0）で
+   * 再描画されるので、ユーザーには**大きい数を入れたら0になった**としか見えなかった。
+   *
+   * 睡眠ありでは上限0の欄を `isBoostInputDisabledBySleep` が無効化する。
+   * それ以外の経路も、保存直前に上限0を弾いて「明示的に0個」を焼き付けない。
+   * ただし stock は半ロックなので、在庫0へ下げる操作だけは明示0として受け取る。
    */
   function onRowBoostCandy(id: string, v: string) {
     activeRowId.value = id;
@@ -1714,7 +2177,13 @@ export function useCalcStore(opts: {
 
     const rawN = Math.max(0, Math.floor(Number(v) || 0));
     const inputMax = maxBoostCandyInputFor(r);
-    if (r.sleepTargetHours !== undefined && rawN > inputMax) return;
+    // 上限0の行は原則として「明示的に0個」を焼き付けない（§11.11）。ただし stock は
+    // 睡眠の押し下げと同じ半ロックで、下方向へ0まで操作できるのが仕様。アメブなし・Lv70は
+    // stock でも入力欄として意味がないので従来どおり弾く。
+    const stockCanSaveExplicitZero = r.sleepTargetMode === "stock"
+      && boostKind.value !== "none"
+      && r.srcLevel < MAX_LEVEL;
+    if (inputMax === 0 && !stockCanSaveExplicitZero) return;
     const n = Math.min(rawN, inputMax);
     const patch: Partial<CalcRow> = { boostOrExpAdjustment: n };
     if (r.candyTarget !== undefined && n > r.candyTarget) patch.candyTarget = n;
@@ -1727,17 +2196,25 @@ export function useCalcStore(opts: {
   }
 
   /**
-   * アメブが担当できる終端。睡眠なしなら MAX_LEVEL、睡眠ありは T'（§10.18）。
+   * アメブが担当できる終端。睡眠なしなら MAX_LEVEL、睡眠ありは T'（§10.18）、
+   * stock は上位行の取り分を除いた利用可能在庫をアメブへ使ったときの到達Lv。
    * **ここを超える入力は受け取らない**（クランプしない）。クランプすると、ユーザーが
    * 選んでいない値が「意図」として保存され、睡眠目標を解除しても戻らなくなる（§11.12）。
    */
   function boostReachLevelCapFor(r: CalcRow): number {
     if (r.sleepTargetMode === "all") return MAX_LEVEL;
+    if (r.sleepTargetMode === "stock") {
+      const stockCandyAvailable = rowStockCandyAvailableFor(r.id);
+      // 種族を解決できない行では在庫上限自体が不明。0個と混同せず制限を掛けない。
+      return stockCandyAvailable === undefined
+        ? MAX_LEVEL
+        : boostReachLevelForCandy(r, stockCandyAvailable);
+    }
     return r.sleepTargetHours === undefined ? MAX_LEVEL : rowCandyTargetBeforeSleep(r).level;
   }
 
   /**
-   * 睡眠EXPによる上限が効いている行（§10.18）。**案内文を用意する条件。**
+   * 睡眠EXPまたは stock 在庫による上限が効いている行。**案内文を用意する条件。**
    *
    * **判定はアメブ目標Lv1本。** 表示中のアメブ目標Lvが上限に達している
    * （＝それ以上上げられない）ときだけ true。アメブ個数欄の案内もこれに連動させる。
@@ -1752,18 +2229,28 @@ export function useCalcStore(opts: {
    * > 睡眠目標を解除してください」という打ち手なので、まだ自由に操作できる行に出すと誤情報になる。
    * > アメブ種別を full → mini へ変えてアメブ目標Lvが元Lvまで下がった行で表面化した。
    */
-  function isBoostSleepCapActive(r: CalcRow, reachLevel: number, reachLevelMax: number): boolean {
-    if (r.sleepTargetMode === "all" || boostKind.value === "none" || r.sleepTargetHours === undefined) return false;
+  function isBoostCapActive(r: CalcRow, reachLevel: number, reachLevelMax: number): boolean {
+    if (r.sleepTargetMode === "all" || boostKind.value === "none") return false;
+    if (r.sleepTargetMode !== "stock" && r.sleepTargetHours === undefined) return false;
+    if (r.sleepTargetMode === "stock" && rowStockCandyAvailableFor(r.id) === undefined) return false;
     if (reachLevelMax >= MAX_LEVEL) return false;
     return reachLevel >= reachLevelMax;
   }
 
+  /** 上限案内の文言を切り替えるための由来。 */
+  function boostCapKindFor(r: CalcRow, active: boolean): 'sleep' | 'stock' | null {
+    if (!active) return null;
+    return r.sleepTargetMode === "stock" ? 'stock' : 'sleep';
+  }
+
   /**
-   * 睡眠EXPがアメブの担当範囲を押し下げている状態（§10.18）。案内と破線を出す条件。
+   * 睡眠EXPがアメブの担当範囲を押し下げている状態（§10.18）。破線を出す条件。
+   * stock の在庫上限は操作可能な半ロックなので、ここには含めない。
    *
    * **これは「入力できない」ではない。** T' 以下の範囲は今までどおり上げ下げできる。
-   * 動かせないのは押し下げられた範囲（T' 超）だけで、そこは `setBoostLevel` /
-   * `onRowBoostCandy` が受け取らずに戻す。
+   * 動かせないのは押し下げられた範囲（T' 超）だけ。そこの扱いは欄で違う——
+   * **アメブ目標Lv（`setBoostLevel`）は受け取らずに戻し、アメブ個数（`onRowBoostCandy`）は
+   * 上限へクランプする**（2026-08-25 改訂。設計書 §18.2）。
    */
   function isBoostSleepCapped(r: CalcRow): boolean {
     if (r.sleepTargetMode === "all" || boostKind.value === "none" || r.sleepTargetHours === undefined) return false;
@@ -1778,24 +2265,49 @@ export function useCalcStore(opts: {
    */
   function isBoostInputDisabledBySleep(r: CalcRow): boolean {
     if (r.sleepTargetMode === "all") return true;
-    if (boostKind.value === "none" || r.sleepTargetHours === undefined) return false;
+    // stock は在庫0でも半ロックとして下方向へ0まで操作できるため無効化しない。
+    if (r.sleepTargetMode === "stock" || boostKind.value === "none" || r.sleepTargetHours === undefined) return false;
     return maxBoostCandyInputFor(r) === 0;
   }
 
-  /** アメブ個数欄の上限。睡眠ありではアメ担当終端 T'、なしでは MAX_LEVEL。 */
+  /**
+   * アメブ個数欄の上限。睡眠ありではアメ担当終端 T'、なしでは MAX_LEVEL。
+   *
+   * **「アメ在庫＋睡眠」では利用可能在庫でも止める（2026-08-25 ユーザー指摘）。** 個数指定 `m` は
+   * 実際に使うアメ数から決まる一方、入力上限は上位行の取り分を除いた在庫を見る。以前は在庫を見ずに
+   * MAX_LEVEL 基準の上限だけを見ていたので、在庫256の行に400と入力でき、欄は400のまま結果だけ
+   * 256になった（`resolveEffectiveBoostCandy` の `candyBudget` が実効値だけを絞るため）。
+   * 入力の上限と実際に使える量は同じ値であるべきなので、ここでも在庫を掛ける。
+   */
   function maxBoostCandyInputFor(r: CalcRow): number {
     if (r.sleepTargetMode === "all" || boostKind.value === "none" || r.srcLevel >= MAX_LEVEL) return 0;
-    if (r.sleepTargetHours === undefined) return boostCandyToMaxLevel(r);
-    const target = rowCandyTargetBeforeSleep(r);
-    return calcExpAndCandy({
-      srcLevel: r.srcLevel,
-      dstLevel: target.level,
-      dstExpInLevel: target.expInLevel,
-      expType: r.expType,
-      nature: r.nature,
-      boost: boostKind.value,
-      expGot: rowExpGot(r),
-    }).candy;
+    const base = (() => {
+      if (r.sleepTargetHours === undefined) return boostCandyToMaxLevel(r);
+      // 個数指定ありでは最終目標 T は (m, n) の出力。T から戻した T' を n の上限へ
+      // 再利用すると、入力のたびに 25→38→44…と上限が動く循環になる。
+      // Lv70 から睡眠EXPを戻した T'max は T に依存しないため、直接入力の上限に使える。
+      const target = r.candyTarget !== undefined
+        ? locateExpTargetFromSrc(r, rowExpGot(r), rowSleepExp(r))
+        : rowCandyTargetBeforeSleep(r);
+      if (target === null) return 0;
+      return calcExpAndCandy({
+        srcLevel: r.srcLevel,
+        dstLevel: target.level,
+        dstExpInLevel: target.expInLevel,
+        expType: r.expType,
+        nature: r.nature,
+        boost: boostKind.value,
+        expGot: rowExpGot(r),
+      }).candy;
+    })();
+    // 循環しない: stock の配分計算は `resolveEffectiveBoostCandy(…, ignoreStockBudget)` だけを
+    // 呼び、そちらはこの関数を参照しない。
+    if (r.sleepTargetMode === "stock") {
+      const stockCandyAvailable = rowStockCandyAvailableFor(r.id);
+      // 在庫上限を求められない行は0個扱いにしない。
+      return stockCandyAvailable === undefined ? base : Math.min(base, stockCandyAvailable);
+    }
+    return base;
   }
 
   /**
@@ -1823,41 +2335,40 @@ export function useCalcStore(opts: {
   /**
    * 「アメブ目標Lv = reachLevel」を賄うアメブ個数。
    *
-   * 「アメブ1個 → 通常アメ1個」置換（§3.8-e）を当てる条件は2つある。
+   * **アメブが賄うのは Lv ちょうどまでで、目標の Lv 内EXP（端数）は常に通常アメの担当。**
+   * 端数までアメブに賄わせる分岐（旧 `coverTargetExp`）は廃止した
+   * （2026-08-15 ユーザー規則。§15.7 / §15.8 の端数賄いを撤回）。
+   * あれは同じ `reachLevel` を「アメブ担当なし」とも「端数まで全部アメブ」とも解釈できてしまい、
+   * `T` を導出する経路（`derivingTarget`）と表示・ソルバーの経路とで導出値が食い違っていた。
+   * 個数指定 m だけを入れた行（アメブ未入力・アメブ目標Lv = 現在Lv）で、m から作った目標の端数を
+   * 賄うアメブが勝手に湧き、m 個の到達点が目標を超える不整合になっていた。
+   * 端数までアメブで賄いたい場合はユーザーがアメブ個数を明示入力する（入力上限
+   * `maxBoostCandyInputFor` は端数込みのままなので、今までどおり入力できる）。
+   *
+   * 「アメブ1個 → 通常アメ1個」置換（§3.8-e）は残す。当てる条件は2つある。
    *
    * 1. アメブが担当範囲全体を賄う。最後のはみ出しEXPが余剰になるので、1個を通常アメへ回せば
    *    かけらを節約できる。アメブ目標Lvが担当範囲より下（その先を通常アメで続ける）ときに1個削ると、
    *    アメブ分が実際に reachLevel へ届かず、不足を通常アメで補うぶん総アメ数も増えて損になる
    * 2. **睡眠EXPが乗らない行である**（2026-07-30 ユーザー規則・§15.8）。睡眠がある行では
    *    担当終端 `T'` を超えたEXPが捨てられず最終目標へ効くため、置換の前提が成立しない
-   *
-   * @param coverTargetExp 担当終端の Lv 内EXP（端数）までアメブに賄わせるか。
-   *   **削るのは通常アメが先で、アメブは最後まで温存する**（2026-07-29 ユーザー規則）ため、
-   *   睡眠EXPで担当範囲が Lv の途中へ下がったときは端数までアメブが賄う。Lv ちょうどで切ると
-   *   端数だけが通常アメへ回り、アメブはEXP2倍なぶん総アメ数が増える（§15.7）。
-   *
-   *   **`T` を導出している最中だけ false を渡す**（§15.8）。そのとき `T'` はその計算の出力であり、
-   *   入力側で参照すると `T → n → T'` の循環になる（§11.4。実測で §11.4-B の可逆性が壊れた）。
-   *   個数 anchor の有無は判定に使わない。`T` が確定している経路なら端数まで賄ってよい。
    */
   function boostCandyForReachLevel(
     r: CalcRow,
     reachLevel: number,
     dstLevel: number,
     dstExpInLevel: number,
-    coverTargetExp = false,
   ): number {
     const shared = { srcLevel: r.srcLevel, expType: r.expType, nature: r.nature, expGot: rowExpGot(r) };
     // 目標がLvの途中（あとEXP付き）なら、同じLvへ届いてもアメブは目標全体を賄えない。
-    // 端数まで賄わせてよい行（coverTargetExp）だけが例外になる。
-    const reachesTargetLevel = reachLevel === dstLevel;
-    const coversWholeTarget = reachLevel > dstLevel
-      || (reachesTargetLevel && (dstExpInLevel === 0 || coverTargetExp));
+    // 端数は通常アメの担当なので、置換の前提（最後のはみ出しEXPが捨てられる）も成立しない。
+    // `reachLevel` は呼び出し側で目標Lv以下へクランプ済みなので、ここで `>` は起こらない。
+    const coversWholeTarget = reachLevel === dstLevel && dstExpInLevel === 0;
     return coversWholeTarget
       ? minBoostForTarget({
         ...shared,
         targetLevel: reachLevel,
-        targetExpInLevel: reachesTargetLevel && coverTargetExp ? dstExpInLevel : 0,
+        targetExpInLevel: 0,
         boostKind: boostKind.value, maxBoost: Number.MAX_SAFE_INTEGER,
         allowNormalSwap: rowSleepExp(r) === 0,
       })
@@ -1976,10 +2487,8 @@ export function useCalcStore(opts: {
     // 最後の1個を通常アメへ回すかけら節約なので、逆算すると必ず1段下がって見え、
     // スライダーで上げても表示が戻る（上げ操作を食う）。
     // 目標Lvを超えるアメブ設定も許容するため、上限は MAX_LEVEL でクランプする。
-    const targetBeforeSleep = rowCandyTargetBeforeSleep({ ...r, srcLevel: src, dstLevel: dst });
-    const boostReachLevelMax = r.sleepTargetMode === "all" || r.sleepTargetHours === undefined
-      ? MAX_LEVEL
-      : targetBeforeSleep.level;
+    const normalizedRow = { ...r, srcLevel: src, dstLevel: dst };
+    const boostReachLevelMax = boostReachLevelCapFor(normalizedRow);
     const uiBoostReachLevel = r.boostOrExpAdjustment !== undefined
       ? clampInt(
         calcLevelByCandy({
@@ -1995,12 +2504,12 @@ export function useCalcStore(opts: {
         Math.min(r.boostReachLevel ?? dst, dst, boostReachLevelMax),
         src, boostReachLevelMax, src,
       );
-    // 頭打ちの判定は入力を受け付けるかどうかと同じ規則を使う（isBoostSleepCapped が正本）。
+    // 頭打ちの判定は入力を受け付けるかどうかと同じ上限を使う。
     // 表示だけ別条件にすると、案内が出ていないのに入力が無視される行ができる。
     // 案内（capActive）は**この画面に出ている値と上限**で判定する。ストア側で上限を計算し直すと、
     // 表示は上限未満なのに案内だけ出る、という食い違いが生まれる。
-    const normalizedRow = { ...r, srcLevel: src, dstLevel: dst };
-    const boostSleepCapActive = isBoostSleepCapActive(normalizedRow, uiBoostReachLevel, boostReachLevelMax);
+    const boostCapActive = isBoostCapActive(normalizedRow, uiBoostReachLevel, boostReachLevelMax);
+    const boostCapKind = boostCapKindFor(normalizedRow, boostCapActive);
     const boostSleepCapped = isBoostSleepCapped(normalizedRow);
     const boostInputDisabled = isBoostInputDisabledBySleep(normalizedRow);
 
@@ -2019,6 +2528,7 @@ export function useCalcStore(opts: {
     const targetExpToNextLevel = (
       r.candyTarget === undefined
       && r.boostOrExpAdjustment === undefined
+      && r.sleepTargetMode === undefined
       && r.sleepTargetHours === undefined
     )
       ? (noneModeMixed ?? calcExpAndCandyMixed({
@@ -2039,7 +2549,8 @@ export function useCalcStore(opts: {
         boostReachLevel: uiBoostReachLevel,
         boostReachLevelMax,
         boostCandyInputMax: maxBoostCandyInputFor(r),
-        boostSleepCapActive,
+        boostCapActive,
+        boostCapKind,
         boostSleepCapped,
         boostInputDisabled,
         boostQuotaViolation,
@@ -2133,35 +2644,51 @@ export function useCalcStore(opts: {
    * 「計画した日数」と「残EXPから逆算した必要日数」を並べ、どこで食い違うか切り分けられるようにする。
    */
   function buildDebugSleepRow(row: CalcRow, plan: PokemonPlanResult | null): DebugExportSleepRow | undefined {
-    const sleep = rowMarkForSleep(row);
-    if (!sleep || row.sleepTargetHours === undefined) return undefined;
+    // 残EXPから逆算した所要睡眠。お香の個数と最終日の扱いもこれが正本（画面の必要アイテムと同じ経路）。
+    const needed = plan === null ? undefined : calcSleepTimeForRow(row.id, plan.shortage.expToTarget);
+    const incense = needed !== undefined && isSleepPlan(needed)
+      ? { growthIncenseCount: needed.growthIncenseCount, skipsLastDayIncense: needed.skipsLastDayIncense }
+      : {};
 
+    if (row.sleepTargetHours !== undefined) {
+      const sleep = rowMarkForSleep(row);
+      if (!sleep) return undefined;
+      return {
+        sleepTargetHours: row.sleepTargetHours,
+        sleepHours: row.sleepHours ?? 0,
+        remainingHours: sleep.remainingHours,
+        requiredDays: sleep.mark.requiredDays,
+        sleepExp: sleep.mark.sleepExp,
+        breakdown: sleep.mark.breakdown,
+        ...incense,
+        needed,
+      };
+    }
+
+    // 「すべて睡眠 / アメ在庫＋睡眠」は残EXPから必要日数を逆算する行。計画睡眠EXPは持たない（§2.3）が、
+    // その日数を寝きるとどの日にいくら入るかは検算に要るので、日数から内訳を引き直す。
+    if (row.sleepTargetMode === undefined) return undefined;
+    const days = needed && isSleepPlan(needed) ? needed.requiredDays : 0;
     const s = sleepSettings.value;
-    const expToTarget = plan?.shortage.expToTarget ?? 0;
-    const needed = plan === null ? undefined : calcSleepTimeForExp({
-      expToTarget,
-      nature: row.nature,
-      dailySleepHours: s.dailySleepHours,
-      sleepExpBonus: sleepExpBonusMultiplier(s.sleepExpBonusCount),
-      includeGSD: s.includeGSD,
-    });
-
-    return {
-      sleepTargetHours: row.sleepTargetHours,
-      sleepHours: row.sleepHours ?? 0,
-      remainingHours: sleep.remainingHours,
-      requiredDays: sleep.mark.requiredDays,
-      sleepExp: sleep.mark.sleepExp,
-      breakdown: sleep.mark.breakdown,
-      needed: needed === undefined ? undefined : {
-        kind: needed.kind,
-        days: needed.kind === 'long-term-estimate' ? needed.requiredDays : undefined,
-        totalMinutes: needed.kind === 'long-term-estimate' ? needed.totalMinutes : undefined,
-        score: needed.kind === 'within-one-sleep' ? needed.requiredScore : undefined,
-        minutesMin: needed.kind === 'within-one-sleep' ? needed.minutesMin : undefined,
-        minutesMax: needed.kind === 'within-one-sleep' ? needed.minutesMax : undefined,
-      },
-    };
+    try {
+      const breakdown = calcSleepExpBreakdownForDays({
+        days,
+        dailySleepMinutes: Math.round(s.dailySleepHours * 60),
+        sleepExpBonus: sleepExpBonusMultiplier(s.sleepExpBonusCount),
+        nature: row.nature,
+        schedule: sleepSchedule.value,
+      });
+      return {
+        requiredDays: days,
+        sleepExp: breakdown.sleepExp,
+        breakdown,
+        ...incense,
+        needed,
+      };
+    } catch (error) {
+      recordSleepCalculationError(error);
+      return undefined;
+    }
   }
 
   function buildDebugExportContext(): DebugExportContext {
@@ -2202,6 +2729,12 @@ export function useCalcStore(opts: {
       },
       dreamShards: shardsCap.value,
       sleepSettings: { ...sleepSettings.value },
+      sleepSchedule: sleepSchedule.value,
+      wikiKnownThrough,
+      projectedEventCount: projectedOccurrences.value.length,
+      currentGameDate: currentGameDate.value,
+      debugNow: debugNowText.value,
+      sleepCalculationError: sleepCalculationError.value,
       displayed: displayed ? {
         result: displayed.result,
         calculationMode: displayed.calculationMode,
@@ -2414,8 +2947,7 @@ export function useCalcStore(opts: {
     return Math.round((activeRowBoostCandyUsed.value / cap) * 100);
   });
 
-  // --- アメ配分計算 ---
-  const candyStore = useCandyStore();
+  // --- アメ配分計算 ---（在庫の入り口は `candyStore`。宣言は行より前にある）
 
   function updateUniversalCandy(candy: Partial<UniversalCandyInventory>) {
     const current = candyStore.universalCandy.value;
@@ -2443,7 +2975,7 @@ export function useCalcStore(opts: {
   }
 
   // 行から pokedexId を取得（保存済み or boxId から解決）
-  function getRowPokedexId(r: CalcRowView): number | undefined {
+  function getRowPokedexId(r: Pick<CalcRow, "pokedexId" | "boxId">): number | undefined {
     if (r.pokedexId) return r.pokedexId;
     if (r.boxId && resolvePokedexIdByBoxId) {
       return resolvePokedexIdByBoxId(r.boxId);
@@ -2472,6 +3004,7 @@ export function useCalcStore(opts: {
       boostCandyInput: row.ui.boostCandyInput,
       sleepExp: rowSleepExp(row),
       sleepTargetMode: row.sleepTargetMode,
+      stockCandyTarget: rowStockCandyTargetFor(row.id),
     })), {
       candyInventory: candyStore.getInventory(),
       dreamShards: shardsCap.value,
@@ -2554,15 +3087,21 @@ export function useCalcStore(opts: {
    */
   function logSleepExpBreakdown(): void {
     if (!PLAN_RESULT_PERF_ENABLED) return;
-    const sleepRows = rowsView.value.filter((r) => r.sleepTargetHours !== undefined);
+    const sleepRows = rowsView.value.filter(rowHasSleepPlan);
     if (!sleepRows.length) return;
 
     const s = sleepSettings.value;
     console.info('[perf] sleep.settings', {
+      currentGameDate: currentGameDate.value,
+      debugNow: debugNowText.value,
+      timeZone: s.timeZone,
       dailySleepHours: s.dailySleepHours,
       sleepExpBonusCount: s.sleepExpBonusCount,
       sleepExpBonus: sleepExpBonusMultiplier(s.sleepExpBonusCount),
       includeGSD: s.includeGSD,
+      growthIncenseGsdDays: s.growthIncenseGsdDays,
+      growthIncenseNormalPerWeek: s.growthIncenseNormalPerWeek,
+      growthIncenseStock: s.growthIncenseStock,
     });
     console.table(sleepRows.map((r) => {
       const plan = getPokemonResult(r.id);
@@ -2577,14 +3116,19 @@ export function useCalcStore(opts: {
         remainingHours: sleep?.remainingHours,
         dailyScore: b?.dailyScore,
         dailyExp: b?.dailyExp,
+        baseExp: b?.baseExp,
         requiredDays: sleep?.requiredDays,
-        gsdExtra: b?.gsdExtra,
+        outerBonusExtra: b?.outerBonusExtra,
+        incenseExtra: b?.incenseExtra,
+        normalIncenseDays: b?.normalIncenseDays,
+        flankIncenseDays: b?.flankIncenseDays,
+        fullMoonIncenseDays: b?.fullMoonIncenseDays,
         sleepExp: sleep?.sleepExp,
         candyTarget: r.candyTarget,
         targetLv: r.dstLevel,
         targetExpInLevel: r.dstExpInLevel ?? 0,
         expToTarget: plan?.shortage.expToTarget,
-        neededDays: sleep?.needed?.days,
+        neededDays: sleep?.needed?.kind === 'long-term-estimate' ? sleep.needed.requiredDays : undefined,
       };
     }));
   }
@@ -2758,7 +3302,8 @@ export function useCalcStore(opts: {
   }
 
   watch(
-    [rows, boostKind, boostCandyRemaining, boostCandyDefaultCap, shardsCap, itemCompareMode, candyStore.inventorySnapshot, activeSlotTab, sleepSettings],
+    // currentGameDate は睡眠EXP経由で必要アメ数を動かすため、日付跨ぎで結果を更新する。
+    [rows, boostKind, boostCandyRemaining, boostCandyDefaultCap, shardsCap, itemCompareMode, candyStore.inventorySnapshot, activeSlotTab, sleepSettings, currentGameDate],
     () => {
       if (planResultTimer) {
         clearTimeout(planResultTimer);
@@ -3033,6 +3578,8 @@ export function useCalcStore(opts: {
     defaultBoostReachLevel,
     setDefaultBoostReachLevel,
     resetAllBoostCandy,
+    resetSettings,
+    isSettingsDefault,
     boostCandyDefaultCap,
     slots,
     rows,
@@ -3042,6 +3589,11 @@ export function useCalcStore(opts: {
 
     sleepSettings,
     updateSleepSettings,
+    currentGameDate,
+    debugNowEnabled,
+    debugNowText,
+    sleepCalculationError,
+    lunarCalendarStatus,
 
     exportOpen,
     dragRowId,
@@ -3157,8 +3709,18 @@ export function useCalcStore(opts: {
     buildPlannerPatchFromRow,
     setRowSleepHours,
     setRowSleepTarget,
+    rowStockCandyTargetFor,
+    rowStockCandyAvailableFor,
     setRowSleepTargetHours,
     rowSleepExpFor,
     rowSleepRemainingHoursFor,
+    rowGrowthIncenseCountFor,
+    rowSleepBonusBreakdownFor,
+    projectedOccurrences,
+    blueSeedSegments,
+    blueSeedShifts,
+    realOccurrences,
+    rowExceedsSleepTeamLimit,
+    calcSleepTimeForRow,
   };
 }

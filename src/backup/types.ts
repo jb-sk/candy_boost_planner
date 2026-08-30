@@ -38,12 +38,15 @@ export type CandyBoostPlannerBackupV2 = {
 };
 
 /**
- * 現行形式。V2 からの変更点は4つとも**未リリースの同一開発サイクル**でまとめて入った。
+ * 現行形式。1〜4を含むschema V3は先に公開された。
  *
  * 1. `CalcRowV1.sleepTargetHours` の追加
  * 2. アメブ個数の `undefined` を「導出」、値ありを「明示入力」として区別する（設計書 §10.18）
  * 3. `globalSettings.defaultBoostReachLevel` の追加
- * 4. `CalcRowV1.sleepTargetMode` の追加
+ * 4. `CalcRowV1.sleepTargetMode` の追加（`"all"` ／ `"stock"`）
+ *
+ * V3公開後に追加した`SleepSettings`の項目は、同じ版番号の古いバックアップでは欠落する。
+ * そのため、復元時は欠落だけを各項目の既定値で補う。
  *
  * **2 のために版で判別している。** V2 以前は導出値と手入力値を保存値から区別できないため、
  * 読み込み時に `boostOrExpAdjustment` を落とす（`backupCodec.validateRow`）。
@@ -64,10 +67,17 @@ export type BackupWarning = {
   code: "orphan-box-reference" | "unknown-pokedex-id";
 };
 
+export type BackupMigrationNotice = {
+  code: "legacy-boost-values-rederived";
+  affectedRowCount: number;
+};
+
 export type ValidatedBackup = {
   /** 旧入力も現行形式へ移行済みのV3として返す。 */
   backup: CandyBoostPlannerBackupV3;
   warnings: BackupWarning[];
+  /** 復元は可能だが、旧形式からの移行で保存値の意味が変わることを復元前に知らせる。 */
+  migrationNotices: BackupMigrationNotice[];
 };
 
 export class BackupValidationError extends Error {

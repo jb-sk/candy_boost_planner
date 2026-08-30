@@ -1,4 +1,4 @@
-import type { BoostEvent, ExpGainNature, ExpType, SleepSettings } from "../domain/types";
+import { normalizeBlueSeedIncenseDays, normalizeBlueSeedPlantWeekday, normalizeUseProjectedEvents, SLEEP_TARGET_HOURS_OPTIONS, type BoostEvent, type ExpGainNature, type ExpType, type ManualEventBonus, type SleepSettings } from "../domain/types";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { normalizeTargetExpInLevel } from "../domain/level-planner/deriveTarget";
 import { defaultBoostKind, normalizeDefaultBoostReachLevel } from "../domain/pokesleep/boost-config";
@@ -6,6 +6,13 @@ import type { ItemCompareMode } from "../domain/level-planner/types";
 import { toExpGainNature, toExpType, toInt } from "./shared";
 import { cryptoRandomId } from "./box";
 import { perfSpan } from "../utils/perf";
+import { compareGameDates, detectTimeZone, normalizeGameDate, normalizeTimeZone } from "../domain/pokesleep/game-date";
+import {
+  DEFAULT_GROWTH_INCENSE_GSD_DAYS,
+  migrateGrowthIncenseGsdPolicy,
+  normalizeGrowthIncenseGsdDays,
+  normalizeGrowthIncenseStock,
+} from "../domain/pokesleep/growth-incense";
 
 export type CalcRowV1 = {
   id: string;
@@ -41,12 +48,16 @@ export type CalcRowV1 = {
   sleepHours?: number;
   /** 睡眠目標時間（時間単位）。未設定=睡眠を考慮しない。SLEEP_TARGET_HOURS_OPTIONS のいずれかのみ許可。 */
   sleepTargetHours?: number;
-  /** アメを使わず、必要な睡眠時間だけを表示するモード。 */
-  sleepTargetMode?: "all";
+  /**
+   * 睡眠目標の「時間を指定しない」2状態。
+   * - `all`: アメを1個も使わず、必要な睡眠時間だけを表示する
+   * - `stock`: 手持ちの種族アメだけを使い（万能アメ・タイプアメは使わない）、残りを睡眠で賄う
+   */
+  sleepTargetMode?: "all" | "stock";
 };
 
-/** 睡眠目標時間ドロップダウンの選択肢（アチーブメント区切りに対応。任意値は設けない）。 */
-export const SLEEP_TARGET_HOURS_OPTIONS = [200, 500, 1000, 2000] as const;
+// 既存 import 元との互換を保つ。正本は domain/types。
+export { SLEEP_TARGET_HOURS_OPTIONS } from "../domain/types";
 
 export type CalcSaveSlotV1 = {
   /** スロット位置とは独立したセッション/保存データ上の安定ID。 */
@@ -210,17 +221,33 @@ export const DEFAULT_SLEEP_SETTINGS: SleepSettings = {
   dailySleepHours: 8.5,
   sleepExpBonusCount: 0,
   includeGSD: true,
+  timeZone: detectTimeZone(),
+  growthIncenseGsdDays: { ...DEFAULT_GROWTH_INCENSE_GSD_DAYS },
+  growthIncenseNormalPerWeek: 0,
+  growthIncenseStock: null,
+  manualEventBonuses: [],
+  useProjectedEvents: true,
+  blueSeedPlantWeekday: 1,
+  blueSeedIncenseDays: "auto",
 };
+
+export function defaultSleepSettings(): SleepSettings {
+  return {
+    ...DEFAULT_SLEEP_SETTINGS,
+    growthIncenseGsdDays: { ...DEFAULT_SLEEP_SETTINGS.growthIncenseGsdDays },
+    manualEventBonuses: DEFAULT_SLEEP_SETTINGS.manualEventBonuses.map(bonus => ({ ...bonus })),
+  };
+}
 
 export function loadSleepSettings(): SleepSettings {
   try {
     const raw = localStorage.getItem(SLEEP_SETTINGS_KEY);
-    if (!raw) return { ...DEFAULT_SLEEP_SETTINGS };
+    if (!raw) return defaultSleepSettings();
     const json = JSON.parse(raw);
     const normalized = normalizeSleepSettings(json);
-    return normalized ?? { ...DEFAULT_SLEEP_SETTINGS };
+    return normalized ?? defaultSleepSettings();
   } catch {
-    return { ...DEFAULT_SLEEP_SETTINGS };
+    return defaultSleepSettings();
   }
 }
 
@@ -308,8 +335,11 @@ function toRows(v: unknown, sourceSchemaVersion: 1 | 2): CalcRowV1[] {
       : undefined;
     // candyTarget: undefined = 個数指定なし（目標Lvが anchor）、0以上 = 個数指定あり
     const storedCandyTarget = typeof o.candyTarget === "number" && o.candyTarget >= 0 ? Math.floor(o.candyTarget) : undefined;
-    const sleepTargetMode = o.sleepTargetMode === "all" ? "all" : undefined;
-    const candyTarget = sleepTargetMode === "all"
+    const sleepTargetMode = o.sleepTargetMode === "all" || o.sleepTargetMode === "stock"
+      ? o.sleepTargetMode
+      : undefined;
+    // どちらのモードも個数指定を持たない（`all` はアメを配らず、`stock` は在庫が個数を決める）。
+    const candyTarget = sleepTargetMode !== undefined
       ? undefined
       : storedCandyTarget ?? migrateLegacyPeakCandyTarget(o);
     const boostOrExpAdjustment = storedBoostOrExpAdjustment === undefined
@@ -330,7 +360,7 @@ function toRows(v: unknown, sourceSchemaVersion: 1 | 2): CalcRowV1[] {
         ? o.sleepTargetHours
         : undefined;
     // 両方の個数anchorが無い目標だけ Lv ちょうどへ戻す。
-    const dstExpInLevel = sleepTargetMode === "all"
+    const dstExpInLevel = sleepTargetMode !== undefined
       ? undefined
       : candyTarget === undefined && boostOrExpAdjustment === undefined
       ? undefined
@@ -396,9 +426,36 @@ function normalizeSleepSettings(x: unknown): SleepSettings | undefined {
   const includeGSD = typeof o.includeGSD === "boolean"
     ? o.includeGSD
     : undefined;
+  const timeZone = normalizeTimeZone(o.timeZone);
+  const growthIncenseGsdDays = normalizeGrowthIncenseGsdDays(o.growthIncenseGsdDays)
+    ?? migrateGrowthIncenseGsdPolicy(o.growthIncenseGsdPolicy)
+    ?? undefined;
+  const growthIncenseNormalPerWeek = typeof o.growthIncenseNormalPerWeek === "number"
+    && Number.isInteger(o.growthIncenseNormalPerWeek)
+    && o.growthIncenseNormalPerWeek >= 0
+    && o.growthIncenseNormalPerWeek <= 7
+    ? o.growthIncenseNormalPerWeek as SleepSettings["growthIncenseNormalPerWeek"]
+    : undefined;
+  const growthIncenseStock = normalizeGrowthIncenseStock(o.growthIncenseStock);
+  const manualEventBonuses = normalizeManualEventBonuses(o.manualEventBonuses);
+  const useProjectedEvents = normalizeUseProjectedEvents(o.useProjectedEvents);
+  const blueSeedPlantWeekday = normalizeBlueSeedPlantWeekday(o.blueSeedPlantWeekday);
+  const blueSeedIncenseDays = normalizeBlueSeedIncenseDays(o.blueSeedIncenseDays);
 
   // すべて undefined なら設定なしとして undefined を返す
-  if (dailySleepHours === undefined && sleepExpBonusCount === undefined && includeGSD === undefined) {
+  if (
+    dailySleepHours === undefined
+    && sleepExpBonusCount === undefined
+    && includeGSD === undefined
+    && timeZone === null
+    && growthIncenseGsdDays === undefined
+    && growthIncenseNormalPerWeek === undefined
+    && growthIncenseStock === undefined
+    && manualEventBonuses === undefined
+    && useProjectedEvents === undefined
+    && blueSeedPlantWeekday === undefined
+    && blueSeedIncenseDays === undefined
+  ) {
     return undefined;
   }
 
@@ -407,5 +464,37 @@ function normalizeSleepSettings(x: unknown): SleepSettings | undefined {
     dailySleepHours: dailySleepHours ?? 8.5,
     sleepExpBonusCount: sleepExpBonusCount ?? 0,
     includeGSD: includeGSD ?? true,
+    timeZone: timeZone ?? DEFAULT_SLEEP_SETTINGS.timeZone,
+    growthIncenseGsdDays: growthIncenseGsdDays ?? { ...DEFAULT_GROWTH_INCENSE_GSD_DAYS },
+    growthIncenseNormalPerWeek: growthIncenseNormalPerWeek ?? 0,
+    growthIncenseStock: growthIncenseStock === undefined ? null : growthIncenseStock,
+    manualEventBonuses: manualEventBonuses ?? [],
+    useProjectedEvents: useProjectedEvents ?? DEFAULT_SLEEP_SETTINGS.useProjectedEvents,
+    blueSeedPlantWeekday: blueSeedPlantWeekday === undefined ? 1 : blueSeedPlantWeekday,
+    blueSeedIncenseDays: blueSeedIncenseDays ?? DEFAULT_SLEEP_SETTINGS.blueSeedIncenseDays,
   };
+}
+
+function normalizeManualEventBonuses(value: unknown): ManualEventBonus[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const bonuses: ManualEventBonus[] = [];
+  for (const item of value) {
+    if (bonuses.length >= 10) break;
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const row = item as Record<string, unknown>;
+    const from = normalizeGameDate(row.from);
+    const to = normalizeGameDate(row.to);
+    const multiplier = row.multiplier;
+    if (
+      !from
+      || !to
+      || compareGameDates(from, to) > 0
+      || typeof multiplier !== "number"
+      || !Number.isFinite(multiplier)
+      || multiplier <= 0
+      || multiplier > 10
+    ) continue;
+    bonuses.push({ from, to, multiplier });
+  }
+  return bonuses;
 }

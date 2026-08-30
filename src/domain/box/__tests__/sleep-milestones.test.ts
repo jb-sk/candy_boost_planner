@@ -53,14 +53,13 @@ describe("sleep milestones helpers", () => {
   });
 
   describe("calcSleepMilestones", () => {
-    const now = new Date("2026-05-08T00:00:00.000Z");
+    const startGameDate = "2026-05-08" as const;
 
     it("handles 0h boundary", () => {
       const out = calcSleepMilestones({
         currentSleepHours: 0,
         dailySleepHours: 8.5,
-
-        now,
+        startGameDate,
       });
       expect(out[0]).toMatchObject({ hours: 200, achieved: false, remainingDays: 24 });
       // estimatedDate = 2026/05/08 + 24日 = 2026/06/01
@@ -71,8 +70,7 @@ describe("sleep milestones helpers", () => {
       const out = calcSleepMilestones({
         currentSleepHours: 199,
         dailySleepHours: 8.5,
-
-        now,
+        startGameDate,
       });
       expect(out[0]).toMatchObject({ hours: 200, achieved: false, remainingDays: 1 });
     });
@@ -81,8 +79,7 @@ describe("sleep milestones helpers", () => {
       const out = calcSleepMilestones({
         currentSleepHours: 200,
         dailySleepHours: 8.5,
-
-        now,
+        startGameDate,
       });
       expect(out[0]).toMatchObject({ hours: 200, achieved: true });
       // achieved なら estimatedDate は付かない
@@ -93,8 +90,7 @@ describe("sleep milestones helpers", () => {
       const out = calcSleepMilestones({
         currentSleepHours: 2100,
         dailySleepHours: 8.5,
-
-        now,
+        startGameDate,
       });
       expect(out.every((x) => x.achieved)).toBe(true);
     });
@@ -103,14 +99,12 @@ describe("sleep milestones helpers", () => {
       const outZero = calcSleepMilestones({
         currentSleepHours: 0,
         dailySleepHours: 0,
-
-        now,
+        startGameDate,
       });
       const outNaN = calcSleepMilestones({
         currentSleepHours: 0,
         dailySleepHours: Number.NaN,
-
-        now,
+        startGameDate,
       });
       expect(outZero[0]).toMatchObject({ hours: 200, remainingDays: 24 });
       expect(outNaN[0]).toMatchObject({ hours: 200, remainingDays: 24 });

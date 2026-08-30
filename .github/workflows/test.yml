@@ -41,6 +41,19 @@ jobs:
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Type Check
+        run: pnpm run typecheck
+
+      - name: Build and verify runtime bundle
+        run: pnpm exec vite build && pnpm run verify:runtime-bundle
+
+      # 満月の収録終端は固定なので日次PRにはせず、通常CIで決定的な生成物の差分だけを検証する。
+      - name: Verify generated full moon dates
+        run: pnpm run verify:full-moon-dates
+
       - name: Run Unit Tests
         run: pnpm exec vitest run --no-color --reporter=verbose
 

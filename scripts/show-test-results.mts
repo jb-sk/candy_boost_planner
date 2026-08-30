@@ -8,6 +8,22 @@
 
 import { readFileSync, existsSync } from 'fs';
 
+type AssertionResult = {
+  status: string;
+  title: string;
+  failureMessages: string[];
+};
+
+type TestResults = {
+  numPassedTests: number;
+  numFailedTests: number;
+  numTotalTests: number;
+  testResults: Array<{
+    name: string;
+    assertionResults: AssertionResult[];
+  }>;
+};
+
 const resultsPath = './test-results.json';
 
 if (!existsSync(resultsPath)) {
@@ -16,7 +32,7 @@ if (!existsSync(resultsPath)) {
   process.exit(1);
 }
 
-const data = JSON.parse(readFileSync(resultsPath, 'utf-8'));
+const data = JSON.parse(readFileSync(resultsPath, 'utf-8')) as TestResults;
 
 console.log('');
 console.log('━'.repeat(60));
@@ -31,7 +47,7 @@ if (data.numFailedTests > 0) {
   console.log('\n失敗したテスト:\n');
 
   for (const suite of data.testResults) {
-    const failed = suite.assertionResults.filter((r: any) => r.status === 'failed');
+    const failed = suite.assertionResults.filter(result => result.status === 'failed');
     if (failed.length === 0) continue;
 
     // ファイル名を短くする

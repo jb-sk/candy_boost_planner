@@ -94,7 +94,7 @@ function fullPlanFixture(mode: SolverItemCompareMode): LevelPlannerInput {
       nature: 'normal',
       requestedBoostCandy: 0,
       boostAllowed: true,
-      candyTarget: { totalCandyUnits: row.totalCandy },
+      candyTarget: { totalCandyUnits: row.totalCandy, boostedCandyUnits: 0 },
       priorityIndex: index,
     })),
     dreamShards: Number.POSITIVE_INFINITY,
@@ -104,7 +104,7 @@ function fullPlanFixture(mode: SolverItemCompareMode): LevelPlannerInput {
   };
 }
 
-function reportedLegacyTenRowFixture(mode: ItemCompareMode = 'legacyImproved'): LevelPlannerInput {
+function reportedLegacyTenRowFixture(mode: SolverItemCompareMode = 'legacyImproved'): LevelPlannerInput {
   const rows = [
     ['latias', 380, 'Dragon', 55, 0, 70, 1080, 'normal', 993],
     ['drampa', 780, 'Dragon', 25, 0, 60, 600, 'down', 696],
@@ -194,7 +194,7 @@ function reportedLongSurplusBoundaryFixture(): LevelPlannerInput {
   };
 }
 
-function reportedSharedSpeciesBoundaryFixture(mode: ItemCompareMode, boostKind: 'full' | 'mini' = 'full'): LevelPlannerInput {
+function reportedSharedSpeciesBoundaryFixture(mode: SolverItemCompareMode, boostKind: 'full' | 'mini' = 'full'): LevelPlannerInput {
   const base = reportedLongSurplusBoundaryFixture();
   const rows = new Map(base.pokemonList.map(row => [row.pokemonId, row]));
   const update = (pokemonId: string, values: Partial<LevelPlannerInput['pokemonList'][number]>) => ({
@@ -230,7 +230,7 @@ function reportedSharedSpeciesBoundaryFixture(mode: ItemCompareMode, boostKind: 
   };
 }
 
-function reportedFullPostSwitchFixture(mode: ItemCompareMode): LevelPlannerInput {
+function reportedFullPostSwitchFixture(mode: SolverItemCompareMode): LevelPlannerInput {
   const base = reportedLongSurplusBoundaryFixture();
   const rows = new Map(base.pokemonList.map(row => [row.pokemonId, row]));
   const update = (pokemonId: string, values: Partial<LevelPlannerInput['pokemonList'][number]>) => ({
@@ -550,6 +550,13 @@ describe('fbl01d feasibility performance fixture', () => {
       mode,
       boundaryIndex: 6,
       selectedTotalCandy: 1_535,
+    });
+    expect(result.performance?.prefixSearch).toMatchObject({
+      maxFeasiblePrefix: 6,
+      solved: 2,
+      rejected: 0,
+      inconclusive: 0,
+      upperScanProbes: 0,
     });
     expect(result.lossLedger.hasLoss).toBe(false);
     console.info('[level-planner-full-post-switch-perf]', JSON.stringify({
