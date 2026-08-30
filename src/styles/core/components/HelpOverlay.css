@@ -1,5 +1,16 @@
 /* Modern: HelpOverlay — mobile-first, simple flat design */
 
+/* タブの見た目は Modal.css の .modalTabs / .modalTab（設定モーダルと共通） */
+
+/* 中身は画面いっぱいに広げず、上限（1000px）を決めて中央へ置く（本体の 1400px グリッドと同じ考え方）。
+   広い画面で1行が伸び続けると、説明文も表も読みづらくなる。
+   **左右の余白で寄せる**（中身に `max-width` を持たせない）── ヘッダの区切り線は画面の端まで通したい。
+   **メディアクエリは使わない** ── 狭い画面では `16px` 側が勝つので、そのまま全幅になる */
+.help-overlay .modal__header,
+.help-overlay .modal__body {
+  padding-inline: max(16px, (100% - 1000px) / 2);
+}
+
 /* ===== Section groups ===== */
 .help-overlay .section {
   margin-bottom: 32px;

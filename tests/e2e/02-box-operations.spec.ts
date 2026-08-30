@@ -227,17 +227,95 @@ test.describe('BOX詳細パネル', () => {
     await boxPanel.expectBoxTileCount(initialCount - 1);
   });
 
-  test('ボックス全消去が動作する', async ({ page }) => {
-    // confirmダイアログをAcceptする設定
-    page.on('dialog', async (dialog) => {
-      await dialog.accept();
-    });
-
+  test('ボックス全消去が動作する', async () => {
+    // 確認は `window.confirm` ではなく、押した場所に出るインライン確認。
+    // 「やめる」では何も起きない。
+    const beforeCount = await boxPanel.boxTiles.count();
     await expect(boxPanel.clearAllBoxButton).toBeEnabled();
+    await boxPanel.clearAllBoxButton.click();
+    await expect(boxPanel.clearConfirm).toBeVisible();
+    await boxPanel.clearConfirmNoButton.click();
+    await expect(boxPanel.clearConfirm).toBeHidden();
+    await boxPanel.expectBoxTileCount(beforeCount);
+
     await boxPanel.clickClearAllBox();
 
     // 全て消える
     await boxPanel.expectBoxTileCount(0);
+  });
+
+  test('全消去の確認は Escape で閉じ、フォーカスが元のボタンへ戻る', async ({ page }) => {
+    const beforeCount = await boxPanel.boxTiles.count();
+    await boxPanel.clearAllBoxButton.click();
+    await expect(boxPanel.clearConfirm).toBeVisible();
+    // 開いた直後は肯定ボタンへフォーカスが移っている。
+    await expect(boxPanel.clearConfirmYesButton).toBeFocused();
+
+    await page.keyboard.press('Escape');
+    await expect(boxPanel.clearConfirm).toBeHidden();
+    await boxPanel.expectBoxTileCount(beforeCount);
+    await expect(boxPanel.clearAllBoxButton).toBeFocused();
+
+    // 確認の外へフォーカスを移してからでも Escape で閉じること。
+    // 要素スコープの keydown だとここでイベントが確認まで届かない。
+    await boxPanel.clearAllBoxButton.click();
+    await expect(boxPanel.clearConfirm).toBeVisible();
+    await boxPanel.searchInput.click();
+    await expect(boxPanel.clearConfirmYesButton).not.toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(boxPanel.clearConfirm).toBeHidden();
+    await boxPanel.expectBoxTileCount(beforeCount);
+  });
+
+  test('全消去は 元に戻す→やり直す→元に戻す を繰り返しても復元できる', async () => {
+    const beforeCount = await boxPanel.boxTiles.count();
+    expect(beforeCount).toBeGreaterThan(0);
+
+    await boxPanel.clickClearAllBox();
+    await boxPanel.expectBoxTileCount(0);
+
+    await boxPanel.clickUndo();
+    await boxPanel.expectBoxTileCount(beforeCount);
+
+    await boxPanel.clickRedo();
+    await boxPanel.expectBoxTileCount(0);
+
+    // ここが壊れていた。逆操作の中身が空で積まれ、戻せなくなっていた。
+    await boxPanel.clickUndo();
+    await boxPanel.expectBoxTileCount(beforeCount);
+
+    // もう一往復しても崩れないこと。
+    await boxPanel.clickRedo();
+    await boxPanel.expectBoxTileCount(0);
+    await boxPanel.clickUndo();
+    await boxPanel.expectBoxTileCount(beforeCount);
+  });
+
+  test('全消去後はフォーカスが「元に戻す」へ移る', async () => {
+    await boxPanel.clickClearAllBox();
+    await boxPanel.expectBoxTileCount(0);
+    await expect(boxPanel.undoButton).toBeFocused();
+  });
+
+  test('確認表示中にボックスが空になっても、件数が戻ったとき確認が復活しない', async ({ page }) => {
+    await boxPanel.clearAllBoxButton.click();
+    await expect(boxPanel.clearConfirm).toBeVisible();
+
+    // 確認を出したまま、隣の「元に戻す」でボックスを空にする。
+    await boxPanel.undoButton.click();
+    await boxPanel.expectBoxTileCount(0);
+    await expect(boxPanel.clearConfirm).toBeHidden();
+
+    // 件数を戻す。「やり直す」ではボックスが戻らない（別件の既存バグ）ので、
+    // 確実に件数が増える再インポートで確かめる。
+    await boxPanel.openImportPanel();
+    await boxPanel.fillImportText(importData.importText);
+    await boxPanel.clickImport();
+    await expect(boxPanel.boxTiles.first()).toBeVisible();
+
+    // 押していない確認が生えてこないこと。
+    await expect(boxPanel.clearConfirm).toBeHidden();
+    await expect(page.getByTestId('box-clear-confirm-yes')).toHaveCount(0);
   });
 
   test('ニックネームが編集できる', async () => {

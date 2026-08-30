@@ -21,7 +21,19 @@ function backup() {
   return createBackup({
     boxEntries: [],
     totalShards: 9876,
-    sleepSettings: { dailySleepHours: 7.5, sleepExpBonusCount: 2, includeGSD: false },
+    sleepSettings: {
+      dailySleepHours: 7.5,
+      sleepExpBonusCount: 2,
+      includeGSD: false,
+      timeZone: "Asia/Tokyo",
+      growthIncenseGsdDays: { beforeFullMoon: true, fullMoon: false, afterFullMoon: false },
+      growthIncenseNormalPerWeek: 2,
+      growthIncenseStock: 12,
+      manualEventBonuses: [{ from: "2026-08-25", to: "2026-08-27", multiplier: 1.5 }],
+      useProjectedEvents: true,
+      blueSeedPlantWeekday: 2,
+      blueSeedIncenseDays: 4,
+    },
     candyInventory: { schemaVersion: 2, universal: { s: 1, m: 2, l: 3 }, typeCandy: {}, species: {} },
     defaultBoostReachLevel: null,
     calculator: { activeSlotIndex: 2, slots: [null, null, null] },
@@ -98,6 +110,7 @@ describe("applyBackup", () => {
     expect(mock.values.has(DEFAULT_BOOST_REACH_LEVEL_KEY)).toBe(false);
     expect(JSON.parse(mock.values.get(CANDY_STORAGE_KEY) ?? "null").schemaVersion).toBe(2);
     expect(mock.values.has(CANDY_STORAGE_KEY_V1)).toBe(false);
+    expect(JSON.parse(mock.values.get(SLEEP_SETTINGS_KEY) ?? "null").blueSeedIncenseDays).toBe(4);
     expect(mock.values.has(RESTORE_PENDING_KEY)).toBe(false);
   });
 

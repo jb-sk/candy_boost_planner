@@ -236,7 +236,7 @@ test.beforeEach(async ({ page }) => {
     if (typeof PerformanceObserver !== 'undefined' && PerformanceObserver.supportedEntryTypes.includes('event')) {
       const observer = new PerformanceObserver((list) => {
         for (const entry of list.getEntries()) {
-          const event = entry as PerformanceEventTiming;
+          const event = entry as PerformanceEventTiming & { interactionId: number };
           const inputDelay = event.processingStart - event.startTime;
           const processing = event.processingEnd - event.processingStart;
           const presentation = Math.max(0, event.duration - inputDelay - processing);

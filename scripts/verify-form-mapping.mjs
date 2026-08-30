@@ -11,7 +11,6 @@
  *   - form-ja-to-number.json: 新フォーム名→番号を追加
  *   - form-label-ja-to-en.json: 新フォーム名→英訳を追加
  *   - form-aliases.json: Wiki/にとよん間のフォーム番号ずれのエイリアスを追加
- *   - generate-pokemon-names.mjs: formNameToNumber への新エントリ追加
  *
  * Usage:
  *   POKESLEEP_TOOL_PATH=<path> node scripts/verify-form-mapping.mjs [--dry-run]
@@ -96,7 +95,6 @@ const pokemonIvTs = fs.readFileSync(pokemonIvTsPath, "utf8");
 const formJaToNumberPath = path.join(__dirname, "form-ja-to-number.json");
 const formLabelJaToEnPath = path.join(__dirname, "form-label-ja-to-en.json");
 const formAliasesPath = path.join(__dirname, "form-aliases.json");
-const genPokemonNamesPath = path.join(__dirname, "generate-pokemon-names.mjs");
 
 const formJaToNumber = fs.existsSync(formJaToNumberPath) ? readJson(formJaToNumberPath) : {};
 const formLabelJaToEn = fs.existsSync(formLabelJaToEnPath) ? readJson(formLabelJaToEnPath) : {};
@@ -232,20 +230,6 @@ function checkNeedsWork() {
           return true;
         }
         return true;
-      }
-    }
-  }
-  // Phase 3 check: formNameToNumber が最新か
-  if (fs.existsSync(genPokemonNamesPath)) {
-    const genContent = fs.readFileSync(genPokemonNamesPath, "utf8");
-    const blockMatch = genContent.match(/(const\s+formNameToNumber\s*=\s*\{)([\s\S]*?)(\};)/);
-    if (blockMatch) {
-      const cur = {};
-      const re = /(?:["']([^"']+)["']|(\w+))\s*:\s*(\d+)/g;
-      let m;
-      while ((m = re.exec(blockMatch[2])) !== null) cur[m[1] || m[2]] = Number(m[3]);
-      for (const [enName, num] of Object.entries(nitoyonFormMap)) {
-        if (cur[enName] !== num) return true;
       }
     }
   }
@@ -434,80 +418,12 @@ if (!phase2Changed && unfixable.length === unfixableAfterPhase1) {
 console.log();
 
 // ---------------------------------------------------------------------------
-// Phase 3: generate-pokemon-names.mjs の formNameToNumber 自動同期
+// Phase 3: 検証（自動修正後の最終チェック）
 // ---------------------------------------------------------------------------
-console.log("--- Phase 3: generate-pokemon-names.mjs formNameToNumber 同期 ---");  // Phase 3 は formMap → スクリプト同期
-let phase3Changed = false;
-
-if (fs.existsSync(genPokemonNamesPath)) {
-  let genContent = fs.readFileSync(genPokemonNamesPath, "utf8");
-
-  // 現在の formNameToNumber ブロックを抽出
-  const blockMatch = genContent.match(
-    /(const\s+formNameToNumber\s*=\s*\{)([\s\S]*?)(\};)/
-  );
-  if (blockMatch) {
-    // 現在のエントリをパース（クォートあり/なし両対応）
-    const currentEntries = {};
-    const entryRe = /(?:["']([^"']+)["']|(\w+))\s*:\s*(\d+)/g;
-    let em;
-    while ((em = entryRe.exec(blockMatch[2])) !== null) {
-      const key = em[1] || em[2];
-      currentEntries[key] = Number(em[3]);
-    }
-
-    // にとよん formMap にあるが generate-pokemon-names.mjs にないエントリを追加
-    const toAdd = [];
-    for (const [enName, num] of Object.entries(nitoyonFormMap)) {
-      if (currentEntries[enName] === undefined) {
-        toAdd.push({ enName, num });
-      } else if (currentEntries[enName] !== num) {
-        // 番号が違う（これは重大な問題だが自動修正する）
-        toAdd.push({ enName, num });
-      }
-    }
-
-    if (toAdd.length > 0) {
-      // 新しいエントリを追加してブロックを再構築
-      for (const { enName, num } of toAdd) {
-        currentEntries[enName] = num;
-      }
-
-      // ソート順を維持（番号順）
-      const sorted = Object.entries(currentEntries).sort((a, b) => a[1] - b[1]);
-      const lines = sorted.map(([k, v]) => {
-        const key = k.includes(" ") ? `"${k}"` : k;
-        return `  ${key}: ${v},`;
-      });
-      const newBlock = `${blockMatch[1]}\n${lines.join("\n")}\n${blockMatch[3]}`;
-      genContent = genContent.replace(blockMatch[0], newBlock);
-
-      if (!args.dryRun) {
-        fs.writeFileSync(genPokemonNamesPath, genContent, "utf8");
-      }
-      for (const { enName, num } of toAdd) {
-        addFix("generate-pokemon-names.mjs", "追加/更新", `"${enName}": ${num}`);
-      }
-      phase3Changed = true;
-    }
-  } else {
-    console.log("  [WARN] formNameToNumber ブロックを抽出できなかった");
-  }
-} else {
-  console.log("  [SKIP] generate-pokemon-names.mjs が存在しない");
-}
-if (!phase3Changed) {
-  console.log("  → 同期済み");
-}
-console.log();
-
-// ---------------------------------------------------------------------------
-// Phase 4: 検証（自動修正後の最終チェック）
-// ---------------------------------------------------------------------------
-console.log("--- Phase 4: 最終検証 ---");
+console.log("--- Phase 3: 最終検証 ---");
 let finalErrors = 0;
 
-// 4a: formMap の全エントリが form-ja-to-number.json 経由で解決可能か
+// 3a: formMap の全エントリが form-ja-to-number.json 経由で解決可能か
 const enToJaFinal = buildEnToJaMap();
 for (const [enName, nitoyonNum] of Object.entries(nitoyonFormMap)) {
   const jaNames = enToJaFinal[enName] || [];
@@ -518,7 +434,7 @@ for (const [enName, nitoyonNum] of Object.entries(nitoyonFormMap)) {
   }
 }
 
-// 4b: formMap vs formToString 配列の一貫性
+// 3b: formMap vs formToString 配列の一貫性
 if (nitoyonFormNames) {
   for (const [enName, num] of Object.entries(nitoyonFormMap)) {
     if (nitoyonFormNames[num] !== enName) {
@@ -527,7 +443,7 @@ if (nitoyonFormNames) {
   }
 }
 
-// 4c: pokemon-names.ts での名前解決（生成済みファイルが存在する場合）
+// 3c: pokemon-names.ts での名前解決（生成済みファイルが存在する場合）
 const pokemonNamesTsPath = path.join(__dirname, "../src/domain/pokesleep/pokemon-names.ts");
 if (fs.existsSync(pokemonNamesTsPath)) {
   const namesTsContent = fs.readFileSync(pokemonNamesTsPath, "utf8");

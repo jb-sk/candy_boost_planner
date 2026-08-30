@@ -31,9 +31,7 @@ const baseRow = (patch: Partial<PlannerInputRowDto> = {}): PlannerInputRowDto =>
   expRemaining: 100,
   expType: 600,
   nature: 'normal',
-  mode: 'targetLevel',
   boostReachLevel: 30,
-  candyPeak: 20,
   candyTarget: undefined,
   boostCandyInput: 8,
   sleepExp: 0,
@@ -79,10 +77,8 @@ describe('buildPlannerInput', () => {
 
   it('targetLevel かつ boostReachLevel が目標未満なら、ユーザー目標 Lv を維持する', () => {
     const row = baseRow({
-      mode: 'targetLevel',
       dstLevel: 40,
       boostReachLevel: 25,
-      candyPeak: 1,
       boostCandyInput: 7,
       expRemaining: 0,
     });
@@ -208,8 +204,14 @@ describe('buildPlannerInput', () => {
   });
 
   it('異なる図鑑番号の同じ進化系を共有familyへ正規化する', () => {
-    const snapshot = baseSnapshot('none');
-    snapshot.candyInventory.species = { '25': 12, '26': 8, '172': 20 };
+    const base = baseSnapshot('none');
+    const snapshot: PlannerInputSnapshotDto = {
+      ...base,
+      candyInventory: {
+        ...base.candyInventory,
+        species: { '25': 12, '26': 8, '172': 20 },
+      },
+    };
     const rows = [
       baseRow({ id: 'pichu', pokedexId: 172 }),
       baseRow({ id: 'pikachu', pokedexId: 25 }),
@@ -287,9 +289,15 @@ describe('buildPlannerInput', () => {
   });
 
   it('§13-1C: ONでは対象行の使用資源だけを0にし、OFFでは通常どおり資源を使う', () => {
-    const snapshot = baseSnapshot('full');
-    snapshot.candyInventory.species = { '25': 10_000 };
-    snapshot.dreamShards = 10_000_000;
+    const base = baseSnapshot('full');
+    const snapshot: PlannerInputSnapshotDto = {
+      ...base,
+      candyInventory: {
+        ...base.candyInventory,
+        species: { '25': 10_000 },
+      },
+      dreamShards: 10_000_000,
+    };
     const offInput = buildPlannerInput([
       baseRow({ srcLevel: 10, dstLevel: 40, boostCandyInput: 100 }),
     ], snapshot)!;
@@ -363,5 +371,97 @@ describe('buildPlannerInput: pokedexId の防御', () => {
       baseSnapshot('none'),
     );
     expect(input?.pokemonList.map(pokemon => pokemon.pokemonId)).toEqual(['a', 'b']);
+  });
+});
+
+describe('睡眠目標「アメ在庫＋睡眠」', () => {
+  const stockSnapshot = (
+    kind: PlannerInputSnapshotDto['boost']['kind'],
+    species: Record<string, number>,
+  ): PlannerInputSnapshotDto => ({
+    ...baseSnapshot(kind),
+    candyInventory: {
+      species,
+      // アイテムは潤沢に持たせる。使わないことが仕様なので、在庫が理由で使えないのでは意味がない。
+      typeCandy: { Electric: { s: 50, m: 50 } },
+      universal: { s: 50, m: 50, l: 50 },
+    },
+  });
+
+  const stockRow = (patch: Partial<PlannerInputRowDto> = {}): PlannerInputRowDto =>
+    baseRow({ sleepTargetMode: 'stock', boostCandyInput: 0, ...patch });
+
+  it('渡された「使うアメ数」がそのまま需要になり、アメブはその内数へ収まる', () => {
+    const input = buildPlannerInput(
+      [stockRow({ stockCandyTarget: 12, boostCandyInput: 100 })],
+      stockSnapshot('full', { '25': 12 }),
+    )!;
+
+    expect(input.pokemonList[0]).toMatchObject({
+      itemsAllowed: false,
+      requestedBoostCandy: 12,
+      candyTarget: { totalCandyUnits: 12, boostedCandyUnits: 12 },
+    });
+  });
+
+  it('タイプアメ・万能アメを1個も配らず、届かないぶんは残EXPとして残る', () => {
+    const input = buildPlannerInput(
+      [stockRow({ stockCandyTarget: 12 })],
+      stockSnapshot('none', { '25': 12 }),
+    )!;
+    const outcome = solveLevelPlanWithBudget(input, { deadlineMs: 60_000 });
+    expect(outcome.kind).toBe('result');
+    if (outcome.kind !== 'result') return;
+
+    const plan = outcome.result.pokemonResults[0]!;
+    const speciesOnly = { species: 12, type: { s: 0, m: 0 }, universal: { s: 0, m: 0, l: 0 } };
+    expect(plan.reachableLine.candySupply).toEqual(speciesOnly);
+    // 「必要アイテム」側も万能Sで埋めない。
+    expect(plan.targetLine.candySupply).toEqual(speciesOnly);
+    // 在庫ぶんは配り切れているので不足扱いにはならない（「すべて睡眠」と同じ）。
+    expect(plan.reachableLine.candyDemandMet).toBe(true);
+    expect(outcome.result.shortages.hasShortage).toBe(false);
+    expect(plan.shortage.expToTarget).toBeGreaterThan(0);
+  });
+
+  it('アメブは使う（同じ在庫でより遠くまで届き、睡眠が短くなる）', () => {
+    const species = { '25': 40 };
+    const plain = solveLevelPlanWithBudget(
+      buildPlannerInput([stockRow({ stockCandyTarget: 40 })], stockSnapshot('none', species))!,
+      { deadlineMs: 60_000 },
+    );
+    const boosted = solveLevelPlanWithBudget(
+      buildPlannerInput([stockRow({ stockCandyTarget: 40, boostCandyInput: 40 })], stockSnapshot('full', species))!,
+      { deadlineMs: 60_000 },
+    );
+    expect(plain.kind).toBe('result');
+    expect(boosted.kind).toBe('result');
+    if (plain.kind !== 'result' || boosted.kind !== 'result') return;
+
+    const plainPlan = plain.result.pokemonResults[0]!;
+    const boostedPlan = boosted.result.pokemonResults[0]!;
+    expect(boostedPlan.reachableLine.boostedCandyUnits).toBeGreaterThan(0);
+    expect(boostedPlan.reachableLine.dreamShardsUsed).toBeGreaterThan(0);
+    expect(boostedPlan.shortage.expToTarget).toBeLessThan(plainPlan.shortage.expToTarget);
+    expect(boostedPlan.reachableLine.candySupply.universal).toEqual({ s: 0, m: 0, l: 0 });
+  });
+
+  it('アメが回らない行は境界にならず、下の行をブロックしない', () => {
+    const rows = [
+      stockRow({ id: 'no-stock', pokedexId: 25, stockCandyTarget: 0 }),
+      baseRow({ id: 'normal', pokedexId: 133, dstLevel: 12, boostCandyInput: 0 }),
+    ];
+    const input = buildPlannerInput(rows, stockSnapshot('none', { '25': 0, '133': 0 }))!;
+    const outcome = solveLevelPlanWithBudget(input, { deadlineMs: 60_000 });
+    expect(outcome.kind).toBe('result');
+    if (outcome.kind !== 'result') return;
+
+    const [stock, normal] = outcome.result.pokemonResults;
+    expect(stock!.reachableLine.totalCandyUnitsUsed).toBe(0);
+    expect(stock!.shortage.expToTarget).toBeGreaterThan(0);
+    // 下の行は種族アメが無くても万能アメで目標へ届く（上の行が境界になっていない）。
+    expect(normal!.reachableLine.effectiveTargetReached).toBe(true);
+    expect(normal!.reachableLine.candySupply.species).toBe(0);
+    expect(normal!.reachableLine.totalCandyUnitsUsed).toBeGreaterThan(0);
   });
 });

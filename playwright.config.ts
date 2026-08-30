@@ -33,6 +33,8 @@ export default defineConfig({
 
     /* Force Japanese locale so E2E assertions match Japanese UI text */
     locale: 'ja-JP',
+    /* Browser-detected defaults and official GSD oracle dates must be host-TZ independent. */
+    timezoneId: 'Asia/Tokyo',
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',

@@ -8,7 +8,7 @@
       <div class="calcSticky__summary" data-testid="calc-sticky-summary" @click="stickyExpanded = !stickyExpanded">
         <span class="calcSticky__toggle">{{ stickyExpanded ? '▼' : '▶' }}</span>
         <div class="calcSticky__summaryBody" :aria-busy="calc.planResultPending.value ? 'true' : undefined">
-          <button v-if="showNoStockWarning" type="button" class="calcSticky__noStock" @click.stop="$emit('open-settings')">{{ t("calc.export.noStockWarning") }}</button>
+          <button v-if="showNoStockWarning" type="button" class="calcSticky__noStock" data-testid="calc-no-stock-warning" @click.stop="$emit('open-settings')">{{ t("calc.export.noStockWarning") }}</button>
           <span
             v-if="calc.boostKind.value !== 'none'"
             class="calcSumInline calcSumInline--boostTotal"
@@ -201,6 +201,37 @@
           {{ t("calc.pasteSlot") }}
         </button>
       </div>
+      <!-- ?perf=1 限定。睡眠EXPボーナスは日で変わるので、満月日やイベント期間へ
+           時計を進めて内訳を確かめるためのデバッグ用。未設定＝現在日時。
+           入力欄は見せず、ボタンの上に透明で重ねてタップを受けさせる。 -->
+      <div v-if="calc.debugNowEnabled" class="calcActions__group calcActions__debugNow">
+        <button
+          class="btn btn--ghost"
+          data-testid="calc-debug-now-button"
+          type="button"
+          :title="calc.debugNowText.value ? '現在日時の上書きを解除' : 'デバッグ用に現在日時を上書きする'"
+          @click="calc.debugNowText.value = ''"
+        >
+          {{ calc.debugNowText.value ? "日時解除" : "日時変更" }}
+        </button>
+        <!-- 未設定のあいだはこの入力欄がボタン全面を覆い、タップがそのままピッカーになる。
+             上書き中はボタン（解除）を前に出すため、pointer-events を落とす。 -->
+        <input
+          ref="debugNowInput"
+          class="calcActions__debugNowInput"
+          :class="{ 'calcActions__debugNowInput--inert': calc.debugNowText.value }"
+          data-testid="calc-debug-now-input"
+          type="datetime-local"
+          tabindex="-1"
+          aria-hidden="true"
+          :value="calc.debugNowText.value"
+          @click="openDebugNowPicker()"
+          @change="calc.debugNowText.value = ($event.target as HTMLInputElement).value"
+        />
+        <span v-if="calc.debugNowText.value" class="calcActions__status" data-testid="calc-debug-now-value">
+          {{ calc.debugNowText.value.replace("T", " ") }}
+        </span>
+      </div>
     </div>
 
     <div v-if="calc.showFastCalculation.value" class="calcPlanStatus" data-testid="calc-plan-status" role="status">
@@ -390,16 +421,14 @@
               :disabled="r.ui.boostInputDisabled"
               :note="r.sleepTargetMode === 'all'
                 ? t('calc.row.sleepTargetAllHint')
-                : (r.ui.boostSleepCapActive ? t('calc.row.boostSleepCapHint', { level: r.ui.boostReachLevelMax }) : undefined)"
+                : boostCapHint(r)"
               :alert="r.ui.boostQuotaViolation === 'reach' ? boostQuotaHint(r) : undefined"
               :class="{
                 'levelPick--sleepCapped': r.ui.boostSleepCapped,
                 'levelPick--allSleep': r.sleepTargetMode === 'all',
                 'levelPick--overQuota': r.ui.boostQuotaViolation === 'reach',
               }"
-              :title="r.ui.boostSleepCapped
-                ? t('calc.row.boostSleepCapHint', { level: r.ui.boostReachLevelMax })
-                : (r.ui.boostQuotaViolation === 'reach' ? boostQuotaHint(r) : undefined)"
+              :title="boostReachWarnings(r).length ? boostReachWarnings(r).join('\n') : undefined"
             >
               <template #title>
                 {{ t("calc.row.boostReachLevel") }}: Lv{{ r.srcLevel }} → Lv{{ r.ui.boostReachLevel }}
@@ -460,8 +489,8 @@
                 'field__input--sleepCapped': r.ui.boostSleepCapped,
                 'field__input--allSleep': r.sleepTargetMode === 'all',
               }"
-              :title="r.ui.boostSleepCapped
-                ? t('calc.row.boostSleepCapHint', { level: r.ui.boostReachLevelMax })
+              :title="r.ui.boostCapActive
+                ? boostCapHint(r)
                 : (r.ui.boostQuotaViolation === 'count' ? boostQuotaHint(r) : undefined)"
               :aria-invalid="r.ui.boostQuotaViolation === 'count' ? 'true' : undefined"
               @focus="onBoostCandyFocus(r)"
@@ -487,10 +516,10 @@
               type="number"
               min="0"
               class="field__input"
-              :class="{ 'field__input--allSleep': r.sleepTargetMode === 'all' }"
-              :disabled="r.sleepTargetMode === 'all'"
+              :class="{ 'field__input--allSleep': r.sleepTargetMode !== undefined }"
+              :disabled="r.sleepTargetMode !== undefined"
               :value="candyTargetInputValue(r)"
-              :placeholder="t('calc.row.candyTargetNone')"
+              :placeholder="candyTargetPlaceholder(r)"
               @focus="onCandyTargetFocus(r)"
               @blur="onCandyTargetBlur(r)"
               @input="onCandyTargetDraftInput(r.id, ($event.target as HTMLInputElement).value)"
@@ -507,6 +536,11 @@
                 :title="t('calc.sleep.currentSleepHours')"
                 @click.stop="showSleepHint($event, r.id)"
               >{{ t("calc.row.sleepTargetCurrent", { hours: calc.fmtNum(r.sleepHours ?? 0) }) }}</button>
+              <!--
+                睡眠チーム（1晩5匹）の警告はここへ戻さないこと。
+                入力欄の見出しは幅が無く、英語だと文字が見切れる。結果行の「内訳」の
+                右へ警告マークを置き、クリックでヒントを開く形にした。
+              -->
             </div>
             <select
               data-testid="sleepTargetHours"
@@ -517,43 +551,41 @@
               <option value="">{{ t("calc.row.sleepTargetNone") }}</option>
               <option v-for="h in SLEEP_TARGET_HOURS_OPTIONS" :key="h" :value="h">{{ sleepTargetOptionLabel(r, h) }}</option>
               <option value="all">{{ t("calc.row.sleepTargetAll") }}</option>
+              <option value="stock">{{ t("calc.row.sleepTargetStock") }}</option>
             </select>
           </div>
         </div>
 
-        <!-- 必要/使用の折りたたみ表示 -->
+        <!-- 目標まで／到達可能の結果表示 -->
         <div class="calcRow__resultCollapse">
-          <!-- 必要行（クリックで展開） -->
+          <!-- 目標まで行。到達可能行と表示値が違うときだけ出す対比用の補助行 -->
           <div
+            v-if="rowP(r) && !rowLinesIdentical(r)"
             data-testid="resultRowRequired"
-            :data-onboarding="rowIdx === 0 ? 'result-row' : undefined"
             class="calcRow__resultRow calcRow__resultRow--required"
-            :class="{ 'is-expanded': isExpanded(r.id) }"
-            @click="toggleExpand(r.id)"
           >
-            <span class="calcRow__expandIcon">{{ isExpanded(r.id) ? '▼' : '▶' }}</span>
-            <span class="calcRow__resultLabel">{{ t("calc.row.required") }}</span>
-              <span class="calcRow__resultItems">{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
+            <span class="calcRow__resultLabel" data-testid="result-required-label">{{ t("calc.row.required") }}</span>
+              <span class="calcRow__resultItems">{{ ' ' }}<span class="calcRow__res" data-testid="result-required-boost" v-if="calc.boostKind.value !== 'none'">
                 <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
-                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'boost') }">{{ calc.fmtNum(rowP(r)?.targetLine.boostedCandyUnits ?? 0) }}</span>
-              </span>{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
+                <span class="calcRow__num" data-testid="result-required-boost-value" :class="{ 'calcRow__num--danger': isDanger(r, 'boost') }">{{ calc.fmtNum(rowP(r)?.targetLine.boostedCandyUnits ?? 0) }}</span>
+              </span>{{ ' ' }}<span class="calcRow__res" data-testid="result-required-normal" v-if="calc.boostKind.value !== 'none'">
                 <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
-                <span class="calcRow__num">{{ calc.fmtNum(rowP(r)?.targetLine.nonBoostCandyUnits ?? 0) }}</span>
-              </span>{{ ' ' }}<span class="calcRow__res">
+                <span class="calcRow__num" data-testid="result-required-normal-value">{{ calc.fmtNum(rowP(r)?.targetLine.nonBoostCandyUnits ?? 0) }}</span>
+              </span>{{ ' ' }}<span class="calcRow__res" data-testid="result-required-candy">
                 <span class="calcRow__k">{{ t(calc.boostKind.value === 'none' ? "calc.row.candy" : "calc.row.candyTotal") }}</span>
-                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'candy') }">{{ calc.fmtNum(rowP(r)?.targetLine.totalCandyUnitsUsed ?? 0) }}</span>
-              </span>{{ ' ' }}<span class="calcRow__res">
+                <span class="calcRow__num" data-testid="result-required-candy-value" :class="{ 'calcRow__num--danger': isDanger(r, 'candy') }">{{ calc.fmtNum(rowP(r)?.targetLine.totalCandyUnitsUsed ?? 0) }}</span>
+              </span>{{ ' ' }}<span class="calcRow__res" data-testid="result-required-shards">
                 <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
-                <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'shards') }">{{ calc.fmtNum(rowP(r)?.targetLine.dreamShardsUsed ?? 0) }}</span>
-              </span>{{ ' ' }}<span class="calcRow__res" v-if="hasItemUsage(r)">
+                <span class="calcRow__num" data-testid="result-required-shards-value" :class="{ 'calcRow__num--danger': isDanger(r, 'shards') }">{{ calc.fmtNum(rowP(r)?.targetLine.dreamShardsUsed ?? 0) }}</span>
+              </span>{{ ' ' }}<span class="calcRow__res" data-testid="result-required-items" v-if="(rowItemUsageMaps.target.get(r.id) ?? []).length > 0">
                 <span class="calcRow__k">{{ t("calc.row.itemRequired") }}</span>
-                <span class="calcRow__num calcRow__num--text">
+                <span class="calcRow__num calcRow__num--text" data-testid="result-required-items-value">
                   <template v-for="(item, idx) in (rowItemUsageMaps.target.get(r.id) ?? [])" :key="idx">
                     <span :class="{ 'calcRow__num--danger': item.isDanger }">{{ item.label }} {{ item.value }}</span>
                     <span v-if="idx < (rowItemUsageMaps.target.get(r.id) ?? []).length - 1">, </span>
                   </template>
                 </span>
-              </span>{{ ' ' }}<span class="calcRow__res" v-if="getSurplusValue(r, 'target') > 0">
+              </span>{{ ' ' }}<span class="calcRow__res" data-testid="result-required-surplus" v-if="getSurplusValue(r, 'target') > 0">
                 <span class="calcRow__k">{{ t("calc.candy.surplus") }}</span>
                 <span class="calcRow__num">{{ getSurplusValue(r, 'target') }}</span>
               </span>
@@ -564,84 +596,111 @@
                 置き場所は「到達可能」行だけ（下の resultRowReachable）。ここに複製すると
                 同じ不足が2箇所に散り、片方だけ直る事故になる（設計書§10.10 に前例あり）。
 
-                過去に「折りたたみ時だけ出す」（`!isExpanded(r.id) && …`）形で何度も復活している。
-                折りたたむと不足が見えなくなるのが理由だが、その用途は
+                過去に「目標まで」行へ不足表示を足す形で何度も復活しているが、その用途は
                 レベルピッカーの不足ラベル（`rowLimitingShortageLabel`）とサマリーの「アメブ不足」、
-                および折りたたみ時も残る「目標まで」行の赤字（律速要因の項目）が担当する。
+                および「目標まで」行の赤字（律速要因の項目）が担当する。
 
                 回帰テスト: tests/e2e/07-level-planner-inventory.spec.ts
-                「目標まで行には不足を表示しない（折りたたみ・展開のどちらでも）」
+                「目標まで行には不足を表示しない」
               -->
             </span>
           </div>
 
-          <!-- 到達可能行（個数指定行は目標まで行と同値になったため廃止。設計書§4.2） -->
-          <div style="display: flex; flex-direction: column; gap: 0;">
-            <!-- 使用行（展開時のみ表示） -->
-            <div
-              v-if="isExpanded(r.id) && rowP(r)"
-              data-testid="resultRowReachable"
-              class="calcRow__resultRow calcRow__resultRow--used"
-            >
-              <span class="calcRow__expandIcon" style="visibility: hidden"></span>
-              <span class="calcRow__resultLabel">{{ t("calc.row.used") }}</span>
-              <span class="calcRow__resultItems">{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
-                  <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'boost') }">{{ calc.fmtNum(rowP(r)!.reachableLine.boostedCandyUnits) }}</span>
-                </span>{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
-                  <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
-                  <span class="calcRow__num">{{ calc.fmtNum(rowP(r)!.reachableLine.nonBoostCandyUnits) }}</span>
-                </span>{{ ' ' }}<span class="calcRow__res">
-                  <span class="calcRow__k">{{ t(calc.boostKind.value === 'none' ? "calc.row.candy" : "calc.row.candyTotal") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'candy') }">{{ calc.fmtNum(rowP(r)!.reachableLine.totalCandyUnitsUsed) }}</span>
-                </span>{{ ' ' }}<span class="calcRow__res">
-                  <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
-                  <span class="calcRow__num" :class="{ 'calcRow__num--danger': isDanger(r, 'shards') }">{{ calc.fmtNum(rowP(r)!.reachableLine.dreamShardsUsed) }}</span>
-                </span>{{ ' ' }}<span class="calcRow__res" v-if="(rowItemUsageMaps.reachable.get(r.id) ?? []).length > 0">
-                  <span class="calcRow__k">{{ t("calc.row.itemUsage") }}</span>
-                  <span class="calcRow__num calcRow__num--text">
-                    <template v-for="(item, idx) in (rowItemUsageMaps.reachable.get(r.id) ?? [])" :key="idx">
-                      <span :class="{ 'calcRow__num--danger': item.isDanger }">{{ item.label }} {{ item.value }}</span>
-                      <span v-if="idx < (rowItemUsageMaps.reachable.get(r.id) ?? []).length - 1">, </span>
-                    </template>
-                  </span>
-                </span>{{ ' ' }}<span class="calcRow__res" v-if="getSurplusValue(r, 'reachable') > 0">
-                  <span class="calcRow__k">{{ t("calc.candy.surplus") }}</span>
-                  <span class="calcRow__num">{{ getSurplusValue(r, 'reachable') }}</span>
+          <!-- 到達可能行。常に表示し、ボーナス明細もこの中に置く。 -->
+          <div
+            data-testid="resultRowReachable"
+            :data-onboarding="rowIdx === 0 ? 'result-row' : undefined"
+            class="calcRow__resultRow calcRow__resultRow--used"
+          >
+            <span v-if="!rowLinesIdentical(r)" class="calcRow__resultLabel" data-testid="result-reachable-label">{{ t("calc.row.used") }}</span>
+            <span class="calcRow__resultItems">{{ ' ' }}<span class="calcRow__res" data-testid="result-reachable-boost" v-if="calc.boostKind.value !== 'none'">
+                <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
+                <span class="calcRow__num" data-testid="result-reachable-boost-value" :class="{ 'calcRow__num--danger': isDanger(r, 'boost') }">{{ fmtOrDash(rowP(r)?.reachableLine.boostedCandyUnits) }}</span>
+              </span>{{ ' ' }}<span class="calcRow__res" data-testid="result-reachable-normal" v-if="calc.boostKind.value !== 'none'">
+                <span class="calcRow__k">{{ t("calc.row.breakdownNormal") }}</span>
+                <span class="calcRow__num" data-testid="result-reachable-normal-value">{{ fmtOrDash(rowP(r)?.reachableLine.nonBoostCandyUnits) }}</span>
+              </span>{{ ' ' }}<span class="calcRow__res" data-testid="result-reachable-candy">
+                <span class="calcRow__k">{{ t(calc.boostKind.value === 'none' ? "calc.row.candy" : "calc.row.candyTotal") }}</span>
+                <span class="calcRow__num" data-testid="result-reachable-candy-value" :class="{ 'calcRow__num--danger': isDanger(r, 'candy') }">{{ fmtOrDash(rowP(r)?.reachableLine.totalCandyUnitsUsed) }}</span>
+              </span>{{ ' ' }}<span class="calcRow__res" data-testid="result-reachable-shards">
+                <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
+                <span class="calcRow__num" data-testid="result-reachable-shards-value" :class="{ 'calcRow__num--danger': isDanger(r, 'shards') }">{{ fmtOrDash(rowP(r)?.reachableLine.dreamShardsUsed) }}</span>
+              </span>{{ ' ' }}<span class="calcRow__res" data-testid="result-reachable-items" v-if="rowP(r) && (rowItemUsageMaps.reachable.get(r.id) ?? []).length > 0">
+                <span class="calcRow__k">{{ t("calc.row.itemUsage") }}</span>
+                <span class="calcRow__num calcRow__num--text" data-testid="result-reachable-items-value">
+                  <template v-for="(item, idx) in (rowItemUsageMaps.reachable.get(r.id) ?? [])" :key="idx">
+                    <span :class="{ 'calcRow__num--danger': item.isDanger }">{{ item.label }} {{ item.value }}</span>
+                    <span v-if="idx < (rowItemUsageMaps.reachable.get(r.id) ?? []).length - 1">, </span>
+                  </template>
                 </span>
-                <!-- 不足量（到達Lvの前に表示）。中身は rowShortage() が組み立てる。
-                     「目標まで」行へ複製しないこと（RowShortageView の説明を参照） -->
-                <template v-for="chip in rowShortage(r).chips" :key="chip.label">
-                  {{ ' ' }}<span class="calcRow__res">
-                    <span class="calcRow__k calcRow__k--danger">{{ chip.label }}</span>
-                    <span class="calcRow__num calcRow__num--danger">{{ chip.value }}</span>
-                  </span>
-                </template>{{ ' ' }}<span class="calcRow__res">
-                  <span class="calcRow__k calcRow__k--info">{{ t(calc.rowSleepExpFor(r.id) > 0 ? "calc.row.candyReachedLv" : "calc.row.reachedLv") }}</span>
-                  <span class="calcRow__num calcRow__num--info">{{ rowP(r)!.reachableLine.level }}</span>
-                  <span class="calcRow__k calcRow__k--info" v-if="rowP(r)!.reachableLine.expToNextLevel > 0" style="margin-left: 4px;">({{ t("calc.row.expRemaining") }}</span>
-                  <span class="calcRow__num calcRow__num--info" v-if="rowP(r)!.reachableLine.expToNextLevel > 0">{{ calc.fmtNum(rowP(r)!.reachableLine.expToNextLevel) }}</span><span class="calcRow__k calcRow__k--info" v-if="rowP(r)!.reachableLine.expToNextLevel > 0">)</span>
+              </span>{{ ' ' }}<span class="calcRow__res" data-testid="result-reachable-surplus" v-if="rowP(r) && getSurplusValue(r, 'reachable') > 0">
+                <span class="calcRow__k">{{ t("calc.candy.surplus") }}</span>
+                <span class="calcRow__num">{{ getSurplusValue(r, 'reachable') }}</span>
+              </span>
+              <!-- 不足量（到達Lvの前に表示）。中身は rowShortage() が組み立てる。
+                   「目標まで」行へ複製しないこと（RowShortageView の説明を参照） -->
+              <template v-for="chip in rowP(r) ? rowShortage(r).chips : []" :key="chip.label">
+                {{ ' ' }}<span class="calcRow__res" data-testid="result-reachable-shortage">
+                  <span class="calcRow__k calcRow__k--danger">{{ chip.label }}</span>
+                  <span class="calcRow__num calcRow__num--danger">{{ chip.value }}</span>
                 </span>
-                {{ ' ' }}<span class="calcRow__res" v-if="rowP(r)!.shortage.expToTarget > 0">
-                  <span class="calcRow__k calcRow__k--info">{{ t("calc.row.remainingExp") }}</span>
-                  <span class="calcRow__num calcRow__num--info">{{ calc.fmtNum(rowP(r)!.shortage.expToTarget) }}</span>
-                  <span class="calcRow__sleepTime" v-if="getSleepTimeText(r.id, rowP(r)!.shortage.expToTarget)">
-                    {{ getSleepTimeText(r.id, rowP(r)!.shortage.expToTarget) }}
-                  </span>
-                </span>
-                <!--
-                  睡眠込みの着地点。**残EXP の後ろに置く**（設計書『睡眠育成の拡張』§3.11）。
-                  残EXP の「約96日（1248時間）」は目標Lvへ届く時間、こちらは睡眠目標を寝きった時点で、
-                  時間軸が違う。**これから寝る時間を同じ単位で隣に並べて読み分けさせる。**
-                  アメ到達Lv の直後へ戻さないこと（時間の対応が読めなくなる）。
-                  「あとEXP」は添えない（小数がその役割。§3.8）。
-                -->
-                {{ ' ' }}<span class="calcRow__res" v-if="getSleepReachLevelText(r)">
-                  <span class="calcRow__k calcRow__k--info">{{ t("calc.row.sleepReachedLv") }}</span>
-                  <span class="calcRow__num calcRow__num--info">{{ getSleepReachLevelText(r) }}</span>
+              </template>{{ ' ' }}<span v-if="rowP(r)" class="calcRow__res" data-testid="result-reachable-level">
+                <span class="calcRow__k calcRow__k--info">{{ t(reachedLevelLabelKey(r)) }}</span>
+                <span class="calcRow__num calcRow__num--info" data-testid="result-reachable-level-value">{{ rowP(r)?.reachableLine.level }}</span>
+                <span class="calcRow__k calcRow__k--info" v-if="(rowP(r)?.reachableLine.expToNextLevel ?? 0) > 0" style="margin-left: 4px;">({{ t("calc.row.expRemaining") }}</span>
+                <span class="calcRow__num calcRow__num--info" v-if="(rowP(r)?.reachableLine.expToNextLevel ?? 0) > 0">{{ calc.fmtNum(rowP(r)?.reachableLine.expToNextLevel ?? 0) }}</span><span class="calcRow__k calcRow__k--info" v-if="(rowP(r)?.reachableLine.expToNextLevel ?? 0) > 0">)</span>
+              </span>
+              {{ ' ' }}<span class="calcRow__res" data-testid="result-remaining-exp" v-if="(rowP(r)?.shortage.expToTarget ?? 0) > 0">
+                <span class="calcRow__k calcRow__k--info">{{ t("calc.row.remainingExp") }}</span>
+                <span class="calcRow__num calcRow__num--info" data-testid="result-remaining-exp-value">{{ calc.fmtNum(rowP(r)?.shortage.expToTarget ?? 0) }}</span>
+                <span class="calcRow__sleepTime" data-testid="result-sleep-time" v-if="getSleepTimeText(r.id, rowP(r)?.shortage.expToTarget ?? 0)">
+                  {{ getSleepTimeText(r.id, rowP(r)?.shortage.expToTarget ?? 0) }}
                 </span>
               </span>
-            </div>
+              <!--
+                睡眠込みの着地点。**残EXP の後ろに置く**（設計書『睡眠育成の拡張』§3.11）。
+                残EXP の「約96日（1248時間）」は目標Lvへ届く時間、こちらは睡眠目標を寝きった時点で、
+                時間軸が違う。**これから寝る時間を同じ単位で隣に並べて読み分けさせる。**
+                アメ到達Lv の直後へ戻さないこと（時間の対応が読めなくなる）。
+                「あとEXP」は添えない（小数がその役割。§3.8）。
+              -->
+              {{ ' ' }}<span class="calcRow__res" data-testid="result-sleep-reached-level" v-if="rowP(r) && getSleepReachLevelText(r)">
+                <span class="calcRow__k calcRow__k--info">{{ t("calc.row.sleepReachedLv") }}</span>
+                <span class="calcRow__num calcRow__num--info" data-testid="result-sleep-reached-level-value">{{ getSleepReachLevelText(r) }}</span>
+              </span>
+              <!--
+                ボーナス内訳の展開リンク（結果の最後・睡眠時間の右側）。
+                中身は最大5行になり得るので**行の下へ縦に**開く（横へ流すと結果行と混ざる）。
+              -->
+              {{ ' ' }}<span class="calcRow__res" v-if="rowP(r) && rowBonusPanelMap.get(r.id)">
+                <button
+                  type="button"
+                  class="linkBtn calcRow__bonusToggle"
+                  data-testid="result-bonus-toggle"
+                  :aria-expanded="isBonusDetailsOpen(r.id)"
+                  @click.stop="toggleBonusDetails(r.id)"
+                >{{ t("calc.row.sleepBonusesLabel") }}</button>
+              </span>
+              <!--
+                睡眠チーム（1晩5匹）からあふれた行の警告。**結果の最後尾**に置く。
+                入力欄の見出しへ戻さないこと（幅が無く、英語だと見切れる）。
+                説明は title ではなくクリックで開くヒントにする（スマホは title を出せない）。
+              -->
+              {{ ' ' }}<span class="calcRow__res" v-if="rowP(r) && calc.rowExceedsSleepTeamLimit(r.id)">
+                <button
+                  type="button"
+                  class="calcRow__sleepTeamWarn"
+                  data-testid="sleep-team-overflow"
+                  :aria-label="t('calc.row.sleepTeamOverflowNote')"
+                  @click.stop="showHint($event, r, 'sleepTeam')"
+                >⚠️</button>
+              </span>
+            </span>
+            <!-- 展開したボーナス明細とイベント一覧。中身は rowBonusPanelMap が組み立て済み。 -->
+            <BonusDetails
+              v-if="rowP(r) && isBonusDetailsOpen(r.id) && rowBonusPanelMap.get(r.id)"
+              :panel="rowBonusPanelMap.get(r.id)!"
+            />
           </div>
         </div>
       </div>
@@ -667,8 +726,7 @@
         <div v-if="onboardingActive" class="calcEmpty__demo" data-onboarding="result-row">
           <div class="calcRow__title calcEmpty__demoTitle">{{ t("onboarding.demoTitle") }}</div>
           <div class="calcRow__resultCollapse">
-            <div class="calcRow__resultRow calcRow__resultRow--required is-expanded">
-              <span class="calcRow__expandIcon">▼</span>
+            <div class="calcRow__resultRow calcRow__resultRow--required">
               <span class="calcRow__resultLabel">{{ t("calc.row.required") }}</span>
               <span class="calcRow__resultItems">{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                   <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
@@ -686,7 +744,6 @@
               </span>
             </div>
             <div class="calcRow__resultRow calcRow__resultRow--used">
-              <span class="calcRow__expandIcon" style="visibility: hidden"></span>
               <span class="calcRow__resultLabel">{{ t("calc.row.used") }}</span>
               <span class="calcRow__resultItems">{{ ' ' }}<span class="calcRow__res" v-if="calc.boostKind.value !== 'none'">
                   <span class="calcRow__k">{{ t("calc.row.breakdownBoost") }}</span>
@@ -767,13 +824,17 @@
         本文は開始タグ直後から改行なしで書く。.hintPopover へ直接 white-space: pre-line を
         当てると、テンプレートのインデント由来の改行まで拾ってしまう。
         警告マークは文字列に混ぜず別要素にする（混ぜるとベースライン揃えで下がって見える）。
+
+        どの案内を出すかは各 computed が kind で判断する。ここで枝を分けないこと
+        （分けると入れ子が深くなり、案内の追加ごとに置き場所を選び直すことになる）。
       --><p v-if="hintQuotaNote" class="hintPopover__warn hintPopover__warn--alert" data-testid="calc-hint-quota-warn"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintQuotaNote }}</span></p>
         <p v-if="hintCapNote" class="hintPopover__warn"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintCapNote }}</span></p>
         <p v-if="hintAllSleepNote" class="hintPopover__warn" data-testid="calc-hint-all-sleep-note"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintAllSleepNote }}</span></p>
+        <p v-if="hintSleepTeamNote" class="hintPopover__warn" data-testid="calc-hint-sleep-team-note"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintSleepTeamNote }}</span></p>
         <template v-if="hintState.kind === 'candyTarget'"
           ><p class="hintPopover__note">{{ t('calc.row.candyTargetHintNote') }}</p></template
         >
-        <template v-else
+        <template v-else-if="hintState.kind === 'boostCandy'"
           ><p class="hintPopover__heading">{{ t('calc.row.boostCandyCount') }}</p
           ><p class="hintPopover__note">{{ t('calc.row.boostCandyCountHintNote') }}</p
           ><p class="hintPopover__heading">{{ t('calc.boostRemainingLabel') }}</p
@@ -805,16 +866,17 @@
     </Teleport>
 
     <Teleport to="body">
-      <div v-if="sleepHintState.visible" class="hintOverlay" @click.stop="closeSleepHint"></div>
+      <div v-if="sleepHintState.visible" class="hintOverlay" data-testid="sleep-hint-overlay" @click.stop="closeSleepHint"></div>
       <div
         v-if="sleepHintState.visible"
         ref="sleepHintPopoverRef"
         class="hintPopover sleepHintPopover"
+        data-testid="sleep-hint-popover"
         :style="{ left: sleepHintState.left + 'px', top: sleepHintState.top + 'px' }"
         @click.stop
       >
         <p class="sleepHintPopover__text">{{ t('calc.sleep.sleepBtnHintText') }}</p>
-        <button type="button" class="hintLink" @click="openSleepSettings">
+        <button type="button" class="hintLink" data-testid="sleep-hint-open-settings" @click="openSleepSettings">
           {{ t('calc.sleep.openSettings') }}
         </button>
         <div class="hintPopover__field">
@@ -825,6 +887,7 @@
               min="0"
               step="1"
               class="field__input hintPopover__input"
+              data-testid="sleep-hint-hours-input"
               :value="sleepHintHoursInputValue"
               @focus="onSleepHintHoursFocus"
               @input="onSleepHintHoursInput"
@@ -839,20 +902,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, reactive, nextTick, onUnmounted, inject } from "vue";
+import { computed, ref, reactive, nextTick, onUnmounted, inject, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import LevelPicker from "./LevelPicker.vue";
 import NatureSelect from "./NatureSelect.vue";
 import type { CalcStore, CalcRowView } from "../composables/useCalcStore";
-import type { CandySupplyBreakdown, PokemonPlanLine, PokemonPlanResult, ShortageType } from "../domain/level-planner/types";
-import { CANDY_VALUES } from "../domain/level-planner/constants";
+import type { PokemonPlanLine, PokemonPlanResult, ShortageType } from "../domain/level-planner/types";
 import { calcSleepReachLevel } from "../domain/level-planner/sleepReachLevel";
 import { useCandyStore } from "../composables/useCandyStore";
 import { useDraftField } from "../composables/useDraftField";
 import { getPokemonType } from "../domain/pokesleep/pokemon-names";
 import { getTypeName } from "../domain/pokesleep/pokemon-types";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
-import { calcSleepTimeForExp, sleepExpBonusMultiplier } from "../domain/pokesleep/sleep-growth";
 import {
   formatSleepTimeResult,
   type SleepTimeFormatTokens,
@@ -861,6 +922,11 @@ import { calcExp } from "../domain/pokesleep/exp";
 import { SLEEP_TARGET_HOURS_OPTIONS } from "../persistence/calc";
 import { normalizeSleepHoursInput } from "../domain/box/sleep-milestones";
 import type { BoostEvent } from "../domain/types";
+import { fmtNumOrDash, isSameDisplayedLine, lineSurplus } from "../utils/resultRowDisplay";
+import { sleepExpEventFlowers } from "../domain/pokesleep/_generated/sleep-exp-events";
+import BonusDetails from "./BonusDetails.vue";
+import { buildBonusPanelView, type BonusPanelView } from "../utils/bonusPanelView";
+import type { AppLocale } from "../i18n";
 
 import iconUndoSvg from "../assets/icons/undo.svg?raw";
 import iconRedoSvg from "../assets/icons/redo.svg?raw";
@@ -884,7 +950,41 @@ const { t, locale } = useI18n();
 function rowP(r: CalcRowView): PokemonPlanResult | null {
   return calc.pokemonResultByRowId.value.get(r.id) ?? null;
 }
+
+const rowLinesIdenticalMap = computed(() => {
+  const map = new Map<string, boolean>();
+  for (const r of calc.rowsView.value) {
+    const p = rowP(r);
+    map.set(r.id, p ? isSameDisplayedLine(p.targetLine, p.reachableLine) : true);
+  }
+  return map;
+});
+
+function rowLinesIdentical(r: CalcRowView): boolean {
+  return rowLinesIdenticalMap.value.get(r.id) ?? true;
+}
+
+/**
+ * まだ結果が無い間は `-`。値があるときだけ数値を出す（0 は 0 と表示する）。
+ *
+ * `-` になるのは**一度も結果が出ていない**ときだけ（初回ロード直後・行が0件・入力が組めない・
+ * 新規追加行がまだ結果 Map に無い）。**再計算中は前回の結果が残る**ので `-` へは落ちない
+ * （`planResult` は上書きされるだけで、再計算の開始時に `null` へ戻らない）。
+ */
+function fmtOrDash(value: number | undefined | null): string {
+  return fmtNumOrDash(value, calc.fmtNum);
+}
 const candyStore = useCandyStore();
+
+// ?perf=1 のデバッグ用「現在日時」。重ねた透明な入力欄へのタップでピッカーを開く。
+const debugNowInput = ref<HTMLInputElement | null>(null);
+function openDebugNowPicker(): void {
+  const el = debugNowInput.value;
+  // Safari（iOSを含む）に showPicker() は無い。そちらは入力欄への直タップで
+  // ネイティブピッカーが開くので、呼べるブラウザだけ明示的に開く。
+  if (el && typeof el.showPicker === "function") el.showPicker();
+}
+
 const debugExportStatus = ref("");
 let debugExportStatusTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -998,22 +1098,29 @@ function onSpeciesCandyBlur(pokedexId: number) {
   }
 }
 
-// 折りたたみ状態を管理（rowId => expanded）
-const expandedRows = ref<Set<string>>(new Set());
+// ボーナス明細の展開状態（行ごと）。
+const bonusDetailsRows = ref<Set<string>>(new Set());
 
-function toggleExpand(rowId: string) {
-  if (expandedRows.value.has(rowId)) {
-    expandedRows.value.delete(rowId);
+function toggleBonusDetails(rowId: string) {
+  if (bonusDetailsRows.value.has(rowId)) {
+    bonusDetailsRows.value.delete(rowId);
   } else {
-    expandedRows.value.add(rowId);
+    bonusDetailsRows.value.add(rowId);
   }
-  // 強制的に再レンダリング
-  expandedRows.value = new Set(expandedRows.value);
+  bonusDetailsRows.value = new Set(bonusDetailsRows.value);
 }
 
-function isExpanded(rowId: string): boolean {
-  return expandedRows.value.has(rowId);
+function isBonusDetailsOpen(rowId: string): boolean {
+  return bonusDetailsRows.value.has(rowId);
 }
+
+watch(() => calc.activeSlotTab.value, () => {
+  bonusDetailsRows.value = new Set();
+});
+watch(() => calc.rowsView.value.map(row => row.id), ids => {
+  const valid = new Set(ids);
+  bonusDetailsRows.value = new Set([...bonusDetailsRows.value].filter(id => valid.has(id)));
+});
 
 /**
  * スロットごとのアメブ種別ラベルを取得（非選択タブ用）
@@ -1281,6 +1388,18 @@ function candyTargetInputValue(r: CalcRowView): string {
   return d !== undefined ? d : displayCandyTarget(r);
 }
 
+/**
+ * 個数指定欄のプレースホルダ。
+ *
+ * 「アメ在庫＋睡眠」では在庫が個数を決めるので、**その行が使うアメ数**を出す。
+ * 空欄のままだと「アメを使わない行」と見分けが付かない。
+ * 導出値なので、アメブ個数欄と同じくプレースホルダ（薄いグレー）で見せる（操作仕様§8）。
+ */
+function candyTargetPlaceholder(r: CalcRowView): string {
+  const stock = calc.rowStockCandyTargetFor(r.id);
+  return stock === undefined ? t('calc.row.candyTargetNone') : calc.fmtNum(stock);
+}
+
 function onCandyTargetFocus(r: CalcRowView) {
   candyTargetDraftByRowId[r.id] = displayCandyTarget(r);
 }
@@ -1296,11 +1415,6 @@ function onCandyTargetBlur(r: CalcRowView) {
   if (draft === displayCandyTarget(r)) return;
 
   calc.onRowCandyTarget(r.id, draft);
-  // 値が設定されたら自動的に到達可能行を開く
-  if (draft.trim() !== "") {
-    expandedRows.value.add(r.id);
-    expandedRows.value = new Set(expandedRows.value);
-  }
 }
 
 /**
@@ -1323,12 +1437,31 @@ function sleepTargetOptionLabel(r: CalcRowView, hours: number): string {
  * 目標 T を固定したまま個数指定を再計算する処理はストア側に集約されている。
  */
 function onSleepTargetChange(rowId: string, value: string) {
-  const target = value === "" ? undefined : value === "all" ? "all" : Number(value);
+  const target = value === "" ? undefined
+    : value === "all" ? "all"
+    : value === "stock" ? "stock"
+    : Number(value);
   calc.setRowSleepTarget(rowId, target);
-  if (target !== undefined) {
-    expandedRows.value.add(rowId);
-    expandedRows.value = new Set(expandedRows.value);
-  }
+}
+
+/**
+ * 「到達可能」行のLvの呼び名（操作仕様§8.2）。
+ *
+ * この行のLvは**アメを使い終えた地点**で、睡眠EXPを含まない。**そのあとに睡眠が続く行だけ**
+ * 「アメ到達Lv」と限定する。続かない行ではそれが最終到達点そのものなので限定語を付けない。
+ *
+ * 「そのあとに睡眠が続く」は2通りある。**睡眠目標が設定されているかで判定してはいけない**
+ * （目標時間を寝終えた行は睡眠EXPが 0 になり、そこが最終到達点になる）。
+ *
+ * 1. 数値の睡眠目標で、これから乗る睡眠EXPが 1 以上ある
+ * 2. 睡眠EXPを導出しないモード（すべて睡眠 / アメ在庫＋睡眠）で、残EXPが正
+ *    — この2つは `S = 0` なので 1 では拾えない。残りは隣に出る「残EXP 約N日」が担当する
+ */
+function reachedLevelLabelKey(r: CalcRowView): string {
+  if (calc.rowSleepExpFor(r.id) > 0) return "calc.row.candyReachedLv";
+  const sleepCoversRest = r.sleepTargetMode !== undefined
+    && (rowP(r)?.shortage.expToTarget ?? 0) > 0;
+  return sleepCoversRest ? "calc.row.candyReachedLv" : "calc.row.reachedLv";
 }
 
 /**
@@ -1337,19 +1470,7 @@ function onSleepTargetChange(rowId: string, value: string) {
 function getSleepTimeText(rowId: string, expToTarget: number): string | null {
   if (expToTarget <= 0) return null;
 
-  const row = calc.rowsView.value.find(r => r.id === rowId);
-  if (!row) return null;
-
-  const sleepSettings = calc.sleepSettings.value;
-  const sleepExpBonus = sleepExpBonusMultiplier(sleepSettings.sleepExpBonusCount);
-
-  const result = calcSleepTimeForExp({
-    expToTarget,
-    nature: row.nature,
-    dailySleepHours: sleepSettings.dailySleepHours,
-    sleepExpBonus,
-    includeGSD: sleepSettings.includeGSD,
-  });
+  const result = calc.calcSleepTimeForRow(rowId, expToTarget);
 
   return formatSleepTimeResult(result, getSleepTimeFormatTokens());
 }
@@ -1392,6 +1513,7 @@ function getSleepTimeFormatTokens(): SleepTimeFormatTokens {
     dayUnit: t("calc.sleep.dayUnit"),
     hourMinuteSeparator: t("calc.sleep.hourMinuteSeparator"),
     rangeSeparator: t("calc.sleep.rangeSeparator"),
+    exactDayJoiner: t("calc.sleep.exactDayJoiner"),
     approximatePrefix: t("calc.sleep.approximatePrefix"),
     estimateOpen: t("calc.sleep.estimateOpen"),
     estimateClose: t("calc.sleep.estimateClose"),
@@ -1405,7 +1527,7 @@ function getSleepTimeFormatTokens(): SleepTimeFormatTokens {
  */
 const onboardingSleepTimeText = computed(() =>
   formatSleepTimeResult(
-    { kind: "long-term-estimate", requiredDays: 5, totalMinutes: 5 * 8.5 * 60 },
+    { kind: "long-term-estimate", requiredDays: 5, totalMinutes: 5 * 8.5 * 60, growthIncenseCount: 0, skipsLastDayIncense: false },
     getSleepTimeFormatTokens()
   )
 );
@@ -1427,24 +1549,13 @@ type ItemUsageItem = { label: string; value: number; isDanger: boolean };
 // アイテム使用リストの赤字判定モード（個数指定行は目標まで行と同値になったため廃止。設計書§4.2）
 type ItemDangerMode = 'target' | 'reachable';
 
-function supplyValue(supply: CandySupplyBreakdown): number {
-  return supply.species
-    + supply.type.s * CANDY_VALUES.type.s
-    + supply.type.m * CANDY_VALUES.type.m
-    + supply.universal.s * CANDY_VALUES.universal.s
-    + supply.universal.m * CANDY_VALUES.universal.m
-    + supply.universal.l * CANDY_VALUES.universal.l;
-}
-
-function lineSurplus(line: PokemonPlanLine): number {
-  return Math.max(0, line.surplusCandyValue, supplyValue(line.candySupply) - line.totalCandyUnitsUsed);
-}
-
 // 共通ヘルパー: アイテム使用リストを生成
 function buildItemUsageList(
   r: CalcRowView,
   mode: ItemDangerMode,
-  pCached?: PokemonPlanResult | null
+  pCached?: PokemonPlanResult | null,
+  // 成長のお香は目標まで行と到達可能行で同じ値なので、行あたり1回だけ数えて渡す。
+  growthIncenseCached?: number
 ): ItemUsageItem[] {
   const p = pCached !== undefined ? pCached : rowP(r);
   if (!p) return [];
@@ -1484,6 +1595,14 @@ function buildItemUsageList(
     items.push({ label: `${uniLabel}L`, value: sourceItems.universal.l, isDanger: getDanger('uniL') });
   }
 
+  // 成長のお香。アメと違って在庫も律速も持たないので赤字にはしない。
+  // 睡眠設定から決まる値で「目標まで」「到達可能」のどちらでも同じ個数になる。
+  // 「すべて睡眠」の行はアメを1個も配らないので、リストはお香だけになる。
+  const growthIncense = growthIncenseCached ?? calc.rowGrowthIncenseCountFor(r.id);
+  if (growthIncense > 0) {
+    items.push({ label: t("calc.row.growthIncense"), value: growthIncense, isDanger: false });
+  }
+
   return items;
 }
 
@@ -1499,26 +1618,48 @@ const rowItemUsageMaps = computed(() => {
   const reachable = new Map<string, ItemUsageItem[]>();
   for (const r of calc.rowsView.value) {
     const p = rowP(r);
-    target.set(r.id, buildItemUsageList(r, "target", p));
-    reachable.set(r.id, buildItemUsageList(r, "reachable", p));
+    const growthIncense = calc.rowGrowthIncenseCountFor(r.id);
+    target.set(r.id, buildItemUsageList(r, "target", p, growthIncense));
+    reachable.set(r.id, buildItemUsageList(r, "reachable", p, growthIncense));
   }
   return { target, reachable };
 });
 
-// アイテム使用があるか判定（目標まで行用 = targetLine）
-// 種族アメのみで足りた場合はfalse、タイプアメまたは万能アメを使用した場合のみtrue
-function hasItemUsage(r: CalcRowView): boolean {
-  const p = rowP(r);
-  if (!p) return false;
-  const items = p.targetLine.candySupply;
-  return (
-    items.universal.s > 0 ||
-    items.universal.m > 0 ||
-    items.universal.l > 0 ||
-    items.type.s > 0 ||
-    items.type.m > 0
-  );
-}
+// 「目標まで」行の表示条件は `rowItemUsageMaps.target` の中身をそのまま見る（到達可能行と同じ形）。
+// かつては candySupply を直接読み直す `hasItemUsage` を持っていたが、
+// 判定と中身が別々になるため、成長のお香を足したときに「お香だけの行で枠が出ない」事故になった。
+// 種族アメだけで足りた行は中身が空になるので、これまでどおり枠ごと出ない。
+
+/**
+ * `rowSleepBonusBreakdownFor` は計画日数ぶんを再集計するので、行ごとに1回だけ呼ぶ。
+ * その1回の結果から同じ `needed` 期間を表・イベント一覧・通知へ配り、
+ * 「表に出ていないイベントが一覧に出る」期間の配線事故を防ぐ。
+ * 純関数が `undefined` を返した行は、結果行のリンクも明細も出さないため Map に入れない。
+ */
+const rowBonusPanelMap = computed(() => {
+  const map = new Map<string, BonusPanelView>();
+  const translate = (key: string, params?: Record<string, unknown>) => t(key, params as never);
+  for (const r of calc.rowsView.value) {
+    // 計画日数ぶんの重い再集計は行ごとに1回だけ。その結果を表示専用の純関数へ渡す。
+    const breakdown = calc.rowSleepBonusBreakdownFor(r.id);
+    const view = buildBonusPanelView({
+      contributions: breakdown.contributions,
+      nights: breakdown.nights,
+      neededFrom: breakdown.neededFrom,
+      neededTo: breakdown.neededTo,
+      realEvents: calc.realOccurrences.value,
+      projectedEvents: calc.projectedOccurrences.value,
+      flowers: sleepExpEventFlowers,
+      flowerSegments: calc.blueSeedSegments.value,
+      shifts: calc.blueSeedShifts.value,
+      t: translate,
+      locale: locale.value as AppLocale,
+      fmtNum: calc.fmtNum,
+    });
+    if (view) map.set(r.id, view);
+  }
+  return map;
+});
 
 // ============================================================
 // 不足表示（赤字・不足チップ・レベルピッカーのラベル）
@@ -1556,7 +1697,7 @@ const SHORTAGE_LABEL_KEYS = {
  *
  * `chips` を出してよいのは「到達可能」行（`resultRowReachable`）だけ。
  * 「目標まで」行は在庫を無視した理論値なので、在庫と突き合わせた結果である不足は持たない。
- * 折りたたみ時だけ「目標まで」行へ出す実装が過去に何度も復活しているが、追加しないこと。
+ * 「目標まで」行へ不足を複製する実装が過去に何度も復活しているが、追加しないこと。
  */
 type RowShortageView = {
   /** 赤くする資源。`limitingFactor` そのもの（不足量が0でも赤くする） */
@@ -1634,6 +1775,17 @@ const BOOST_QUOTA_HINT_KEYS = {
   reach: 'calc.row.boostReachOverQuota',
 } as const;
 
+const BOOST_CAP_HINT_KEYS = {
+  sleep: 'calc.row.boostSleepCapHint',
+  stock: 'calc.row.boostStockCapHint',
+} as const;
+
+/** 睡眠EXPと stock 在庫で異なる打ち手を案内する。 */
+function boostCapHint(r: CalcRowView): string | undefined {
+  const kind = r.ui.boostCapKind;
+  return kind ? t(BOOST_CAP_HINT_KEYS[kind], { level: r.ui.boostReachLevelMax }) : undefined;
+}
+
 /**
  * アメブ枠超過の警告文。減らす対象が欄によって違うので、持ち主（`ui.boostQuotaViolation`）から引く。
  *
@@ -1647,19 +1799,20 @@ function boostQuotaHint(r: CalcRowView): string | undefined {
 
 /**
  * アメブ目標Lv欄にかかっている制限の一覧。マークの有無と tooltip の本文をここから引く。
- * 打ち手が要る順（枠超過 → 睡眠の頭打ち）に並べる。ポップオーバー内の alert / note と同じ順序。
+ * 打ち手が要る順（枠超過 → 睡眠または在庫の頭打ち）に並べる。ポップオーバー内の順序と同じ。
  */
 function boostReachWarnings(r: CalcRowView): string[] {
   const warnings: string[] = [];
   if (r.ui.boostQuotaViolation === 'reach') warnings.push(t('calc.row.boostReachOverQuota'));
-  if (r.ui.boostSleepCapActive) warnings.push(t('calc.row.boostSleepCapHint', { level: r.ui.boostReachLevelMax }));
+  const capHint = boostCapHint(r);
+  if (r.ui.boostCapActive && capHint) warnings.push(capHint);
   return warnings;
 }
 
 
 // ヒントアイコン用
 // ヒントポップオーバーの状態
-type HintKind = 'boostCandy' | 'candyTarget';
+type HintKind = 'boostCandy' | 'candyTarget' | 'sleepTeam';
 
 /**
  * ヒントの状態は**どの行のどのヒントか**と位置だけを持つ。
@@ -1678,11 +1831,11 @@ const hintRow = computed(() =>
   hintState.value.rowId ? calc.rowsView.value.find((r) => r.id === hintState.value.rowId) ?? null : null
 );
 
-// 睡眠の頭打ちはアメブ側の話なので、アメ個数指定のヒントには出さない。
+// 睡眠・在庫の頭打ちはアメブ側の話なので、アメ個数指定のヒントには出さない。
 const hintCapNote = computed(() => {
   const row = hintRow.value;
-  return hintState.value.kind === 'boostCandy' && row?.ui.boostSleepCapActive
-    ? t('calc.row.boostSleepCapHint', { level: row.ui.boostReachLevelMax })
+  return hintState.value.kind === 'boostCandy' && row?.ui.boostCapActive
+    ? boostCapHint(row)
     : undefined;
 });
 
@@ -1695,8 +1848,24 @@ const hintCapNote = computed(() => {
  * title には出さない（スマホでは表示されない）。アメブ目標Lvは disabled でピッカーが
  * 開かないため、あちらの `note` も読めない。残る経路がこのヒントだけ。
  */
-const hintAllSleepNote = computed(() =>
-  hintRow.value?.sleepTargetMode === 'all' ? t('calc.row.sleepTargetAllHint') : undefined
+const hintAllSleepNote = computed(() => {
+  // 睡眠チームのヒントはアメの話を一切載せない。
+  const kind = hintState.value.kind;
+  const mode = kind === 'sleepTeam' ? undefined : hintRow.value?.sleepTargetMode;
+  if (mode === 'all') return t('calc.row.sleepTargetAllHint');
+  // 「アメ在庫＋睡眠」でもアメブは使えるので、無効なのは個数指定だけ。
+  // アメブ個数のヒントには出さない（あちらの欄は無効になっていない）。
+  if (mode === 'stock' && kind === 'candyTarget') return t('calc.row.sleepTargetStockHint');
+  return undefined;
+});
+
+/**
+ * 睡眠チーム（1晩5匹）からあふれた行の案内。
+ * 赤い面（`--alert`）にはしない。制約違反ではなく「同時には実行できない」という
+ * 段取りの話で、赤で塗ると入力エラーのように見える。
+ */
+const hintSleepTeamNote = computed(() =>
+  hintState.value.kind === 'sleepTeam' ? t('calc.row.sleepTeamOverflowNote') : undefined
 );
 
 // アメブ枠の超過。このヒントの中から上限そのものを変えられるので、打ち手の1つとして併記する。

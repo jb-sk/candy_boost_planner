@@ -157,6 +157,15 @@
   box-shadow: 0px 0px 0px var(--ink);
 }
 
+/* 破壊的操作のボタンは白抜きにする。
+   共通の `.btn--danger` は `--btn-ink` を使うが、このテーマの `--btn-ink` は #1f2122 で、
+   暗い `--danger`（#c03a28）に重ねるとコントラストが約2.9:1 しかなく読めない。
+   `--danger` が明るい他テーマ（dark / vivid / cyberpunk）は黒のほうが読めるので、
+   直すのはこのテーマだけでよい。 */
+.btn--danger {
+  color: #fff;
+}
+
 .btn--ghost {
   background: var(--paper);
   color: #1a5148;
@@ -295,4 +304,12 @@
    セレクタは基本規則（`.appToastStack .appToast`）と同じ詳細度で書くこと。 */
 .appToastStack .appToast {
   box-shadow: none;
+}
+
+/* ===== Event history — アクセント塗りの上の文字 =====
+   このテーマの `--btn-ink` は黒（#1f2122）なので、アクセント地のバッジ・チップが黒字になる。
+   他のアクセント塗り（`.lang__btn--help` など）と同じくクリーム色の紙色へ揃える。 */
+.eventHistory__yearBadge,
+.eventHistory__chip--flower {
+  color: var(--paper);
 }

@@ -358,8 +358,12 @@ function enumerateMinimumCoverOptions(
   typeStock: TypeCandyStock,
   universalStock: UniversalCandyStock,
   context?: SolverContext,
+  itemsAllowed = true,
 ): Supply[] {
   if (need === 0) return [{ species, typeS: 0, typeM: 0, universalS: 0, universalM: 0, universalL: 0 }];
+  // タイプアメ・万能アメを使わない行は、種族アメで埋まらない需要を満たしようがない。
+  // 候補を空にすると、その行は境界としてアメが足りない扱いになり、残りは睡眠が担当する。
+  if (!itemsAllowed) return [];
 
   const result: Supply[] = [];
   const seen = new Set<string>();
@@ -458,7 +462,10 @@ function pruneSingleTypeResourceStates<T extends ResourceState>(states: T[], typ
   const exact = new Map<string, T>();
   for (const state of states) {
     if (context) checkpoint(context);
-    const key = resourceKey(state);
+    // singleTypeKey() has already proved that no other type dimension exists.
+    // Avoid rebuilding/sorting type entry arrays and JSON-stringifying an
+    // object for every state in the hot streaming-prune path.
+    const key = `${state.typeS[type] ?? 0}|${state.typeM[type] ?? 0}|${state.universalS}|${state.universalM}|${state.universalL}`;
     const previous = exact.get(key);
     if (!previous || qualityGreater(state.quality, previous.quality, context)) exact.set(key, state);
   }
@@ -880,6 +887,7 @@ function rowOptionsForSpecies(
     inventoryType(inventory, row.type),
     inventory.universal,
     context,
+    row.itemsAllowed !== false,
   );
   const maxRowSurplus = context?.options.maxRowSurplus;
   const maxTotalSurplus = context?.options.maxTotalSurplus;
@@ -1597,6 +1605,7 @@ function demandRowCacheKey(row: PreparedRow): string {
     row.expInLevel,
     row.candyDemandMet ? 1 : 0,
     row.preferZeroSurplus ? 1 : 0,
+    row.itemsAllowed === false ? 1 : 0,
     row.speciesLexOrder,
   ].join(':');
 }
@@ -3192,6 +3201,7 @@ function refinedSupplyRow(row: FeasiblePlanRow, speciesLexOrder: number): {
   readonly speciesLexOrder: number;
   legacyZeroSurplusPriority?: boolean;
   candyDemandMet: boolean;
+  itemsAllowed?: boolean;
   selected: {
     species: number;
     typeS: number;
@@ -3215,6 +3225,7 @@ function refinedSupplyRow(row: FeasiblePlanRow, speciesLexOrder: number): {
     speciesLexOrder,
     legacyZeroSurplusPriority: row.preferZeroSurplus,
     candyDemandMet: row.candyDemandMet,
+    itemsAllowed: row.itemsAllowed,
     selected: { ...row.supply, supply, surplus: supply - row.totalCandy },
   };
 }

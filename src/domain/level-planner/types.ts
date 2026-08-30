@@ -74,6 +74,11 @@ export type FeasibilityDemandRow = {
   expInLevel: number;
   candyDemandMet: boolean;
   preferZeroSurplus?: boolean;
+  /**
+   * タイプアメ・万能アメを配ってよいか（既定 true）。
+   * `false` の行は種族アメだけで需要を満たす（睡眠目標「アメ在庫＋睡眠」）。
+   */
+  itemsAllowed?: boolean;
 };
 
 /** 合同 feasibility が復元する、行単位の実在供給 witness。 */
@@ -236,6 +241,12 @@ export type PokemonPlanInput = {
   nature: ExpGainNature;
   requestedBoostCandy: number;
   boostAllowed: boolean;
+  /**
+   * タイプアメ・万能アメを配ってよいか（既定 true）。
+   * `false` の行は種族アメだけで需要を満たす（睡眠目標「アメ在庫＋睡眠」）。
+   * `boostAllowed` と同じく、行ごとに使える資源を絞るためのフラグ。
+   */
+  itemsAllowed?: boolean;
   preferZeroSurplus?: boolean;
   priorityIndex: number;
 };

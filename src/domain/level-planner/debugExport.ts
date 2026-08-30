@@ -1,9 +1,11 @@
 import { CANDY_VALUES } from './constants';
 import { validateFeasibilityWitness } from './core/feasibilityWitness';
 import { getCandyFamilyKey } from '../pokesleep/candy-family';
-import { calcSleepTimeForExp, sleepExpBonusMultiplier, type SleepExpBreakdown, type SleepTimeResult } from '../pokesleep/sleep-growth';
+import { isSleepPlan, sleepExpBonusMultiplier, type SleepExpBreakdown, type SleepTimeResult } from '../pokesleep/sleep-growth';
+import type { GameDate } from '../pokesleep/game-date';
+import type { EventSource, SleepSchedule } from '../pokesleep/sleep-schedule';
 import { calcSleepReachLevel } from './sleepReachLevel';
-import type { ExpType } from '../types';
+import type { ExpType, SleepSettings } from '../types';
 import type {
   BoostKind,
   CalculationMode,
@@ -22,34 +24,73 @@ import type {
 } from './types';
 
 /**
- * 行ごとの睡眠EXP中間値（?perf=1 の検算用）。
- * markForSleep が実際に返した値をそのまま持つ。`needed` は画面に出る「あと何日寝るか」。
+ * 行ごとの睡眠EXP中間値（?perf=1 の検算用）。`needed` は画面に出る「あと何日寝るか」。
+ *
+ * 睡眠計画の作り方は行によって**向きが逆**なので、`source` でどちらか分かるようにする。
+ *
+ * | source | 経路 | 起点 |
+ * |---|---|---|
+ * | `sleepTargetHours` | `markForSleep` | 睡眠目標時間 → 睡眠EXP |
+ * | `expToTarget` | `calcSleepTimeForExp` | 残EXP → 必要日数（すべて睡眠 / アメ在庫＋睡眠） |
+ *
+ * `expToTarget` 起点の行に**計画睡眠EXPは無い**（アメ計算へ織り込まない＝設計書§2.3）。
+ * それでも「必要日数を寝きるとどの日にいくら入るか」は追えないと検算できないので、
+ * 日数から引き直した内訳（`calcSleepExpBreakdownForDays`）を同じ列へ入れる。
+ *
+ * **列によって期間が違う。**`sleepTargetHours` 起点の行では両者が食い違う（目標時間を寝きっても
+ * 残EXPへ届く日はもっと手前、など）ので、突き合わせるときは期間を確認すること。
+ *
+ * | 期間 | 列 |
+ * |---|---|
+ * | `requiredDays`（行の計画期間） | `breakdown` の各列 / `sleepExp` / `fullMoonDates` / `schedulePreview` |
+ * | `needed`（残EXPへ届くまで） | `growthIncenseCount` / `skipsLastDayIncense` / `neededDays` |
+ *
+ * `expToTarget` 起点の行では両者が一致する（`requiredDays` を `needed` から引いているため）。
+ *
+ * `neededMinutes` は kind で精度が違う。`exact-nights` は先行する満額睡眠＋最終晩の
+ * 実分数、`long-term-estimate` は全晩を設定時間どおり寝る概算分数である。
+ * 一方、この行の `sleepExp` / `breakdown` は検算用に requiredDays 全晩を満額で集計する。
+ * 画面のボーナス内訳は exact の最終晩を実分数で集計するため、exact 行では両者を同一視しない。
  */
 export type DebugExportSleepRow = {
-  /** 保存された睡眠目標時間（h） */
-  sleepTargetHours: number;
-  /** 累計睡眠時間（h） */
-  sleepHours: number;
-  /** これから寝る時間（h）= max(0, 目標 − 累計） */
-  remainingHours: number;
-  /** 目標時間を1日単位へ切り上げた日数 */
+  /** 保存された睡眠目標時間（h）。**これの有無が導出経路そのもの**（上表）。 */
+  sleepTargetHours?: number;
+  /** 累計睡眠時間（h）。`expToTarget` 起点の行では undefined */
+  sleepHours?: number;
+  /** これから寝る時間（h）= max(0, 目標 − 累計）。`expToTarget` 起点の行では undefined */
+  remainingHours?: number;
+  /** 睡眠に充てる日数。目標時間の切り上げ、または残EXPから逆算した必要日数 */
   requiredDays: number;
-  /** 合計睡眠EXP */
+  /** `requiredDays` を寝きったときの睡眠EXP。`expToTarget` 起点の行では計画値ではない */
   sleepExp: number;
   breakdown: SleepExpBreakdown;
+  /**
+   * 使う成長のお香の個数（画面の「必要アイテム」と同じ経路の値）。
+   * **期間は `needed`（残EXPへ届くまで）**で、`requiredDays` ではない。
+   */
+  growthIncenseCount?: number;
+  /**
+   * `needed` の最終日のお香を外した計画か。外した場合 `breakdown` のお香日数と1個ずれる。
+   * こちらも期間は `needed`。`requiredDays` の最終日ではない。
+   */
+  skipsLastDayIncense?: boolean;
   /** 残EXPから逆算した所要睡眠。planner 結果がない行では undefined */
-  needed?: {
-    kind: SleepTimeResult['kind'];
-    /** 長期概算のときの日数 */
-    days?: number;
-    /** 長期概算のときの合計分数（= 日数 × 1日の睡眠時間） */
-    totalMinutes?: number;
-    /** 1回睡眠で届くときの必要スコアと分レンジ */
-    score?: number;
-    minutesMin?: number;
-    minutesMax?: number;
-  };
+  needed?: SleepTimeResult;
 };
+
+/** 睡眠計画の導出経路。`sleepTargetHours` を持つかどうかで決まる（別フィールドで二重に持たない）。 */
+function sleepSourceOf(sleep: DebugExportSleepRow): "sleepTargetHours" | "expToTarget" {
+  return sleep.sleepTargetHours === undefined ? "expToTarget" : "sleepTargetHours";
+}
+
+/**
+ * アメ計算へ織り込む計画睡眠EXP。
+ * 残EXPから逆算する行（すべて睡眠 / アメ在庫＋睡眠）は持たない（設計書§2.3）ので 0 を返し、
+ * 睡眠到達Lvを `noSleepExp` として出させる。空欄にすると「計算していない」と区別できない。
+ */
+function plannedSleepExpOf(sleep: DebugExportSleepRow): number {
+  return sleep.sleepTargetHours === undefined ? 0 : sleep.sleepExp;
+}
 
 export type DebugExportRow = {
   id: string;
@@ -65,7 +106,7 @@ export type DebugExportRow = {
   targetLevel: number;
   targetExpInLevel?: number;
   candyTarget?: number;
-  sleepTargetMode?: "all";
+  sleepTargetMode?: "all" | "stock";
   /** 睡眠目標が未設定の行では undefined */
   sleep?: DebugExportSleepRow;
   plan: PokemonPlanResult | null;
@@ -96,7 +137,22 @@ export type DebugExportContext = {
   boost: { kind: BoostKind; limit: number };
   dreamShards: number;
   /** グローバル睡眠設定。行ごとの睡眠EXPはこれと性格から決まる */
-  sleepSettings: { dailySleepHours: number; sleepExpBonusCount: number; includeGSD: boolean };
+  sleepSettings: SleepSettings;
+  /** 同一エクスポート内で全行が共有する、基準日からの日別スケジュール。 */
+  sleepSchedule: SleepSchedule;
+  /** 生成済みイベント一覧の把握末日（仮イベントの写し元窓の右端）。 */
+  wikiKnownThrough?: string;
+  /** 仮イベント設定時に計算へ投入した仮イベントの件数。オフ時も0を出す。 */
+  projectedEventCount: number;
+  currentGameDate: GameDate;
+  /**
+   * `?perf=1` のデバッグ用「現在日時」（`datetime-local` の文字列。空＝実時刻）。
+   *
+   * ゲーム内日は AM4:00 で切り替わるので、`00:00`〜`03:59` を入力すると
+   * `currentGameDate` は**前日**になる。TSVだけ見てその差が読めるように生の入力も残す。
+   */
+  debugNow: string;
+  sleepCalculationError: string | null;
   displayed: DebugExportDisplayedResult | null;
   performanceProfile: DebugExportPerformanceProfile;
   /** Documents that exact supply information came from the normal calculation path. */
@@ -460,9 +516,8 @@ const SLEEP_REACH_HEADERS = [
 /**
  * 睡眠到達Lvの6列。**空欄と「出さないと決めた」を混ぜないため、非表示理由まで出す。**
  *
- * `sleepExp` を引数で受けるのは、「すべて睡眠」の行が `row.sleep` を持たないから
- * （計画睡眠EXPが無い＝§2.3）。その行では 0 を渡し、`noSleepExp` という理由が
- * TSV から読めるようにする。ここを空欄にすると「計算していない」と区別できない。
+ * `sleepExp` を引数で受けるのは、行によって「アメ計算へ織り込む睡眠EXP」が違うから
+ * （`plannedSleepExpOf`）。ここを空欄にすると「計算していない」と区別できない。
  */
 function sleepReachCells(row: DebugExportRow, sleepExp: number): Array<string | number> {
   if (!row.plan) return ['notComputed', 'planUnavailable', '', '', '', ''];
@@ -487,6 +542,67 @@ function sleepReachCells(row: DebugExportRow, sleepExp: number): Array<string | 
   ];
 }
 
+/** 先頭に出す日数。イベントとGSDの入り方は最初の2週間でだいたい読める。 */
+const SCHEDULE_PREVIEW_HEAD_DAYS = 14;
+/**
+ * 末尾に出す日数。**最終日が何の日かで残EXPの端数（画面の合計が数EXP上回る量）が決まる**ので、
+ * 長期の行でも最後まで見えないと検算できない。
+ */
+const SCHEDULE_PREVIEW_TAIL_DAYS = 3;
+
+/**
+ * 残EXPへ届くまでの日数。**`requiredDays` とは別物**（下の対応表）。
+ * `growthIncenseCount` と `skipsLastDayIncense` はこちらの期間の値。
+ */
+function neededDaysOf(sleep: DebugExportSleepRow): number {
+  return sleep.needed && isSleepPlan(sleep.needed) ? sleep.needed.requiredDays : 0;
+}
+
+/**
+ * イベント倍率の出自マーク。実イベントは無印。
+ * 画面の内訳は花を「イベント／仮イベント」へ合流させるので、花かどうかが分かるのは
+ * ここだけになる。**`f` と `pf` を1つに畳まないこと**（検算で仮の花を実と読み違える）。
+ */
+const EVENT_SOURCE_MARK: Record<EventSource, string> = {
+  real: '',
+  projected: 'p',
+  flower: 'f',
+  projectedFlower: 'pf',
+};
+
+/**
+ * 日別スケジュールの抜粋。先頭14日と末尾3日を出し、間を飛ばしたときは `...` を挟む。
+ *
+ * 最終日のお香は「無くても目標へ届くなら使わない」ので、スケジュール上はお香日でも
+ * 実際には使わないことがある。そのまま `incense` と出すと個数と合わないため `skipped` と書き分ける。
+ *
+ * **`skipped` を付けるのは `needed` の最終日**（お香を外す判断はそこでしている）。
+ * 睡眠目標時間の行では「目標時間を寝きる日数」と「残EXPへ届く日数」が食い違うので、
+ * 抜粋の末尾へ機械的に付けると、外していない日を外したと出してしまう。
+ */
+function buildSchedulePreview(schedule: SleepSchedule, sleep: DebugExportSleepRow): string {
+  const days = Math.max(0, sleep.requiredDays);
+  if (days === 0) return '';
+  const headCount = Math.min(SCHEDULE_PREVIEW_HEAD_DAYS, days);
+  const tailStart = Math.max(headCount, days - SCHEDULE_PREVIEW_TAIL_DAYS);
+  const skippedIncenseIndex = sleep.skipsLastDayIncense ? neededDaysOf(sleep) - 1 : -1;
+
+  const cell = (index: number): string => {
+    const day = schedule.dayAt(index);
+    const incense = day.useIncense
+      ? (index === skippedIncenseIndex ? 'skipped' : 'incense')
+      : day.incenseOutOfStock ? 'nostock' : 'none';
+    // 倍率まで出す。gsd/ev が違う日（重複日）にどちらが採られたかを目視で追えるようにする。
+    const eventSource = EVENT_SOURCE_MARK[day.eventSource ?? "real"];
+    return [day.date, day.dayKind, incense, `gsd${day.gsdMultiplier}`, `ev${day.eventMultiplier}${eventSource}`, `x${day.eventBonus}`].join(':');
+  };
+
+  const cells = Array.from({ length: headCount }, (_, index) => cell(index));
+  if (tailStart > headCount) cells.push('...');
+  for (let index = tailStart; index < days; index++) cells.push(cell(index));
+  return cells.join(',');
+}
+
 /**
  * 睡眠EXPの中間値（設計書§6.4）。
  *
@@ -498,8 +614,22 @@ function buildSleepExpTsv(context: DebugExportContext): string[] {
   const s = context.sleepSettings;
   const lines = [
     'SLEEP_EXP',
-    'settings\tdailySleepHours\tsleepExpBonusCount\tsleepExpBonus\tincludeGSD',
-    ['settings', s.dailySleepHours, s.sleepExpBonusCount, sleepExpBonusMultiplier(s.sleepExpBonusCount), s.includeGSD].map(tsvCell).join('\t'),
+    'settings\tcurrentGameDate\tdebugNow\ttimeZone\tdailySleepHours\tsleepExpBonusCount\tsleepExpBonus\tincludeGSD\tuseProjectedEvents\tprojectedEventCount\tblueSeedPlantWeekday\tblueSeedIncenseDays\twikiKnownThrough\tgrowthIncenseGsdDays\tgrowthIncenseNormalPerWeek\tgrowthIncenseStock\tmanualEventBonuses\tcalculationError',
+    [
+      'settings', context.currentGameDate, context.debugNow, s.timeZone, s.dailySleepHours,
+      s.sleepExpBonusCount, sleepExpBonusMultiplier(s.sleepExpBonusCount), s.includeGSD,
+      s.useProjectedEvents ? 'on' : 'off',
+      context.projectedEventCount,
+      s.blueSeedPlantWeekday === null ? 'none' : s.blueSeedPlantWeekday,
+      s.blueSeedIncenseDays,
+      context.wikiKnownThrough ?? '',
+      [s.growthIncenseGsdDays.beforeFullMoon, s.growthIncenseGsdDays.fullMoon, s.growthIncenseGsdDays.afterFullMoon]
+        .map(value => value ? 1 : 0).join('/'),
+      s.growthIncenseNormalPerWeek,
+      s.growthIncenseStock ?? 'unlimited',
+      JSON.stringify(s.manualEventBonuses),
+      context.sleepCalculationError ?? '',
+    ].map(tsvCell).join('\t'),
   ];
 
   const sleepRows = context.rows
@@ -512,8 +642,13 @@ function buildSleepExpTsv(context: DebugExportContext): string[] {
 
   lines.push([
     'row', 'index', 'id', 'name', 'nature', 'naturePercent',
+    'sleepTargetMode', 'sleepSource',
     'sleepTargetHours', 'sleepHours', 'remainingHours',
-    'dailySleepMinutes', 'dailyScore', 'sleepExpBonus', 'dailyExp', 'requiredDays', 'gsdExtra', 'sleepExp',
+    'dailySleepMinutes', 'dailyScore', 'sleepExpBonus', 'dailyExp', 'baseExp', 'requiredDays',
+    'normalDays', 'flankDays', 'fullMoonDays',
+    'normalIncenseDays', 'flankIncenseDays', 'fullMoonIncenseDays',
+    'growthIncenseCount', 'skipsLastDayIncense',
+    'outerBonusExtra', 'incenseExtra', 'sleepExp', 'fullMoonDates', 'schedulePreview',
     'candyTarget', 'targetLv', 'targetExpInLevel', 'expToTarget',
     ...SLEEP_REACH_HEADERS,
     'neededKind', 'neededDays', 'neededMinutes', 'neededScore', 'neededMinutesMin', 'neededMinutesMax',
@@ -522,57 +657,31 @@ function buildSleepExpTsv(context: DebugExportContext): string[] {
   for (const { row, index } of sleepRows) {
     const b = row.sleep.breakdown;
     const n = row.sleep.needed;
+    let fullMoonDates = '';
+    let schedulePreview = '';
+    try {
+      fullMoonDates = context.sleepSchedule.intersectingFullMoonDates(row.sleep.requiredDays).join(',');
+      schedulePreview = buildSchedulePreview(context.sleepSchedule, row.sleep);
+    } catch {
+      // 計算不能理由は settings 行の calculationError が正本。TSV出力自体は継続する。
+    }
     lines.push([
       'row', index + 1, row.id, row.name, row.nature, b.naturePercent,
-      row.sleep.sleepTargetHours, row.sleep.sleepHours, row.sleep.remainingHours,
-      b.dailySleepMinutes, b.dailyScore, b.sleepExpBonus, b.dailyExp, row.sleep.requiredDays, b.gsdExtra, row.sleep.sleepExp,
+      row.sleepTargetMode ?? '', sleepSourceOf(row.sleep),
+      row.sleep.sleepTargetHours ?? '', row.sleep.sleepHours ?? '', row.sleep.remainingHours ?? '',
+      b.dailySleepMinutes, b.dailyScore, b.sleepExpBonus, b.dailyExp, b.baseExp, row.sleep.requiredDays,
+      b.normalDays, b.flankDays, b.fullMoonDays,
+      b.normalIncenseDays, b.flankIncenseDays, b.fullMoonIncenseDays,
+      row.sleep.growthIncenseCount ?? '', row.sleep.skipsLastDayIncense ?? '',
+      b.outerBonusExtra, b.incenseExtra, row.sleep.sleepExp, fullMoonDates, schedulePreview,
       row.candyTarget ?? '', row.targetLevel, row.targetExpInLevel ?? '', row.plan?.shortage.expToTarget ?? '',
-      ...sleepReachCells(row, row.sleep.sleepExp),
-      n?.kind ?? '', n?.days ?? '', n?.totalMinutes ?? '', n?.score ?? '', n?.minutesMin ?? '', n?.minutesMax ?? '',
-    ].map(tsvCell).join('\t'));
-  }
-  return lines;
-}
-
-/** 「すべて睡眠」は計画睡眠EXPを持たないため、固定睡眠とは別の節に出す。 */
-function buildAllSleepTsv(context: DebugExportContext): string[] {
-  const lines = [
-    'ALL_SLEEP',
-    [
-      'row', 'index', 'id', 'name', 'nature', 'expToTarget',
-      ...SLEEP_REACH_HEADERS,
-      'neededKind', 'neededDays', 'neededMinutes', 'neededScore', 'neededMinutesMin', 'neededMinutesMax',
-    ].join('\t'),
-  ];
-  const rows = context.rows
-    .map((row, index) => ({ row, index }))
-    .filter(({ row }) => row.sleepTargetMode === "all");
-  if (!rows.length) {
-    lines.push('row\tnone');
-    return lines;
-  }
-
-  const s = context.sleepSettings;
-  const sleepExpBonus = sleepExpBonusMultiplier(s.sleepExpBonusCount);
-  for (const { row, index } of rows) {
-    const expToTarget = row.plan?.shortage.expToTarget ?? 0;
-    const needed = calcSleepTimeForExp({
-      expToTarget,
-      nature: row.nature as "down" | "normal" | "up",
-      dailySleepHours: s.dailySleepHours,
-      sleepExpBonus,
-      includeGSD: s.includeGSD,
-    });
-    lines.push([
-      'row', index + 1, row.id, row.name, row.nature, expToTarget,
-      // 「すべて睡眠」に計画睡眠EXPは無い（§2.3）。0 を渡して `noSleepExp` を明示する。
-      ...sleepReachCells(row, 0),
-      needed.kind,
-      needed.kind === 'long-term-estimate' ? needed.requiredDays : '',
-      needed.kind === 'long-term-estimate' ? needed.totalMinutes : '',
-      needed.kind === 'within-one-sleep' ? needed.requiredScore : '',
-      needed.kind === 'within-one-sleep' ? needed.minutesMin : '',
-      needed.kind === 'within-one-sleep' ? needed.minutesMax : '',
+      ...sleepReachCells(row, plannedSleepExpOf(row.sleep)),
+      n?.kind ?? '',
+      n && isSleepPlan(n) ? n.requiredDays : '',
+      n && isSleepPlan(n) ? n.totalMinutes : '',
+      n?.kind === 'exact-nights' ? n.requiredScore : '',
+      n?.kind === 'exact-nights' ? n.minutesMin : '',
+      n?.kind === 'exact-nights' ? n.minutesMax : '',
     ].map(tsvCell).join('\t'));
   }
   return lines;
@@ -624,7 +733,6 @@ export function buildDebugExportTsv(context: DebugExportContext): string {
   });
 
   lines.push('', ...buildSleepExpTsv(context));
-  lines.push('', ...buildAllSleepTsv(context));
   lines.push('', ...buildCalculationPolicyTsv(context));
   lines.push('', ...buildBoundarySearchTsv(context));
   lines.push('', ...buildLossLedgerTsv(context));

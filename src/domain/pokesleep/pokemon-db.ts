@@ -393,6 +393,28 @@ export const pokemonDb: PokemonDbEntry[] = [
   },
   {
     "dexNo": 25,
+    "nameJa": "ピカチュウ(キャプテン)",
+    "specialtyJa": "きのみ",
+    "sleepTypeJa": "すやすや",
+    "berryJa": [
+      "ウブのみ"
+    ],
+    "ingAJa": [
+      "とくせんリンゴ"
+    ],
+    "ingBJa": [
+      "あったかジンジャー"
+    ],
+    "ingCJa": [
+      "とくせんエッグ"
+    ],
+    "mainSkillJa": "食材ゲットS",
+    "fp": 7,
+    "helpSeconds": 2500,
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%94%E3%82%AB%E3%83%81%E3%83%A5%E3%82%A6%28%E3%82%AD%E3%83%A3%E3%83%97%E3%83%86%E3%83%B3%29"
+  },
+  {
+    "dexNo": 25,
     "nameJa": "ピカチュウ(ハロウィン)",
     "specialtyJa": "きのみ",
     "sleepTypeJa": "すやすや",
@@ -5296,6 +5318,72 @@ export const pokemonDb: PokemonDbEntry[] = [
     "fp": 22,
     "helpSeconds": 2400,
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%91%E3%83%BC%E3%83%A2%E3%83%83%E3%83%88"
+  },
+  {
+    "dexNo": 957,
+    "nameJa": "カヌチャン",
+    "specialtyJa": "きのみ",
+    "sleepTypeJa": "すやすや",
+    "berryJa": [
+      "モモンのみ"
+    ],
+    "ingAJa": [
+      "あんみんトマト"
+    ],
+    "ingBJa": [
+      "リラックスカカオ"
+    ],
+    "ingCJa": [
+      "ほっこりポテト"
+    ],
+    "mainSkillJa": "エナジーチャージM",
+    "fp": 5,
+    "helpSeconds": 4500,
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%AB%E3%83%8C%E3%83%81%E3%83%A3%E3%83%B3"
+  },
+  {
+    "dexNo": 958,
+    "nameJa": "ナカヌチャン",
+    "specialtyJa": "きのみ",
+    "sleepTypeJa": "すやすや",
+    "berryJa": [
+      "モモンのみ"
+    ],
+    "ingAJa": [
+      "あんみんトマト"
+    ],
+    "ingBJa": [
+      "リラックスカカオ"
+    ],
+    "ingCJa": [
+      "ほっこりポテト"
+    ],
+    "mainSkillJa": "エナジーチャージM",
+    "fp": 12,
+    "helpSeconds": 3300,
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%8A%E3%82%AB%E3%83%8C%E3%83%81%E3%83%A3%E3%83%B3"
+  },
+  {
+    "dexNo": 959,
+    "nameJa": "デカヌチャン",
+    "specialtyJa": "きのみ",
+    "sleepTypeJa": "すやすや",
+    "berryJa": [
+      "モモンのみ"
+    ],
+    "ingAJa": [
+      "あんみんトマト"
+    ],
+    "ingBJa": [
+      "リラックスカカオ"
+    ],
+    "ingCJa": [
+      "ほっこりポテト"
+    ],
+    "mainSkillJa": "エナジーチャージM",
+    "fp": 20,
+    "helpSeconds": 2400,
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%87%E3%82%AB%E3%83%8C%E3%83%81%E3%83%A3%E3%83%B3"
   },
   {
     "dexNo": 974,

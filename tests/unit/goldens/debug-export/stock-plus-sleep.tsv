@@ -1,0 +1,33 @@
+index	id	name	pokedexId	candyFamilyKey	type	nature	currentLv	currentExpInLevel	expRemaining	targetLv	targetExpInLevel	candyTarget	sleepTargetMode	boostKind	itemCompareMode	calculationScope	reachedLv	candyDemandMet	role	expToNext	expToTarget	shortageCandy	shortageBoost	shortageShards	limitingFactor	initialSpeciesStock	reachableBoost	reachableNormal	reachableTotalCandy	reachableShards	reachableSpecies	reachableTypeS	reachableTypeM	reachableUniversalS	reachableUniversalM	reachableUniversalL	reachableTotalSupply	reachableItemValue	reachableNonSpeciesItemValue	reachableSurplus	targetBoost	targetNormal	targetTotalCandy	targetShards	targetSpecies	targetTypeS	targetTypeM	targetUniversalS	targetUniversalM	targetUniversalL	targetTotalSupply	targetItemValue	targetNonSpeciesItemValue	targetSurplus	plannedCandyEndLevel	plannedCandyEndExpInLevel	reachableCandyEndLevel	reachableCandyEndExpInLevel
+1	golden-id-2	Golden stock-sleep	25	25	Electric	normal	10	225	120	55	0		stock	full	surplusFirst	feasibilityWitness	10	false	boundary	120	37020	0	0	17894	shards	80	0	0	0	0	0	0	0	0	0	0	0	0	0	0	50	30	80	17894	80	0	0	0	0	0	80	80	0	0	22	54	10	225
+
+SLEEP_EXP
+settings	currentGameDate	debugNow	timeZone	dailySleepHours	sleepExpBonusCount	sleepExpBonus	includeGSD	useProjectedEvents	projectedEventCount	blueSeedPlantWeekday	blueSeedIncenseDays	wikiKnownThrough	growthIncenseGsdDays	growthIncenseNormalPerWeek	growthIncenseStock	manualEventBonuses	calculationError
+settings	2026-08-24		Asia/Tokyo	8.5	0	1	true	on	5	1	auto	2026-08-30	0/1/1	0	unlimited	[]	
+row	index	id	name	nature	naturePercent	sleepTargetMode	sleepSource	sleepTargetHours	sleepHours	remainingHours	dailySleepMinutes	dailyScore	sleepExpBonus	dailyExp	baseExp	requiredDays	normalDays	flankDays	fullMoonDays	normalIncenseDays	flankIncenseDays	fullMoonIncenseDays	growthIncenseCount	skipsLastDayIncense	outerBonusExtra	incenseExtra	sleepExp	fullMoonDates	schedulePreview	candyTarget	targetLv	targetExpInLevel	expToTarget	sleepReachStatus	sleepReachReason	sleepReachLevel	sleepReachTenths	sleepReachDisplay	sleepReachRatio	neededKind	neededDays	neededMinutes	neededScore	neededMinutesMin	neededMinutesMax
+row	1	golden-id-2	Golden stock-sleep	normal	100	stock	expToTarget				510	100	1	100	27000	270	241	19	10	0	9	10	19	false	5500	4800	37300	2026-08-28,2026-09-27,2026-10-26,2026-11-24,2026-12-24,2027-01-22,2027-02-21,2027-03-22,2027-04-21,2027-05-20	2026-08-24:normal:none:gsd1:ev1.5:x1.5,2026-08-25:normal:none:gsd1:ev1.5:x1.5,2026-08-26:normal:none:gsd1:ev1.5:x1.5,2026-08-27:flank:none:gsd2:ev1.5:x2,2026-08-28:fullMoon:incense:gsd3:ev1.5:x3,2026-08-29:flank:incense:gsd2:ev1.5:x2,2026-08-30:normal:none:gsd1:ev1.5:x1.5,2026-08-31:normal:none:gsd1:ev3f:x3,2026-09-01:normal:none:gsd1:ev3f:x3,2026-09-02:normal:none:gsd1:ev3f:x3,2026-09-03:normal:none:gsd1:ev3f:x3,2026-09-04:normal:none:gsd1:ev3f:x3,2026-09-05:normal:none:gsd1:ev3f:x3,2026-09-06:normal:none:gsd1:ev3f:x3,...,2027-05-18:normal:none:gsd1:ev1:x1,2027-05-19:flank:none:gsd2:ev1:x2,2027-05-20:fullMoon:incense:gsd3:ev1:x3		55	0	37020	hidden	noSleepExp					long-term-estimate	270	137700			
+
+CALCULATION_POLICY
+mode	policy	structuralProbeStatus	deadlineMs	actualDurationMs	feasibilityMs	refineMs	refineStatus	refineReason	loss	source	exactPrefixCount	localStartIndex	localSuffixCount
+feasibilityWitness	autoWitness	aborted	2000	<timing>					false	feasibility	0		0
+
+BOUNDARY_SEARCH
+status	none
+
+LOSS_LEDGER
+status	hasLoss	supplyCandidateCuts	frontierCuts	stateCaps	expansionCapReductions
+ok	false	0	0	0	0
+
+EXACT_VERIFICATION
+status	selectedIsExactBest	mode	rows	localCandidateCounts	dpFinalStates	scope	exactPrefixCount	localSuffixCount	note
+not_available		surplusFirst	1			normalPathSnapshot	0	0	normal-path fixed-demand refine snapshot; export solver disabled; shortage present; not full-plan oracle
+selectedRows	index	name	candyFamilyKey	species	typeS	typeM	universalS	universalM	universalL	supply	surplus
+selected	1	Golden stock-sleep	25	0	0	0	0	0	0	0	0
+
+FBL01D_FEASIBILITY
+status	selectedValid	solverStatus	refineStatus	rows	reachedCount	boundaryIndex	boundaryLv	boundaryExp	durationMs	globalKeyCount	transitions	witnessRestoreMs	reason
+ok	true	skipped_export_safety	skipped_export_safety	1	0	0	10	225					heavy_solver_disabled_in_tsv_export
+selectedRows	index	name	candyFamilyKey	totalCandy	boostCandy	normalCandy	shards	reachedLv	expInLevel	candyDemandMet	species	typeS	typeM	universalS	universalM	universalL	supply	surplus
+selected	1	Golden stock-sleep	25	0	0	0	0	10	225	false	0	0	0	0	0	0	0	0
+remaining	universalS	universalM	universalL	boostCandy	dreamShards
+selected	0	0	0	50	0

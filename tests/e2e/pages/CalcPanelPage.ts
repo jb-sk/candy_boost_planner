@@ -271,59 +271,26 @@ export class CalcPanelPage {
     return row.getByTestId('resultRowReachable');
   }
 
-  // 結果行の展開状態
-  async isRowExpanded(row: Locator): Promise<boolean> {
+  /**
+   * 「目標まで」の値を持つ行を返す。
+   * 目標まで行が出ていないときは到達可能行と同値なので、到達可能行を返す。
+   */
+  async getRowTargetRow(row: Locator): Promise<Locator> {
     const requiredRow = this.getRowRequiredRow(row);
-    const hasExpanded = await requiredRow.locator('.is-expanded').count();
-    return hasExpanded > 0;
-  }
-
-  async expandRow(row: Locator): Promise<void> {
-    const usedRow = this.getRowUsedRow(row);
-    // すでに展開されている場合はクリックしない（トグルで閉じてしまうため）
-    const isAlreadyVisible = await usedRow.isVisible();
-    if (isAlreadyVisible) {
-      return;
-    }
-    const requiredRow = this.getRowRequiredRow(row);
-    await expect(async () => {
-      if (await usedRow.isVisible()) return;
-      await requiredRow.scrollIntoViewIfNeeded();
-      await requiredRow.click({ position: { x: 12, y: 12 } });
-      await expect(usedRow).toBeVisible({ timeout: 1000 });
-    }).toPass({ timeout: 7000 });
-  }
-
-  async collapseRow(row: Locator): Promise<void> {
-    const usedRow = this.getRowUsedRow(row);
-    if (!(await usedRow.isVisible())) {
-      return;
-    }
-    const requiredRow = this.getRowRequiredRow(row);
-    await expect(async () => {
-      if (!(await usedRow.isVisible())) return;
-      await requiredRow.scrollIntoViewIfNeeded();
-      await requiredRow.click({ position: { x: 12, y: 12 } });
-      await expect(usedRow).toBeHidden({ timeout: 1000 });
-    }).toPass({ timeout: 7000 });
+    return (await requiredRow.count()) > 0 ? requiredRow : this.getRowUsedRow(row);
   }
 
   // === 結果値の取得 ===
   async getRowResultValue(row: Locator, resultType: 'required' | 'used', field: 'boost' | 'normal' | 'candy' | 'shards'): Promise<string> {
-    const resultRow = resultType === 'required'
-      ? this.getRowRequiredRow(row)
-      : this.getRowUsedRow(row);
-
-    let fieldKey: string;
-    switch (field) {
-      case 'boost': fieldKey = 'アメブ'; break;
-      case 'normal': fieldKey = '通常アメ'; break;
-      case 'candy': fieldKey = 'アメ合計'; break;
-      case 'shards': fieldKey = 'かけら'; break;
+    const reachableValue = row.getByTestId(`result-reachable-${field}-value`);
+    let value = reachableValue;
+    if (resultType === 'required') {
+      const requiredValue = row.getByTestId(`result-required-${field}-value`);
+      // 目標まで行は到達可能行と値が違う場合だけ存在する。再計算中に一時的に消える場合も
+      // 待機を止めず、画面と同じ規則で常設の到達可能値へフォールバックする。
+      if (await requiredValue.count() > 0) value = requiredValue;
     }
-
-    const res = resultRow.locator('.calcRow__res').filter({ hasText: fieldKey });
-    const numText = await res.locator('.calcRow__num').first().textContent();
+    const numText = await value.textContent();
     return numText?.trim() ?? '';
   }
 
@@ -346,8 +313,8 @@ export class CalcPanelPage {
   }
 
   async getRowRequiredItems(row: Locator): Promise<string> {
-    const requiredRow = this.getRowRequiredRow(row);
-    const text = await requiredRow.textContent();
+    const targetRow = await this.getRowTargetRow(row);
+    const text = await targetRow.textContent();
     return text?.replace(/余り(\d+)/g, '余り $1').trim() ?? '';
   }
 
@@ -357,39 +324,30 @@ export class CalcPanelPage {
 
   async getRowUsedItems(row: Locator): Promise<string> {
     const usedRow = this.getRowUsedRow(row);
-    const itemsRes = usedRow.locator('.calcRow__res').filter({ hasText: '使用アイテム' });
-    const numText = await itemsRes.locator('.calcRow__num').textContent();
+    const numText = await usedRow.getByTestId('result-reachable-items-value').textContent();
     return numText?.trim() ?? '';
   }
 
   async getRowReachedLevel(row: Locator): Promise<string> {
     const usedRow = this.getRowUsedRow(row);
-    // 「睡眠到達Lv」は「到達Lv」を部分文字列として含むので、ラベルを完全一致で絞る
-    const res = usedRow.locator(
-      'xpath=.//span[contains(concat(" ", normalize-space(@class), " "), " calcRow__k ")][normalize-space()="到達Lv" or normalize-space()="アメ到達Lv"]/parent::span'
-    ).first();
-    const numText = await res.locator('.calcRow__num').first().textContent();
+    const numText = await usedRow.getByTestId('result-reachable-level-value').textContent();
     return numText?.trim() ?? '';
   }
 
   /** 睡眠込みの着地点（「約60.9」）。出ていない行では空文字。 */
   async getRowSleepReachLevel(row: Locator): Promise<string> {
     const usedRow = this.getRowUsedRow(row);
-    const res = usedRow.locator(
-      'xpath=.//span[contains(concat(" ", normalize-space(@class), " "), " calcRow__k ")][normalize-space()="睡眠到達Lv"]/parent::span'
-    );
-    if (await res.count() === 0) return '';
-    const numText = await res.locator('.calcRow__num').first().textContent();
+    const value = usedRow.getByTestId('result-sleep-reached-level-value');
+    if (await value.count() === 0) return '';
+    const numText = await value.textContent();
     return numText?.trim() ?? '';
   }
 
   async getRowRemainingExp(row: Locator): Promise<string> {
     const usedRow = this.getRowUsedRow(row);
-    const remainingRes = usedRow.locator(
-      'xpath=.//span[contains(concat(" ", normalize-space(@class), " "), " calcRow__k ")][normalize-space()="残EXP"]/parent::span'
-    ).first();
-    if (await remainingRes.count() > 0) {
-      const numText = await remainingRes.locator('.calcRow__num').first().textContent();
+    const remainingValue = usedRow.getByTestId('result-remaining-exp-value');
+    if (await remainingValue.count() > 0) {
+      const numText = await remainingValue.textContent();
       return numText?.trim() ?? '';
     }
     const text = await usedRow.textContent();
@@ -399,7 +357,7 @@ export class CalcPanelPage {
 
   async getRowSleepTime(row: Locator): Promise<string> {
     const usedRow = this.getRowUsedRow(row);
-    const sleepTime = usedRow.locator('.calcRow__sleepTime');
+    const sleepTime = usedRow.getByTestId('result-sleep-time');
     if (await sleepTime.count() === 0) return '';
     const text = await sleepTime.textContent();
     return text?.trim() ?? '';

@@ -32,7 +32,12 @@ export async function ensureLocaleMessagesLoaded(
       },
   locale: AppLocale,
 ): Promise<void> {
-  const composer = "global" in i18n ? i18n.global : i18n;
+  // createI18n は初期投入した ja のリテラル構造へ Composer を狭めるが、この関数は
+  // en を後から追加する境界。ここだけ実際に使う遅延ロード用インターフェースへ戻す。
+  const composer = ("global" in i18n ? i18n.global : i18n) as unknown as {
+    availableLocales: readonly string[];
+    setLocaleMessage: (locale: AppLocale, message: AppMessages) => void;
+  };
   const requiredLocales: AppLocale[] = locale === "ja" ? ["ja"] : ["ja", locale];
 
   await Promise.all(requiredLocales.map(async (targetLocale) => {

@@ -31,7 +31,10 @@ test.describe('07-level-planner-inventory', () => {
     await calc.setRowSpeciesCandy(row, '0');
     await page.waitForTimeout(200);
 
-    const requiredItems = calc.getRowRequiredRow(row).locator('.calcRow__res').filter({ hasText: '必要アイテム' });
+    // 実測で在庫不足により2行になる。必要アイテムは目標まで行だけのラベル。
+    const requiredRow = calc.getRowRequiredRow(row);
+    await expect(requiredRow).toBeVisible();
+    const requiredItems = requiredRow.locator('.calcRow__res').filter({ hasText: '必要アイテム' });
     const targetUniversalS = requiredItems.locator('.calcRow__num--danger').filter({ hasText: '万能S' });
     await expect(targetUniversalS).toBeVisible();
 
@@ -39,7 +42,6 @@ test.describe('07-level-planner-inventory', () => {
     expect(targetMatch).not.toBeNull();
     expect(Number((targetMatch?.[1] ?? '0').replace(/,/g, ''))).toBeGreaterThan(10);
 
-    await calc.expandRow(row);
     const usedItems = await calc.getRowUsedItems(row);
     const usedMatch = usedItems.match(/万能S\s+([\d,]+)/);
     expect(usedMatch).not.toBeNull();
@@ -87,32 +89,27 @@ test.describe('07-level-planner-inventory', () => {
     const { calc, row } = await setupShardsLimitedRow(page);
 
     // 不足表示の置き場所は「到達可能」行だけ
-    await calc.expandRow(row);
     const usedRow = calc.getRowUsedRow(row);
     await expect.poll(async () => (await usedRow.textContent()) ?? '').toContain('かけら不足');
     expect(await usedRow.textContent()).not.toContain('アメ不足');
   });
 
-  test('目標まで行には不足を表示しない（折りたたみ・展開のどちらでも）', async ({ page }) => {
+  test('目標まで行には不足を表示しない', async ({ page }) => {
     // 「目標まで」は在庫を無視した理論値の行。不足は在庫と突き合わせた結果なので
-    // 「到達可能」行だけが持つ。過去に「折りたたみ時だけ出す」形で何度も復活したため固定する。
+    // 「到達可能」行だけが持つ。過去に「目標まで」行へ複製する形で何度も復活したため固定する。
     await page.goto('/');
     const { calc, row } = await setupShardsLimitedRow(page);
 
     const requiredRow = calc.getRowRequiredRow(row);
-    // まず不足自体が発生していることを確かめる（条件が緩んで空振りするのを防ぐ）
-    await calc.expandRow(row);
+    // 不足があれば表示値に差が出るため、目標まで行との2行になる。
+    // まず不足自体が発生していることを確かめる（条件が緩んで空振りするのを防ぐ）。
     await expect.poll(async () => (await calc.getRowUsedRow(row).textContent()) ?? '').toContain('かけら不足');
+    await expect(requiredRow).toBeVisible();
 
     for (const label of ['アメ不足', 'アメブ不足', 'かけら不足']) {
       expect(await requiredRow.textContent()).not.toContain(label);
     }
 
-    // 折りたたんでも出さない（`!isExpanded(r.id)` 条件付きでの復活を防ぐ）
-    await calc.collapseRow(row);
-    for (const label of ['アメ不足', 'アメブ不足', 'かけら不足']) {
-      expect(await requiredRow.textContent()).not.toContain(label);
-    }
   });
 
   test('レベルピッカーは律速要因を文字で示す（かけら律速）', async ({ page }) => {
@@ -172,8 +169,6 @@ test.describe('07-level-planner-inventory', () => {
     // 赤の意味は「この資源が足りない」ではなく「今これが効いている」。設計書§10.15
     await page.goto('/');
     const { calc, row } = await setupShardsLimitedRow(page);
-    await calc.expandRow(row);
-
     const usedRow = calc.getRowUsedRow(row);
     // 「かけら」の使用量と「アメ」の使用量。不足チップ（かけら不足）と取り違えないよう、
     // ラベルが完全一致する項目だけを拾う。

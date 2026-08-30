@@ -149,7 +149,10 @@ async function fetchHtml(url) {
         signal: AbortSignal.timeout(30_000),
       });
     } catch (error) {
-      if (attempt === 3) throw new Error(`Wiki fetch failed: ${url}: ${error.message}`);
+      if (attempt === 3) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Wiki fetch failed: ${url}: ${message}`, { cause: error });
+      }
       continue;
     }
     if (response.ok) return response.text();

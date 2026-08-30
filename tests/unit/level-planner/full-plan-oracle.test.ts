@@ -568,6 +568,8 @@ function makeLine(
     surplusExp: Math.max(0, reached.expInLevel - pokemon.effectiveExp),
     surplusCandyValue: Math.max(0, supplyValue(supply) - totalCandyUnitsUsed),
     candyDemandMet: compareLevel(reached, { level: pokemon.effectiveLevel, expInLevel: pokemon.effectiveExp }) >= 0,
+    effectiveTargetReached: compareLevel(reached, { level: pokemon.effectiveLevel, expInLevel: pokemon.effectiveExp }) >= 0
+      || reached.level >= maxLevel,
   };
 }
 
@@ -596,6 +598,8 @@ function makeCandyTargetLine(
     surplusExp: Math.max(0, reached.expInLevel - pokemon.effectiveExp),
     surplusCandyValue: Math.max(0, supplyValue(supply) - totalCandyUnitsUsed),
     candyDemandMet: totalCandyUnitsUsed >= targetTotal || reached.level >= maxLevel,
+    effectiveTargetReached: compareLevel(reached, { level: pokemon.effectiveLevel, expInLevel: pokemon.effectiveExp }) >= 0
+      || reached.level >= maxLevel,
   };
 }
 
@@ -689,7 +693,7 @@ function enumerateCandidates(
   const target = targetMixed(pokemon, input.boost.kind, boostBudget);
   const targetTotal = target.boostCandy + target.normalCandy;
   const maxCandyBudget = Math.min(
-    pokemon.candyTarget?.totalCandyUnits ?? targetTotal,
+    targetTotal,
     Math.max(0, inventoryValueFor(pokemon, inventory)),
   );
   const byUse = new Map<string, { boostBudget: number; normalBudget: number; total: number }>();
@@ -701,7 +705,6 @@ function enumerateCandidates(
   }
   const candidates: OracleCandidate[] = [];
   for (const option of byUse.values()) {
-    if (pokemon.candyTarget && option.total > pokemon.candyTarget.totalCandyUnits) continue;
     for (const supply of enumerateSupplies(option.total, pokemon, inventory, fixedSpecies)) {
       candidates.push({ pokemon, line: makeLine(pokemon, input, option.boostBudget, option.normalBudget, remainingShards, supply) });
     }
@@ -736,7 +739,7 @@ function enumerateOptimizationPreviewCandidates(
     }
     const targetTotal = target.boostCandy + target.normalCandy;
     const maxCandyBudget = Math.min(
-      pokemon.candyTarget?.totalCandyUnits ?? targetTotal,
+      targetTotal,
       Math.max(0, inventoryValueFor(pokemon, inventory)),
     );
     const byUse = new Map<string, { boostBudget: number; normalBudget: number; total: number }>();
@@ -747,7 +750,6 @@ function enumerateOptimizationPreviewCandidates(
       if (!byUse.has(key)) byUse.set(key, { boostBudget, normalBudget, total });
     }
     for (const option of byUse.values()) {
-      if (pokemon.candyTarget && option.total > pokemon.candyTarget.totalCandyUnits) continue;
       for (const supply of enumerateSupplies(option.total, pokemon, inventory)) {
         candidates.push({ pokemon, line: makeLine(pokemon, input, option.boostBudget, option.normalBudget, remainingShards, supply) });
       }
@@ -1321,7 +1323,7 @@ describe('level planner full-plan oracle', () => {
       level: 2, expInLevel: 0, expToNextLevel: 100, expToTarget: 0,
       totalCandyUnitsUsed: 0, boostedCandyUnits: 0, nonBoostCandyUnits: 0,
       candySupply: emptySupply(), dreamShardsUsed: 0, expGained: 0,
-      surplusExp: 0, surplusCandyValue: 0, candyDemandMet: false,
+      surplusExp: 0, surplusCandyValue: 0, candyDemandMet: false, effectiveTargetReached: false,
       ...overrides,
     });
     // 行0 = 境界（アメが無く未達）。両プランで同一。

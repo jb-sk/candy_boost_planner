@@ -103,6 +103,68 @@ describe("useBoxStore", () => {
     expect(saved.entries.map((entry: { id: string }) => entry.id)).toEqual([entryId]);
   });
 
+  it("restores a multi-entry import through repeated undo and redo", () => {
+    const t = ((key: string) => key) as unknown as Composer["t"];
+    const store = useBoxStore({ locale: ref("ja"), t });
+    store.importText.value = "MQwAjwQeBy0Q\n0TRAEBRERw1p@100ウッウ（油）";
+
+    expect(store.onImport()).toBe(2);
+    const imported = JSON.parse(JSON.stringify(store.boxEntries.value));
+    expect(imported).toHaveLength(2);
+
+    for (let cycle = 0; cycle < 2; cycle++) {
+      store.onUndo();
+      expect(store.boxEntries.value).toEqual([]);
+      store.onRedo();
+      expect(store.boxEntries.value).toEqual(imported);
+    }
+  });
+
+  it("restores a manual add through repeated undo and redo", () => {
+    const t = ((key: string) => key) as unknown as Composer["t"];
+    const store = useBoxStore({ locale: ref("ja"), t });
+    store.addLabel.value = "manual-entry";
+    store.onCreateManual({ mode: "toBox" });
+    const added = JSON.parse(JSON.stringify(store.boxEntries.value));
+
+    for (let cycle = 0; cycle < 2; cycle++) {
+      store.onUndo();
+      expect(store.boxEntries.value).toEqual([]);
+      store.onRedo();
+      expect(store.boxEntries.value).toEqual(added);
+    }
+  });
+
+  it("keeps import, delete, and clear consistent across the full undo and redo stack", () => {
+    const t = ((key: string) => key) as unknown as Composer["t"];
+    const store = useBoxStore({ locale: ref("ja"), t });
+    store.importText.value = "MQwAjwQeBy0Q\n0TRAEBRERw1p@100ウッウ（油）";
+    expect(store.onImport()).toBe(2);
+    const afterImport = JSON.parse(JSON.stringify(store.boxEntries.value));
+
+    store.selectedBoxId.value = store.boxEntries.value[0]!.id;
+    store.onDeleteSelected();
+    const afterDelete = JSON.parse(JSON.stringify(store.boxEntries.value));
+    expect(afterDelete).toHaveLength(1);
+
+    store.onClearBox();
+    expect(store.boxEntries.value).toEqual([]);
+
+    store.onUndo();
+    expect(store.boxEntries.value).toEqual(afterDelete);
+    store.onUndo();
+    expect(store.boxEntries.value).toEqual(afterImport);
+    store.onUndo();
+    expect(store.boxEntries.value).toEqual([]);
+
+    store.onRedo();
+    expect(store.boxEntries.value).toEqual(afterImport);
+    store.onRedo();
+    expect(store.boxEntries.value).toEqual(afterDelete);
+    store.onRedo();
+    expect(store.boxEntries.value).toEqual([]);
+  });
+
   describe("box sort", () => {
     const t = ((key: string) => key) as unknown as Composer["t"];
 

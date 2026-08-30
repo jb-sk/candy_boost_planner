@@ -449,10 +449,10 @@
             </button>
           </div>
           <div class="boxSortRow__undoRedo">
-            <button class="btn btn--ghost btn--sm" type="button" data-testid="box-clear-all" @click="box.onClearBox" :disabled="!boxEntries.length">
+            <button class="btn btn--ghost btn--sm" type="button" data-testid="box-clear-all" @click="clearConfirmRef?.open($event.currentTarget)" :disabled="!boxEntries.length || clearConfirmRef?.isOpen">
               {{ t("box.clearAll") }}
             </button>
-            <button class="btn" :class="canUndo ? 'btn--primary' : 'btn--ghost'" type="button" data-testid="box-undo" @click="box.onUndo" :disabled="!canUndo" :title="t('box.list.undoTitle')">
+            <button ref="undoButtonRef" class="btn" :class="canUndo ? 'btn--primary' : 'btn--ghost'" type="button" data-testid="box-undo" @click="box.onUndo" :disabled="!canUndo" :title="t('box.list.undoTitle')">
               {{ t("common.undo") }}
             </button>
             <button class="btn" :class="canRedo ? 'btn--primary' : 'btn--ghost'" type="button" data-testid="box-redo" @click="box.onRedo" :disabled="!canRedo">
@@ -460,6 +460,23 @@
             </button>
           </div>
         </div>
+
+        <InlineConfirm
+          ref="clearConfirmRef"
+          id-prefix="box-clear-confirm"
+          container-class="boxClearConfirm"
+          :question="t('confirm.clearBox', { n: boxEntries.length })"
+          :note="t('confirm.clearBoxNote')"
+          :confirm-label="t('box.clearAllConfirmAction')"
+          :cancel-label="t('common.cancel')"
+          test-id="box-clear-confirm"
+          confirm-test-id="box-clear-confirm-yes"
+          cancel-test-id="box-clear-confirm-no"
+          :disabled="!boxEntries.length"
+          close-when-disabled
+          :confirm-focus-target="undoButtonRef"
+          @confirm="box.onClearBox"
+        />
 
         <div class="boxList" ref="boxListRef" v-if="sortedBoxEntries.length">
           <template v-for="(e, idx) in sortedBoxEntries" :key="e.id">
@@ -889,6 +906,7 @@ import { IngredientTypes } from "../domain/box/nitoyon";
 import { getPokemonType } from "../domain/pokesleep/pokemon-names";
 import { getPokemonNameLocalized } from "../domain/pokesleep/pokemon-name-localize";
 import NatureSelect from "./NatureSelect.vue";
+import InlineConfirm from "./InlineConfirm.vue";
 
 import type { BoxStore } from "../composables/useBoxStore";
 import type { CalcStore } from "../composables/useCalcStore";
@@ -924,6 +942,9 @@ const { t, locale } = useI18n();
 const box = props.box;
 const calc = props.calc;
 const gt = props.gt;
+
+const undoButtonRef = ref<HTMLButtonElement | null>(null);
+const clearConfirmRef = ref<InstanceType<typeof InlineConfirm> | null>(null);
 
 // Aliases for v-model so the template compiler updates `.value` correctly.
 const boxEntries = box.boxEntries;
@@ -1004,6 +1025,7 @@ const sleepMilestones = computed<SleepMilestoneResult[]>(() =>
   calcSleepMilestones({
     currentSleepHours: currentSleepHours.value,
     dailySleepHours: effectiveDailySleep.value,
+    startGameDate: calc.currentGameDate.value,
   })
 );
 

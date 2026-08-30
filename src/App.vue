@@ -12,6 +12,7 @@
           <button class="lang__btn" type="button" :class="{ 'lang__btn--on': uiLocale === 'ja' }" :disabled="localeSwitching" @click="setLocale('ja')">JP</button>
           <button class="lang__btn" type="button" :class="{ 'lang__btn--on': uiLocale === 'en' }" :disabled="localeSwitching" @click="setLocale('en')">EN</button>
           <button class="lang__btn lang__btn--help" type="button" @click="showHelp = true">{{ t("common.help") }}</button>
+          <button class="lang__btn lang__btn--help" type="button" data-testid="open-event-history" @click="showEventHistory = true">{{ t("common.eventHistory") }}</button>
         </div>
       </div>
       <div class="heroMeta">
@@ -80,6 +81,8 @@
 
     <HelpOverlay v-if="showHelp" @close="showHelp = false" />
 
+    <EventHistoryOverlay v-if="showEventHistory" @close="showEventHistory = false" />
+
     <SettingsOverlay v-if="showSettings" :calc="calc" :box="box" @close="showSettings = false" />
 
     <AddPokemonModal v-if="showAddModal" :box="box" :calc="calc" @close="showAddModal = false" @added="onAddModalAdded($event)" />
@@ -135,6 +138,7 @@ async function setLocale(next: "ja" | "en") {
 /** 遅延オーバーレイ用チャンク（トップ描画後にプリロードして初回オープン時の待ちを避ける） */
 const loadExportOverlay = () => import("./components/ExportOverlay.vue");
 const loadHelpOverlay = () => import("./components/HelpOverlay.vue");
+const loadEventHistoryOverlay = () => import("./components/EventHistoryOverlay.vue");
 const loadAddPokemonModal = () => import("./components/AddPokemonModal.vue");
 const loadOnboardingTour = () => import("./components/OnboardingTour.vue");
 
@@ -147,6 +151,7 @@ function createAsyncOverlayComponent(loader: () => Promise<{ default: Component 
 
 const ExportOverlay = createAsyncOverlayComponent(loadExportOverlay);
 const HelpOverlay = createAsyncOverlayComponent(loadHelpOverlay);
+const EventHistoryOverlay = createAsyncOverlayComponent(loadEventHistoryOverlay);
 const AddPokemonModal = createAsyncOverlayComponent(loadAddPokemonModal);
 const OnboardingTour = createAsyncOverlayComponent(loadOnboardingTour);
 
@@ -154,6 +159,7 @@ function preloadOverlayChunks() {
   return Promise.all([
     loadExportOverlay(),
     loadHelpOverlay(),
+    loadEventHistoryOverlay(),
     loadAddPokemonModal(),
     loadOnboardingTour(),
   ]);
@@ -162,6 +168,7 @@ function preloadOverlayChunks() {
 type SupportLink = { id: "ofuse" | "bmac"; label: string; href: string; ariaLabel: string };
 
 const showHelp = ref(false);
+const showEventHistory = ref(false);
 const showSettings = ref(false);
 const showAddModal = ref(false);
 /** 初回ペイント負荷分散: 計算機の直後に Box をマウントするとフレームが重いため、初回フレーム後にマウント */

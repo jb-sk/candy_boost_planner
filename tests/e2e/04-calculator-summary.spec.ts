@@ -2,7 +2,7 @@
  * E2E Test: 04-calculator
  * 計算機パネルのテスト（63件）
  */
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -10,6 +10,7 @@ import { CalcPanelPage } from './pages/CalcPanelPage';
 import { BoxPanelPage } from './pages/BoxPanelPage';
 import { SettingsModalPage } from './pages/SettingsModalPage';
 import { markForSleep } from '../../src/domain/pokesleep/sleep-growth';
+import type { SleepSchedule } from '../../src/domain/pokesleep/sleep-schedule';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,6 +19,50 @@ const __dirname = path.dirname(__filename);
 const testConfig = JSON.parse(
   fs.readFileSync(path.join(__dirname, '../fixtures/test-config.json'), 'utf-8')
 );
+
+// 画面側の現在日が実行日で変わっても「残EXPは睡眠EXP以下」という上界検証を安定させる。
+// 全日を最大イベント倍率にした上界であり、画面の月齢計算そのものは専用テストで固定日検証する。
+const maxEventSchedule: SleepSchedule = {
+  startGameDate: '2026-05-02',
+  timeZone: 'UTC',
+  includeGSD: true,
+  growthIncenseGsdDays: { beforeFullMoon: false, fullMoon: false, afterFullMoon: false },
+  growthIncenseNormalPerWeek: 0,
+  growthIncenseStock: null,
+  dayAt: index => ({
+    index,
+    date: '2026-05-02',
+    dayKind: 'fullMoon',
+    useIncense: false,
+    incenseOutOfStock: false,
+    gsdMultiplier: 3,
+    eventMultiplier: 3,
+    eventBonus: 3,
+    incenseMultiplier: 1,
+  }),
+  days: () => [],
+  intersectingFullMoonDates: () => [],
+};
+
+/**
+ * `maxEventSchedule` は「1日の睡眠EXPの上限」として使うが、**成長のお香を使わない日**である。
+ * お香は既定オンなので、揃えないと実際の1日が上限を超えて比較が成立しない。
+ */
+async function disableGrowthIncense(settings: SettingsModalPage): Promise<void> {
+  await settings.setGrowthIncenseGsd({ beforeFullMoon: false, fullMoon: false, afterFullMoon: false });
+  await settings.setGrowthIncenseNormalPerWeek(0);
+}
+
+/**
+ * 背景色の不透明度を返す。結果行の背景はアクセント色の濃さ違いなので、
+ * テーマの色そのものではなく濃さの順序だけを検証するために使う。
+ */
+async function bgAlpha(locator: Locator): Promise<number> {
+  const colour = await locator.evaluate(el => getComputedStyle(el).backgroundColor);
+  // 不透明なら `rgb(...)` が返る（= 1）。`rgb()` を rgba 扱いすると青成分を拾うので分ける。
+  const alpha = /^rgba\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*([\d.]+)\s*\)$/.exec(colour)?.[1];
+  return alpha === undefined ? 1 : Number(alpha);
+}
 
 // ============================================================
 // A. 初期状態・空の計算機
@@ -50,9 +95,143 @@ test.describe('04-calculator A. 初期状態', () => {
     const calc = new CalcPanelPage(page);
 
     await calc.emptyHelpLink.click();
-    // ヘルプモーダルまたはパネルが開くことを確認
-    const helpContent = page.locator('.modal, .helpPanel').filter({ hasText: '使い方' });
-    await expect(helpContent).toBeVisible();
+    const usagePanel = page.getByTestId('help-panel-usage');
+    await expect(usagePanel).toBeVisible();
+    await expect(usagePanel.locator('.section')).toHaveCount(6);
+
+    const descriptionFor = (title: string) => usagePanel
+      .locator('dt')
+      .filter({ hasText: title })
+      .locator('+ dd');
+    await expect(descriptionFor('睡眠育成設定')).not.toContainText('計算結果の「内訳」');
+    await expect(descriptionFor('結果の見方'))
+      .toContainText('計算結果の「内訳」を展開すると睡眠EXPの詳細が表示されます。');
+    await expect(descriptionFor('目標設定'))
+      .toContainText('結果に必要なリソースが表示されます。');
+    await expect(descriptionFor('既定のアメブ目標Lv'))
+      .toContainText('ポケモンを計算機に追加や、アメブ再割当などで使うアメブ目標Lvです。');
+    await expect(descriptionFor('保存と削除')).toContainText(
+      '操作を30回までやり直せます。タブを切り替えると操作履歴がクリアされます。',
+    );
+    await expect(descriptionFor('バックアップ')).toContainText(
+      '設定画面上部の「データのバックアップ」タブから、計算機、設定、ポケモンボックスを丸ごとバックアップ・復元できます。',
+    );
+    const helpTitles = await usagePanel.locator('.section--basic dt').allTextContents();
+    expect(helpTitles.indexOf('バックアップ')).toBe(helpTitles.indexOf('保存と削除') + 1);
+
+    await expect(descriptionFor('目標Lvまでに必要なリソースを知りたい')).toHaveText(
+      '現在Lv、あとEXP、目標Lvを入力すると、不足分も含めた必要なリソース量が結果に表示されます。',
+    );
+    await expect(descriptionFor('アメの数を指定して到達Lvを知りたい')).toHaveText(
+      '「アメ個数指定」にアメの数を入れると、その個数に対する結果が表示されます。',
+    );
+    await expect(descriptionFor('育成を睡眠時間1000h / 2000hで仕上げたい')).toHaveText(
+      '睡眠目標から1000h / 2000hを選ぶと、ちょうどその時間寝れば目標Lvに到達できるようにアメの数を調節します。あらかじめ十分なリソースと、睡眠育成設定、ポケモンの累計睡眠時間を設定してください。日数や時間は目安としてお使いください。',
+    );
+    await expect(usagePanel.locator('.section--purpose dt')).toHaveCount(3);
+    await expect(usagePanel.locator('.section--allocation .section__note')).toHaveText(
+      '※「バランス」「EXP最大」はタイプアメや万能Sをより多く使います。バッグを空けたいときはこちらが適しています。',
+    );
+    await expect(usagePanel).toContainText(
+      '① 週の個数を基準に、倍率が高いGSDやあおいタネの設定を優先します',
+    );
+    await expect(usagePanel).toContainText(
+      '④「お香の在庫」を入れると、在庫が尽きた日からお香なしで計算します',
+    );
+  });
+
+  // データ出典は「主な参照3件＋全一覧のREADME」。文言ではなく行き先で固定するので、
+  // 表記を書き換えても壊れず、リンクを落としたときだけ落ちる。
+  test('4-1. ヘルプのデータ出典に主な参照とREADMEのリンクが出る', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const usagePanel = page.getByTestId('help-panel-usage');
+    const openHelp = async () => {
+      await calc.emptyHelpLink.click();
+      await expect(usagePanel).toBeVisible();
+    };
+
+    await openHelp();
+    for (const href of [
+      'https://nitoyon.github.io/pokesleep-tool/iv/',
+      'https://pks.raenonx.cc/',
+      'https://wikiwiki.jp/poke_sleep/',
+    ]) {
+      await expect(usagePanel.locator(`a[href="${href}"]`)).toHaveCount(1);
+    }
+    // 参照元の全一覧はREADMEにしかない。日本語UIからは日本語READMEへ送る。
+    await expect(usagePanel.locator('a[href$="/README.ja.md"]')).toHaveCount(1);
+
+    await page.keyboard.press('Escape');
+    await expect(usagePanel).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'EN', exact: true }).click();
+    await expect(page.locator('main.shell')).toHaveAttribute('data-locale', 'en');
+    await openHelp();
+    await expect(usagePanel.locator('a[href$="/README.md"]')).toHaveCount(1);
+  });
+
+  // イベント履歴は 2026-08-28 にヘルプから分離した専用モーダル（ヘッダーのボタンから開く）
+  test('4a. ヘッダーからイベント履歴モーダルを開ける', async ({ page }) => {
+    await page.getByTestId('open-event-history').click();
+    await expect(page.getByTestId('event-history-table')).toBeVisible();
+    await expect(page.getByTestId('event-history-row').first()).toBeVisible();
+    await expect(page.getByTestId('event-history-count')).toContainText('睡眠EXP');
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('event-history-table')).toHaveCount(0);
+  });
+
+  // 狭い画面では4列の表をカードへ組み替えている（EventHistoryOverlay.css）。実装（クラス名・CSSかJSか）は見ず、
+  // 「横へはみ出していない」という見え方だけで判定する
+  test('4b. イベント履歴はスマホ幅で横スクロールしない', async ({ page }) => {
+    await page.setViewportSize({ width: 393, height: 900 });
+    await page.getByTestId('open-event-history').click();
+    await expect(page.getByTestId('event-history-row').first()).toBeVisible();
+
+    const table = page.getByTestId('event-history-table');
+    const overflow = await table.evaluate(el => {
+      const wrap = el.parentElement!;
+      return wrap.scrollWidth - wrap.clientWidth;
+    });
+    expect(overflow).toBe(0);
+
+    // 倍率・ブーストの列は右端が全行で揃う（列トラックを共有していないと行ごとに数pxずれる）。
+    // セルは右寄せなので左端は中身の幅で動く ── 見るのは右端
+    for (const nth of [3, 4]) {
+      const rights = await page
+        .locator(`[data-testid="event-history-row"] td:nth-child(${nth})`)
+        .evaluateAll(els => [...new Set(els.map(el => Math.round(el.getBoundingClientRect().right)))]);
+      expect(rights).toHaveLength(1);
+    }
+  });
+
+  // 表レイアウト（680px以上）でも倍率チップの左端は揃う。週の断り（1週目/2週目）の有無で
+  // ずれる作りに戻すと落ちる
+  test('4c. イベント履歴はタブレット幅で倍率チップの縦ラインが揃う', async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 900 });
+    await page.getByTestId('open-event-history').click();
+    await expect(page.getByTestId('event-history-row').first()).toBeVisible();
+
+    // 各段の最後の要素が倍率チップ（その前に週の断りが入る段がある）
+    const lefts = await page
+      .locator('[data-testid="event-history-row"] td:nth-child(3) div > span:last-child')
+      .evaluateAll(els => [...new Set(els.map(el => Math.round(el.getBoundingClientRect().left)))]);
+    expect(lefts.length).toBeGreaterThan(0);
+    expect(lefts).toHaveLength(1);
+  });
+
+  // i18n キーの引っ越し（`help.eventHistory.*` → `eventHistory.*` のような整理）で当たらなくなると、
+  // vue-i18n は生のキーをそのまま描く。日英どちらでも生キーが出ていないことだけを見る
+  test('4d. イベント履歴は日英どちらでも未翻訳キーが出ない', async ({ page }) => {
+    for (const lang of ['JP', 'EN'] as const) {
+      await page.getByRole('button', { name: lang, exact: true }).click();
+      await page.getByTestId('open-event-history').click();
+      const modal = page.getByRole('dialog');
+      await expect(modal.getByTestId('event-history-row').first()).toBeVisible();
+      await expect(modal).not.toContainText('eventHistory.');
+      await expect(modal).not.toContainText('common.');
+      await page.keyboard.press('Escape');
+    }
   });
 
   test('5. ボタンが無効化されている（クリア/エクスポート）', async ({ page }) => {
@@ -606,7 +785,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     const calc = new CalcPanelPage(page);
     const settings = new SettingsModalPage(page);
     const row = calc.getRow(0);
-    const warning = page.locator('.calcSticky__noStock');
+    const warning = page.getByTestId('calc-no-stock-warning');
 
     await expect(warning, '在庫未設定なら出る').toBeVisible();
 
@@ -772,7 +951,42 @@ test.describe('04-calculator E. 行の入力操作', () => {
     expect(await readState(calc)).toEqual(byKeystroke);
   });
 
-  test('26. 個数指定を入力すると到達可能行が自動展開', async ({ page }) => {
+  test('25c. アメ在庫＋睡眠は保存値を残したまま半ロックし、下スピンで在庫上限へ収束する', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+    await calc.setBoostKind('full');
+
+    const dstLevel = calc.getRowDstLevelInput(row);
+    await dstLevel.fill('70');
+    await dstLevel.blur();
+    await calc.setRowSpeciesCandy(row, 350);
+    await calc.getRowSleepTargetSelect(row).selectOption('stock');
+    await calc.setRowBoostCandy(row, 300);
+
+    const boostCandy = calc.getRowBoostCandyInput(row);
+    await calc.setRowSpeciesCandy(row, 250);
+    await expect(boostCandy).toHaveValue('300');
+    await expect(boostCandy).toHaveAttribute('max', '250');
+    await expect(boostCandy).toHaveAttribute('placeholder', '250');
+    await expect(boostCandy).toHaveAttribute('title', /アメの在庫を増やしてください/);
+    await expect(boostCandy).not.toBeDisabled();
+    await expect(boostCandy).not.toHaveClass(/field__input--sleepCapped/);
+
+    await expect(calc.getRowBoostReachLevelInput(row)).toHaveAttribute('max', '59');
+    await calc.openLevelPicker(row, 'boostReachLevel');
+    const boostPicker = row.getByTestId('boostReachLevel');
+    const warning = boostPicker.getByTestId('level-picker-warn');
+    await expect(warning).toBeVisible();
+    await expect(warning).toHaveAttribute('title', /アメの在庫を増やしてください/);
+    await expect(boostPicker.getByTestId('level-picker-note')).toContainText('アメの在庫を増やしてください');
+    await page.locator('.levelPick__popover').getByRole('button', { name: '閉じる' }).click();
+
+    await boostCandy.focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(boostCandy).toHaveValue('250');
+  });
+
+  test('26. 個数指定後も到達可能行は表示される', async ({ page }) => {
     const calc = new CalcPanelPage(page);
     const row = calc.getRow(0);
     const candyTargetInput = calc.getRowCandyTargetInput(row);
@@ -803,6 +1017,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     await calc.clickSettings();
     await settings.setTotalShards('2000000');
     await settings.setDailySleepHours(13);
+    await disableGrowthIncense(settings);
     await settings.closeByButton();
 
     const dstBefore = await calc.getRowDstLevelInput(row).inputValue();
@@ -821,7 +1036,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
       nature: 'down',
       dailySleepHours: 13,
       sleepExpBonus: 1,
-      includeGSD: true,
+      schedule: maxEventSchedule,
     });
     await expect.poll(async () =>
       Number((await calc.getRowRemainingExp(row)).replace(/,/g, ''))
@@ -935,6 +1150,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     await calc.setRowSpeciesCandy(row, '2000');
     await calc.clickSettings();
     await settings.setTotalShards('2000000');
+    await disableGrowthIncense(settings);
     await settings.closeByButton();
 
     await sleepTarget.selectOption('2000');
@@ -945,7 +1161,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
       nature: 'down',
       dailySleepHours: 8.5,
       sleepExpBonus: 1,
-      includeGSD: true,
+      schedule: maxEventSchedule,
     });
     await expect.poll(async () =>
       Number((await calc.getRowRemainingExp(row)).replace(/,/g, ''))
@@ -965,6 +1181,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     await calc.setRowSpeciesCandy(row, '2000');
     await calc.clickSettings();
     await settings.setTotalShards('2000000');
+    await disableGrowthIncense(settings);
     await settings.closeByButton();
 
     const roundedOneDay = markForSleep({
@@ -972,18 +1189,17 @@ test.describe('04-calculator E. 行の入力操作', () => {
       nature: 'down',
       dailySleepHours: 8.5,
       sleepExpBonus: 1,
-      includeGSD: true,
+      schedule: maxEventSchedule,
     });
     expect(roundedOneDay.requiredDays).toBe(1);
 
     // 睡眠目標時間はドロップダウン、累計睡眠時間はラベルの添え字リンクから編集する（設計書§5.5）
     const setCurrentSleepHours = async (hours: number) => {
       await calc.getRowSleepTargetCurrentLink(row).click();
-      // アメブヒントにも同じ入力欄クラスがあるので、睡眠ヒント配下に限定する
-      const input = page.locator('.sleepHintPopover .hintPopover__input');
+      const input = page.getByTestId('sleep-hint-hours-input');
       await input.fill(String(hours));
       await input.blur();
-      await page.locator('.hintOverlay').click({ position: { x: 5, y: 5 } });
+      await page.getByTestId('sleep-hint-overlay').click({ position: { x: 5, y: 5 } });
     };
 
     // 個数指定は埋まらないので、必要アメ数は「目標まで」行から読む（設計書§10.10）
@@ -999,6 +1215,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
         Number((await calc.getRowRemainingExp(row)).replace(/,/g, ''))
       ).toBeLessThanOrEqual(roundedOneDay.sleepExp);
       await expect(calc.getRowCandyTargetInput(row)).toHaveValue('');
+      await expect.poll(requiredCandy).toBeGreaterThan(0);
       candyTargets.push(await requiredCandy());
       const usedRow = calc.getRowUsedRow(row);
       await expect(usedRow.getByText('アメ到達Lv', { exact: true })).toBeVisible();
@@ -1022,8 +1239,6 @@ test.describe('04-calculator E. 行の入力操作', () => {
 
     await calc.setRowSrcLevel(row, 50);
     await calc.setRowDstLevel(row, 55);
-    // 「出ていない」を空文字で判定するので、先に行が展開されていることを固定する
-    await calc.expandRow(row);
     await expect(usedRow).toBeVisible();
 
     // 対照: 睡眠目標が無い行では出さない
@@ -1033,10 +1248,10 @@ test.describe('04-calculator E. 行の入力操作', () => {
     // 累計を先に入れ、睡眠目標そのものではなく「これから寝る時間」が表示されることを固定する。
     // 累計0h では誤って目標値2000hをそのまま出してもテストが通るため、差が出る500hにする。
     await calc.getRowSleepTargetCurrentLink(row).click();
-    const currentSleepHoursInput = page.locator('.sleepHintPopover .hintPopover__input');
+    const currentSleepHoursInput = page.getByTestId('sleep-hint-hours-input');
     await currentSleepHoursInput.fill('500');
     await currentSleepHoursInput.blur();
-    await page.locator('.hintOverlay').click({ position: { x: 5, y: 5 } });
+    await page.getByTestId('sleep-hint-overlay').click({ position: { x: 5, y: 5 } });
 
     // 残り1500hの睡眠EXPは Lv50→55（8,812EXP）を超える。
     await calc.getRowSleepTargetSelect(row).selectOption('2000');
@@ -1051,14 +1266,123 @@ test.describe('04-calculator E. 行の入力操作', () => {
 
     // 並び順: 残EXP（目標Lvまでの時間）→ 睡眠到達Lv（睡眠目標を寝きった時点）。
     // 逆に置くと、どちらの時間がどちらの到達点のものか読めなくなる
-    const chipLabels = await usedRow.locator('.calcRow__res .calcRow__k').allInnerTexts();
-    expect(chipLabels.indexOf('残EXP')).toBeGreaterThan(-1);
-    expect(chipLabels.indexOf('睡眠到達Lv')).toBeGreaterThan(chipLabels.indexOf('残EXP'));
+    const orderedSleepResults = await usedRow
+      .locator('[data-testid="result-remaining-exp"], [data-testid="result-sleep-reached-level"]')
+      .evaluateAll(elements => elements.map(element => element.getAttribute('data-testid')));
+    expect(orderedSleepResults).toEqual(['result-remaining-exp', 'result-sleep-reached-level']);
 
     // 睡眠目標を外すと消え、ラベルも「到達Lv」へ戻る
     await calc.getRowSleepTargetSelect(row).selectOption('');
     await expect.poll(async () => calc.getRowSleepReachLevel(row)).toBe('');
     await expect(usedRow.getByText('到達Lv', { exact: true })).toBeVisible();
+  });
+
+  /**
+   * ボーナス明細は「到達可能」行の**内側**に開く。
+   * 外へ出すと到達可能行との所属関係が失われる（回帰）。
+   */
+  test('28d. ボーナス明細は到達可能行の中に開き、トグルで閉じられる', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+    const usedRow = calc.getRowUsedRow(row);
+
+    await calc.getRowSleepTargetSelect(row).selectOption('all');
+
+    const toggle = row.getByTestId('result-bonus-toggle');
+    await expect(toggle).toBeVisible();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await toggle.click();
+
+    const details = row.getByTestId('result-bonus-details');
+    await expect(details).toBeVisible();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    // 「結果欄の中」＝到達可能行の子孫であること。ここが外れると取り残しが起きる
+    await expect(usedRow.getByTestId('result-bonus-details')).toHaveCount(1);
+    await expect(details.getByText('合計', { exact: true })).toBeVisible();
+
+    await toggle.click();
+    await expect(details).toHaveCount(0);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  /** ボーナス明細の列ごとのセル数。4列が欠けずに揃っているかを見るために使う。 */
+  async function cellCountsByColumn(details: Locator) {
+    return {
+      name: await details.locator('.calcRow__bonusName').count(),
+      mult: await details.locator('.calcRow__bonusMult').count(),
+      amount: await details.locator('.calcRow__bonusAmount').count(),
+      exp: await details.locator('.calcRow__bonusExp').count(),
+    };
+  }
+
+  /**
+   * 明細の中身。store が正しく返しても画面が組み立て損ねる回帰を止める。
+   * 4列（種類 / 倍率 / 日数 / EXP）と合計、素EXPの行名を固定する。
+   */
+  test('28e. ボーナス明細は種類・倍率・日数・EXPの4列と合計を出す', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+
+    await calc.getRowSleepTargetSelect(row).selectOption('all');
+    await row.getByTestId('result-bonus-toggle').click();
+
+    const details = row.getByTestId('result-bonus-details');
+    await expect(details).toBeVisible();
+
+    // 4列はどの行でも欠けない（合計行も含めて同数）。欠けると grid の桁が総崩れになる
+    const cellCounts = await cellCountsByColumn(details);
+    expect(cellCounts.name).toBeGreaterThan(1);
+    expect(new Set(Object.values(cellCounts)).size).toBe(1);
+
+    // 先頭は素EXPの行。全睡眠日が対象なので日数が入り、加算ぶんではないので「+」は付かない
+    const names = details.locator('.calcRow__bonusName');
+    await expect(names.first()).toHaveText('素EXP');
+    const firstExp = details.locator('.calcRow__bonusExp').first();
+    await expect(firstExp).toHaveText(/^[\d,]+EXP$/);
+    await expect(details.locator('.calcRow__bonusAmount').first()).toHaveText(/^\d+日$/);
+    // 倍率は独立した列のチップ（種類名に混ぜない）
+    await expect(details.locator('.calcRow__bonusMultChip').first()).toHaveText(/^×[\d.]+$/);
+
+    // 合計は最終行。この計画を寝きるともらえる睡眠EXP
+    await expect(names.last()).toHaveText('合計');
+    await expect(details.locator('.calcRow__bonusExp').last()).toHaveText(/^[\d,]+EXP$/);
+  });
+
+  test('28f. 1晩の計画は日別の1行になり、睡眠時間とEXPを出す', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+
+    // 残EXP を1回の睡眠で届く量まで下げる（現在Lvの次のLvを目標にして、あとEXPを小さくする）
+    const srcLevel = Number(await calc.getRowSrcLevelInput(row).inputValue());
+    await calc.setRowDstLevel(row, srcLevel + 1);
+    // この個体はEXP性格下降で1日あたり約82EXP。80なら1晩に収まる。
+    await calc.setRowExpRemaining(row, 80);
+    // 到達可能行は常時 visible なので、visible を計算完了待ちに使えない。
+    // 入力前の結果も「時間」を含み得るため、残EXPの値で更新完了を特定する。
+    await expect.poll(async () => calc.getRowRemainingExp(row)).toBe('80');
+    await calc.getRowSleepTargetSelect(row).selectOption('all');
+
+    // 実時間は行の見出しに出る（「約N日」ではない）ことがこの行の目印
+    const usedRow = calc.getRowUsedRow(row);
+    await expect(usedRow.getByTestId('result-sleep-time')).toHaveText(/時間/);
+
+    await row.getByTestId('result-bonus-toggle').click();
+    const details = row.getByTestId('result-bonus-details');
+    await expect(details).toBeVisible();
+
+    // 3晩以内は日別だけ。種類別の行は作らない（1晩ぶんの日付行と合計行になる）。
+    await expect(details.locator('.calcRow__bonusNightDate')).toHaveCount(1);
+    await expect(details.locator('.calcRow__bonusName')).toHaveText(['合計']);
+    await expect(details.locator('.calcRow__bonusAmount')).toBeEmpty();
+
+    const nightTimes = details.locator('.calcRow__bonusNightTime');
+    await expect(nightTimes.first().locator('> [aria-hidden="true"]')).toHaveText(/^(\d+h)?(\d+m)?$/);
+    expect(await nightTimes.first().ariaSnapshot()).toMatch(/睡眠時間/);
+    // EXPは「素＋上乗せ」。上乗せの無い晩は素だけ。
+    const nightExp = details.locator('.calcRow__bonusNightExp > [aria-hidden="true"]');
+    await expect(nightExp).toHaveText([/^[\d,]+(＋[\d,]+)?EXP$/]);
+    // 合計は出る
+    await expect(details.locator('.calcRow__bonusExp').last()).toHaveText(/^[\d,]+EXP$/);
   });
 
   test('26c. 睡眠EXPでアメブが頭打ちのとき、アメブ目標Lvピッカーに理由が出る', async ({ page }) => {
@@ -1079,7 +1403,11 @@ test.describe('04-calculator E. 行の入力操作', () => {
 
   test('26d. アメブ目標Lvを上限まで上げたところで理由が出る', async ({ page }) => {
     const calc = new CalcPanelPage(page);
+    const settings = new SettingsModalPage(page);
     const row = calc.getRow(0);
+    await calc.clickSettings();
+    await settings.setGrowthIncenseGsd({ beforeFullMoon: false, fullMoon: false, afterFullMoon: false });
+    await settings.closeByButton();
     const dstInput = calc.getRowDstLevelInput(row);
     await dstInput.fill('65');
     await dstInput.blur();
@@ -1133,20 +1461,20 @@ test.describe('04-calculator E. 行の入力操作', () => {
     const select = calc.getRowSleepTargetSelect(row);
 
     // 累計0h では全部が未達成
-    await expect(select.locator('option')).toHaveText(['未設定', '200h', '500h', '1000h', '2000h', 'すべて睡眠']);
+    await expect(select.locator('option')).toHaveText(['未設定', '200h', '500h', '1000h', '2000h', 'すべて睡眠', 'アメ在庫＋睡眠']);
 
     await calc.getRowSleepTargetCurrentLink(row).click();
-    const hoursInput = page.locator('.sleepHintPopover .hintPopover__input');
+    const hoursInput = page.getByTestId('sleep-hint-hours-input');
     await hoursInput.fill('500');
     // 入力中に再描画が走っても打った値が消えないこと（ドラフト保持）。
     // ここが壊れると打っている途中で 0 に巻き戻る。
     await expect(hoursInput).toHaveValue('500');
     await hoursInput.blur();
     await expect(calc.getRowSleepTargetCurrentLink(row)).toContainText('500');
-    await page.locator('.hintOverlay').click({ position: { x: 5, y: 5 } });
+    await page.getByTestId('sleep-hint-overlay').click({ position: { x: 5, y: 5 } });
 
     // 達成済みは残したままチェックを後ろに付ける（消すと選択中の項目まで消える）
-    await expect(select.locator('option')).toHaveText(['未設定', '200h ✓', '500h ✓', '1000h', '2000h', 'すべて睡眠']);
+    await expect(select.locator('option')).toHaveText(['未設定', '200h ✓', '500h ✓', '1000h', '2000h', 'すべて睡眠', 'アメ在庫＋睡眠']);
   });
 
   test('26i. アメ個数指定にもヒントがあり、アメブ上限の入力欄は出さない', async ({ page }) => {
@@ -1187,8 +1515,12 @@ test.describe('04-calculator E. 行の入力操作', () => {
 
   test('26e. 睡眠で上限が下がった行はアメブ個数ヒントにも理由が出る', async ({ page }) => {
     const calc = new CalcPanelPage(page);
+    const settings = new SettingsModalPage(page);
     const row = calc.getRow(0);
     const hint = page.getByTestId('calc-hint-popover');
+    await calc.clickSettings();
+    await settings.setGrowthIncenseGsd({ beforeFullMoon: false, fullMoon: false, afterFullMoon: false });
+    await settings.closeByButton();
 
     // 対照: 睡眠目標がなければ上限は下がらないので案内も出ない
     await row.getByTestId('hintBtn').click();
@@ -1217,7 +1549,11 @@ test.describe('04-calculator E. 行の入力操作', () => {
 // ============================================================
 test.describe('04-calculator F. 計算結果表示', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    // ゲーム内日を固定する。**実日付のままだと開催中のイベント倍率やGSDで睡眠時間が動き、
+    // 34b の期待値が壊れる**（2026-08 のアニポケコラボ ×1.25 で実際に落ちた）。
+    // 2026-05-10 は前後2日にGSD（満月は 5/2 と 5/31）もイベントも無い平常日。
+    // J グループが使う 2026-05-02 は満月日なので、ここでは使えない。
+    await page.goto('/?gameDate=2026-05-10');
     const box = new BoxPanelPage(page);
     await box.openImportPanel();
     // 低レベルポケモン（Lv55マルノーム）を使用 - 目標Lvまでの差がないとexpToTarget=0で睡眠時間が表示されない
@@ -1227,47 +1563,112 @@ test.describe('04-calculator F. 計算結果表示', () => {
     await box.clickApplyToCalc();
   });
 
-  test('29. 必要行（▶）が表示される', async ({ page }) => {
+  test('29. 表示値が同一なら1行になり、到達可能ラベルを出さない', async ({ page }) => {
     const calc = new CalcPanelPage(page);
     const row = calc.getRow(0);
+    const settings = new SettingsModalPage(page);
+
+    await calc.setRowSpeciesCandy(row, '99999');
+    await calc.clickSettings();
+    await settings.setTotalShards('99999999');
+    await settings.closeByButton();
+
+    await expect(calc.getRowRequiredRow(row)).toHaveCount(0);
+    const usedRow = calc.getRowUsedRow(row);
+    await expect(usedRow).toBeVisible();
+    await expect(usedRow.getByTestId('result-reachable-label')).toHaveCount(0);
+  });
+
+  test('31. 到達可能行は常に表示される', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+
+    const usedRow = calc.getRowUsedRow(row);
+    await expect(usedRow).toBeVisible();
+  });
+
+  test('31a. 表示値に差があると2行になり、両方のラベルを出す', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+    const settings = new SettingsModalPage(page);
+
+    await calc.setRowSpeciesCandy(row, '0');
+    await calc.clickSettings();
+    await settings.setTotalShards('0');
+    await settings.closeByButton();
+
     const requiredRow = calc.getRowRequiredRow(row);
+    const usedRow = calc.getRowUsedRow(row);
     await expect(requiredRow).toBeVisible();
+    await expect(requiredRow.getByTestId('result-required-label')).toHaveText('目標まで');
+    await expect(usedRow.getByTestId('result-reachable-label')).toHaveText('到達可能');
   });
 
-  test('30. 必要行をクリックで展開できる', async ({ page }) => {
+  /**
+   * 背景の濃さは3段階。目標まで行 > 1行に畳まれた到達可能行 > 2行目の到達可能行。
+   *
+   * 1行のときの到達可能行は「対比相手が居ない結果そのもの」なので、2行目のときの
+   * 薄さのままにしない（薄すぎる）。かといって目標まで行と同じにもしない（濃すぎる）。
+   * どちらへ寄せる直しも実画面で差し戻された経緯があるので、順序と実値の両方で固定する。
+   * 順序だけだと `0.10 / 0.09 / 0.08` のように差が潰れても通ってしまい、
+   * 実値だけだと「なぜその値か」が読めない。値は CSS の `--calc-result-tint`（設計書 §4.4）。
+   */
+  test('31d. 到達可能行の背景は、1行のときだけ濃くなる', async ({ page }) => {
     const calc = new CalcPanelPage(page);
     const row = calc.getRow(0);
+    const settings = new SettingsModalPage(page);
 
-    await calc.expandRow(row);
-    const usedRow = calc.getRowUsedRow(row);
-    await expect(usedRow).toBeVisible();
+    // まず1行の状態（アメもかけらも足りていて、目標まで行が出ない）
+    await calc.setRowSpeciesCandy(row, '99999');
+    await calc.clickSettings();
+    await settings.setTotalShards('99999999');
+    await settings.closeByButton();
+    await expect(calc.getRowRequiredRow(row)).toHaveCount(0);
+    const soloAlpha = await bgAlpha(calc.getRowUsedRow(row));
+
+    // 在庫を空にして2行の状態へ
+    await calc.setRowSpeciesCandy(row, '0');
+    await calc.clickSettings();
+    await settings.setTotalShards('0');
+    await settings.closeByButton();
+    await expect(calc.getRowRequiredRow(row)).toBeVisible();
+
+    const requiredAlpha = await bgAlpha(calc.getRowRequiredRow(row));
+    const pairedAlpha = await bgAlpha(calc.getRowUsedRow(row));
+    expect(pairedAlpha).toBeLessThan(soloAlpha);
+    expect(soloAlpha).toBeLessThan(requiredAlpha);
+    expect(requiredAlpha).toBeCloseTo(0.16, 2);
+    expect(soloAlpha).toBeCloseTo(0.1, 2);
+    expect(pairedAlpha).toBeCloseTo(0.06, 2);
   });
 
-  test('31. 使用行が展開時に表示される', async ({ page }) => {
+  test('31b. リロード後も到達可能行は表示される', async ({ page }) => {
     const calc = new CalcPanelPage(page);
-    const row = calc.getRow(0);
+    await expect(calc.getRowUsedRow(calc.getRow(0))).toBeVisible();
 
-    await calc.expandRow(row);
-    const usedRow = calc.getRowUsedRow(row);
-    await expect(usedRow).toBeVisible();
+    await page.reload();
+
+    await expect(calc.getRowUsedRow(calc.getRow(0))).toBeVisible();
+  });
+
+  test('31c. 展開アイコンはDOMに存在しない', async ({ page }) => {
+    await expect(page.locator('.calcRow__expandIcon')).toHaveCount(0);
   });
 
   test('32. アメブ、アメ、かけらの値が表示される', async ({ page }) => {
     const calc = new CalcPanelPage(page);
     const row = calc.getRow(0);
 
-    // 必要行に値が表示される
-    const requiredRow = calc.getRowRequiredRow(row);
-    await expect(requiredRow.locator('.calcRow__num')).not.toHaveCount(0);
+    const targetRow = await calc.getRowTargetRow(row);
+    await expect(targetRow.getByTestId(/^result-(?:required|reachable)-.+-value$/)).not.toHaveCount(0);
   });
 
   test('33. 到達レベル（reachedLevel）が表示される', async ({ page }) => {
     const calc = new CalcPanelPage(page);
     const row = calc.getRow(0);
 
-    await calc.expandRow(row);
     const usedRow = calc.getRowUsedRow(row);
-    const reachedLvText = usedRow.locator('.calcRow__res').filter({ hasText: '到達Lv' });
+    const reachedLvText = usedRow.getByTestId('result-reachable-level');
     await expect(reachedLvText).toBeVisible();
     await expect(usedRow.getByText('到達Lv', { exact: true })).toBeVisible();
     await expect(usedRow.getByText('アメ到達Lv', { exact: true })).toHaveCount(0);
@@ -1283,19 +1684,18 @@ test.describe('04-calculator F. 計算結果表示', () => {
     await candyTargetInput.blur();
 
     const usedRow = calc.getRowUsedRow(row);
-    const sleepTime = usedRow.locator('.calcRow__sleepTime');
+    const sleepTime = usedRow.getByTestId('result-sleep-time');
     // 睡眠時間が表示されることを確認（残EXPがある場合）
     await expect(sleepTime).toBeVisible();
   });
 
-  test('34b. 1回睡眠の時間幅と1日以内／長期の境界を表示する', async ({ page }) => {
+  test('34b. 3晩までは最後の晩を正確に、4晩から長期概算で表示する', async ({ page }) => {
     const calc = new CalcPanelPage(page);
     const row = calc.getRow(0);
     await calc.setRowDstLevel(row, 56);
+    await calc.getRowSleepTargetSelect(row).selectOption('all');
     // 在庫0なのでアメは1個も使えず、残EXPがそのまま睡眠時間になる。
     // （旧テストは個数指定0でアメを止めていたが、新設計では個数指定＝目標なので目標ごと現在地へ落ちる）
-    await calc.expandRow(row);
-
     await calc.setRowExpRemaining(row, 24);
     await expect.poll(async () => calc.getRowSleepTime(row)).toBe('2時間31分 ～ 35分');
 
@@ -1303,7 +1703,38 @@ test.describe('04-calculator F. 計算結果表示', () => {
     await expect.poll(async () => calc.getRowSleepTime(row)).toBe('8時間28分 ～ 30分');
 
     await calc.setRowExpRemaining(row, 83);
-    await expect.poll(async () => calc.getRowSleepTime(row)).toBe('約2日（17時間）');
+    await expect.poll(async () => calc.getRowSleepTime(row)).toBe('1日（8時間30分）と8分 ～ 12分');
+
+    await calc.setRowExpRemaining(row, 165);
+    await expect.poll(async () => calc.getRowSleepTime(row)).toBe('2日（17時間）と8分 ～ 12分');
+
+    // 3晩以内は日別の表。4晩以上へ切り替わると種類別の表になる（§10.5）。
+    await row.getByTestId('result-bonus-toggle').click();
+    const bonusDetails = row.getByTestId('result-bonus-details');
+    const bonusNames = bonusDetails.locator('.calcRow__bonusName');
+    const bonusAmounts = bonusDetails.locator('.calcRow__bonusAmount');
+    const nightDates = bonusDetails.locator('.calcRow__bonusNightDate');
+    const nightTimes = bonusDetails.locator('.calcRow__bonusNightTime');
+    // 見出しの「2日（17時間）と8分」＝満額2晩＋最終晩の3行。種類別の行は出さない。
+    await expect(nightDates).toHaveCount(3);
+    await expect(nightDates.first()).toHaveText(/^\d+\/\d+/);
+    await expect(bonusNames).toHaveText(['合計']);
+    // 先行の晩は設定どおり満額、最後の晩だけ短い。日本語でも「8h30m」形式。
+    await expect(nightTimes.first().locator('> [aria-hidden="true"]')).toHaveText('8h30m');
+    await expect(nightTimes.last().locator('> [aria-hidden="true"]')).toHaveText(/^\d+m$/);
+    expect(await nightTimes.first().ariaSnapshot()).toMatch(/睡眠時間8時間30分/);
+    // 晩ごとのEXPは「素＋上乗せ」。上乗せの無い晩は素だけ。
+    const nightExps = bonusDetails.locator('.calcRow__bonusNightExp > [aria-hidden="true"]');
+    await expect(nightExps).toHaveCount(3);
+    await expect(nightExps.first()).toHaveText(/^[\d,]+(＋[\d,]+)?EXP$/);
+
+    await calc.setRowExpRemaining(row, 247);
+    await expect.poll(async () => calc.getRowSleepTime(row)).toBe('約4日（34時間）');
+    // 4晩以上は日付列が長大になるので種類別へ畳む。
+    await expect(nightDates).toHaveCount(0);
+    await expect(bonusNames.first()).toHaveText('素EXP');
+    await expect(bonusAmounts.first()).toHaveText(/^\d+日$/);
+    await expect(bonusAmounts.last()).toBeEmpty();
 
     await page.setViewportSize({ width: 390, height: 844 });
     const sleepTime = row.locator('.calcRow__sleepTime');
@@ -1311,6 +1742,73 @@ test.describe('04-calculator F. 計算結果表示', () => {
     const sleepTimeBox = await sleepTime.boundingBox();
     expect(sleepTimeBox).not.toBeNull();
     expect(sleepTimeBox!.x + sleepTimeBox!.width).toBeLessThanOrEqual(390);
+  });
+
+  /**
+   * 成長のお香は在庫も律速も持たず、睡眠設定から個数（＝使う睡眠日数）が決まる。
+   * 「目標まで」「到達可能」のどちらでも同じ個数になるので、両方の行へ同じ値が出る。
+   */
+  test('34c. 睡眠目標を設定すると成長のお香の個数が両方の結果行に出る', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+
+    const settings = new SettingsModalPage(page);
+    await calc.setRowSpeciesCandy(row, '0');
+    await calc.clickSettings();
+    await settings.setTotalShards('0');
+    await settings.setGrowthIncenseNormalPerWeek(1);
+    await settings.closeByButton();
+
+    // 在庫0・かけら0にしたので2行になる。**設定の反映を待ってから**中身を見る。
+    // `getRowTargetRow()` はその瞬間の行数で参照先が決まるので、反映前に呼ぶと到達可能行を掴む。
+    await expect(calc.getRowRequiredRow(row)).toBeVisible();
+
+    // 睡眠目標が無いうちは出ない
+    await expect(calc.getRowRequiredRow(row)).not.toContainText('成長のお香');
+    await expect(calc.getRowUsedRow(row)).not.toContainText('成長のお香');
+
+    await calc.getRowSleepTargetSelect(row).selectOption('2000');
+
+    const incense = /成長のお香\s*([\d,]+)/;
+    await expect(calc.getRowRequiredRow(row)).toBeVisible();
+    await expect.poll(async () => (await calc.getRowRequiredRow(row).textContent()) ?? '')
+      .toMatch(incense);
+    const requiredCount = (await calc.getRowRequiredRow(row).textContent())?.match(incense)?.[1];
+    const usedCount = (await calc.getRowUsedRow(row).textContent())?.match(incense)?.[1];
+    expect(Number((requiredCount ?? '0').replace(/,/g, ''))).toBeGreaterThan(0);
+    // 在庫に依らない値なので、目標まで行と到達可能行で必ず一致する
+    expect(usedCount).toBe(requiredCount);
+  });
+
+  /**
+   * 「すべて睡眠」はアメを1個も配らない（設計書§2.2）ので、アイテムはお香だけになる。
+   * この行は睡眠EXPを導出しない（同§11）ため、個数は必要日数の経路からしか取れない。
+   */
+  test('34d. 「すべて睡眠」ではアイテムが成長のお香だけになる', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+    const settings = new SettingsModalPage(page);
+
+    await calc.clickSettings();
+    await settings.setGrowthIncenseGsd({
+      beforeFullMoon: false,
+      fullMoon: true,
+      afterFullMoon: true,
+    });
+    await settings.closeByButton();
+
+    await calc.getRowSleepTargetSelect(row).selectOption('all');
+
+    const incense = /成長のお香\s*([\d,]+)/;
+    const usedRow = calc.getRowUsedRow(row);
+    await expect(calc.getRowRequiredRow(row)).toHaveCount(0);
+    await expect.poll(async () => (await usedRow.textContent()) ?? '')
+      .toMatch(incense);
+
+    const text = (await usedRow.textContent()) ?? '';
+    expect(Number((text.match(incense)?.[1] ?? '0').replace(/,/g, ''))).toBeGreaterThan(0);
+    // アメは1個も配らないので、アメ系のアイテムは並ばない
+    expect(text).not.toMatch(/万能[SML]/);
   });
 });
 
@@ -1551,7 +2049,7 @@ test.describe('04-calculator I. BOX連携', () => {
 // ============================================================
 test.describe('04-calculator J. 設定反映テスト', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?gameDate=2026-05-02');
     const box = new BoxPanelPage(page);
     await box.openImportPanel();
     // 低レベルポケモン（Lv55マルノーム）を使用 - 睡眠時間テストに必要
@@ -1559,6 +2057,12 @@ test.describe('04-calculator J. 設定反映テスト', () => {
     await box.clickImport();
     await box.selectBoxTile(0);
     await box.clickApplyToCalc();
+    // 既存の設定反映テストはお香なしを基準にする。お香自体は52bで明示的に切り替える。
+    const calc = new CalcPanelPage(page);
+    const settings = new SettingsModalPage(page);
+    await calc.clickSettings();
+    await settings.setGrowthIncenseGsd({ beforeFullMoon: false, fullMoon: false, afterFullMoon: false });
+    await settings.closeByButton();
   });
 
   test('46. ブースト上限が計算機に反映される', async ({ page }) => {
@@ -1605,13 +2109,13 @@ test.describe('04-calculator J. 設定反映テスト', () => {
     const settings = new SettingsModalPage(page);
 
     await calc.clickSettings();
-    // ひこうタイプ（ウッウ用）のアメを設定
-    await settings.setTypeCandy('ひこう', 'S', 100);
+    // beforeEach のマルノームに対応する、どくタイプのアメを設定
+    await settings.setTypeCandy('どく', 'S', 100);
     await settings.closeByButton();
 
     // 必要アイテムに反映されることを確認
     const row = calc.getRow(0);
-    await calc.expandRow(row);
+    await calc.waitForRowRequiredItems(row, /どくS\s+\d+/);
   });
 
   test('50. 睡眠時間設定が計算に反映される', async ({ page }) => {
@@ -1623,17 +2127,17 @@ test.describe('04-calculator J. 設定反映テスト', () => {
     const candyTargetInput = calc.getRowCandyTargetInput(row);
     await candyTargetInput.fill('10');
     await candyTargetInput.blur();
-    await calc.expandRow(row);
 
     // 睡眠時間を取得
+    // 到達可能行は計算中も常時 visible なので、可視性を計算完了待ちに使えない。
+    // 値そのものが埋まるのを待ってから基準値を取る（待たないと空文字を掴んで落ちる）。
+    await expect.poll(async () => calc.getRowSleepTime(row)).not.toBe('');
     const sleepTime1 = await calc.getRowSleepTime(row);
-    expect(sleepTime1).not.toBe('');
 
     // 設定を変更
     await calc.clickSettings();
     await settings.setDailySleepHours(10);
     await settings.closeByButton();
-    await calc.expandRow(row);
 
     // 睡眠時間が変わることを確認
     await expect.poll(async () => calc.getRowSleepTime(row), { timeout: 10000 }).not.toBe(sleepTime1);
@@ -1647,15 +2151,15 @@ test.describe('04-calculator J. 設定反映テスト', () => {
     const candyTargetInput = calc.getRowCandyTargetInput(row);
     await candyTargetInput.fill('10');
     await candyTargetInput.blur();
-    await calc.expandRow(row);
 
+    // 到達可能行は計算中も常時 visible なので、可視性を計算完了待ちに使えない。
+    // 値そのものが埋まるのを待ってから基準値を取る（待たないと空文字を掴んで落ちる）。
+    await expect.poll(async () => calc.getRowSleepTime(row)).not.toBe('');
     const sleepTime1 = await calc.getRowSleepTime(row);
-    expect(sleepTime1).not.toBe('');
 
     await calc.clickSettings();
     await settings.setSleepExpBonus(4);
     await settings.closeByButton();
-    await calc.expandRow(row);
 
     await expect.poll(async () => calc.getRowSleepTime(row), { timeout: 10000 }).not.toBe(sleepTime1);
   });
@@ -1667,17 +2171,58 @@ test.describe('04-calculator J. 設定反映テスト', () => {
 
     // 在庫0のまま目標Lvまでの不足を睡眠で埋める（GSDの差が出るよう長期になる条件）。
     // 個数指定を入れると新設計では目標がその個数ぶんへ縮み、GSDが効く長さにならない。
-    await calc.expandRow(row);
 
+    // 到達可能行は計算中も常時 visible なので、可視性を計算完了待ちに使えない。
+    // 値そのものが埋まるのを待ってから基準値を取る（待たないと空文字を掴んで落ちる）。
+    await expect.poll(async () => calc.getRowSleepTime(row)).not.toBe('');
     const sleepTime1 = await calc.getRowSleepTime(row);
-    expect(sleepTime1).not.toBe('');
 
     await calc.clickSettings();
     await settings.toggleIncludeGSD();
     await settings.closeByButton();
-    await calc.expandRow(row);
 
     await expect.poll(async () => calc.getRowSleepTime(row), { timeout: 10000 }).not.toBe(sleepTime1);
+  });
+
+  test('52b. 満月日の成長のお香が計算に反映される', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const settings = new SettingsModalPage(page);
+    const row = calc.getRow(0);
+
+    await calc.clickSettings();
+    await expect(settings.currentGameDate).toContainText('2026-05-02');
+    await settings.setGrowthIncenseGsd({ beforeFullMoon: false, fullMoon: false, afterFullMoon: false });
+    await settings.closeByButton();
+    await expect.poll(async () => calc.getRowSleepTime(row), { timeout: 10000 }).not.toBe('');
+    const withoutIncense = await calc.getRowSleepTime(row);
+
+    await calc.clickSettings();
+    await settings.setGrowthIncenseGsd({ beforeFullMoon: false, fullMoon: true, afterFullMoon: false });
+    await settings.closeByButton();
+
+    await expect.poll(async () => calc.getRowSleepTime(row), { timeout: 10000 })
+      .not.toBe(withoutIncense);
+  });
+});
+
+test.describe('04-calculator J2. 事前生成した月齢カレンダー', () => {
+  test('GSDを使ってもastronomy-engineを追加取得しない', async ({ page }) => {
+    const astronomyRequests: string[] = [];
+    page.on('request', request => {
+      if (request.url().includes('astronomy')) astronomyRequests.push(request.url());
+    });
+    await page.goto('/?gameDate=2026-05-02');
+    const box = new BoxPanelPage(page);
+    await box.openImportPanel();
+    await box.fillImportText(testConfig.importData.lowLevelPokemon);
+    await box.clickImport();
+    await box.selectBoxTile(0);
+    await box.clickApplyToCalc();
+
+    const settings = new SettingsModalPage(page);
+    await settings.openSettingsFromDesktop();
+    await expect(settings.lunarCalendarWarning).toHaveCount(0);
+    expect(astronomyRequests).toEqual([]);
   });
 });
 
@@ -1904,11 +2449,8 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     // アメブ個数0（全て通常アメ）
     await calc.setRowBoostCandy(row, '0');
 
-    // 検証
-    await page.waitForTimeout(200);
-
-    // 目標まで行を展開
-    await calc.expandRow(row);
+    // 到達可能行は計算中も常時 visible なので、値そのもので計算完了を待つ。
+    await calc.waitForRowResultValue(row, 'required', 'boost', '0');
 
     // 目標まで行の値を確認
     const reqBoost = await calc.getRowResultValue(row, 'required', 'boost');
@@ -2011,9 +2553,8 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     await calc.setRowBoostCandy(row, '0');
     await calc.setRowCandyTarget(row, '1500');
 
-    // 到達可能行を展開（個数指定＝目標なので、目標まで行も指定1,500になる）
+    // 個数指定＝目標なので、目標まで行も指定1,500になる
     await calc.waitForRowResultValue(row, 'required', 'candy', '1500');
-    await calc.expandRow(row);
 
     // 到達可能行の検証
     const usedBoost = await calc.getRowResultValue(row, 'used', 'boost');
@@ -2152,7 +2693,6 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
 
     // required は同期計算なので、Worker の到達可能結果が反映されるまで used を待つ。
     await calc.waitForRowResultValue(row, 'used', 'candy', '50');
-    await calc.expandRow(row);
 
     // 到達可能行の検証
     const usedBoost = await calc.getRowResultValue(row, 'used', 'boost');
@@ -2200,7 +2740,6 @@ test.describe('04-calculator M. 計算結果の期待値検証', () => {
     await page.locator('.levelPick__popover button').filter({ hasText: '閉じる' }).click();
 
     await page.waitForTimeout(200);
-    await calc.expandRow(row);
 
     const reqBoost = await calc.getRowResultValue(row, 'required', 'boost');
     const reqNormal = await calc.getRowResultValue(row, 'required', 'normal');
@@ -2311,5 +2850,60 @@ test.describe('04-calculator N. アメブ再割当と枠超過', () => {
     await capInput.blur();
     await expect(warn).toHaveCount(0);
     await expect(calc.getRowBoostCandyInput(row)).not.toHaveClass(/field__input--overQuota/);
+  });
+});
+
+// ============================================================
+// O. 睡眠チーム（1晩5匹）の警告
+// ============================================================
+test.describe('04-calculator O. 睡眠チーム5匹の警告', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    const box = new BoxPanelPage(page);
+    await box.openImportPanel();
+    await box.fillImportText(testConfig.importData.importText);
+    await box.clickImport();
+  });
+
+  /**
+   * 警告マークは**結果行の最後尾（「内訳」の右）**に置く。
+   * 入力欄の見出しへ戻さないこと（幅が無く、英語だと文字が見切れる）。
+   * 説明は title ではなくクリックで開くヒントで読ませる（スマホは title を出せない）。
+   */
+  test('68. 睡眠計画の6行目以降だけに警告を出し、クリックで理由が読める', async ({ page }) => {
+    const box = new BoxPanelPage(page);
+    const calc = new CalcPanelPage(page);
+
+    for (let index = 0; index < 6; index++) {
+      await box.selectBoxTile(index);
+      await box.clickApplyToCalc();
+    }
+    await calc.expectRowCount(6);
+
+    for (let index = 0; index < 6; index++) {
+      const row = calc.getRow(index);
+      await calc.getRowSleepTargetSelect(row).selectOption('all');
+    }
+
+    // 1晩に睡眠EXPを得られるのは5匹まで。あふれるのは6行目だけ
+    await expect(page.getByTestId('sleep-team-overflow')).toHaveCount(1);
+    const overflowRow = calc.getRow(5);
+    const warn = overflowRow.getByTestId('sleep-team-overflow');
+    await expect(warn).toBeVisible();
+
+    // 置き場所を固定する。入力欄の見出しへ戻すと英語で見切れる（移設の理由）
+    const usedRow = calc.getRowUsedRow(overflowRow);
+    await expect(usedRow.getByTestId('sleep-team-overflow')).toHaveCount(1);
+    // 結果の最後尾＝「内訳」より後ろ
+    const order = await usedRow
+      .locator('[data-testid="result-bonus-toggle"], [data-testid="sleep-team-overflow"]')
+      .evaluateAll(nodes => nodes.map(node => (node as HTMLElement).dataset.testid));
+    expect(order).toEqual(['result-bonus-toggle', 'sleep-team-overflow']);
+
+    await warn.click();
+    await expect(page.getByTestId('calc-hint-sleep-team-note')).toContainText('5匹');
+    // このヒントはアメの話を載せない（他の kind の案内が混ざっていないこと）
+    await expect(page.getByTestId('calc-hint-quota-warn')).toHaveCount(0);
+    await expect(page.getByTestId('calc-hint-all-sleep-note')).toHaveCount(0);
   });
 });

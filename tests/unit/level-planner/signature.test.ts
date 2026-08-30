@@ -3,7 +3,7 @@ import { buildPlannerInputSignature, buildPlannerProbeSignature, buildPlannerStr
 import type { LevelPlannerInput } from '../../../src/domain/level-planner/types';
 
 const baseInput: LevelPlannerInput = {
-  pokemonList: [{ pokemonId: 'p', pokedexId: 25, candyFamilyKey: '25', name: 'P', type: 'electric', mode: 'targetLevel', currentLevel: 10, currentExpInLevel: 2, targetLevel: 20, expType: 600, nature: 'normal', requestedBoostCandy: 20, boostAllowed: true, priorityIndex: 0 }],
+  pokemonList: [{ pokemonId: 'p', pokedexId: 25, candyFamilyKey: '25', name: 'P', type: 'electric', currentLevel: 10, currentExpInLevel: 2, targetLevel: 20, expType: 600, nature: 'normal', requestedBoostCandy: 20, boostAllowed: true, priorityIndex: 0 }],
   dreamShards: 100,
   boost: { kind: 'full', limit: 350 },
   candyInventory: { species: { '25': 10 }, typeCandy: { electric: { s: 2, m: 1 } }, universal: { s: 3, m: 4, l: 5 } },
@@ -28,7 +28,7 @@ describe('planner signatures', () => {
   it('row order and candy-target presence are structural changes', () => {
     const changed: LevelPlannerInput = {
       ...baseInput,
-      pokemonList: [{ ...baseInput.pokemonList[0], candyTarget: { totalCandyUnits: 20 } }],
+      pokemonList: [{ ...baseInput.pokemonList[0], candyTarget: { totalCandyUnits: 20, boostedCandyUnits: 20 } }],
     };
 
     expect(buildPlannerStructureSignature(changed)).not.toBe(buildPlannerStructureSignature(baseInput));

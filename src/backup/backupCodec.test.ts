@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { CalcRowV1, CalcSaveSlotV1 } from "../persistence/calc";
+import { DEFAULT_SLEEP_SETTINGS } from "../persistence/calc";
 import { parseBackup, stringifyBackup } from "./backupCodec";
 import { createBackup } from "./createBackup";
 import { BACKUP_MAX_BYTES, BACKUP_SCHEMA_VERSION, BackupValidationError, type BackupBoxEntryV1, type CandyBoostPlannerBackupV3 } from "./types";
@@ -50,7 +51,19 @@ function backup(): CandyBoostPlannerBackupV3 {
   return createBackup({
     boxEntries: [],
     totalShards: 0,
-    sleepSettings: { dailySleepHours: 8.5, sleepExpBonusCount: 0, includeGSD: true },
+    sleepSettings: {
+      dailySleepHours: 8.5,
+      sleepExpBonusCount: 0,
+      includeGSD: true,
+      timeZone: "Asia/Tokyo",
+      growthIncenseGsdDays: { beforeFullMoon: false, fullMoon: true, afterFullMoon: false },
+      growthIncenseNormalPerWeek: 1,
+      growthIncenseStock: null,
+      manualEventBonuses: [],
+      useProjectedEvents: false,
+      blueSeedPlantWeekday: 1,
+      blueSeedIncenseDays: "auto",
+    },
     candyInventory: { schemaVersion: 2, universal: { s: 0, m: 0, l: 0 }, typeCandy: {}, species: {} },
     defaultBoostReachLevel: null,
     calculator: { activeSlotIndex: 0, slots: [null, null, null] },
@@ -103,17 +116,34 @@ describe("backup codec", () => {
     expect(parsed.data.calculator.slots).toEqual(v2.data.calculator.slots);
   });
 
-  it("drops V2 boost values whose explicitness cannot be recovered", () => {
+  it.each([1, 2] as const)("drops V%s boost values whose explicitness cannot be recovered and reports the migration", (schemaVersion) => {
     const legacy = JSON.parse(JSON.stringify(backup()));
-    legacy.schemaVersion = 2;
+    legacy.schemaVersion = schemaVersion;
+    legacy.data.globalSettings.candyInventory.schemaVersion = schemaVersion === 1 ? 1 : 2;
     legacy.data.calculator.slots = [
       slot("legacy-slot", [{ ...row("legacy-row"), boostOrExpAdjustment: 123 }]),
       null,
       null,
     ];
 
-    const parsed = parseBackup(JSON.stringify(legacy)).backup;
-    expect(parsed.data.calculator.slots[0]?.rows[0]?.boostOrExpAdjustment).toBeUndefined();
+    const parsed = parseBackup(JSON.stringify(legacy));
+    expect(parsed.backup.data.calculator.slots[0]?.rows[0]?.boostOrExpAdjustment).toBeUndefined();
+    expect(parsed.migrationNotices).toEqual([{
+      code: "legacy-boost-values-rederived",
+      affectedRowCount: 1,
+    }]);
+  });
+
+  it("does not show a boost migration notice when an old backup has no positive saved boost values", () => {
+    const legacy = JSON.parse(JSON.stringify(backup()));
+    legacy.schemaVersion = 2;
+    legacy.data.calculator.slots = [
+      slot("legacy-slot", [{ ...row("legacy-row"), boostOrExpAdjustment: 0 }]),
+      null,
+      null,
+    ];
+
+    expect(parseBackup(JSON.stringify(legacy)).migrationNotices).toEqual([]);
   });
 
   it("preserves current-schema explicit boost values and recovers n ≤ m", () => {
@@ -144,6 +174,105 @@ describe("backup codec", () => {
     const parsed = parseBackup(stringifyBackup(value)).backup;
 
     expect(parsed.data.globalSettings.defaultBoostReachLevel).toBe(35);
+  });
+
+  it("round-trips time zone, Growth Incense, and manual event settings", () => {
+    const value = backup();
+    value.data.globalSettings.sleepSettings = {
+      dailySleepHours: 7,
+      sleepExpBonusCount: 2,
+      includeGSD: true,
+      timeZone: "America/New_York",
+      growthIncenseGsdDays: { beforeFullMoon: true, fullMoon: false, afterFullMoon: true },
+      growthIncenseNormalPerWeek: 4,
+      growthIncenseStock: 20,
+      manualEventBonuses: [
+        { from: "2026-08-25", to: "2026-08-27", multiplier: 3 },
+        { from: "2026-09-01", to: "2026-09-07", multiplier: 1.5 },
+      ],
+      useProjectedEvents: true,
+      blueSeedPlantWeekday: null,
+      blueSeedIncenseDays: 5,
+    };
+    expect(parseBackup(stringifyBackup(value)).backup.data.globalSettings.sleepSettings)
+      .toEqual(value.data.globalSettings.sleepSettings);
+  });
+
+  it("keeps schema V3 and fills settings added after its release with defaults", () => {
+    const legacyV3 = JSON.parse(stringifyBackup(backup()));
+    delete legacyV3.data.globalSettings.sleepSettings.growthIncenseGsdDays;
+    delete legacyV3.data.globalSettings.sleepSettings.growthIncenseStock;
+    delete legacyV3.data.globalSettings.sleepSettings.manualEventBonuses;
+    delete legacyV3.data.globalSettings.sleepSettings.useProjectedEvents;
+    delete legacyV3.data.globalSettings.sleepSettings.blueSeedPlantWeekday;
+    delete legacyV3.data.globalSettings.sleepSettings.blueSeedIncenseDays;
+    const parsed = parseBackup(JSON.stringify(legacyV3)).backup;
+    expect(parsed.schemaVersion).toBe(3);
+    expect(parsed.data.globalSettings.sleepSettings).toMatchObject({
+      growthIncenseGsdDays: DEFAULT_SLEEP_SETTINGS.growthIncenseGsdDays,
+      growthIncenseStock: null,
+      manualEventBonuses: [],
+      useProjectedEvents: true,
+      blueSeedPlantWeekday: 1,
+      blueSeedIncenseDays: "auto",
+    });
+  });
+
+  it("migrates backups created before lunar-calendar settings were added", () => {
+    const legacy = JSON.parse(JSON.stringify(backup()));
+    delete legacy.data.globalSettings.sleepSettings.timeZone;
+    delete legacy.data.globalSettings.sleepSettings.growthIncenseGsdDays;
+    delete legacy.data.globalSettings.sleepSettings.growthIncenseGsdPolicy;
+    delete legacy.data.globalSettings.sleepSettings.growthIncenseNormalPerWeek;
+    delete legacy.data.globalSettings.sleepSettings.manualEventBonuses;
+    delete legacy.data.globalSettings.sleepSettings.useProjectedEvents;
+    delete legacy.data.globalSettings.sleepSettings.blueSeedPlantWeekday;
+    delete legacy.data.globalSettings.sleepSettings.blueSeedIncenseDays;
+    legacy.schemaVersion = 2;
+
+    expect(parseBackup(JSON.stringify(legacy)).backup.data.globalSettings.sleepSettings).toMatchObject({
+      timeZone: DEFAULT_SLEEP_SETTINGS.timeZone,
+      growthIncenseGsdDays: DEFAULT_SLEEP_SETTINGS.growthIncenseGsdDays,
+      growthIncenseNormalPerWeek: 0,
+      // 旧バックアップに在庫の欄は無い。無いものを0（使えない）に読み替えてはいけない。
+      growthIncenseStock: null,
+      manualEventBonuses: [],
+      useProjectedEvents: true,
+      blueSeedPlantWeekday: 1,
+      blueSeedIncenseDays: "auto",
+    });
+  });
+
+  it("未リリース版バックアップの5択GSD設定を3日指定へ移行する", () => {
+    const legacy = JSON.parse(JSON.stringify(backup()));
+    delete legacy.data.globalSettings.sleepSettings.growthIncenseGsdDays;
+    legacy.data.globalSettings.sleepSettings.growthIncenseGsdPolicy = "all";
+
+    expect(parseBackup(JSON.stringify(legacy)).backup.data.globalSettings.sleepSettings.growthIncenseGsdDays)
+      .toEqual({ beforeFullMoon: true, fullMoon: true, afterFullMoon: true });
+  });
+
+  it.each([
+    ["timeZone", "UTC+09:00"],
+    ["growthIncenseGsdDays", { beforeFullMoon: true, fullMoon: "sometimes", afterFullMoon: false }],
+    ["growthIncenseNormalPerWeek", 8],
+    ["growthIncenseStock", 1000],
+    ["manualEventBonuses", [{ from: "2026-08-27", to: "2026-08-25", multiplier: 3 }]],
+    ["useProjectedEvents", "yes"],
+    ["blueSeedPlantWeekday", 7],
+    ["blueSeedIncenseDays", 8],
+  ])("rejects invalid sleep setting %s", (key, invalidValue) => {
+    const value = JSON.parse(JSON.stringify(backup()));
+    value.data.globalSettings.sleepSettings[key] = invalidValue;
+    expect(() => parseBackup(JSON.stringify(value))).toThrow(`sleepSettings.${key}`);
+  });
+
+  it("manualEventBonuses追加前のschema V3バックアップを空配列へ移行する", () => {
+    const value = JSON.parse(JSON.stringify(backup()));
+    delete value.data.globalSettings.sleepSettings.manualEventBonuses;
+    const parsed = parseBackup(JSON.stringify(value)).backup;
+    expect(parsed.schemaVersion).toBe(3);
+    expect(parsed.data.globalSettings.sleepSettings.manualEventBonuses).toEqual([]);
   });
 
   it("reads a backup without defaultBoostReachLevel as 未設定（目標Lvと同じ）", () => {
@@ -269,6 +398,27 @@ describe("backup codec", () => {
     expect(() => parseBackup(JSON.stringify(invalid))).toThrow("sleepTargetMode");
   });
 
+  it("backup V3 は stock を往復し、個数指定より優先する", () => {
+    const value = backup();
+    value.data.calculator.slots = [slot("slot-1", [{
+      ...row("row-1"),
+      sleepTargetMode: "stock",
+      sleepTargetHours: 500,
+      candyTarget: 40,
+      dstExpInLevel: 10,
+      boostOrExpAdjustment: 25,
+    }]), null, null];
+    const parsed = parseBackup(JSON.stringify(value)).backup;
+    expect(parsed.data.calculator.slots[0]?.rows[0]).toMatchObject({
+      sleepTargetMode: "stock",
+      sleepTargetHours: undefined,
+      candyTarget: undefined,
+      dstExpInLevel: undefined,
+      boostOrExpAdjustment: 25,
+    });
+    expect(parseBackup(stringifyBackup(parsed)).backup).toEqual(parsed);
+  });
+
   it("rejects rows that violate the target invariants", () => {
     // 個数指定なしでも睡眠目標は有効
     const orphanSleep = backup();
@@ -319,7 +469,19 @@ describe("backup codec", () => {
     const value = createBackup({
       boxEntries: [{ ...entry("manual-entry"), source: "manual" }],
       totalShards: 0,
-      sleepSettings: { dailySleepHours: 8.5, sleepExpBonusCount: 0, includeGSD: true },
+      sleepSettings: {
+        dailySleepHours: 8.5,
+        sleepExpBonusCount: 0,
+        includeGSD: true,
+        timeZone: "Asia/Tokyo",
+        growthIncenseGsdDays: { beforeFullMoon: false, fullMoon: true, afterFullMoon: false },
+        growthIncenseNormalPerWeek: 1,
+        growthIncenseStock: null,
+        manualEventBonuses: [],
+        useProjectedEvents: false,
+        blueSeedPlantWeekday: 1,
+        blueSeedIncenseDays: "auto",
+      },
       candyInventory: { schemaVersion: 2, universal: { s: 0, m: 0, l: 0 }, typeCandy: {}, species: {} },
       defaultBoostReachLevel: null,
       calculator: { activeSlotIndex: 0, slots: [null, null, null] },

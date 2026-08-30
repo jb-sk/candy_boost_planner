@@ -21,10 +21,18 @@
 @import "./components/ExportOverlay.css";
 @import "./components/SettingsOverlay.css";
 @import "./components/HelpOverlay.css";
+@import "./components/EventHistoryOverlay.css";
 @import "./components/LevelPicker.css";
 @import "./components/NatureSelect.css";
 @import "./components/OnboardingTour.css";
 @import "../../components/DesignSwitcher.css";
+
+:root {
+  --callout-border: 1px solid rgba(var(--ink-rgb), 0.2);
+  --callout-background-color: var(--paper);
+  /* 親背景を透かさず `--paper` で覆ってから、中立の濃淡を重ねる。 */
+  --callout-background-image: linear-gradient(rgba(var(--ink-rgb), 0.06), rgba(var(--ink-rgb), 0.06));
+}
 
 /* ===== Hero Header ===== */
 .hero {
@@ -295,6 +303,12 @@ select.field__input {
   background: var(--surface-alt);
 }
 
+.btn--neutral {
+  color: var(--ink);
+  background: var(--paper);
+  border-color: rgba(var(--ink-rgb), 0.3);
+}
+
 .btn--danger {
   background: var(--danger);
   color: var(--btn-ink);
@@ -457,4 +471,53 @@ select.field__input {
     max-width: 790px;
     margin: 0 auto;
   }
+}
+
+/* ===== Inline confirm =====
+   破壊的操作の確認。`window.confirm` は画面の遠くへ出るうえブラウザによっては抑止されるので、
+   押したボタンのその場に確認を出す。
+
+   **赤は肯定ボタン1つだけに使う。** 枠や縁まで色を足すと赤同士が競って、
+   どこを押すのかが読めなくなる。囲みは中立の枠と下地だけで足りる。
+
+   **下地は `--paper` を敷いたうえで濃淡を乗せる。`--surface-alt` / `--border` を使わない。**
+   `--ink` / `--muted` は `--paper` に対して調整された色なので、下地が `--paper` でないと
+   本文が沈む。booklet は `--surface-alt` が #9ab9d5（青灰）で、`.panel` の背景にも
+   使われているため、**半透明で重ねるだけでは親の青灰が透けて `--muted` #5a5f63 が読めない**。
+   不透明な `--paper` で一度覆ってから濃淡を乗せること。
+   枠も同じく地の色から作る（`--border` はテーマごとに下地と別系統で、
+   candy は水色の下地に桃色の枠、green は黄緑の下地に茶色の枠になっていた）。 */
+.inlineConfirm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: var(--callout-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--callout-background-color);
+  background-image: var(--callout-background-image);
+}
+
+/* 問いかけ。ここだけ本文の強さで出す。 */
+.inlineConfirm__question {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+/* 取り消せる旨の補足。他の補足文（`settingsField__hint`）と同じ弱さに揃える。 */
+.inlineConfirm__note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.inlineConfirm__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
 }

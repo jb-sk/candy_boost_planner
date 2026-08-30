@@ -47,6 +47,67 @@
   font-weight: 700;
 }
 
+/* ===== Header tabs (modal__header 内でタイトルの代わりに置く) =====
+   設定モーダルとヘルプモーダルで同じ見え方にするため、ここで一元管理する。 */
+.modalTabs {
+  display: flex;
+  gap: 18px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.modalTab {
+  -webkit-appearance: none;
+  appearance: none;
+  font: inherit;
+  font-family: var(--font-heading);
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 0;
+  line-height: 1.3;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 17px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+
+.modalTab:active {
+  transform: none;
+}
+
+@media (hover: hover) {
+  .modalTab:hover {
+    color: var(--ink);
+  }
+}
+
+.modalTab--active {
+  color: var(--accent);
+}
+
+/* Divider between tabs: a scaled box, not the "｜" glyph — that character renders with
+   uneven top/bottom padding depending on font, so it never lines up cleanly. */
+.modalTab + .modalTab {
+  position: relative;
+  padding-left: 18px;
+}
+
+.modalTab + .modalTab::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 3px;
+  bottom: 3px;
+  width: 2px;
+  transform: scaleX(0.75);
+  transform-origin: left;
+  background: rgba(var(--muted-rgb), 0.3);
+}
+
 .modal__close {
   -webkit-appearance: none;
   appearance: none;
