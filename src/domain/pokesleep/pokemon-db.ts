@@ -1668,6 +1668,28 @@ export const pokemonDb: PokemonDbEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%82%AB%E3%82%A4%E3%83%AA%E3%83%A5%E3%83%BC"
   },
   {
+    "dexNo": 150,
+    "nameJa": "ミュウツー",
+    "specialtyJa": "スキル",
+    "sleepTypeJa": "すやすや",
+    "berryJa": [
+      "マゴのみ"
+    ],
+    "ingAJa": [
+      "ワカクサ大豆"
+    ],
+    "ingBJa": [
+      "ワカクサコーン"
+    ],
+    "ingCJa": [
+      "ほっこりポテト"
+    ],
+    "mainSkillJa": "サイコブレイク(きのみゾーン)",
+    "fp": 30,
+    "helpSeconds": 2300,
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%9F%E3%83%A5%E3%82%A6%E3%83%84%E3%83%BC"
+  },
+  {
     "dexNo": 151,
     "nameJa": "ミュウ",
     "specialtyJa": "オール",
@@ -5465,5 +5487,6 @@ export const pokemonDbHeaders = [
   "食C",
   "メインスキル",
   "FP",
+  "進化",
   "手伝"
 ] as const;

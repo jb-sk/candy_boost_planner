@@ -91,6 +91,7 @@ export const pokemonNameJaByIdForm = {
   "147": "ミニリュウ",
   "148": "ハクリュー",
   "149": "カイリュー",
+  "150": "ミュウツー",
   "151": "ミュウ",
   "152": "チコリータ",
   "153": "ベイリーフ",
@@ -341,6 +342,7 @@ export const pokemonExpTypeByIdForm = {
   "147": 900,
   "148": 900,
   "149": 900,
+  "150": 1080,
   "151": 1320,
   "152": 600,
   "153": 600,
@@ -591,6 +593,7 @@ export const pokemonSpecialtyByIdForm = {
   "147": "Ingredients",
   "148": "Ingredients",
   "149": "Ingredients",
+  "150": "Skills",
   "151": "All",
   "152": "Berries",
   "153": "Berries",
@@ -841,6 +844,7 @@ export const pokemonTypeByIdForm = {
   "147": "Dragon",
   "148": "Dragon",
   "149": "Dragon",
+  "150": "Psychic",
   "151": "Psychic",
   "152": "Grass",
   "153": "Grass",
@@ -1091,6 +1095,7 @@ export const pokemonTypeJaByIdForm = {
   "147": "ドラゴン",
   "148": "ドラゴン",
   "149": "ドラゴン",
+  "150": "エスパー",
   "151": "エスパー",
   "152": "くさ",
   "153": "くさ",
@@ -1608,6 +1613,11 @@ export const pokemonIngredientsByIdForm = {
     "a": "herb",
     "b": "corn",
     "c": "oil"
+  },
+  "150": {
+    "a": "soy",
+    "b": "corn",
+    "c": "potato"
   },
   "152": {
     "a": "cacao",
@@ -2723,6 +2733,9 @@ export const pokemonIdFormsByNameJa = {
   ],
   "カイリュー": [
     149
+  ],
+  "ミュウツー": [
+    150
   ],
   "ミュウ": [
     151
