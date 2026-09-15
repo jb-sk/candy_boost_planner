@@ -1391,6 +1391,24 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%82%AB%E3%82%A4%E3%83%AA%E3%83%A5%E3%83%BC"
   },
   {
+    "dexNo": 150,
+    "pokedexId": 150,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "ミュウツー",
+    "baseNameJa": "ミュウツー",
+    "specialty": "Skills",
+    "type": "Psychic",
+    "typeJa": "エスパー",
+    "expType": 600,
+    "ingredients": {
+      "a": "soy",
+      "b": "corn",
+      "c": "potato"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%9F%E3%83%A5%E3%82%A6%E3%83%84%E3%83%BC"
+  },
+  {
     "dexNo": 151,
     "pokedexId": 151,
     "form": 0,
