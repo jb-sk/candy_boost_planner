@@ -1,6 +1,6 @@
 <template>
-  <main :class="['shell', { 'shell--exportOpen': calc.exportOpen.value }]" :data-locale="locale">
-    <div class="shell__scroll" ref="scrollContainerRef">
+  <main class="shell" :data-locale="locale">
+    <div class="shell__scroll">
     <header class="hero">
       <div>
         <p class="kicker">{{ t("app.kicker") }}</p>
@@ -41,11 +41,53 @@
       </div>
     </header>
 
-    <div class="dashboard">
-      <CalcPanel :calc="calc" :resolve-pokedex-id-by-box-id="resolvePokedexIdByBoxId" @apply-to-box="applyCalculatorToBox($event)" @open-help="showHelp = true" @open-settings="openSettings" @open-add-modal="showAddModal = true" />
+    <MobileNav
+      :active-panel="activePanel"
+      @select-panel="selectPanel($event)"
+      @open-settings="openSettings"
+      @scroll-top="scrollToTop"
+    />
 
-      <BoxPanel v-if="mountBoxPanel" :box="box" :calc="calc" :gt="gt" @apply-to-calc="applyBoxToCalculator(undefined, true)" @open-settings="showSettings = true" />
-      <div v-else class="panel panel--box boxPanelDefer" aria-busy="true" aria-live="polite">
+    <div class="dashboard">
+      <CalcPanel
+        v-show="isDesktopLayout || activePanel === 'calc'"
+        :calc="calc"
+        :resolve-pokedex-id-by-box-id="resolvePokedexIdByBoxId"
+        :role="isDesktopLayout ? undefined : 'tabpanel'"
+        :aria-labelledby="isDesktopLayout ? undefined : 'mobile-panel-tab-calc'"
+        :aria-hidden="!isDesktopLayout && activePanel !== 'calc' ? 'true' : undefined"
+        :inert="!isDesktopLayout && activePanel !== 'calc'"
+        @apply-to-box="applyCalculatorToBox($event)"
+        @open-help="showHelp = true"
+        @open-settings="openSettings"
+        @open-add-modal="showAddModal = true"
+      />
+
+      <BoxPanel
+        v-if="mountBoxPanel"
+        v-show="isDesktopLayout || activePanel === 'box'"
+        :box="box"
+        :calc="calc"
+        :gt="gt"
+        :role="isDesktopLayout ? undefined : 'tabpanel'"
+        :aria-labelledby="isDesktopLayout ? undefined : 'mobile-panel-tab-box'"
+        :aria-hidden="!isDesktopLayout && activePanel !== 'box' ? 'true' : undefined"
+        :inert="!isDesktopLayout && activePanel !== 'box'"
+        @apply-to-calc="applyBoxToCalculator()"
+        @toggle-calc="toggleBoxInCalculator($event)"
+        @view-calc="selectPanel('calc')"
+        @open-settings="showSettings = true"
+      />
+      <div
+        v-else
+        v-show="isDesktopLayout || activePanel === 'box'"
+        id="neo-box"
+        class="panel panel--box boxPanelDefer"
+        aria-busy="true"
+        aria-live="polite"
+        :role="isDesktopLayout ? undefined : 'tabpanel'"
+        :aria-labelledby="isDesktopLayout ? undefined : 'mobile-panel-tab-box'"
+      >
         <div class="panel__head">
           <h2 class="panel__title">{{ t("box.title") }}</h2>
         </div>
@@ -53,8 +95,6 @@
       </div>
     </div>
     </div>
-
-    <MobileNav :scroll-to-panel="scrollToPanel" v-show="!calc.exportOpen.value" @open-settings="openSettings" @scroll-top="scrollToTop" />
 
     <AppToast />
 
@@ -174,10 +214,14 @@ const showAddModal = ref(false);
 /** 初回ペイント負荷分散: 計算機の直後に Box をマウントするとフレームが重いため、初回フレーム後にマウント */
 const mountBoxPanel = ref(false);
 const themeSwitching = ref(false);
+type PanelId = 'calc' | 'box';
+const activePanel = ref<PanelId>('calc');
+const desktopMediaQuery = window.matchMedia('(min-width: 1400px)');
+const isDesktopLayout = ref(desktopMediaQuery.matches);
+const panelScrollOffsets: Record<PanelId, number> = { calc: 0, box: 0 };
 
 const onboarding = useOnboarding();
 
-const scrollContainerRef = ref<HTMLElement | null>(null);
 const SCROLL_POSITION_KEY = "candy-boost-planner:ui:scrollTop:v1";
 
 type SavedScrollPosition = {
@@ -214,21 +258,18 @@ function readReloadScrollPosition(): SavedScrollPosition | null {
 const reloadScrollPosition = readReloadScrollPosition();
 
 function saveScrollPosition(): void {
-  const container = scrollContainerRef.value;
-  if (!container) return;
   try {
-    const containerTop = container.getBoundingClientRect().top;
-    const anchors = Array.from(container.querySelectorAll<HTMLElement>("[data-scroll-anchor]"));
+    const anchors = Array.from(document.querySelectorAll<HTMLElement>("[data-scroll-anchor]"));
     const anchor = anchors
       .filter((element) => {
         const rect = element.getBoundingClientRect();
-        return rect.top <= containerTop + 1 && rect.bottom > containerTop + 1;
+        return rect.top <= 1 && rect.bottom > 1;
       })
       .sort((a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().top)[0];
-    const saved: SavedScrollPosition = { scrollTop: container.scrollTop };
+    const saved: SavedScrollPosition = { scrollTop: currentDocumentScrollY() };
     if (anchor) {
       saved.anchorKey = anchor.dataset.scrollAnchor;
-      saved.anchorOffset = anchor.getBoundingClientRect().top - containerTop;
+      saved.anchorOffset = anchor.getBoundingClientRect().top;
     }
     sessionStorage.setItem(SCROLL_POSITION_KEY, JSON.stringify(saved));
   } catch {
@@ -240,11 +281,8 @@ function saveScrollPositionWhenHidden(): void {
   if (document.visibilityState === "hidden") saveScrollPosition();
 }
 
-// provide scroll container for child components that need programmatic scrolling
-provide('scrollContainer', scrollContainerRef);
-// provide onboarding state for CalcPanel (dummy result row + inline tooltip for step 3)
+// provide onboarding state for CalcPanel's dummy result row
 provide('onboardingActive', onboarding.isActive);
-provide('onboarding', onboarding);
 function openSettings() {
   showSettings.value = true;
 }
@@ -319,22 +357,119 @@ const calc = useCalcStore({
   resolvePokedexIdByBoxId,
 });
 
+const overlayOpen = computed(() => (
+  calc.exportOpen.value
+  || showHelp.value
+  || showEventHistory.value
+  || showSettings.value
+  || showAddModal.value
+  || onboarding.isActive.value
+));
+
+type InlineStyleSnapshot = {
+  value: string;
+  priority: string;
+};
+
+let releaseDocumentScrollLock: (() => void) | null = null;
+let lockedDocumentScrollY: number | null = null;
+
+function currentDocumentScrollY(): number {
+  return lockedDocumentScrollY ?? window.scrollY;
+}
+
+function snapshotInlineProperty(element: HTMLElement, property: string): InlineStyleSnapshot {
+  return {
+    value: element.style.getPropertyValue(property),
+    priority: element.style.getPropertyPriority(property),
+  };
+}
+
+function restoreInlineProperty(
+  element: HTMLElement,
+  property: string,
+  snapshot: InlineStyleSnapshot,
+): void {
+  if (snapshot.value) {
+    element.style.setProperty(property, snapshot.value, snapshot.priority);
+  } else {
+    element.style.removeProperty(property);
+  }
+}
+
+function lockDocumentScroll(): () => void {
+  const root = document.documentElement;
+  const body = document.body;
+  const rootOverflow = snapshotInlineProperty(root, "overflow");
+  const bodyProperties = new Map<string, InlineStyleSnapshot>();
+  for (const property of ["overflow", "position", "top", "left", "right", "width", "padding-right"]) {
+    bodyProperties.set(property, snapshotInlineProperty(body, property));
+  }
+  const scrollY = window.scrollY;
+  const scrollbarWidth = Math.max(0, window.innerWidth - root.clientWidth);
+  const bodyPaddingRight = Number.parseFloat(getComputedStyle(body).paddingRight) || 0;
+  lockedDocumentScrollY = scrollY;
+
+  root.style.setProperty("overflow", "hidden");
+  body.style.setProperty("overflow", "hidden");
+  body.style.setProperty("position", "fixed");
+  body.style.setProperty("top", `${-scrollY}px`);
+  body.style.setProperty("left", "0");
+  body.style.setProperty("right", "0");
+  body.style.setProperty("width", "100%");
+  if (scrollbarWidth > 0) {
+    body.style.setProperty("padding-right", `${bodyPaddingRight + scrollbarWidth}px`);
+  }
+
+  return () => {
+    restoreInlineProperty(root, "overflow", rootOverflow);
+    for (const [property, snapshot] of bodyProperties) {
+      restoreInlineProperty(body, property, snapshot);
+    }
+    window.scrollTo(0, scrollY);
+    lockedDocumentScrollY = null;
+  };
+}
+
+/**
+ * オンボーディングでは上下にある操作と結果例を同時に見せるため、
+ * 背景を固定する直前にスロットタブを画面中央へ置く。
+ */
+function centerOnboardingSlotTabs(): void {
+  const slotTabs = document.querySelector<HTMLElement>('[data-testid="calc-slot-tabs"]');
+  if (!slotTabs) return;
+
+  const rect = slotTabs.getBoundingClientRect();
+  const viewport = window.visualViewport;
+  const viewportCenter = (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight) / 2;
+  window.scrollTo(0, Math.max(0, window.scrollY + rect.top + rect.height / 2 - viewportCenter));
+}
+
+watch(overlayOpen, (locked) => {
+  if (locked) {
+    if (onboarding.isActive.value) centerOnboardingSlotTabs();
+    if (!releaseDocumentScrollLock) releaseDocumentScrollLock = lockDocumentScroll();
+    return;
+  }
+  releaseDocumentScrollLock?.();
+  releaseDocumentScrollLock = null;
+}, { flush: "post" });
+
 function nextAnimationFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
 function restoreReloadScrollPosition(saved: SavedScrollPosition): void {
-  const container = scrollContainerRef.value;
-  if (!container) return;
-  container.scrollTop = saved.scrollTop;
+  window.scrollTo(0, saved.scrollTop);
 
   if (saved.anchorKey === undefined || saved.anchorOffset === undefined) return;
-  const anchor = Array.from(container.querySelectorAll<HTMLElement>("[data-scroll-anchor]"))
+  const anchor = Array.from(document.querySelectorAll<HTMLElement>("[data-scroll-anchor]"))
     .find((element) => element.dataset.scrollAnchor === saved.anchorKey);
   if (!anchor) return;
 
-  const previousOverflowAnchor = container.style.getPropertyValue("overflow-anchor");
-  const previousPriority = container.style.getPropertyPriority("overflow-anchor");
+  const scrollRoot = document.documentElement;
+  const previousOverflowAnchor = scrollRoot.style.getPropertyValue("overflow-anchor");
+  const previousPriority = scrollRoot.style.getPropertyPriority("overflow-anchor");
   const calcPanel = document.getElementById("neo-calc");
   let finished = false;
   let stopPendingWatch: (() => void) | null = null;
@@ -342,15 +477,15 @@ function restoreReloadScrollPosition(saved: SavedScrollPosition): void {
 
   const adjust = () => {
     if (finished || !anchor.isConnected) return;
-    const currentOffset = anchor.getBoundingClientRect().top - container.getBoundingClientRect().top;
+    const currentOffset = anchor.getBoundingClientRect().top;
     const movedBy = currentOffset - saved.anchorOffset!;
-    if (Math.abs(movedBy) >= 0.5) container.scrollTop += movedBy;
+    if (Math.abs(movedBy) >= 0.5) window.scrollBy(0, movedBy);
   };
   const restoreOverflowAnchor = () => {
     if (previousOverflowAnchor) {
-      container.style.setProperty("overflow-anchor", previousOverflowAnchor, previousPriority);
+      scrollRoot.style.setProperty("overflow-anchor", previousOverflowAnchor, previousPriority);
     } else {
-      container.style.removeProperty("overflow-anchor");
+      scrollRoot.style.removeProperty("overflow-anchor");
     }
   };
   const stop = () => {
@@ -360,8 +495,10 @@ function restoreReloadScrollPosition(saved: SavedScrollPosition): void {
     stopPendingWatch?.();
     resolvePendingWait?.();
     resolvePendingWait = null;
-    container.removeEventListener("pointerdown", stop);
-    container.removeEventListener("wheel", stop);
+    window.removeEventListener("pointerdown", stop);
+    window.removeEventListener("mousedown", stop);
+    window.removeEventListener("touchstart", stop);
+    window.removeEventListener("wheel", stop);
     restoreOverflowAnchor();
   };
   const observer = typeof ResizeObserver !== "undefined" && calcPanel
@@ -369,10 +506,12 @@ function restoreReloadScrollPosition(saved: SavedScrollPosition): void {
     : null;
 
   // 計算結果で上側の行高が変わっても、保存した表示位置を次のリロードへ累積させない。
-  container.style.setProperty("overflow-anchor", "none");
+  scrollRoot.style.setProperty("overflow-anchor", "none");
   observer?.observe(calcPanel!);
-  container.addEventListener("pointerdown", stop, { passive: true });
-  container.addEventListener("wheel", stop, { passive: true });
+  window.addEventListener("pointerdown", stop, { passive: true });
+  window.addEventListener("mousedown", stop, { passive: true });
+  window.addEventListener("touchstart", stop, { passive: true });
+  window.addEventListener("wheel", stop, { passive: true });
   adjust();
 
   void (async () => {
@@ -404,113 +543,121 @@ function restoreReloadScrollPosition(saved: SavedScrollPosition): void {
   })();
 }
 
-function preserveBoxDetailPosition(update: () => void): void {
-  const container = scrollContainerRef.value;
-  const anchor = document.querySelector<HTMLElement>('[data-testid="box-detail-panel"]');
-  if (!container || !anchor || window.matchMedia('(min-width: 1400px)').matches) {
-    update();
-    return;
-  }
-
-  const anchorTop = anchor.getBoundingClientRect().top;
-  const previousOverflowAnchor = container.style.getPropertyValue('overflow-anchor');
-  const previousPriority = container.style.getPropertyPriority('overflow-anchor');
-  const calcPanel = document.getElementById('neo-calc');
-  let finished = false;
-  let stopPendingWatch: (() => void) | null = null;
-  let resolvePendingWait: (() => void) | null = null;
-
-  const restoreOverflowAnchor = () => {
-    if (previousOverflowAnchor) {
-      container.style.setProperty('overflow-anchor', previousOverflowAnchor, previousPriority);
-    } else {
-      container.style.removeProperty('overflow-anchor');
-    }
-  };
-  const stop = () => {
-    if (finished) return;
-    finished = true;
-    observer?.disconnect();
-    stopPendingWatch?.();
-    resolvePendingWait?.();
-    container.removeEventListener('pointerdown', stop);
-    container.removeEventListener('wheel', stop);
-    restoreOverflowAnchor();
-  };
-  const adjust = () => {
-    if (finished || !anchor.isConnected) return;
-    const movedBy = anchor.getBoundingClientRect().top - anchorTop;
-    if (Math.abs(movedBy) >= 0.5) container.scrollTop += movedBy;
-  };
-  const observer = typeof ResizeObserver !== 'undefined' && calcPanel
-    ? new ResizeObserver(() => adjust())
-    : null;
-
-  // Safari の自動補正との二重適用を避け、今回の追加だけ実測値で補正する。
-  container.style.setProperty('overflow-anchor', 'none');
-  observer?.observe(calcPanel!);
-  // 計算中にユーザーが次の操作を始めた場合は、自動補正を打ち切る。
-  container.addEventListener('pointerdown', stop, { passive: true });
-  container.addEventListener('wheel', stop, { passive: true });
-  update();
-
-  void (async () => {
-    try {
-      await nextTick();
-      await nextAnimationFrame();
-      await nextAnimationFrame();
-      adjust();
-
-      if (!finished && calc.planResultPending.value) {
-        await new Promise<void>((resolve) => {
-          resolvePendingWait = resolve;
-          const stopWatch = watch(calc.planResultPending, (pending) => {
-            if (!pending) {
-              stopWatch();
-              stopPendingWatch = null;
-              resolve();
-            }
-          });
-          stopPendingWatch = stopWatch;
-        });
-        resolvePendingWait = null;
-        stopPendingWatch = null;
-      }
-      await nextTick();
-      await nextAnimationFrame();
-      await nextAnimationFrame();
-      adjust();
-    } finally {
-      stop();
-    }
-  })();
-}
-
-function applyBoxToCalculator(dstLevelDefault?: number, preserveScrollPosition = false) {
+function applyBoxToCalculator(dstLevelDefault?: number) {
   const e = box.selectedBox.value;
   if (!e) return;
+  // viewport変更直後はMediaQueryListのchange通知より先にクリックされる場合がある。
+  // 画面区分では分岐せず、表示中の詳細パネルそのものをアンカーにする。
+  const detailPanel = document.querySelector<HTMLElement>('[data-testid="box-detail-panel"]');
+  const detailTop = detailPanel?.getBoundingClientRect().top;
+
+  applyBoxEntryToCalculator(e, dstLevelDefault);
+
+  if (!detailPanel || detailTop === undefined) return;
+  void restoreElementViewportTop(detailPanel, detailTop);
+}
+
+let cancelElementViewportRestore: (() => void) | null = null;
+
+/**
+ * リアクティブ更新でアンカーより上の高さが変わっても、操作した要素を同じ位置に保つ。
+ * Chromium / Safari の自動スクロールアンカーの有無に依存させない。
+ */
+async function restoreElementViewportTop(element: HTMLElement, top: number): Promise<void> {
+  cancelElementViewportRestore?.();
+  let frameId = 0;
+  let cancelled = false;
+  let resolveTracking: (() => void) | null = null;
+
+  const cancel = () => {
+    if (cancelled) return;
+    cancelled = true;
+    cancelAnimationFrame(frameId);
+    resolveTracking?.();
+  };
+  cancelElementViewportRestore = cancel;
+
+  await nextTick();
+  if (cancelled) return;
+
+  const minTrackingMs = 750;
+  const stableForMs = 250;
+  const maxTrackingMs = 3000;
+  const startedAt = performance.now();
+  let lastMovementAt = startedAt;
+
+  const stopForUserInput = () => cancel();
+  window.addEventListener("pointerdown", stopForUserInput, { passive: true });
+  window.addEventListener("touchstart", stopForUserInput, { passive: true });
+  window.addEventListener("wheel", stopForUserInput, { passive: true });
+
+  try {
+    await new Promise<void>((resolve) => {
+      resolveTracking = resolve;
+      const track = (now: number) => {
+        if (cancelled || !element.isConnected) {
+          resolve();
+          return;
+        }
+
+        const movedBy = element.getBoundingClientRect().top - top;
+        if (Math.abs(movedBy) >= 0.5) {
+          window.scrollBy(0, movedBy);
+          lastMovementAt = now;
+        }
+
+        const elapsed = now - startedAt;
+        const isStable = now - lastMovementAt >= stableForMs;
+        const planningFinished = !calc.planResultPending.value;
+        if (
+          elapsed >= maxTrackingMs
+          || (elapsed >= minTrackingMs && isStable && planningFinished)
+        ) {
+          resolve();
+          return;
+        }
+        frameId = requestAnimationFrame(track);
+      };
+      frameId = requestAnimationFrame(track);
+    });
+  } finally {
+    resolveTracking = null;
+    window.removeEventListener("pointerdown", stopForUserInput);
+    window.removeEventListener("touchstart", stopForUserInput);
+    window.removeEventListener("wheel", stopForUserInput);
+    if (cancelElementViewportRestore === cancel) cancelElementViewportRestore = null;
+  }
+}
+
+function applyBoxEntryToCalculator(e: PokemonBoxEntryV1, dstLevelDefault?: number) {
   const lvl = e.planner?.level ?? e.derived?.level ?? 10;
   const expT = (e.planner?.expType ?? e.derived?.expType ?? 600) as ExpType;
   const nat = (e.planner?.expGainNature ?? e.derived?.expGainNature ?? "normal") as ExpGainNature;
   const pokedexId = e.derived?.pokedexId;
   const pokemonType = pokedexId ? getPokemonType(pokedexId) : undefined;
 
-  const upsert = () => {
-    calc.upsertFromBox({
-      boxId: e.id,
-      title: box.displayBoxTitle(e),
-      srcLevel: Number(lvl),
-      expType: expT,
-      nature: nat,
-      expRemaining: e.planner?.expRemaining,
-      sleepHours: e.planner?.sleepHours,
-      dstLevelDefault,
-      pokedexId,
-      pokemonType,
-    });
-  };
-  if (preserveScrollPosition) preserveBoxDetailPosition(upsert);
-  else upsert();
+  calc.upsertFromBox({
+    boxId: e.id,
+    title: box.displayBoxTitle(e),
+    srcLevel: Number(lvl),
+    expType: expT,
+    nature: nat,
+    expRemaining: e.planner?.expRemaining,
+    sleepHours: e.planner?.sleepHours,
+    dstLevelDefault,
+    pokedexId,
+    pokemonType,
+  });
+}
+
+function toggleBoxInCalculator(boxId: string) {
+  const existing = calc.rows.value.find((row) => row.boxId === boxId);
+  if (existing) {
+    calc.removeRowById(existing.id);
+    return;
+  }
+  const entry = box.boxEntries.value.find((candidate) => candidate.id === boxId);
+  if (entry) applyBoxEntryToCalculator(entry);
 }
 
 function applyCalculatorToBox(rowId: string) {
@@ -536,33 +683,67 @@ function applyCalculatorToBox(rowId: string) {
   box.importStatus.value = t("status.applyCalcToBox");
 }
 
+function captureActivePanelScroll(): void {
+  if (isDesktopLayout.value) return;
+  const element = document.getElementById(`neo-${activePanel.value}`);
+  if (!element) return;
+  const panelTop = element.getBoundingClientRect().top + window.scrollY;
+  panelScrollOffsets[activePanel.value] = Math.max(
+    0,
+    window.scrollY + getPanelNavHeight() - panelTop,
+  );
+}
+
+async function selectPanel(panel: PanelId): Promise<void> {
+  const isDesktopNow = desktopMediaQuery.matches;
+  if (isDesktopLayout.value !== isDesktopNow) {
+    isDesktopLayout.value = isDesktopNow;
+  }
+
+  if (isDesktopNow) {
+    scrollToPanel(`neo-${panel}`);
+    return;
+  }
+
+  if (panel === activePanel.value) {
+    scrollToPanel(`neo-${panel}`);
+    return;
+  }
+
+  captureActivePanelScroll();
+  activePanel.value = panel;
+  await nextTick();
+
+  const element = document.getElementById(`neo-${panel}`);
+  if (!element) return;
+  const panelTop = element.getBoundingClientRect().top + window.scrollY;
+  window.scrollTo(
+    0,
+    Math.max(0, panelTop + panelScrollOffsets[panel] - getPanelNavHeight()),
+  );
+}
+
+function getPanelNavHeight(): number {
+  if (isDesktopLayout.value) return 0;
+  return document.querySelector<HTMLElement>('.mobileNav')?.offsetHeight ?? 0;
+}
+
 function scrollToPanel(id: string) {
   const el = document.getElementById(id);
-  const container = scrollContainerRef.value;
   if (!el) return;
 
-  // Prefer container-based scrolling.
-  // Container scroll prevents iOS Safari address bar toggling
-  // from stealing tap events on the fixed bottom nav.
-  // Fall back to window scroll if .shell__scroll has no overflow-y: auto.
-  if (container && container.scrollHeight > container.clientHeight) {
-    const containerRect = container.getBoundingClientRect();
-    const elRect = el.getBoundingClientRect();
-    const y = elRect.top - containerRect.top + container.scrollTop - 8;
-    container.scrollTo({ top: y, behavior: "instant" });
-  } else {
-    const y = el.getBoundingClientRect().top + window.scrollY - 60;
-    window.scrollTo({ top: y, behavior: "instant" });
-  }
+  const panelNavHeight = getPanelNavHeight();
+  const desktopGutter = panelNavHeight === 0 ? 8 : 0;
+  const y = el.getBoundingClientRect().top + window.scrollY - panelNavHeight - desktopGutter;
+  window.scrollTo(0, Math.max(0, y));
 }
 
 function scrollToTop() {
-  const container = scrollContainerRef.value;
-  if (container && container.scrollHeight > container.clientHeight) {
-    container.scrollTo({ top: 0, behavior: "smooth" });
-  } else {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
+  window.scrollTo(0, 0);
+}
+
+function onDesktopLayoutChange(event: MediaQueryListEvent): void {
+  isDesktopLayout.value = event.matches;
 }
 
 // Design Switcher Logic — auto-detects themes from CSS files in styles/
@@ -617,6 +798,11 @@ async function onDesignChange(ev: Event) {
 }
 
 onMounted(async () => {
+  if (typeof desktopMediaQuery.addEventListener === 'function') {
+    desktopMediaQuery.addEventListener('change', onDesktopLayoutChange);
+  } else {
+    desktopMediaQuery.addListener(onDesktopLayoutChange);
+  }
   window.addEventListener("pagehide", saveScrollPosition);
   document.addEventListener("visibilitychange", saveScrollPositionWhenHidden);
 
@@ -625,7 +811,7 @@ onMounted(async () => {
   mountBoxPanel.value = true;
   await nextTick();
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-  if (reloadScrollPosition !== null && scrollContainerRef.value) {
+  if (reloadScrollPosition !== null) {
     restoreReloadScrollPosition(reloadScrollPosition);
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   }
@@ -643,6 +829,15 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  cancelElementViewportRestore?.();
+  cancelElementViewportRestore = null;
+  if (typeof desktopMediaQuery.removeEventListener === 'function') {
+    desktopMediaQuery.removeEventListener('change', onDesktopLayoutChange);
+  } else {
+    desktopMediaQuery.removeListener(onDesktopLayoutChange);
+  }
+  releaseDocumentScrollLock?.();
+  releaseDocumentScrollLock = null;
   window.removeEventListener("pagehide", saveScrollPosition);
   document.removeEventListener("visibilitychange", saveScrollPositionWhenHidden);
 });

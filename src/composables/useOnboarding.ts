@@ -3,11 +3,6 @@ import { ref, computed } from "vue";
 const STORAGE_KEY = "candy-boost-planner:onboarding-done";
 const APP_PREFIX = "candy-boost-planner:";
 
-/** Detect touch device safely (SSR / test-environment guard) */
-const isTouchDevice =
-  typeof window !== "undefined" &&
-  ("ontouchstart" in window || navigator.maxTouchPoints > 0);
-
 /**
  * Detect whether the user has existing app data in localStorage.
  * If any candy-boost-planner:* key (other than onboarding-done) exists,
@@ -104,19 +99,12 @@ export function useOnboarding() {
     currentStep.value = 0;
   }
 
-  /** i18n key for the action verb — "onboarding.actionTap" or "onboarding.actionClick" */
-  const actionI18nKey = isTouchDevice
-    ? "onboarding.actionTap"
-    : "onboarding.actionClick";
-
   return {
     isActive,
     isDone,
     currentStep,
     step,
     totalSteps,
-    isTouchDevice,
-    actionI18nKey,
     start,
     next,
     skip,

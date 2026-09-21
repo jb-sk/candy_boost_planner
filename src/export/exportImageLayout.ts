@@ -11,6 +11,10 @@ import type {
   ExportModelRow,
   ExportPieSlice,
 } from "./exportImageModel";
+import {
+  EXPORT_NATURE_MARK_WIDTH,
+  type ExportNatureTone,
+} from "./exportNatureMark";
 import type { ExportImageStyle } from "./exportImageStyle";
 
 // ── サイズ制限（allocation 前に総 pixel 数と辺長の両方を検査する）─────────────
@@ -30,44 +34,63 @@ export const HEADER_H = 76;
 export const GAP_AFTER_HEADER = 20;
 
 export const TITLE_TEXT_H = 30;
-export const TITLE_UNDERLINE_GAP = 6;
 export const TITLE_MARGIN_BELOW = 12;
-export const SECTION_TITLE_BLOCK = TITLE_TEXT_H + TITLE_UNDERLINE_GAP + 2 + TITLE_MARGIN_BELOW;
+export const SECTION_TITLE_BLOCK = TITLE_TEXT_H + TITLE_MARGIN_BELOW;
 
 export const WARNING_H = 30;
 
-export const CARD_H = 66;
+export const CARD_H = 74;
 export const CARD_GAP = 10;
-export const CARDS_MARGIN_BELOW = 18;
+export const CARDS_MARGIN_BELOW = 32;
 
-export const BAR_BLOCK_H = 34;
+export const BAR_BLOCK_H = 38;
 export const BAR_HEAD_H = 20;
-export const BAR_TRACK_H = 8;
+export const BAR_TRACK_H = 14;
 export const BAR_GAP = 14;
+export const BARS_MARGIN_BELOW = 32;
 
 export const SECTION_GAP = 22;
 
-export const COL_GAP = 8;
-export const TABLE_HEAD_H = 36;
-export const ROW_H = 40;
+export const COL_GAP = 0;
+export const TABLE_HEAD_H = 38;
+export const TABLE_HEAD_MULTILINE_H = 50;
+export const TABLE_HEAD_LINE_H = 18;
+/** 2行見出しの右端が罫線へ近づきすぎないための左右余白。 */
+export const TABLE_HEAD_MULTILINE_PAD_X = 10;
+export const ROW_H = 42;
 export const TOTAL_ROW_H = 46;
 export const CELL_PAD = 6;
+export const NAME_CELL_PAD = 10;
+/** 睡眠育成を含むLv表記で、端末のフォント幅にかかわらず確保する左右余白。 */
+export const LV_CELL_PAD = 10;
 export const BADGE_PAD_X = 6;
 export const BADGE_GAP = 8;
 
 export const RANKING_TOTAL_H = 32;
-export const PIE_D = 160;
+/** ランキング本文を見出しより少し内側へ入れる。 */
+export const RANKING_CONTENT_PAD_X = 12;
+export const PIE_MARGIN_TOP = 12;
+export const PIE_D = 144;
+/** ドーナツの外半径に対する穴の半径比。SVG と Canvas で共有する。 */
+export const PIE_HOLE_RATIO = 0.56;
+/** フォントの見た目上の重心を補正する中央数値の下方向オフセット。 */
+export const PIE_CENTER_VALUE_OFFSET_Y = 2;
 export const PIE_LEGEND_GAP = 24;
 export const LEGEND_SWATCH = 14;
 export const LEGEND_SWATCH_GAP = 8;
-export const LEGEND_PCT_RESERVE = 56;
-export const LEGEND_NAME_H = 28;
-export const LEGEND_DETAIL_H = 22;
+/** ランキングの割合表示と、左右の名前・アイテム内訳との間隔。 */
+export const LEGEND_INLINE_GAP = 14;
+export const LEGEND_ITEM_H = 30;
+export const LEGEND_DETAIL_CHIP_PAD_X = 6;
+export const LEGEND_DETAIL_VALUE_GAP = 4;
+export const LEGEND_DETAIL_GROUP_GAP = 10;
 
 // ── フォント（layout の measure と renderer の描画で同じ文字列を使う）──────────
 export type ExportFonts = {
+  brandProduct: string;
   brand: string;
   month: string;
+  monthYear: string;
   sectionTitle: string;
   warning: string;
   cardLabel: string;
@@ -85,35 +108,97 @@ export type ExportFonts = {
   legendName: string;
   legendPct: string;
   legendDetail: string;
+  pieCenterValue: string;
 };
 
 function fontString(weight: number, size: number, family: string): string {
   return `${weight} ${size}px ${family}`;
 }
 
+/** 画像内の役割別ウェイト。フォントの事前読込でもこの一覧を共有する。 */
+export const EXPORT_FONT_WEIGHTS = {
+  regular: 550,
+  strong: 650,
+  emphasis: 750,
+  display: 800,
+} as const;
+
+export const EXPORT_FONT_WEIGHT_VALUES = Object.values(EXPORT_FONT_WEIGHTS);
+
 export function buildFonts(style: ExportImageStyle): ExportFonts {
   const body = style.bodyFontFamily;
   const head = style.headingFontFamily;
+  const weight = EXPORT_FONT_WEIGHTS;
   return {
-    brand: fontString(800, 26, head),
-    month: fontString(700, 22, head),
-    sectionTitle: fontString(700, 21, head),
-    warning: fontString(700, 17, body),
-    cardLabel: fontString(700, 13, body),
-    cardValue: fontString(800, 26, head),
-    barLabel: fontString(600, 15, body),
-    barCap: fontString(600, 15, body),
-    tableHead: fontString(700, 15, body),
-    cellName: fontString(700, 17, body),
-    cellNature: fontString(600, 12, body),
-    cellLv: fontString(600, 17, body),
-    cellNum: fontString(600, 17, body),
-    totalNum: fontString(700, 17, body),
-    rankingTotalLabel: fontString(700, 15, body),
-    rankingTotalItem: fontString(600, 17, body),
-    legendName: fontString(700, 17, body),
-    legendPct: fontString(700, 18, head),
-    legendDetail: fontString(600, 15, body),
+    brandProduct: fontString(weight.strong, 13, head),
+    brand: fontString(weight.display, 29, head),
+    month: fontString(weight.display, 27, head),
+    monthYear: fontString(weight.strong, 14, head),
+    sectionTitle: fontString(weight.strong, 21, head),
+    warning: fontString(weight.strong, 17, body),
+    cardLabel: fontString(weight.strong, 13, body),
+    cardValue: fontString(weight.emphasis, 29, head),
+    barLabel: fontString(weight.regular, 15, body),
+    barCap: fontString(weight.regular, 15, body),
+    tableHead: fontString(weight.strong, 15, body),
+    cellName: fontString(weight.strong, 17, body),
+    cellNature: fontString(weight.regular, 12, body),
+    cellLv: fontString(weight.regular, 17, body),
+    cellNum: fontString(weight.regular, 17, body),
+    totalNum: fontString(weight.strong, 17, body),
+    rankingTotalLabel: fontString(weight.strong, 15, body),
+    rankingTotalItem: fontString(weight.regular, 17, body),
+    legendName: fontString(weight.strong, 17, body),
+    legendPct: fontString(weight.strong, 18, head),
+    legendDetail: fontString(weight.regular, 15, body),
+    pieCenterValue: fontString(weight.emphasis, 25, head),
+  };
+}
+
+export type SleepLevelLineLayout = {
+  levelFont: string;
+  sleepMarkFont: string;
+  candyWidth: number;
+  sleepMarkWidth: number;
+  sleepLevelWidth: number;
+  totalWidth: number;
+};
+
+function scaleFont(font: string, scale: number): string {
+  return font.replace(/([\d.]+)px/, (_match, size: string) => `${Number(size) * scale}px`);
+}
+
+/** 睡眠育成込みのLv表記を、左右余白を除いた幅へ端末フォントごとに収める。 */
+export function fitSleepLevelLine(
+  candyLevels: string,
+  sleepLevel: string,
+  maxWidth: number,
+  levelFont: string,
+  sleepMarkFont: string,
+  measure: MeasureText,
+): SleepLevelLineLayout {
+  const sleepMark = "zzZ";
+  const gapBeforeMark = 7;
+  const gapBeforeLevel = 4;
+  const fixedGapWidth = gapBeforeMark + gapBeforeLevel;
+  const baseTextWidth = measure(candyLevels, levelFont)
+    + measure(sleepMark, sleepMarkFont)
+    + measure(sleepLevel, levelFont);
+  const scale = baseTextWidth > 0
+    ? Math.min(1, Math.max(0, maxWidth - fixedGapWidth) / baseTextWidth)
+    : 1;
+  const fittedLevelFont = scaleFont(levelFont, scale);
+  const fittedSleepMarkFont = scaleFont(sleepMarkFont, scale);
+  const candyWidth = measure(candyLevels, fittedLevelFont);
+  const sleepMarkWidth = measure(sleepMark, fittedSleepMarkFont);
+  const sleepLevelWidth = measure(sleepLevel, fittedLevelFont);
+  return {
+    levelFont: fittedLevelFont,
+    sleepMarkFont: fittedSleepMarkFont,
+    candyWidth,
+    sleepMarkWidth,
+    sleepLevelWidth,
+    totalWidth: candyWidth + fixedGapWidth + sleepMarkWidth + sleepLevelWidth,
   };
 }
 
@@ -121,8 +206,8 @@ export type MeasureText = (text: string, font: string) => number;
 
 /** 列幅の fr 比。model.columns（mode により 6/4 列）からそのまま列を作る。 */
 const COLUMN_FR: Record<ExportColumn["key"], number> = {
-  name: 2.5,
-  lv: 1,
+  name: 2.25,
+  lv: 1.5,
   boost: 1,
   normal: 1,
   total: 1,
@@ -134,13 +219,39 @@ export type ExportLayoutColumn = {
   x: number;
   width: number;
   align: "left" | "center" | "right";
-  /** 固定列幅に収まる描画用見出し。 */
-  displayLabel: string;
+  /** 固定列幅に収まる描画用見出し。英語は単語境界で最大2行にする。 */
+  displayLines: string[];
 };
+
+/** 見出しを単語境界で最大2行に収める。分割できない言語は従来どおり1行省略。 */
+function wrapColumnLabel(
+  measure: MeasureText,
+  text: string,
+  maxWidth: number,
+  font: string,
+): string[] {
+  const words = text.trim().split(/\s+/);
+  let best: { lines: [string, string]; imbalance: number } | undefined;
+  for (let split = 1; split < words.length; split += 1) {
+    const first = words.slice(0, split).join(" ");
+    const second = words.slice(split).join(" ");
+    const firstWidth = measure(first, font);
+    const secondWidth = measure(second, font);
+    if (firstWidth > maxWidth || secondWidth > maxWidth) continue;
+    const imbalance = Math.abs(firstWidth - secondWidth);
+    if (!best || imbalance < best.imbalance) {
+      best = { lines: [first, second], imbalance };
+    }
+  }
+
+  if (best) return best.lines;
+  return [ellipsize(measure, text, maxWidth, font)];
+}
 
 export type ExportLayoutRowMeta = {
   displayName: string;
   natureLabel?: string;
+  natureTone?: ExportNatureTone;
   natureBadgeWidth: number;
 };
 
@@ -149,7 +260,6 @@ export type ExportLayoutLegendItem = {
   displayName: string;
   top: number;
   nameCenterY: number;
-  detailCenterY?: number;
 };
 
 export type ExportLayoutCard = {
@@ -159,6 +269,35 @@ export type ExportLayoutCard = {
 };
 
 export type ExportLayoutBar = { top: number };
+
+export type ExportLegendDetailPart = { label: string; value: string };
+
+/** `万能 S124 / M25` のような内訳を、チップと値へ分ける。 */
+export function splitLegendDetail(detail?: string): ExportLegendDetailPart | undefined {
+  if (!detail) return undefined;
+  const separator = detail.indexOf(" ");
+  if (separator < 0) return { label: detail, value: "" };
+  return {
+    label: detail.slice(0, separator),
+    value: detail.slice(separator + 1),
+  };
+}
+
+function measureLegendDetails(
+  slice: ExportPieSlice,
+  font: string,
+  measure: MeasureText,
+): number {
+  const parts = [
+    splitLegendDetail(slice.universalDetail),
+    splitLegendDetail(slice.typeDetail),
+  ].filter((part): part is ExportLegendDetailPart => part !== undefined);
+  return parts.reduce((width, part, index) => width
+    + (index > 0 ? LEGEND_DETAIL_GROUP_GAP : 0)
+    + measure(part.label, font)
+    + LEGEND_DETAIL_CHIP_PAD_X * 2
+    + (part.value ? LEGEND_DETAIL_VALUE_GAP + measure(part.value, font) : 0), 0);
+}
 
 export type ExportImageLayout = {
   logicalWidth: number;
@@ -186,6 +325,7 @@ export type ExportImageLayout = {
   table: {
     titleTop: number;
     headTop: number;
+    headHeight: number;
     firstRowTop: number;
     totalRowTop: number;
   };
@@ -197,6 +337,8 @@ export type ExportImageLayout = {
     pieCX: number;
     pieCY: number;
     pieR: number;
+    legendNameWidth: number;
+    legendPctWidth: number;
     legend: ExportLayoutLegendItem[];
   };
 
@@ -239,12 +381,13 @@ export function layoutColumns(
   let x = contentX;
   for (const c of columns) {
     const width = (COLUMN_FR[c.key] / sumFr) * available;
+    const labelWidth = width - CELL_PAD * 2;
     result.push({
       key: c.key,
       x,
       width,
       align: c.align,
-      displayLabel: ellipsize(measure, c.label, width - CELL_PAD * 2, font),
+      displayLines: wrapColumnLabel(measure, c.label, labelWidth, font),
     });
     x += width + COL_GAP;
   }
@@ -280,13 +423,14 @@ function computeRowMeta(
   return rows.map((r) => {
     let natureBadgeWidth = 0;
     if (r.natureLabel) {
-      natureBadgeWidth = measure(r.natureLabel, fonts.cellNature) + BADGE_PAD_X * 2;
+      natureBadgeWidth = (r.natureTone ? EXPORT_NATURE_MARK_WIDTH : measure(r.natureLabel, fonts.cellNature)) + BADGE_PAD_X * 2;
     }
     const budget =
-      nameColWidth - CELL_PAD - (natureBadgeWidth > 0 ? natureBadgeWidth + BADGE_GAP : 0);
+      nameColWidth - NAME_CELL_PAD - (natureBadgeWidth > 0 ? natureBadgeWidth + BADGE_GAP : 0);
     return {
       displayName: ellipsize(measure, r.name, budget, fonts.cellName),
       natureLabel: r.natureLabel,
+      natureTone: r.natureTone,
       natureBadgeWidth,
     };
   });
@@ -359,13 +503,16 @@ export function computeExportImageLayout(
     top: barsTop + i * (BAR_BLOCK_H + BAR_GAP),
   }));
   y += model.bars.length * BAR_BLOCK_H + Math.max(0, model.bars.length - 1) * BAR_GAP;
-  y += SECTION_GAP;
+  y += BARS_MARGIN_BELOW;
 
   // ── list (table) section ──
   const listTitleTop = y;
   y += SECTION_TITLE_BLOCK;
   const tableHeadTop = y;
-  y += TABLE_HEAD_H;
+  const tableHeadHeight = columns.some((column) => column.displayLines.length > 1)
+    ? TABLE_HEAD_MULTILINE_H
+    : TABLE_HEAD_H;
+  y += tableHeadHeight;
   const firstRowTop = y;
   y += model.rows.length * ROW_H;
   const totalRowTop = y;
@@ -379,34 +526,43 @@ export function computeExportImageLayout(
     y += SECTION_TITLE_BLOCK;
     const rankingTotalTop = y;
     y += RANKING_TOTAL_H;
+    y += PIE_MARGIN_TOP;
     const pieTop = y;
 
+    // 名前・%・アメ内訳を1行に並べる。%と内訳を先に確保し、長い名前だけ省略する。
     const pieR = PIE_D / 2;
-    const pieCX = contentX + pieR;
-    const pieCY = pieTop + pieR;
-
-    // legend 領域の名前列幅（x 位置は renderer 側で LEGEND_* 定数から再構成する）
-    const legendW = contentWidth - PIE_D - PIE_LEGEND_GAP;
-    const legendNameW = legendW - LEGEND_SWATCH - LEGEND_SWATCH_GAP - LEGEND_PCT_RESERVE - LEGEND_SWATCH_GAP;
+    const pieCX = contentX + RANKING_CONTENT_PAD_X + pieR;
+    const legendW = contentWidth - RANKING_CONTENT_PAD_X - PIE_D - PIE_LEGEND_GAP;
+    const legendPctWidth = Math.max(...model.pie.slices.map((slice) =>
+      measure(`${slice.displayPct}%`, fonts.legendPct)));
+    const legendDetailWidth = Math.max(0, ...model.pie.slices.map((slice) =>
+      measureLegendDetails(slice, fonts.legendDetail, measure)));
+    const desiredNameWidth = Math.max(...model.pie.slices.map((slice) =>
+      measure(slice.name, fonts.legendName)));
+    const fixedWidth = LEGEND_SWATCH
+      + LEGEND_SWATCH_GAP
+      + legendPctWidth
+      + LEGEND_INLINE_GAP * 2
+      + legendDetailWidth;
+    const legendNameWidth = Math.min(desiredNameWidth, Math.max(0, legendW - fixedWidth));
+    const legendHeight = model.pie.slices.length * LEGEND_ITEM_H;
+    const pieBlockHeight = Math.max(PIE_D, legendHeight);
+    const legendTop = pieTop + (pieBlockHeight - legendHeight) / 2;
+    const pieCY = pieTop + pieBlockHeight / 2;
 
     const legend: ExportLayoutLegendItem[] = [];
-    let cursor = pieTop;
+    let cursor = legendTop;
     for (const slice of model.pie.slices) {
-      const hasDetail = Boolean(slice.universalDetail || slice.typeDetail);
       const top = cursor;
-      const nameCenterY = top + LEGEND_NAME_H / 2;
-      const detailCenterY = hasDetail ? top + LEGEND_NAME_H + LEGEND_DETAIL_H / 2 : undefined;
+      const nameCenterY = top + LEGEND_ITEM_H / 2;
       legend.push({
         slice,
-        displayName: ellipsize(measure, slice.name, legendNameW, fonts.legendName),
+        displayName: ellipsize(measure, slice.name, legendNameWidth, fonts.legendName),
         top,
         nameCenterY,
-        detailCenterY,
       });
-      cursor += LEGEND_NAME_H + (hasDetail ? LEGEND_DETAIL_H : 0);
+      cursor += LEGEND_ITEM_H;
     }
-    const legendHeight = cursor - pieTop;
-    const pieBlockHeight = Math.max(PIE_D, legendHeight);
     y = pieTop + pieBlockHeight;
 
     ranking = {
@@ -416,6 +572,8 @@ export function computeExportImageLayout(
       pieCX,
       pieCY,
       pieR,
+      legendNameWidth,
+      legendPctWidth,
       legend,
     };
   }
@@ -440,7 +598,13 @@ export function computeExportImageLayout(
     fonts,
     headerHeight: HEADER_H,
     resources: { titleTop: resourcesTitleTop, warningTop, cardsTop, cards, barsTop, bars },
-    table: { titleTop: listTitleTop, headTop: tableHeadTop, firstRowTop, totalRowTop },
+    table: {
+      titleTop: listTitleTop,
+      headTop: tableHeadTop,
+      headHeight: tableHeadHeight,
+      firstRowTop,
+      totalRowTop,
+    },
     ranking,
     columns,
     rows,

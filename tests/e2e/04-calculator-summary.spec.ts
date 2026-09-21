@@ -234,6 +234,83 @@ test.describe('04-calculator A. 初期状態', () => {
     }
   });
 
+  test('4e. documentがページの唯一のスクロール主体で、windowから先頭へ戻れる', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 700 });
+    expect(await page.evaluate(() => history.scrollRestoration)).toBe('manual');
+    await page.locator('#mobile-panel-tab-box').click();
+    await page.locator('#neo-box').scrollIntoViewIfNeeded();
+
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    expect(await page.locator('.shell__scroll').evaluate(element => element.scrollTop)).toBe(0);
+
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  });
+
+  test('4f. オーバーレイ表示中は背景documentをロックし、閉じると位置を維持する', async ({ page }) => {
+    await page.evaluate(() => localStorage.setItem('candy-boost-planner:onboarding-done', '1'));
+    await page.reload();
+    await page.setViewportSize({ width: 390, height: 700 });
+    await expect(page.locator('#neo-box')).toBeAttached();
+    await page.locator('.shell__scroll').evaluate((shell) => {
+      const spacer = document.createElement('div');
+      spacer.style.height = '1000px';
+      shell.appendChild(spacer);
+    });
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    }));
+    await page.evaluate(() => window.scrollTo(0, 300));
+    const before = await page.evaluate(() => window.scrollY);
+    expect(before).toBeGreaterThan(0);
+
+    await page.getByTestId('settings-open-button-mobile').evaluate((button: HTMLButtonElement) => button.click());
+    await expect(page.getByTestId('settings-overlay')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => ({
+      root: document.documentElement.style.overflow,
+      body: document.body.style.overflow,
+      position: document.body.style.position,
+      top: document.body.style.top,
+      scrollY: window.scrollY,
+    }))).toEqual({ root: 'hidden', body: 'hidden', position: 'fixed', top: `-${before}px`, scrollY: 0 });
+
+    await page.mouse.wheel(0, 1_000);
+    await page.waitForTimeout(100);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+
+    const savedWhileLocked = await page.evaluate(() => {
+      window.dispatchEvent(new PageTransitionEvent('pagehide'));
+      return JSON.parse(sessionStorage.getItem('candy-boost-planner:ui:scrollTop:v1') ?? 'null') as { scrollTop: number } | null;
+    });
+    expect(savedWhileLocked?.scrollTop).toBe(before);
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('settings-overlay')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => ({
+      root: document.documentElement.style.overflow,
+      body: document.body.style.overflow,
+      position: document.body.style.position,
+      top: document.body.style.top,
+      scrollY: window.scrollY,
+    }))).toEqual({ root: '', body: '', position: '', top: '', scrollY: before });
+    await page.evaluate(() => sessionStorage.removeItem('candy-boost-planner:ui:scrollTop:v1'));
+  });
+
+  test('4g. PCでstickyサマリーの上余白がviewport外へ欠けない', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 700 });
+    await page.locator('.shell__scroll').evaluate((shell) => {
+      const spacer = document.createElement('div');
+      spacer.style.height = '2000px';
+      shell.appendChild(spacer);
+    });
+    await page.evaluate(() => window.scrollTo(0, 500));
+
+    const sticky = page.locator('.calcSticky');
+    const summary = page.getByTestId('calc-sticky-summary');
+    await expect.poll(() => sticky.evaluate(element => element.getBoundingClientRect().top)).toBe(0);
+    expect(await summary.evaluate(element => element.getBoundingClientRect().top)).toBe(12);
+  });
+
   test('5. ボタンが無効化されている（クリア/エクスポート）', async ({ page }) => {
     const calc = new CalcPanelPage(page);
 
@@ -273,42 +350,49 @@ test.describe('04-calculator B. ポケモン追加・基本操作', () => {
   test('6b. BOXから追加しても押した詳細パネルの画面位置を維持する', async ({ page }) => {
     const box = new BoxPanelPage(page);
     const calc = new CalcPanelPage(page);
-    const scrollContainer = page.locator('.shell__scroll');
 
     await page.setViewportSize({ width: 390, height: 700 });
     await box.selectBoxTile(0);
-    await box.detailPanel.evaluate((el) => el.scrollIntoView({ block: 'center' }));
     // iOS Safari の自動アンカーが効かない／別要素を選ぶ場合でもアプリ側で維持する。
-    await scrollContainer.evaluate((el) => {
-      (el as HTMLElement).style.overflowAnchor = 'none';
-    });
+    await page.evaluate(() => { document.documentElement.style.overflowAnchor = 'none'; });
+    // 詳細パネルは画面より高いため、パネル全体を center 指定するとブラウザごとに
+    // クリック対象の位置が変わる。実際に押すボタンを基準にして検証する。
+    await box.applyToCalcButton.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    await expect(box.applyToCalcButton).toBeInViewport();
 
-    const beforeTop = await box.detailPanel.evaluate((el) => el.getBoundingClientRect().top);
+    const beforeTop = await box.applyToCalcButton.evaluate((el) => el.getBoundingClientRect().top);
+    // CIの低速時に起きる遅延レイアウトを再現し、初回描画後のずれも追従できることを確認する。
+    await page.evaluate(() => {
+      window.setTimeout(() => {
+        document.querySelector<HTMLElement>('.hero')?.style.setProperty('padding-bottom', '120px');
+      }, 300);
+    });
     await box.clickApplyToCalc();
     await calc.expectRowCount(1);
-    await page.evaluate(() => new Promise<void>((resolve) => {
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-    }));
-    const afterTop = await box.detailPanel.evaluate((el) => el.getBoundingClientRect().top);
 
-    expect(await scrollContainer.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
-    expect(Math.abs(afterTop - beforeTop), '追加ボタン付近が追加前後で動かない').toBeLessThanOrEqual(2);
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    await expect.poll(
+      async () => Math.abs(
+        await box.applyToCalcButton.evaluate((el) => el.getBoundingClientRect().top) - beforeTop,
+      ),
+      { message: '追加ボタン付近が追加前後で動かない' },
+    ).toBeLessThanOrEqual(2);
   });
 
   test('6c. 繰り返しリロードしても表示位置が累積してずれない', async ({ page }) => {
     const box = new BoxPanelPage(page);
     const calc = new CalcPanelPage(page);
-    const scrollContainer = page.locator('.shell__scroll');
     await page.setViewportSize({ width: 390, height: 700 });
-    await expect(scrollContainer).toBeVisible();
+    await expect(page.locator('.shell__scroll')).toBeVisible();
 
     await box.selectBoxTile(0);
     await box.clickApplyToCalc();
+    await page.getByTestId('box-detail-view-calc').click();
     await calc.waitForPlannerResult();
     const calcRow = page.getByTestId('calc-row').first();
     await calcRow.evaluate((element) => element.scrollIntoView({ block: 'center' }));
     const beforeTop = await calcRow.evaluate((element) => element.getBoundingClientRect().top);
-    expect(await scrollContainer.evaluate((element) => (element as HTMLElement).scrollTop)).toBeGreaterThan(0);
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
 
     try {
       for (let reloadCount = 0; reloadCount < 3; reloadCount += 1) {
@@ -322,7 +406,7 @@ test.describe('04-calculator B. ポケモン追加・基本操作', () => {
         expect(Math.abs(afterTop - beforeTop), `${reloadCount + 1}回目のリロード後 (${beforeTop} -> ${afterTop})`).toBeLessThanOrEqual(2);
       }
     } finally {
-      await scrollContainer.evaluate((element) => { (element as HTMLElement).scrollTop = 0; });
+      await page.evaluate(() => window.scrollTo(0, 0));
       await page.evaluate(() => sessionStorage.removeItem('candy-boost-planner:ui:scrollTop:v1'));
     }
   });
@@ -356,6 +440,7 @@ test.describe('04-calculator B. ポケモン追加・基本操作', () => {
     await page.setViewportSize({ width: 390, height: 700 });
     await box.selectBoxTile(0);
     await box.clickApplyToCalc();
+    await page.getByTestId('box-detail-view-calc').click();
     await calc.expectRowCount(1);
 
     const row = calc.getRow(0);
@@ -387,6 +472,7 @@ test.describe('04-calculator B. ポケモン追加・基本操作', () => {
     const boxNatureDropdown = page.getByTestId('nature-select-dropdown');
     await boxNatureDropdown.getByRole('button', { name: '-', exact: true }).dispatchEvent('mousedown');
     await box.clickApplyToCalc();
+    await page.getByTestId('box-detail-view-calc').click();
     await calc.expectRowCount(1);
 
     const row = calc.getRow(0);
@@ -857,21 +943,23 @@ test.describe('04-calculator E. 行の入力操作', () => {
   test('25a. 画面上側のアメブ個数でEnterを押してもスクロール位置を維持する', async ({ page }) => {
     const calc = new CalcPanelPage(page);
     const boostCandyInput = calc.getRowBoostCandyInput(calc.getRow(0));
-    const scrollContainer = page.locator('.shell__scroll');
 
     await page.setViewportSize({ width: 390, height: 700 });
+    await page.locator('#neo-calc').evaluate((panel) => {
+      const spacer = document.createElement('div');
+      spacer.style.height = '1000px';
+      panel.appendChild(spacer);
+    });
     // BOX→計算機追加直後の位置維持処理を、実際に入力欄へ触れた場合と同様に終了させる。
-    await scrollContainer.dispatchEvent('pointerdown');
-    await scrollContainer.evaluate((element) => {
-      (element as HTMLElement).style.scrollBehavior = 'auto';
-      (element as HTMLElement).style.overflowAnchor = 'none';
+    await page.locator('body').dispatchEvent('pointerdown');
+    await page.evaluate(() => {
+      document.documentElement.style.scrollBehavior = 'auto';
+      document.documentElement.style.overflowAnchor = 'none';
     });
 
     for (const value of ['', '0', '123']) {
       await boostCandyInput.evaluate((element) => {
-        const container = document.querySelector<HTMLElement>('.shell__scroll');
-        if (!container) throw new Error('.shell__scroll not found');
-        container.scrollTop += element.getBoundingClientRect().top - 200;
+        window.scrollBy(0, element.getBoundingClientRect().top - 200);
       });
       await expect.poll(() => boostCandyInput.evaluate((element) => element.getBoundingClientRect().top))
         .toBeGreaterThan(190);
@@ -879,14 +967,14 @@ test.describe('04-calculator E. 行の入力操作', () => {
         .toBeLessThan(210);
 
       await boostCandyInput.fill(value);
-      const before = await scrollContainer.evaluate((element) => element.scrollTop);
+      const before = await page.evaluate(() => window.scrollY);
       // Locator.press() は要素を自動スクロールするため、実際のユーザー操作と同じく
       // フォーカス済みの入力欄へキーボードイベントだけを送る。
       await page.keyboard.press('Enter');
       await page.waitForTimeout(500);
 
       expect(
-        await scrollContainer.evaluate((element) => element.scrollTop),
+        await page.evaluate(() => window.scrollY),
         `入力値 ${JSON.stringify(value)} のEnter確定で動かない`,
       ).toBe(before);
     }
@@ -1637,9 +1725,9 @@ test.describe('04-calculator F. 計算結果表示', () => {
     const pairedAlpha = await bgAlpha(calc.getRowUsedRow(row));
     expect(pairedAlpha).toBeLessThan(soloAlpha);
     expect(soloAlpha).toBeLessThan(requiredAlpha);
-    expect(requiredAlpha).toBeCloseTo(0.16, 2);
-    expect(soloAlpha).toBeCloseTo(0.1, 2);
-    expect(pairedAlpha).toBeCloseTo(0.06, 2);
+    expect(requiredAlpha).toBeCloseTo(0.17, 2);
+    expect(soloAlpha).toBeCloseTo(0.11, 2);
+    expect(pairedAlpha).toBeCloseTo(0.08, 2);
   });
 
   test('31b. リロード後も到達可能行は表示される', async ({ page }) => {
@@ -1840,6 +1928,44 @@ test.describe('04-calculator G. プログレスバー・サマリー表示', () 
     await expect(calc.shardsBar).toBeVisible();
   });
 
+  test('36b. Blue・Candy・Greenはアメ・かけらの横棒を別色で表示する', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    await calc.stickySummary.click();
+
+    const boostFill = calc.boostCandyBar.locator('.calcBar__fill--active');
+    const shardsFill = calc.shardsBar.locator('.calcBar__fill--active');
+    const backgroundColor = (el: Element) => getComputedStyle(el).backgroundColor;
+
+    await expect.poll(() => boostFill.evaluate(backgroundColor)).toBe('rgb(0, 168, 107)');
+    await expect.poll(() => shardsFill.evaluate(backgroundColor)).toBe('rgb(0, 134, 199)');
+
+    await page.evaluate(() => localStorage.setItem('candy-boost-planner:design', 'candy'));
+    await page.reload();
+    await calc.stickySummary.click();
+    expect({
+      theme: await page.locator('.design-switch-select').inputValue(),
+      boost: await boostFill.evaluate(backgroundColor),
+      shards: await shardsFill.evaluate(backgroundColor),
+    }).toEqual({
+      theme: 'candy',
+      boost: 'rgb(245, 142, 172)',
+      shards: 'rgb(239, 200, 107)',
+    });
+
+    await page.evaluate(() => localStorage.setItem('candy-boost-planner:design', 'green'));
+    await page.reload();
+    await calc.stickySummary.click();
+    expect({
+      theme: await page.locator('.design-switch-select').inputValue(),
+      boost: await boostFill.evaluate(backgroundColor),
+      shards: await shardsFill.evaluate(backgroundColor),
+    }).toEqual({
+      theme: 'green',
+      boost: 'rgb(139, 211, 106)',
+      shards: 'rgb(255, 173, 102)',
+    });
+  });
+
   test('37. サマリー（合計アメブ、合計かけら）が表示される', async ({ page }) => {
     const summaryInline = page.locator('.calcSumInline:not(.calcSumInline--candy)');
     await expect(summaryInline.first()).toBeVisible();
@@ -2002,6 +2128,135 @@ test.describe('04-calculator H. 行の並べ替え', () => {
     const row0 = calc.getRow(0);
     const dragHandle = calc.getRowDragHandle(row0);
     await expect(dragHandle).toBeVisible();
+  });
+
+  test('43a. Greenテーマの選択行ではドラッグハンドルが行背景になじむ', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    await page.locator('.design-switch-select').selectOption('green');
+    const row = calc.getRow(0);
+    await row.click();
+
+    const dragHandle = calc.getRowDragHandle(row);
+    await expect(row).toHaveClass(/calcRow--active/);
+    await expect(dragHandle).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await dragHandle.hover();
+    await expect(dragHandle).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  });
+
+  test('43b. ドラッグ中は全行ナビで移動先をプレビューして確定できる', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const rowCount = await calc.getRowCount();
+    const firstTitle = await calc.getRow(0).locator('.calcRow__title').textContent();
+    const handle = calc.getRowDragHandle(calc.getRow(0));
+    await handle.scrollIntoViewIfNeeded();
+    // 直前の行追加によるスクロール補正中でも、現在の表示位置にあるハンドルを掴む。
+    await handle.hover();
+    const box = await handle.boundingBox();
+    expect(box).not.toBeNull();
+
+    const pointerId = 7;
+    const pointerY = box!.y + box!.height / 2;
+    await handle.dispatchEvent('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      pointerId,
+      clientY: pointerY,
+    });
+    const nav = page.getByTestId('calc-reorder-nav');
+    await expect(nav).toBeVisible();
+    await expect(nav.locator('.calcReorderNav__item')).toHaveCount(rowCount);
+    await expect(nav.locator('.calcReorderNav__item').first()).toHaveCSS('gap', '12px');
+    await expect(nav.locator('.calcReorderNav__head')).toHaveCSS('padding-left', '14px');
+    await expect(nav.locator('.calcReorderNav__head')).toHaveCSS('padding-right', '14px');
+    await expect(page.locator('body')).toHaveClass(/calcRowReordering/);
+    await expect(calc.getRow(0).locator('.calcRow__title')).toHaveCSS('user-select', 'none');
+    const radius = await nav.evaluate((element) => ({
+      actual: getComputedStyle(element).borderRadius,
+      expected: getComputedStyle(document.documentElement).getPropertyValue('--radius-lg').trim(),
+    }));
+    expect(radius.actual).toBe(radius.expected);
+
+    const secondItemY = await nav.locator('.calcReorderNav__item').nth(1).evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.top + rect.height / 2;
+    });
+    await page.evaluate(({ id, clientY }) => {
+      document.dispatchEvent(new PointerEvent('pointermove', {
+        bubbles: true,
+        cancelable: true,
+        pointerId: id,
+        clientY,
+      }));
+    }, { id: pointerId, clientY: secondItemY });
+    await expect(nav.locator('.calcReorderNav__head')).toContainText(`2 / ${rowCount}`);
+    await page.evaluate(({ id, clientY }) => {
+      document.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+        pointerId: id,
+        clientY,
+      }));
+    }, { id: pointerId, clientY: secondItemY });
+
+    await expect(nav).toBeHidden();
+    await expect(page.locator('body')).not.toHaveClass(/calcRowReordering/);
+    await expect(calc.getRow(1).locator('.calcRow__title')).toHaveText(firstTitle ?? '');
+  });
+
+  test('43c. Pointer Events非対応端末ではTouch Eventsで並び替えられる', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const firstTitle = await calc.getRow(0).locator('.calcRow__title').textContent();
+    const handle = calc.getRowDragHandle(calc.getRow(0));
+    await handle.scrollIntoViewIfNeeded();
+
+    await handle.evaluate((element) => {
+      Object.defineProperty(window, 'PointerEvent', { configurable: true, value: undefined });
+      const rect = element.getBoundingClientRect();
+      const clientX = rect.left + rect.width / 2;
+      const clientY = rect.top + rect.height / 2;
+      const state = { element, clientX, clientY, identifier: 7 };
+      (window as typeof window & { __rowDragTouch?: typeof state }).__rowDragTouch = state;
+      const touch = new Touch({ identifier: state.identifier, target: element, clientX, clientY });
+      element.dispatchEvent(new TouchEvent('touchstart', {
+        bubbles: true,
+        cancelable: true,
+        touches: [touch],
+        targetTouches: [touch],
+        changedTouches: [touch],
+      }));
+    });
+
+    const nav = page.getByTestId('calc-reorder-nav');
+    await expect(nav).toBeVisible();
+    await expect(page.locator('body')).toHaveClass(/calcRowReordering/);
+    await expect(calc.getRow(0).locator('.calcRow__title')).toHaveCSS('user-select', 'none');
+    await page.evaluate(() => {
+      const state = (window as typeof window & {
+        __rowDragTouch?: { element: Element; clientX: number; clientY: number; identifier: number };
+      }).__rowDragTouch!;
+      const touch = new Touch({
+        identifier: state.identifier,
+        target: state.element,
+        clientX: state.clientX,
+        clientY: state.clientY + 40,
+      });
+      document.dispatchEvent(new TouchEvent('touchmove', {
+        bubbles: true,
+        cancelable: true,
+        touches: [touch],
+        changedTouches: [touch],
+      }));
+      document.dispatchEvent(new TouchEvent('touchend', {
+        bubbles: true,
+        cancelable: true,
+        touches: [],
+        changedTouches: [touch],
+      }));
+    });
+
+    await expect(nav).toBeHidden();
+    await expect(page.locator('body')).not.toHaveClass(/calcRowReordering/);
+    await expect(calc.getRow(1).locator('.calcRow__title')).toHaveText(firstTitle ?? '');
   });
 });
 

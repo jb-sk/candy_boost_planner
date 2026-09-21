@@ -1,4 +1,5 @@
 import "./backup/promotePendingRestoreOnStartup";
+import "@fontsource-variable/m-plus-2";
 
 import { createApp } from "vue";
 import App from "./App.vue";
@@ -6,6 +7,13 @@ import App from "./App.vue";
 import { createAppI18n, ensureLocaleMessagesLoaded, normalizeLocale } from "./i18n";
 import { installPersistFlushHandlers } from "./persistence/deferredPersist";
 import { isPerfEnabled } from "./utils/perf";
+
+// The app restores reload positions after async panels and planner results have
+// settled. Disable the browser's competing reload restoration to avoid a
+// two-step jump now that the document itself owns scrolling.
+if ("scrollRestoration" in history) {
+  history.scrollRestoration = "manual";
+}
 
 // Cloudflare Web Analytics (optional)
 // Set VITE_CF_WEB_ANALYTICS_TOKEN in your environment to enable.

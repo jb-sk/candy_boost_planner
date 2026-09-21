@@ -55,6 +55,18 @@ test.describe('検索・フィルタ', () => {
     await expect(boxPanel.searchInput).toHaveValue('');
   });
 
+  test('検索で選択中のポケモンが対象外になったら、解除後も詳細を再表示しない', async () => {
+    await boxPanel.boxTiles.first().click();
+    await expect(boxPanel.detailPanel).toBeVisible();
+
+    await boxPanel.fillSearch('一致しない検索語');
+    await expect(boxPanel.detailPanel).toHaveCount(0);
+
+    await boxPanel.clickSearchClear();
+    await expect(boxPanel.boxTiles.first()).toBeVisible();
+    await expect(boxPanel.detailPanel).toHaveCount(0);
+  });
+
   test('とくいフィルタ: お気に入りボタンが動作する', async () => {
     await expect(boxPanel.favoriteFilterButton).toBeVisible();
     await boxPanel.toggleFavoriteFilter();
@@ -67,18 +79,90 @@ test.describe('検索・フィルタ', () => {
     await expect(boxPanel.favoriteFilterButton).not.toHaveClass(/chipBtn--on/);
   });
 
-  test('タイル右端のお気に入り操作は詳細を開かず、キーボードでも切り替えられる', async ({ page }) => {
+  test('Blueテーマでは選択中フィルターを濃い青と白文字で示す', async ({ page }) => {
+    await page.locator('.design-switch-select').selectOption('blue');
+    await boxPanel.toggleFavoriteFilter();
+
+    await expect(boxPanel.favoriteFilterButton).toHaveClass(/chipBtn--on/);
+    await expect(boxPanel.favoriteFilterButton).toHaveCSS('background-color', 'rgb(0, 110, 170)');
+    await expect(boxPanel.favoriteFilterButton).toHaveCSS('border-color', 'rgb(0, 110, 170)');
+    await expect(boxPanel.favoriteFilterButton).toHaveCSS('color', 'rgb(255, 255, 255)');
+  });
+
+  test('タイル右上のお気に入り操作は詳細を開かず、右下は通常選択になる', async ({ page }) => {
     const tile = boxPanel.boxTiles.first();
     const favoriteZone = page.getByTestId('box-tile-fav-zone').first();
     const before = await favoriteZone.getAttribute('aria-pressed');
 
     // 選択ボタンの中に別の操作要素を入れない（nested interactive contentの防止）。
     await expect(tile.locator('button, [role="button"]')).toHaveCount(0);
-    await favoriteZone.focus();
-    await favoriteZone.press('Space');
+    const [tileBox, zoneBox] = await Promise.all([tile.boundingBox(), favoriteZone.boundingBox()]);
+    expect(tileBox).not.toBeNull();
+    expect(zoneBox).not.toBeNull();
+    expect(zoneBox!.x + zoneBox!.width).toBeCloseTo(tileBox!.x + tileBox!.width, 0);
+    expect(zoneBox!.y).toBeCloseTo(tileBox!.y, 0);
+    expect(zoneBox!.width).toBeCloseTo(tileBox!.width * 0.2 - 4, 0);
+    expect(zoneBox!.height).toBeLessThanOrEqual(28);
 
+    // 右下はお気に入り領域ではなく、通常どおり詳細を開く。
+    await tile.click({ position: { x: tileBox!.width - 5, y: tileBox!.height - 5 } });
+    await expect(boxPanel.detailPanel).toBeVisible();
+    await expect(favoriteZone).toHaveAttribute('aria-pressed', before ?? 'false');
+    await tile.click();
+    await expect(boxPanel.detailPanel).toHaveCount(0);
+
+    // 右上はクリックでもキーボードでもお気に入りだけを切り替える。
+    await favoriteZone.click();
     await expect(favoriteZone).toHaveAttribute('aria-pressed', before === 'true' ? 'false' : 'true');
     await expect(boxPanel.detailPanel).toHaveCount(0);
+    await favoriteZone.focus();
+    await favoriteZone.press('Space');
+    await expect(favoriteZone).toHaveAttribute('aria-pressed', before ?? 'false');
+    await expect(boxPanel.detailPanel).toHaveCount(0);
+  });
+
+  test('タイル長押しで計算機への追加と削除を切り替え、通常クリックを発火しない', async ({ page }) => {
+    const tile = boxPanel.boxTiles.first();
+    const tileBox = await tile.boundingBox();
+    expect(tileBox).not.toBeNull();
+    const point = {
+      clientX: tileBox!.x + tileBox!.width / 2,
+      clientY: tileBox!.y + tileBox!.height / 2,
+    };
+
+    // スクロール相当の移動は長押しとして扱わない。
+    await tile.dispatchEvent('pointerdown', { pointerId: 6, pointerType: 'touch', isPrimary: true, button: 0, ...point });
+    await tile.dispatchEvent('pointermove', { pointerId: 6, pointerType: 'touch', isPrimary: true, button: 0, clientX: point.clientX, clientY: point.clientY + 20 });
+    await page.waitForTimeout(350);
+    await tile.dispatchEvent('pointerup', { pointerId: 6, pointerType: 'touch', isPrimary: true, button: 0, clientX: point.clientX, clientY: point.clientY + 20 });
+    await expect(tile.locator('.boxTile__calcMark')).toHaveCount(0);
+
+    // タッチ長押しで追加。
+    await tile.dispatchEvent('pointerdown', { pointerId: 7, pointerType: 'touch', isPrimary: true, button: 0, ...point });
+    await expect(tile.locator('..')).toHaveClass(/boxTile--pressing/);
+    await page.waitForTimeout(350);
+    await tile.dispatchEvent('pointerup', { pointerId: 7, pointerType: 'touch', isPrimary: true, button: 0, ...point });
+    await expect(tile.locator('.boxTile__calcMark')).toBeVisible();
+    // iOSがpointerup後に遅延合成するclickでも詳細を開かない。
+    await page.waitForTimeout(100);
+    await tile.dispatchEvent('click');
+    await expect(boxPanel.detailPanel).toHaveCount(0);
+
+    // マウス長押しで削除。pointerup後のclickは詳細選択へ流さない。
+    await tile.hover();
+    await page.mouse.down();
+    await expect(tile.locator('..')).not.toHaveClass(/boxTile--pressing/);
+    await page.waitForTimeout(350);
+    const calcFollowingInlineStyle = await page.getByTestId('calc-following').evaluate((element) => ({
+      transform: element.style.transform,
+      transition: element.style.transition,
+    }));
+    expect(calcFollowingInlineStyle).toEqual({ transform: '', transition: '' });
+    await page.mouse.up();
+    await expect(tile.locator('.boxTile__calcMark')).toHaveCount(0);
+    await expect(boxPanel.detailPanel).toHaveCount(0);
+
+    // 長押し完了後も、次の通常クリックは従来どおり詳細を開く。
     await tile.click();
     await expect(boxPanel.detailPanel).toBeVisible();
   });
@@ -120,6 +204,117 @@ test.describe('検索・フィルタ', () => {
     await boxPanel.expectBoxTileCount(initialCount);
   });
 
+  test('カスタムタグを管理・付与・絞り込みし、削除をUndoで復元できる', async ({ page }) => {
+    await page.locator('.design-switch-select').selectOption('blue');
+    const initialCount = await boxPanel.boxTiles.count();
+    const filters = page.getByTestId('box-custom-tag-filters');
+    await page.getByTestId('box-tag-manager-toggle').click();
+    const manager = page.getByTestId('box-tag-manager');
+
+    await page.getByTestId('box-tag-name-input').fill('アメブ候補');
+    await page.getByTestId('box-tag-add').click();
+    await expect(filters.getByRole('button', { name: 'アメブ候補', exact: true })).toBeVisible();
+
+    await page.getByTestId('box-tag-name-input').fill('睡眠候補');
+    await page.getByTestId('box-tag-add').click();
+    await expect(manager.locator('.boxTagManager__usage')).toHaveText(['0匹', '0匹']);
+    await expect(manager.locator('.boxTagManager__usage').first()).toHaveCSS('margin-right', '6px');
+    await manager.locator('.boxTagManager__name').filter({ hasText: '睡眠候補' }).click();
+    const renameInput = manager.locator('.boxTagManager__edit input');
+    await renameInput.fill('睡眠で上げる');
+    await manager.locator('.boxTagManager__edit').getByRole('button', { name: '保存' }).click();
+    await expect(filters.getByRole('button', { name: '睡眠で上げる', exact: true })).toBeVisible();
+
+    const [newNameBox, addButtonBox, existingNameBox, deleteButtonBox] = await Promise.all([
+      page.getByTestId('box-tag-name-input').boundingBox(),
+      page.getByTestId('box-tag-add').boundingBox(),
+      manager.locator('.boxTagManager__name').first().boundingBox(),
+      manager.locator('.boxTagManager__delete').first().boundingBox(),
+    ]);
+    expect(newNameBox).not.toBeNull();
+    expect(addButtonBox).not.toBeNull();
+    expect(existingNameBox).not.toBeNull();
+    expect(deleteButtonBox).not.toBeNull();
+    expect(existingNameBox!.width).toBeCloseTo(newNameBox!.width, 0);
+    expect(deleteButtonBox!.x).toBeCloseTo(addButtonBox!.x, 0);
+    expect(addButtonBox!.height).toBeCloseTo(newNameBox!.height, 0);
+    expect(deleteButtonBox!.height).toBeCloseTo(existingNameBox!.height, 0);
+    await expect(page.getByTestId('box-tag-name-input')).toHaveCSS('box-shadow', 'none');
+    await expect(manager.locator('.boxTagManager__name').first()).toHaveCSS('box-shadow', 'none');
+    await expect(page.getByTestId('box-tag-add')).not.toHaveCSS('box-shadow', 'none');
+    await expect(manager.locator('.boxTagManager__delete').first()).not.toHaveCSS('box-shadow', 'none');
+
+    await boxPanel.selectBoxTile(0);
+    const detailTag = boxPanel.detailPanel.getByRole('button', { name: 'アメブ候補', exact: true });
+    await detailTag.click();
+    await expect(detailTag).toHaveClass(/chipBtn--on/);
+
+    await filters.getByRole('button', { name: 'アメブ候補', exact: true }).click();
+    await expect(filters.getByRole('button', { name: 'アメブ候補', exact: true })).toHaveClass(/chipBtn--on/);
+    await boxPanel.expectBoxTileCount(1);
+    await filters.getByRole('button', { name: 'アメブ候補', exact: true }).click();
+    await boxPanel.expectBoxTileCount(initialCount);
+
+    const tagItem = manager.locator('.boxTagManager__item').filter({ hasText: 'アメブ候補' });
+    await tagItem.locator('.boxTagManager__delete').click();
+    await expect(tagItem.locator('.boxTagManager__confirm')).toContainText('1匹のポケモンがタグを使用中です。');
+    await expect(tagItem.locator('.boxTagManager__confirm')).toContainText('元に戻すボタンで戻せます');
+    await tagItem.locator('.boxTagManager__confirm').getByRole('button', { name: 'タグを削除' }).click();
+    await expect(filters.getByRole('button', { name: 'アメブ候補', exact: true })).toHaveCount(0);
+    await expect(boxPanel.undoButton).toBeFocused();
+
+    await boxPanel.undoButton.click();
+    await expect(filters.getByRole('button', { name: 'アメブ候補', exact: true })).toBeVisible();
+    await expect(boxPanel.detailPanel.getByRole('button', { name: 'アメブ候補', exact: true })).toHaveClass(/chipBtn--on/);
+
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.getByTestId('mobile-nav-box').click();
+    await expect(manager).toBeVisible();
+    const widths = await manager.evaluate((element) => ({
+      client: element.clientWidth,
+      scroll: element.scrollWidth,
+      documentClient: document.documentElement.clientWidth,
+      documentScroll: document.documentElement.scrollWidth,
+    }));
+    expect(widths.scroll).toBeLessThanOrEqual(widths.client);
+    expect(widths.documentScroll).toBeLessThanOrEqual(widths.documentClient);
+  });
+
+  test('検索・フィルターで表示中の個体だけにタグを一括登録し、Undoできる', async ({ page }) => {
+    const initialCount = await boxPanel.boxTiles.count();
+    await page.getByTestId('box-tag-manager-toggle').click();
+    await page.getByTestId('box-tag-name-input').fill('一括対象');
+    await page.getByTestId('box-tag-add').click();
+    const managerToggle = page.getByTestId('box-tag-manager-toggle');
+    const bulkToggle = page.getByTestId('box-tag-bulk-toggle');
+    await expect(managerToggle).toHaveClass(/boxCustomTagFilters__manage--open/);
+    await expect(managerToggle).toHaveCSS('background-color', 'rgb(1, 87, 155)');
+    await bulkToggle.click();
+    await expect(bulkToggle).toHaveClass(/boxCustomTagFilters__manage--open/);
+    await expect(bulkToggle).toHaveCSS('background-color', 'rgb(1, 87, 155)');
+    await expect(managerToggle).not.toHaveClass(/boxCustomTagFilters__manage--open/);
+
+    const firstVisibleName = (await boxPanel.boxTiles.first().locator('.boxTile__name').innerText()).trim();
+    await boxPanel.fillSearch(firstVisibleName);
+    const targetCount = await boxPanel.boxTiles.count();
+    expect(targetCount).toBeGreaterThan(0);
+    expect(targetCount).toBeLessThan(initialCount);
+    await expect(page.getByTestId('box-tag-bulk')).toContainText(`表示中の${targetCount}匹のポケモンへタグを一括登録`);
+    await expect(page.getByTestId('box-tag-bulk-apply')).toHaveText('一括登録');
+    await page.getByTestId('box-tag-bulk-apply').click();
+    await expect(page.getByTestId('box-tag-bulk')).toContainText(`${targetCount}匹に登録しました。`);
+
+    await boxPanel.clickSearchClear();
+    const tagFilter = page.getByTestId('box-custom-tag-filters').getByRole('button', { name: '一括対象', exact: true });
+    await tagFilter.click();
+    await boxPanel.expectBoxTileCount(targetCount);
+
+    await boxPanel.undoButton.click();
+    await boxPanel.expectBoxTileCount(0);
+    await tagFilter.click();
+    await boxPanel.expectBoxTileCount(initialCount);
+  });
+
   test('フィルタリング設定の開閉が動作する', async () => {
     // boxAdvancedパネルの開閉を確認
     // 最初に閉じた状態にする
@@ -149,6 +344,15 @@ test.describe('検索・フィルタ', () => {
     // OR → AND
     await boxPanel.filterJoinSelect.selectOption('and');
     await expect(boxPanel.filterJoinSelect).toHaveValue('and');
+  });
+
+  test('タグの結合はORがデフォルトでANDへ切り替えられる', async () => {
+    await boxPanel.openAdvancedSettings();
+
+    await expect(boxPanel.tagJoinSelect).toBeVisible();
+    await expect(boxPanel.tagJoinSelect).toHaveValue('or');
+    await boxPanel.tagJoinSelect.selectOption('and');
+    await expect(boxPanel.tagJoinSelect).toHaveValue('and');
   });
 
   test('サブスキルフィルタAND/ORが切り替えられる', async () => {
@@ -198,14 +402,20 @@ test.describe('BOX詳細パネル', () => {
     await expect(boxPanel.applyToCalcButton).toBeVisible();
   });
 
-  test('ボックスから削除ボタンが動作する', async () => {
+  test('ボックスから削除すると計算機からも削除される', async ({ page }) => {
     const initialCount = await boxPanel.boxTiles.count();
 
     await boxPanel.selectBoxTile(0);
+    await boxPanel.clickApplyToCalc();
+    await expect(page.getByTestId('calc-row')).toHaveCount(1);
     await boxPanel.clickDeleteFromBox();
+    await expect(boxPanel.deleteLinkedConfirm).toBeVisible();
+    await expect(boxPanel.deleteLinkedConfirm).toContainText('計算機側は元に戻せません');
+    await boxPanel.confirmLinkedDelete();
 
     // 1匹減っている
     await boxPanel.expectBoxTileCount(initialCount - 1);
+    await expect(page.getByTestId('calc-row')).toHaveCount(0);
   });
 
   test('元に戻す・やり直すが動作する', async () => {
@@ -227,10 +437,13 @@ test.describe('BOX詳細パネル', () => {
     await boxPanel.expectBoxTileCount(initialCount - 1);
   });
 
-  test('ボックス全消去が動作する', async () => {
+  test('ボックス全消去が動作し、ボックス由来の計算行も削除する', async ({ page }) => {
     // 確認は `window.confirm` ではなく、押した場所に出るインライン確認。
     // 「やめる」では何も起きない。
     const beforeCount = await boxPanel.boxTiles.count();
+    await boxPanel.selectBoxTile(0);
+    await boxPanel.clickApplyToCalc();
+    await expect(page.getByTestId('calc-row')).toHaveCount(1);
     await expect(boxPanel.clearAllBoxButton).toBeEnabled();
     await boxPanel.clearAllBoxButton.click();
     await expect(boxPanel.clearConfirm).toBeVisible();
@@ -242,6 +455,7 @@ test.describe('BOX詳細パネル', () => {
 
     // 全て消える
     await boxPanel.expectBoxTileCount(0);
+    await expect(page.getByTestId('calc-row')).toHaveCount(0);
   });
 
   test('全消去の確認は Escape で閉じ、フォーカスが元のボタンへ戻る', async ({ page }) => {

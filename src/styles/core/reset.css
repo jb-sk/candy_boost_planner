@@ -9,6 +9,7 @@
 :root {
   --font-body: system-ui, -apple-system, sans-serif;
   --font-heading: system-ui, -apple-system, sans-serif;
+  --mobile-nav-height: 36px;
 }
 
 /* ===== Global Reset ===== */
@@ -20,15 +21,14 @@
 
 html {
   height: 100%;
-  overflow: hidden;
+  overscroll-behavior-y: contain;
 }
 
 body {
   margin: 0;
   padding: 0;
-  height: 100%;
-  overflow: hidden;
-  /* body does NOT scroll — .shell__scroll handles scrolling */
+  min-height: 100%;
+  overscroll-behavior-y: contain;
   -webkit-text-size-adjust: 100%;
   color: var(--ink);
   font-family: var(--font-body);
@@ -40,33 +40,23 @@ body {
   visibility: visible !important;
 }
 
-/* #app wrapper created by Vue — must propagate height */
+/* #app wrapper created by Vue — must propagate the document's minimum height */
 #app {
-  height: 100%;
+  min-height: 100%;
 }
 
 /* ===== Layout Shell ===== */
 .shell {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  /* html → body → #app → .shell: all 100% */
-  overflow: hidden;
+  min-height: 100%;
 }
 
-/* Scrollable content container — replaces body scroll.
-   Because body never scrolls, iOS Safari address bar stays stable
-   and fixed bottom nav never "drifts" on tap. */
+/* Content wrapper. The document is the sole page scroll owner so browser and
+   OS scroll-to-top gestures keep working. */
 .shell__scroll {
-  flex: 1 1 0;
-  min-height: 0;
-  /* allow flex child to shrink below content */
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
-  /* prevent pull-to-refresh bounce */
-  padding-bottom: 34px;
-  /* clearance for fixed bottom nav */
+  flex: 1 1 auto;
+  min-height: auto;
 }
 
 /* ===== Dashboard (main content area) ===== */

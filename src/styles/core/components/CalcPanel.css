@@ -13,12 +13,16 @@
   gap: 12px;
 }
 
+.calcFollowing {
+  min-width: 0;
+}
+
 /* ===== Sticky Summary ===== */
 .calcSticky {
   --calc-sticky-background: var(--paper);
   --calc-sticky-tint: rgba(var(--accent-rgb), 0.04);
   position: sticky;
-  top: 0;
+  top: var(--mobile-nav-height);
   z-index: 20;
   /* Opaque base so scrolled content never bleeds through */
   background: var(--calc-sticky-background);
@@ -31,8 +35,8 @@
 
 .calcSticky__summary {
   display: flex;
+  position: relative;
   align-items: baseline;
-  gap: 6px;
   cursor: pointer;
   -webkit-user-select: none;
   user-select: none;
@@ -109,10 +113,38 @@
 
 /* Expand/collapse icon */
 .calcSticky__toggle {
-  font-size: 12px;
+  position: absolute;
+  top: 50%;
+  right: -7px;
+  width: 18px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   color: var(--accent);
-  flex-shrink: 0;
-  line-height: 1;
+  transform: translateY(-50%);
+  cursor: pointer;
+  z-index: 1;
+}
+
+.calcSticky__toggle::before {
+  content: "";
+  position: absolute;
+  top: 9px;
+  right: 2px;
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.15s;
+}
+
+.calcSticky__toggle--expanded::before {
+  top: 12px;
+  transform: rotate(225deg);
 }
 
 .calcSticky__settings {
@@ -230,6 +262,19 @@
 
 .calcBar__fill--candy.calcBar__fill--others {
   background: rgba(var(--bar-fill-rgb), 0.4);
+}
+
+/* 既定はアクセント色。テーマごとに、かけら用だけ別色へ差し替えられる。 */
+.calcBarBlock--shards .calcBar__track {
+  background: var(--calc-shards-bar-track, var(--bar-track));
+}
+
+.calcBarBlock--shards .calcBar__fill--active {
+  background: var(--calc-shards-bar-fill, var(--accent));
+}
+
+.calcBarBlock--shards .calcBar__fill--others {
+  background: rgba(var(--calc-shards-bar-fill-rgb, var(--accent-rgb)), 0.4);
 }
 
 .calcBar__over {
@@ -545,20 +590,6 @@
   font-weight: 700;
 }
 
-/* Inline tooltip for onboarding step 3 — rendered in normal DOM flow */
-.calcEmpty__demoTip {
-  margin-top: 12px;
-  padding: 20px 22px;
-  background: var(--paper, #fff);
-  color: var(--ink, #1e293b);
-  border-radius: var(--radius-lg, 12px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.1);
-  font-family: var(--font-body, sans-serif);
-  animation: onboarding-fadeIn 0.25s ease;
-  position: relative;
-  z-index: 1;
-}
-
 /* --- Row Header --- */
 .calcRow__head {
   display: flex;
@@ -614,6 +645,89 @@ button.calcRow__dragHandle:active {
   color: var(--accent);
 }
 
+/* 行ドラッグ中の並び順ナビ。Popover APIやCSS Anchor Positioningを使わず、
+   古いモバイルブラウザでも動く fixed 配置と通常のスクロール要素だけで構成する。 */
+.calcReorderNav {
+  position: fixed;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--ink);
+  background: var(--paper);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  font-family: var(--font-body);
+}
+
+/* 並び替え中は指の下にある本文をiOSが選択しないよう、ページ全体を一時的に保護する。 */
+body.calcRowReordering,
+body.calcRowReordering * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none;
+}
+
+.calcReorderNav__head {
+  min-height: 28px;
+  padding: 4px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  background: var(--paper-2, var(--paper));
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.calcReorderNav__list {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.calcReorderNav__item {
+  height: 34px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--paper);
+  font-size: 13px;
+}
+
+.calcReorderNav__item:last-child {
+  border-bottom: none;
+}
+
+.calcReorderNav__item--moving {
+  color: var(--accent-ink, var(--ink));
+  background: rgba(var(--accent-rgb), 0.18);
+  box-shadow: inset 4px 0 0 var(--accent);
+  font-weight: 700;
+}
+
+.calcReorderNav__index {
+  width: 2ch;
+  flex: 0 0 auto;
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.calcReorderNav__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .calcRow__natureSelect {
   flex-shrink: 0;
 }
@@ -643,24 +757,6 @@ button.calcRow__dragHandle:active {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px 5px;
   align-items: start;
-}
-
-@media (min-width: 680px) {
-  .calcRow__grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .calcSumInline__k {
-    font-size: 13px;
-  }
-
-  .calcSumInline__v {
-    font-size: 18px;
-  }
-
-  .calcSumInline--candy .calcSumInline__v {
-    font-size: 17px;
-  }
 }
 
 /* ===== 計算機の入力欄 ===== */
@@ -1471,6 +1567,22 @@ button.calcRow__dragHandle:active {
  * 縦罫だけが表の下に残って崩れて見える。区切りは gap で足りる。
  */
 @media (min-width: 680px) {
+  .calcRow__grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .calcSumInline__k {
+    font-size: 13px;
+  }
+
+  .calcSumInline__v {
+    font-size: 18px;
+  }
+
+  .calcSumInline--candy .calcSumInline__v {
+    font-size: 17px;
+  }
+
   /*
    * 左端は結果テキストと揃える（字下げしない）。カードの面と枠で「行の中の別ブロック」
    * だと分かるので、字下げを足すと左だけ余白が二重になる。
@@ -1484,8 +1596,19 @@ button.calcRow__dragHandle:active {
 
 /* ===== PC desktop Summary enlargement (≥ 1400px) ===== */
 @media (min-width: 1400px) {
+  /*
+   * 2列表示では、stickyサマリーの開閉で左列だけが伸縮する。左列内をブラウザの
+   * スクロールアンカーにすると、その要素を画面内へ留めるためdocumentがスクロールし、
+   * 文書位置の変わらない右列（ポケモンボックス）だけが上下して見える。
+   */
+  .panel--calc {
+    overflow-anchor: none;
+  }
+
   .calcSticky {
-    top: -24px;
+    /* document scroll has no padded scrollport to offset; keep the full
+       summary, including its top padding, inside the viewport. */
+    top: 0;
     padding: 12px 10px;
   }
 

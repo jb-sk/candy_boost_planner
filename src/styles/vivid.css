@@ -72,6 +72,18 @@
 
 }
 
+/* 育成プランの資源カードは、テーマのネオン4色を暗い面で分離する。 */
+.exportSheet {
+  --export-card-accent-bg: #51243a;
+  --export-card-plain-bg: #203f45;
+  --export-card-primary-bg: #344619;
+  --export-card-danger-bg: #4b2d22;
+  --bar-fill: #f02d7d;
+  --bar-fill-rgb: 240, 45, 125;
+  --bar-shards-fill: #19d2ff;
+  --bar-shards-fill-rgb: 25, 210, 255;
+}
+
 
 
 /* ===== Global Elements ===== */
@@ -118,7 +130,7 @@ input:focus, select:focus, textarea:focus {
 /* ===== Panel ===== */
 .panel {
   background-color: var(--paper);
-  border: 3px solid #333;
+  border: 2px solid rgba(var(--border-rgb), 0.72);
   border-radius: var(--radius-lg);
   box-shadow: none;
   overflow: visible;
@@ -199,11 +211,14 @@ input:focus, select:focus, textarea:focus {
   transform: none;
 }
 
+/* 入力項目が多い追加フォームは、罫線と文字を水平に保つ。 */
+.modal.addModal {
+  transform: none;
+}
+
 /* ===== Mobile Nav ===== */
 .mobileNav {
-  background-color: rgba(16, 16, 16, 0.95);
-  border-top: 4px solid var(--border);
-  backdrop-filter: blur(8px);
+  background-color: #101010;
 }
 
 /* ===== Box Detail ===== */

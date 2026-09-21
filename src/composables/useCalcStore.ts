@@ -142,6 +142,10 @@ export type CalcExportRow = {
   natureLabel: string;
   srcLevel: number;
   dstLevel: number;
+  /** 実際にアメを使い終えた時点の到達Lv。 */
+  candyReachLevel: number;
+  /** 睡眠育成があり、アメ到達地点より先にある場合の最終目標Lv。 */
+  sleepTargetLevel?: number;
   boostCandy: number;
   normalCandy: number;
   totalCandy: number;
@@ -390,6 +394,8 @@ export type CalcStore = {
 
   clear: () => void;
   removeRowById: (id: string) => void;
+  countRowsByBoxIds: (boxIds: Iterable<string>) => number;
+  removeRowsByBoxIds: (boxIds: Iterable<string>) => number;
 
   switchToSlot: (slotIndex: number) => void;
   swapSlots: (fromIndex: number, toIndex: number) => void;
@@ -1281,6 +1287,48 @@ export function useCalcStore(opts: {
     if (activeRowId.value === id) activeRowId.value = rows.value[0]?.id ?? null;
   }
 
+  /** 現在表示中の行を正本として、全スロットにある対象行数を返す。 */
+  function countRowsByBoxIds(boxIds: Iterable<string>): number {
+    const ids = new Set(boxIds);
+    if (!ids.size) return 0;
+    const count = (slotRows: readonly CalcRow[]) =>
+      slotRows.reduce((total, row) => total + (row.boxId && ids.has(row.boxId) ? 1 : 0), 0);
+    return slots.value.reduce((total, slot, index) => {
+      const slotRows = index === activeSlotTab.value ? rows.value : slot?.rows ?? [];
+      return total + count(slotRows);
+    }, 0);
+  }
+
+  /**
+   * ボックス側で削除された個体に紐づく行を全スロットから削除する。
+   * ボックスのUndoとは別系統なので、片側だけ復元して孤立参照を作らないよう計算機Undoには積まない。
+   */
+  function removeRowsByBoxIds(boxIds: Iterable<string>): number {
+    const ids = new Set(boxIds);
+    if (!ids.size) return 0;
+    const removedCount = countRowsByBoxIds(ids);
+    if (!removedCount) return 0;
+
+    const filterRows = (slotRows: readonly CalcRow[]) =>
+      slotRows.filter((row) => !row.boxId || !ids.has(row.boxId));
+    const nextRows = filterRows(rows.value);
+    const nextActiveRowId = activeRowId.value && nextRows.some((row) => row.id === activeRowId.value)
+      ? activeRowId.value
+      : nextRows[0]?.id ?? null;
+
+    slots.value = slots.value.map((slot, index) => {
+      if (!slot) return null;
+      const nextSlotRows = index === activeSlotTab.value ? nextRows : filterRows(slot.rows);
+      const nextSlotActiveRowId = slot.activeRowId && nextSlotRows.some((row) => row.id === slot.activeRowId)
+        ? slot.activeRowId
+        : nextSlotRows[0]?.id ?? null;
+      return { ...slot, rows: nextSlotRows, activeRowId: nextSlotActiveRowId, savedAt: new Date().toISOString() };
+    });
+    rows.value = nextRows;
+    activeRowId.value = nextActiveRowId;
+    return removedCount;
+  }
+
 
 
   function formatSlotSavedAt(iso: string | undefined | null): string {
@@ -1303,10 +1351,9 @@ export function useCalcStore(opts: {
   /**
    * 並べ替えドラッグの通し番号。**1回のドラッグ＝1本の履歴**にするために使う。
    *
-   * PC では 25px 動かすたびに `moveRow` が走る（`CalcPanel.onRowDocPointerMove`）ので、
-   * まとめないと1回のドラッグで履歴が何本も積まれる。区切りは時間ではなくドラッグの
-   * 開始・終了に置く。ゆっくり動かしても割れず、逆にボタン操作（↑↓）は
-   * ドラッグ中ではないので1クリックずつ独立した履歴になる。
+   * 現在のナビゲーションUIは指を離した時に1回だけ `moveRow` を呼ぶ。通し番号も維持し、
+   * 同じドラッグ中に確定処理が増えても履歴が分裂しないようにする。ボタン操作（↑↓）は
+   * ドラッグ中ではないため、1クリックずつ独立した履歴になる。
    */
   // `flush: "sync"` は必須。既定の遅延フラッシュだと、同じ tick で
   // 「ドラッグ開始 → 1回目の入れ替え」が起きたときに通し番号が古いままになる。
@@ -2618,8 +2665,15 @@ export function useCalcStore(opts: {
         title: String(r.title ?? "").trim() || "(no name)",
         natureLabel: natureLabel(r.nature),
         srcLevel: r.srcLevel,
-        // 出力先Lvは睡眠後の最終目標を出す（アメ終了地点ではない。設計書§6.4）
+        // CSV の目標Lvは従来どおり最終目標を維持する。
         dstLevel: p.targetLevel,
+        // 画面・画像では、アメ終了地点と睡眠後の目標を分けて見せる。
+        candyReachLevel: p.reachableLine.level,
+        sleepTargetLevel: rowHasSleepPlan(r)
+          && (p.reachableLine.level !== p.targetLevel
+            || p.reachableLine.expInLevel !== p.targetExpInLevel)
+          ? p.targetLevel
+          : undefined,
         boostCandy,
         normalCandy,
         totalCandy: boostCandy + normalCandy,
@@ -3677,6 +3731,8 @@ export function useCalcStore(opts: {
 
     clear,
     removeRowById,
+    countRowsByBoxIds,
+    removeRowsByBoxIds,
 
     switchToSlot,
     swapSlots,

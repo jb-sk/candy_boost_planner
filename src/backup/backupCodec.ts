@@ -1,4 +1,5 @@
-import { MAX_GROWTH_INCENSE_STOCK, normalizeBlueSeedIncenseDays, normalizeBlueSeedPlantWeekday, normalizeUseProjectedEvents, type BoxSubSkillSlotV1, type IngredientType, type ManualEventBonus, type PokemonSpecialty, type SleepSettings } from "../domain/types";
+import { MAX_GROWTH_INCENSE_STOCK, normalizeBlueSeedIncenseDays, normalizeBlueSeedPlantWeekday, normalizeUseProjectedEvents, type BoxCustomTag, type BoxSubSkillSlotV1, type IngredientType, type ManualEventBonus, type PokemonSpecialty, type SleepSettings } from "../domain/types";
+import { MAX_BOX_CUSTOM_TAG_NAME_LENGTH, MAX_BOX_CUSTOM_TAGS } from "../persistence/box";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { maxTargetExpInLevel } from "../domain/level-planner/deriveTarget";
 import { pokemonMaster } from "../domain/pokesleep/pokemon-master";
@@ -230,11 +231,35 @@ function validateBoxEntry(value: unknown, path: string): BackupBoxEntryV1 {
     rawText: stringAt(row.rawText, `${path}.rawText`),
     label: stringAt(row.label, `${path}.label`),
     favorite: row.favorite === undefined ? undefined : booleanAt(row.favorite, `${path}.favorite`),
+    tagIds: row.tagIds === undefined
+      ? undefined
+      : arrayAt(row.tagIds, `${path}.tagIds`).map((id, index) => stringAt(id, `${path}.tagIds[${index}]`, false)),
     derived,
     planner,
     createdAt: validateIso(row.createdAt, `${path}.createdAt`),
     updatedAt: validateIso(row.updatedAt, `${path}.updatedAt`),
   };
+}
+
+function validateBoxCustomTags(value: unknown, path: string): BoxCustomTag[] {
+  if (value === undefined) return [];
+  const rows = arrayAt(value, path);
+  if (rows.length > MAX_BOX_CUSTOM_TAGS) fail(path, `maximum is ${MAX_BOX_CUSTOM_TAGS}`);
+  const ids = new Set<string>();
+  const names = new Set<string>();
+  return rows.map((item, index) => {
+    const itemPath = `${path}[${index}]`;
+    const row = objectAt(item, itemPath);
+    const id = stringAt(row.id, `${itemPath}.id`, false);
+    const name = stringAt(row.name, `${itemPath}.name`, false).trim();
+    if (name.length > MAX_BOX_CUSTOM_TAG_NAME_LENGTH) fail(`${itemPath}.name`, `maximum length is ${MAX_BOX_CUSTOM_TAG_NAME_LENGTH}`);
+    if (ids.has(id)) fail(`${itemPath}.id`, "duplicate id");
+    const normalizedName = name.toLocaleLowerCase();
+    if (names.has(normalizedName)) fail(`${itemPath}.name`, "duplicate name");
+    ids.add(id);
+    names.add(normalizedName);
+    return { id, name };
+  });
 }
 
 function validateRow(value: unknown, path: string, sourceSchemaVersion: 1 | 2 | 3): CalcRowV1 {
@@ -400,6 +425,8 @@ export function parseBackup(text: string): ValidatedBackup {
   const candyInventorySchemaVersion: 1 | 2 = sourceSchemaVersion === 1 ? 1 : 2;
   const data = objectAt(root.data, "$.data");
   const box = objectAt(data.box, "$.data.box");
+  const tags = validateBoxCustomTags(box.tags, "$.data.box.tags");
+  const tagIds = new Set(tags.map((tag) => tag.id));
   const rawEntries = arrayAt(box.entries, "$.data.box.entries");
   if (rawEntries.length > BACKUP_MAX_BOX_ENTRIES) fail("$.data.box.entries", `maximum is ${BACKUP_MAX_BOX_ENTRIES}`);
   const entries = rawEntries.map((entry, index) => validateBoxEntry(entry, `$.data.box.entries[${index}]`));
@@ -407,6 +434,12 @@ export function parseBackup(text: string): ValidatedBackup {
   entries.forEach((entry, index) => {
     if (boxIds.has(entry.id)) fail(`$.data.box.entries[${index}].id`, "duplicate id");
     boxIds.add(entry.id);
+    const seenTagIds = new Set<string>();
+    for (const [tagIndex, tagId] of (entry.tagIds ?? []).entries()) {
+      if (seenTagIds.has(tagId)) fail(`$.data.box.entries[${index}].tagIds[${tagIndex}]`, "duplicate id");
+      if (!tagIds.has(tagId)) fail(`$.data.box.entries[${index}].tagIds[${tagIndex}]`, "unknown tag id");
+      seenTagIds.add(tagId);
+    }
   });
   const globals = objectAt(data.globalSettings, "$.data.globalSettings");
   const sleep = objectAt(globals.sleepSettings, "$.data.globalSettings.sleepSettings");
@@ -439,7 +472,7 @@ export function parseBackup(text: string): ValidatedBackup {
     schemaVersion: BACKUP_SCHEMA_VERSION,
     exportedAt: validateIso(root.exportedAt, "$.exportedAt"),
     data: {
-      box: { entries },
+      box: { entries, tags },
       globalSettings: {
         defaultBoostReachLevel: validateDefaultBoostReachLevel(globals.defaultBoostReachLevel, sourceSchemaVersion),
         totalShards: numberAt(globals.totalShards, "$.data.globalSettings.totalShards", 0),

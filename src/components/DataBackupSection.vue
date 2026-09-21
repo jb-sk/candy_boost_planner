@@ -121,6 +121,7 @@ async function buildCurrentBackupText(): Promise<string> {
   await nextTick();
   const backup = createBackup({
     boxEntries: props.box.boxEntries.value,
+    customTags: props.box.customTags.value,
     totalShards: props.calc.totalShards.value,
     sleepSettings: props.calc.sleepSettings.value,
     candyInventory: candyStore.getInventory(),

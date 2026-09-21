@@ -16,8 +16,14 @@ import {
   pokemonIdFormsByNameJa,
 } from "../domain/pokesleep/pokemon-names";
 import type { ExpGainNature, ExpType } from "../domain";
-import type { BoxSubSkillSlotV1, IngredientType, PokemonBoxEntryV1, PokemonSpecialty } from "../domain/types";
-import { cryptoRandomId, loadBox, saveBox } from "../persistence/box";
+import type { BoxCustomTag, BoxSubSkillSlotV1, IngredientType, PokemonBoxEntryV1, PokemonSpecialty } from "../domain/types";
+import {
+  cryptoRandomId,
+  loadBoxData,
+  MAX_BOX_CUSTOM_TAG_NAME_LENGTH,
+  MAX_BOX_CUSTOM_TAGS,
+  saveBox,
+} from "../persistence/box";
 import { schedulePersist } from "../persistence/deferredPersist";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { normalizeSleepHoursInput } from "../domain/box/sleep-milestones";
@@ -25,6 +31,7 @@ type FilterJoinMode = "and" | "or";
 
 type BoxSnapshot = {
   entries: PokemonBoxEntryV1[];
+  customTags: BoxCustomTag[];
   selectedId: string | null;
 };
 
@@ -90,7 +97,9 @@ function clampExpRemaining(raw: number, level: number | null | undefined, expTyp
 export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) {
   const { locale, t } = opts;
 
-  const boxEntries = ref<PokemonBoxEntryV1[]>(loadBox());
+  const loadedBox = loadBoxData();
+  const boxEntries = ref<PokemonBoxEntryV1[]>(loadedBox.entries);
+  const customTags = ref<BoxCustomTag[]>(loadedBox.tags);
   const selectedBoxId = ref<string | null>(null);
   const importText = ref("");
   const importStatus = ref("");
@@ -137,12 +146,14 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     }
   });
 
-  const filterJoinMode = ref<FilterJoinMode>("and"); // とくい/サブスキル の結合
+  const filterJoinMode = ref<FilterJoinMode>("and"); // 異なるフィルターグループ間の結合
+  const tagJoinMode = ref<FilterJoinMode>("or"); // 複数カスタムタグの結合
   const subSkillJoinMode = ref<FilterJoinMode>("and"); // 複数サブスキル の結合
   const selectedSpecialties = ref<Array<"Berries" | "Ingredients" | "Skills" | "All">>([]);
   const selectedSubSkillEns = ref<string[]>([]);
   const favoritesOnly = ref(false);
   const inCalculatorOnly = ref(false);
+  const selectedCustomTagIds = ref<string[]>([]);
   const calculatorBoxIds = ref<ReadonlySet<string>>(new Set());
 
   const addName = ref("");
@@ -607,7 +618,8 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     const hasSpecialtyFilter = selectedSpecialties.value.length > 0;
     const hasSubSkillFilter = selectedSubSkillEns.value.length > 0;
     const hasInCalculatorFilter = inCalculatorOnly.value;
-    if (!hasFavoriteFilter && !hasSpecialtyFilter && !hasSubSkillFilter && !hasInCalculatorFilter) return base;
+    const hasCustomTagFilter = selectedCustomTagIds.value.length > 0;
+    if (!hasFavoriteFilter && !hasSpecialtyFilter && !hasSubSkillFilter && !hasInCalculatorFilter && !hasCustomTagFilter) return base;
 
     return base.filter((e) => {
       const decoded = getDecodedDetailForEntry(e);
@@ -618,6 +630,10 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
       const favoriteOk = !!e.favorite;
       const specialtyOk = (selectedSpecialties.value as readonly string[]).includes(sp);
       const inCalculatorOk = calculatorBoxIds.value.has(e.id);
+      const entryTagIds = new Set(e.tagIds ?? []);
+      const customTagOk = tagJoinMode.value === "and"
+        ? selectedCustomTagIds.value.every((tagId) => entryTagIds.has(tagId))
+        : selectedCustomTagIds.value.some((tagId) => entryTagIds.has(tagId));
 
       const subEns = decoded?.subSkills?.map((s) => s.nameEn) ?? [];
       const subOk = matchSubSkills(subEns, selectedSubSkillEns.value, subSkillJoinMode.value);
@@ -627,9 +643,23 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
       if (hasSpecialtyFilter) oks.push(specialtyOk);
       if (hasSubSkillFilter) oks.push(subOk);
       if (hasInCalculatorFilter) oks.push(inCalculatorOk);
+      if (hasCustomTagFilter) oks.push(customTagOk);
       return filterJoinMode.value === "and" ? oks.every(Boolean) : oks.some(Boolean);
     });
   });
+
+  // 検索やフィルターで選択中の個体が一覧から外れたら、詳細も閉じる。
+  // 選択IDを残すと、絞り込み解除時に以前の詳細が意図せず再表示される。
+  watch(
+    filteredBoxEntries,
+    (entries) => {
+      const selectedId = selectedBoxId.value;
+      if (selectedId && !entries.some((entry) => entry.id === selectedId)) {
+        selectedBoxId.value = null;
+      }
+    },
+    { flush: "sync" },
+  );
 
   function setCalculatorBoxIds(boxIds: Iterable<string>) {
     calculatorBoxIds.value = new Set(boxIds);
@@ -800,6 +830,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
   function captureBoxSnapshot(): BoxSnapshot {
     return {
       entries: cloneBoxEntries(boxEntries.value),
+      customTags: customTags.value.map((tag) => ({ ...tag })),
       selectedId: selectedBoxId.value,
     };
   }
@@ -819,6 +850,9 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
 
   function applyBoxSnapshot(snapshot: BoxSnapshot) {
     boxEntries.value = cloneBoxEntries(snapshot.entries);
+    customTags.value = snapshot.customTags.map((tag) => ({ ...tag }));
+    const validTagIds = new Set(customTags.value.map((tag) => tag.id));
+    selectedCustomTagIds.value = selectedCustomTagIds.value.filter((id) => validTagIds.has(id));
     selectedBoxId.value = snapshot.selectedId;
   }
 
@@ -847,9 +881,9 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
   // Store actions and App.vue replace the array and changed entry objects;
   // persistence therefore observes only the canonical array replacement.
   watch(
-    boxEntries,
+    [boxEntries, customTags],
     () => {
-      schedulePersist("box", () => saveBox(boxEntries.value));
+      schedulePersist("box", () => saveBox(boxEntries.value, customTags.value));
     }
   );
 
@@ -1090,6 +1124,96 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     toggleFavoriteById(e.id);
   }
 
+  function normalizeCustomTagName(name: string): string {
+    return String(name ?? "").trim().slice(0, MAX_BOX_CUSTOM_TAG_NAME_LENGTH);
+  }
+
+  function customTagNameExists(name: string, exceptId?: string): boolean {
+    const normalized = name.toLocaleLowerCase();
+    return customTags.value.some((tag) => tag.id !== exceptId && tag.name.toLocaleLowerCase() === normalized);
+  }
+
+  /** 追加できたタグID。空欄・重複・上限到達時はnull。 */
+  function addCustomTag(rawName: string): string | null {
+    const name = normalizeCustomTagName(rawName);
+    if (!name || customTags.value.length >= MAX_BOX_CUSTOM_TAGS || customTagNameExists(name)) return null;
+    pushUndoSnapshot();
+    const id = cryptoRandomId();
+    customTags.value = [...customTags.value, { id, name }];
+    return id;
+  }
+
+  function renameCustomTag(id: string, rawName: string): boolean {
+    const name = normalizeCustomTagName(rawName);
+    const current = customTags.value.find((tag) => tag.id === id);
+    if (!current || !name || name === current.name || customTagNameExists(name, id)) return false;
+    pushUndoSnapshot();
+    customTags.value = customTags.value.map((tag) => tag.id === id ? { ...tag, name } : tag);
+    return true;
+  }
+
+  function customTagUsageCount(id: string): number {
+    return boxEntries.value.reduce((count, entry) => count + (entry.tagIds?.includes(id) ? 1 : 0), 0);
+  }
+
+  function deleteCustomTag(id: string): boolean {
+    if (!customTags.value.some((tag) => tag.id === id)) return false;
+    pushUndoSnapshot();
+    customTags.value = customTags.value.filter((tag) => tag.id !== id);
+    selectedCustomTagIds.value = selectedCustomTagIds.value.filter((tagId) => tagId !== id);
+    const now = new Date().toISOString();
+    boxEntries.value = boxEntries.value.map((entry) => {
+      if (!entry.tagIds?.includes(id)) return entry;
+      const tagIds = entry.tagIds.filter((tagId) => tagId !== id);
+      return { ...entry, tagIds: tagIds.length ? tagIds : undefined, updatedAt: now };
+    });
+    return true;
+  }
+
+  function toggleCustomTagFilter(id: string): void {
+    const next = new Set(selectedCustomTagIds.value);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    selectedCustomTagIds.value = [...next];
+  }
+
+  /** 現在の検索・フィルター結果に含まれる個体へ、1回のUndo単位でタグを追加する。 */
+  function assignCustomTagToFiltered(id: string): number {
+    if (!customTags.value.some((tag) => tag.id === id)) return 0;
+    const targetIds = new Set(filteredBoxEntries.value.map((entry) => entry.id));
+    if (!targetIds.size) return 0;
+    const assignableIds = new Set(
+      boxEntries.value
+        .filter((entry) => targetIds.has(entry.id) && !entry.tagIds?.includes(id))
+        .map((entry) => entry.id),
+    );
+    if (!assignableIds.size) return 0;
+
+    pushUndoSnapshot();
+    const now = new Date().toISOString();
+    boxEntries.value = boxEntries.value.map((entry) => {
+      if (!assignableIds.has(entry.id)) return entry;
+      return {
+        ...entry,
+        tagIds: [...(entry.tagIds ?? []), id],
+        updatedAt: now,
+      };
+    });
+    return assignableIds.size;
+  }
+
+  function toggleSelectedCustomTag(id: string): void {
+    const selected = selectedBox.value;
+    if (!selected || !customTags.value.some((tag) => tag.id === id)) return;
+    const next = new Set(selected.tagIds ?? []);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    const now = new Date().toISOString();
+    boxEntries.value = boxEntries.value.map((entry) => entry.id === selected.id
+      ? { ...entry, tagIds: next.size ? [...next] : undefined, updatedAt: now }
+      : entry);
+  }
+
   function subSkillEnFromLabel(label: string): string | null {
     const v = String(label ?? "").trim();
     if (!v) return null;
@@ -1159,7 +1283,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     addExpRemaining.value = String(clampExpRemaining(n, lvl, addExpType.value));
   }
 
-  function onCreateManual(opts0: { mode: "toCalc" | "toBox" }) {
+  function onCreateManual(opts0: { mode: "toCalc" | "toBox"; tagIds?: readonly string[] }) {
     const found = addLookup.value;
     const now = new Date().toISOString();
     const lvl = Math.max(1, Math.min(MAX_LEVEL, Math.floor(Number(addLevel.value))));
@@ -1183,12 +1307,15 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     // フォーカスを外さずに作成された場合もここで丸める（planner.expType は addExpType）。
     const expRem = Number.isFinite(rawExpRem) && rawExpRem > 0 ? clampExpRemaining(rawExpRem, lvl, addExpType.value) : undefined;
     const sleepHoursVal = normalizeSleepHoursInput(addSleepHours.value);
+    const validTagIds = new Set(customTags.value.map((tag) => tag.id));
+    const tagIds = [...new Set(opts0.tagIds ?? [])].filter((id) => validTagIds.has(id));
     const entry: PokemonBoxEntryV1 = {
       id: cryptoRandomId(),
       source: "manual",
       rawText: "",
       label: nickname,
       favorite: addFavorite.value,
+      tagIds: tagIds.length ? tagIds : undefined,
       derived: {
         pokedexId,
         form,
@@ -1379,6 +1506,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
   return {
     // list/state
     boxEntries,
+    customTags,
     selectedBoxId,
     importText,
     importStatus,
@@ -1386,11 +1514,13 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     boxSortKey,
     boxSortDir,
     filterJoinMode,
+    tagJoinMode,
     subSkillJoinMode,
     selectedSpecialties,
     selectedSubSkillEns,
     favoritesOnly,
     inCalculatorOnly,
+    selectedCustomTagIds,
 
     // add form
     addName,
@@ -1466,6 +1596,15 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     setCalculatorBoxIds,
     toggleSelectedFavorite,
     toggleFavoriteById,
+    addCustomTag,
+    renameCustomTag,
+    deleteCustomTag,
+    customTagUsageCount,
+    toggleCustomTagFilter,
+    assignCustomTagToFiltered,
+    toggleSelectedCustomTag,
+    maxCustomTagNameLength: MAX_BOX_CUSTOM_TAG_NAME_LENGTH,
+    maxCustomTags: MAX_BOX_CUSTOM_TAGS,
     onRelinkInput,
     pickRelinkName,
     onRelinkBlur,

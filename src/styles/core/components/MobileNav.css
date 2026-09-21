@@ -1,28 +1,30 @@
-/* Modern: MobileNav — bottom fixed tab bar */
+/* Mobile/tablet panel navigation — flows after the hero, then sticks on top. */
 
 .mobileNav {
   display: flex;
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 900;
-  min-height: 32px;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  height: var(--mobile-nav-height);
+  min-height: var(--mobile-nav-height);
+  align-items: stretch;
   background: var(--paper);
-  border-top: 1px solid rgba(var(--ink-rgb), 0.1);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  border-bottom: 1px solid rgba(var(--ink-rgb), 0.1);
 }
 
-/* Home (scroll-to-top) button — absolute left, outside flex flow */
-.mobileNav__home {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
+/* Keep the sticky nav and summary as one flat surface. The parent-qualified
+   selector outranks theme-level `.mobileNav` shadows. */
+.shell__scroll > .mobileNav {
+  box-shadow: none;
+}
+
+.mobileNav__utility {
+  flex: 0 0 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
+  width: 40px;
+  height: 100%;
   padding: 0;
   border: none;
   background: transparent;
@@ -30,22 +32,33 @@
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition: color 0.15s;
-  z-index: 1;
 }
 
-.mobileNav__home:hover,
-.mobileNav__home:active {
+.mobileNav__utility:hover,
+.mobileNav__utility:active {
   color: var(--accent);
 }
 
-.mobileNav__homeIcon {
+.mobileNav__homeIcon,
+.mobileNav__utilityIcon {
   width: 16px;
   height: 16px;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mobileNav__panelTabs {
+  display: flex;
+  flex: 1;
+  height: 100%;
+  min-width: 0;
 }
 
 .mobileNav__item {
   flex: 1;
   display: flex;
+  height: 100%;
   align-items: center;
   justify-content: center;
   padding: 0;
@@ -58,11 +71,27 @@
   cursor: pointer;
   transition: color 0.15s;
   -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
+}
+
+.mobileNav button,
+.mobileNav button:active {
+  box-shadow: none;
+  transform: none;
+}
+
+.mobileNav__panelTabs .mobileNav__item {
+  width: 50%;
 }
 
 .mobileNav__item:hover,
 .mobileNav__item:active {
   color: var(--accent);
+}
+
+.mobileNav__item--active {
+  color: var(--accent-strong);
+  background: rgba(var(--accent-rgb), 0.08);
 }
 
 /* Hide bottom nav on desktop 2-column layout */

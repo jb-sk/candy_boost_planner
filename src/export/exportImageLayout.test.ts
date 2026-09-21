@@ -4,18 +4,39 @@ import {
   type ExportImageSource,
   type ExportImageTranslate,
 } from "./exportImageModel";
-import { FALLBACK_STYLE } from "./exportImageStyle";
+import { EXPORT_IMAGE_FONT_FAMILY, FALLBACK_STYLE } from "./exportImageStyle";
 import {
   COL_GAP,
+  buildFonts,
   computeExportImageLayout,
+  EXPORT_FONT_WEIGHT_VALUES,
   ellipsize,
+  fitSleepLevelLine,
   LOGICAL_WIDTH,
   MAX_CANVAS_AREA,
   MAX_CANVAS_SIDE,
   PAD_X,
+  ROW_H,
+  TABLE_HEAD_H,
+  TABLE_HEAD_MULTILINE_H,
+  splitLegendDetail,
   TARGET_SCALE,
   type MeasureText,
 } from "./exportImageLayout";
+
+describe("buildFonts", () => {
+  it("タイトルと月だけウェイト800を維持する", () => {
+    const fonts = buildFonts(FALLBACK_STYLE);
+    const weights = Object.values(fonts).map((font) => Number(font.split(" ", 1)[0]));
+    const displayWeightKeys = Object.entries(fonts)
+      .filter(([, font]) => font.startsWith("800 "))
+      .map(([key]) => key);
+
+    expect(displayWeightKeys).toEqual(["brand", "month"]);
+    expect(new Set(weights)).toEqual(new Set(EXPORT_FONT_WEIGHT_VALUES));
+    expect(Object.values(fonts).every((font) => font.endsWith(EXPORT_IMAGE_FONT_FAMILY))).toBe(true);
+  });
+});
 
 const fakeT: ExportImageTranslate = (key, params) =>
   params
@@ -75,13 +96,13 @@ function layoutFor(n: number, overrides: Partial<ExportImageSource> = {}) {
 
 describe("computeExportImageLayout — 高さ", () => {
   it("boost・1行・pie/warning なしの論理高さが固定値", () => {
-    expect(layoutFor(1).logicalHeight).toBe(534);
+    expect(layoutFor(1).logicalHeight).toBe(562);
   });
 
   it("行が増えると ROW_H 分だけ高くなる", () => {
     const h1 = layoutFor(1).logicalHeight;
     const h30 = layoutFor(30).logicalHeight;
-    expect(h30).toBe(h1 + 29 * 40);
+    expect(h30).toBe(h1 + 29 * ROW_H);
   });
 
   it("0 行でも有限・正の高さになる", () => {
@@ -120,25 +141,52 @@ describe("computeExportImageLayout — 列", () => {
     expect(layout.columns.map((c) => c.key)).toEqual(["name", "lv", "total", "shards"]);
   });
 
-  it("英語の長い列見出しを各列幅へ収める", () => {
+  it("英語の長い列見出しを単語境界で2行にして高さを広げる", () => {
     const model = buildExportImageModel(makeSource(1), {
       locale: "en",
       now: new Date(2026, 6, 19),
       t: (key) => ({
         "calc.export.colPokemon": "Pokémon",
         "calc.export.colLv": "Level",
-        "calc.export.colBoost": "Candy Boost",
+        "calc.export.colBoost": "Boost",
         "calc.export.colNormal": "Normal candy",
-        "calc.export.colTotal": "Candy total",
+        "calc.export.colTotal": "Total",
         "calc.export.colShards": "Dream Shards",
       }[key] ?? key),
     });
     const layout = computeExportImageLayout(model, FALLBACK_STYLE, fakeMeasure);
     for (const col of layout.columns) {
-      expect(fakeMeasure(col.displayLabel, layout.fonts.tableHead))
-        .toBeLessThanOrEqual(col.width - 12);
+      for (const line of col.displayLines) {
+        expect(fakeMeasure(line, layout.fonts.tableHead))
+          .toBeLessThanOrEqual(col.width - 12);
+      }
     }
-    expect(layout.columns.some((col) => col.displayLabel.endsWith("…"))).toBe(true);
+    expect(layout.columns.find((col) => col.key === "normal")?.displayLines)
+      .toEqual(["Normal", "candy"]);
+    expect(layout.columns.find((col) => col.key === "shards")?.displayLines)
+      .toEqual(["Dream", "Shards"]);
+    expect(layout.table.headHeight).toBe(TABLE_HEAD_MULTILINE_H);
+    expect(layout.table.headHeight).toBeGreaterThan(TABLE_HEAD_H);
+  });
+});
+
+describe("睡眠育成Lv表記", () => {
+  it("幅の広い端末フォントでも指定幅へ収める", () => {
+    const fitted = fitSleepLevelLine(
+      "63 → 69",
+      "70",
+      100,
+      "600 17px sans-serif",
+      "600 12px sans-serif",
+      (text, font) => {
+        const size = Number(font.match(/([\d.]+)px/)?.[1] ?? 16);
+        return text.length * size;
+      },
+    );
+
+    expect(fitted.totalWidth).toBeLessThanOrEqual(100);
+    expect(fitted.levelFont).not.toBe("600 17px sans-serif");
+    expect(fitted.sleepMarkFont).not.toBe("600 12px sans-serif");
   });
 });
 
@@ -215,6 +263,14 @@ describe("computeExportImageLayout — scale と oversize", () => {
 });
 
 describe("computeExportImageLayout — pie 配置", () => {
+  it("万能アメ内訳をチップ名と値へ分割する", () => {
+    expect(splitLegendDetail("万能 S124 / M25")).toEqual({
+      label: "万能",
+      value: "S124 / M25",
+    });
+    expect(splitLegendDetail(undefined)).toBeUndefined();
+  });
+
   it("pie ありでランキング section・legend 項目が配置される", () => {
     const layout = layoutFor(2, {
       universalCandyRanking: [
@@ -225,10 +281,19 @@ describe("computeExportImageLayout — pie 配置", () => {
     });
     expect(layout.ranking).toBeDefined();
     expect(layout.ranking!.legend).toHaveLength(2);
-    expect(layout.ranking!.pieR).toBe(80);
+    expect(layout.ranking!.pieR).toBe(72);
+    expect(layout.ranking!.pieCX).toBe(layout.contentX + 12 + layout.ranking!.pieR);
+    const legendCenter = (
+      layout.ranking!.legend[0].top
+      + layout.ranking!.legend[layout.ranking!.legend.length - 1].top
+      + 30
+    ) / 2;
+    expect(legendCenter).toBe(layout.ranking!.pieCY);
+    expect(layout.ranking!.legendNameWidth).toBeGreaterThan(0);
+    expect(layout.ranking!.legendPctWidth).toBeGreaterThan(0);
     // legend 項目は上から下へ
     expect(layout.ranking!.legend[1].top).toBeGreaterThan(layout.ranking!.legend[0].top);
-    // 詳細ありなので detailCenterY を持つ
-    expect(layout.ranking!.legend[0].detailCenterY).toBeDefined();
+    // 名前・%・アメ内訳を同じ行へ置くため、項目間隔は固定の1行分。
+    expect(layout.ranking!.legend[1].top - layout.ranking!.legend[0].top).toBe(30);
   });
 });

@@ -119,10 +119,12 @@
 }
 
 /* 「ラベル ＋ ?」をひとまとめにしてラベル列そのものにする。列幅を外側が持つので、
-   ? を足しても入力の左端が他の行とずれない。中のラベルは列の残り幅で折り返す。 */
+   ? を足しても入力の左端が他の行とずれない。? は右端へ寄せ、ラベルの長さに
+   かかわらず縦一列に揃える。中のラベルは列の残り幅で折り返す。 */
 .settingsField__labelWithHint {
   display: inline-flex;
   align-items: center;
+  justify-content: space-between;
   gap: 4px;
   min-width: var(--settings-label-width, 120px);
   max-width: var(--settings-label-width, 120px);

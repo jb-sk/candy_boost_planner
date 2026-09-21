@@ -102,14 +102,6 @@
   gap: 6px 10px;
 }
 
-@media (min-width: 680px) {
-
-  .subGrid,
-  .boxDetail__subEdit {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-}
-
 .subField {
   display: flex;
   flex-direction: column;
@@ -122,15 +114,53 @@
   color: var(--muted);
 }
 
-/* Favorite checkbox + actions: full width */
-.boxAddFav {
+/* Favorite + calculator options share one row. */
+.boxAddOptions {
   grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+
+.boxAddFav {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 13px;
   color: var(--muted);
   cursor: pointer;
+}
+
+.boxAddTags {
+  grid-column: 1 / -1;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+
+.boxAddTags__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.boxAddTags__create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 52px;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.boxAddTags__create .btn {
+  white-space: nowrap;
+}
+
+.boxAddTags__error {
+  margin: 0;
 }
 
 .boxAddActions {
@@ -282,6 +312,199 @@
   gap: 6px;
   flex-wrap: wrap;
   align-items: center;
+}
+
+.boxCustomTagFilters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.boxCustomTagFilters__label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.boxCustomTagFilters__manage {
+  border-style: dashed;
+}
+
+/* 開いている補助UIは文字色と背景色を反転する。
+   選択済みタグのaccent塗りとは色を分け、操作対象の状態と区別する。 */
+.chipBtn.boxCustomTagFilters__manage--open {
+  border-color: var(--ink);
+  background: var(--ink);
+  box-shadow: none;
+  color: var(--paper);
+}
+
+.boxTagManager {
+  --box-tag-row-width: 338px;
+  margin-top: 8px;
+  padding: 10px 0 0;
+  border: 0;
+  border-top: 1px dashed var(--border);
+  background: transparent;
+}
+
+.boxTagManager__add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 52px;
+  width: min(100%, var(--box-tag-row-width));
+  justify-content: start;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.boxTagManager__edit {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+  align-items: center;
+}
+
+.boxTagManager__add .field__input,
+.boxTagManager__edit .field__input {
+  min-width: 0;
+  width: 100%;
+  flex: 1 1 auto;
+}
+
+.boxTagManager__add .btn,
+.boxTagManager__edit .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.boxTagManager__add .btn {
+  width: 100%;
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.boxTagManager__error {
+  margin: 6px 0 0;
+}
+
+.boxTagManager__list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.boxTagManager__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 52px;
+  width: min(100%, var(--box-tag-row-width));
+  align-items: stretch;
+  gap: 6px;
+}
+
+.boxTagManager__edit,
+.boxTagManager__confirm {
+  grid-column: 1 / -1;
+}
+
+.boxTagManager__name,
+.boxTagManager__delete {
+  min-height: 32px;
+  border: 1px solid var(--border);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.boxTagManager__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-weight: 400;
+  text-align: left;
+}
+
+.boxTagManager__nameText {
+  min-width: 0;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.boxTagManager__usage {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.shell[data-locale="ja"] .boxTagManager__usage {
+  margin-right: 6px;
+}
+
+.boxTagManager__delete {
+  width: 100%;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.boxTagManager__delete:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.boxTagManager__confirm {
+  margin-top: 2px;
+}
+
+.boxTagBulk {
+  --box-tag-row-width: 338px;
+  width: min(100%, var(--box-tag-row-width));
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+
+.boxTagBulk__title {
+  display: block;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.boxTagBulk__status {
+  margin: 2px 0 0;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.boxTagBulk__controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.boxTagBulk__controls .field__input {
+  min-width: 0;
+  width: 100%;
+}
+
+.boxTagBulk__controls .btn {
+  white-space: nowrap;
 }
 
 /* ===== Chip Buttons ===== */
@@ -561,6 +784,10 @@
   cursor: pointer;
   text-align: left;
   overflow: hidden;
+  -webkit-touch-callout: none;
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
   /* 1行目: Lv（左）とアイコン行（右）。2行目: 名前（1行、はみ出しは省略）。
      .boxListはalign-items省略＝既定のstretchのため、同じグリッド行の他タイルに
      高さを引き伸ばされることがある。justify-content:centerで余白を上下均等に配分する。 */
@@ -568,6 +795,11 @@
   flex-direction: column;
   align-items: stretch;
   justify-content: center;
+}
+
+.boxTile--pressing .boxTile__select {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
 }
 
 .boxTile__select:active {
@@ -662,13 +894,14 @@
   color: var(--type-color);
 }
 
-/* Right-quarter tap/click zone toggles favorite without opening the detail panel */
+/* 星アイコン周辺の右上だけをお気に入り操作領域にする。
+   タイル右端の全高を覆うと、名前や右下を押した通常選択が誤爆しやすい。 */
 .boxTile__favZone {
   position: absolute;
   top: 0;
   right: 0;
-  bottom: 0;
-  width: 25%;
+  width: calc(20% - 4px);
+  height: 28px;
   z-index: 1;
   margin: 0;
   padding: 0;
@@ -831,14 +1064,6 @@
   align-items: start;
 }
 
-@media (min-width: 680px) {
-
-  .boxDetail__grid,
-  .boxAddGrid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-
 /* Flatten nested wrappers so children join parent grid */
 .boxDetail__col {
   display: contents;
@@ -878,6 +1103,16 @@
   font-weight: 500;
   font-size: 11px;
   color: var(--muted);
+}
+
+.boxDetail__tagList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.boxDetail__tagEmpty {
+  margin: 0;
 }
 
 /* --- Relink row --- */
@@ -1297,7 +1532,26 @@
   line-height: 1.35;
 }
 
+/* 全消去の確認。すぐ上の「ボックス全消去／元に戻す／やり直す」の列にくっつくと
+   どのボタンの確認なのか読み取りづらいので、間を空ける。 */
+.boxClearConfirm {
+  margin-top: 14px;
+}
+
+/* ===== Responsive overrides =====
+   Keep breakpoint variants after the mobile base rules so source order does
+   the overriding instead of selector-specificity escalation. */
 @media (min-width: 680px) {
+  .subGrid,
+  .boxDetail__subEdit {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .boxDetail__grid,
+  .boxAddGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
   .sleepCalcPanel {
     padding-left: 24px;
     padding-right: 34px;
@@ -1313,8 +1567,8 @@
   }
 }
 
-/* 全消去の確認。すぐ上の「ボックス全消去／元に戻す／やり直す」の列にくっつくと
-   どのボタンの確認なのか読み取りづらいので、間を空ける。 */
-.boxClearConfirm {
-  margin-top: 14px;
+@media (min-width: 1400px) {
+  .boxDetail__viewCalc {
+    display: none;
+  }
 }

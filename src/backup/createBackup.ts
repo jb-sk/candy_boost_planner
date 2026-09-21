@@ -1,10 +1,11 @@
-import type { PokemonBoxEntryV1, SleepSettings } from "../domain/types";
+import type { BoxCustomTag, PokemonBoxEntryV1, SleepSettings } from "../domain/types";
 import type { CalcSaveSlotV1 } from "../persistence/calc";
 import type { CandyInventoryV2 } from "../persistence/candy";
 import { BACKUP_FORMAT, BACKUP_SCHEMA_VERSION, type BackupBoxEntryV1, type CandyBoostPlannerBackupV3 } from "./types";
 
 export type BackupSnapshotSources = {
   boxEntries: readonly PokemonBoxEntryV1[];
+  customTags?: readonly BoxCustomTag[];
   totalShards: number;
   sleepSettings: SleepSettings;
   candyInventory: CandyInventoryV2;
@@ -40,7 +41,10 @@ export function createBackup(sources: BackupSnapshotSources, now = new Date()): 
     schemaVersion: BACKUP_SCHEMA_VERSION,
     exportedAt: now.toISOString(),
     data: {
-      box: { entries: sources.boxEntries.map((entry) => toBackupBoxEntry(entry)) },
+      box: {
+        entries: sources.boxEntries.map((entry) => toBackupBoxEntry(entry)),
+        tags: (sources.customTags ?? []).map((tag) => ({ ...tag })),
+      },
       globalSettings: {
         totalShards: sources.totalShards,
         sleepSettings: clone(sources.sleepSettings),

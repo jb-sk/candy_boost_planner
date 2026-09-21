@@ -6,7 +6,14 @@
 
     <div class="calcSticky">
       <div class="calcSticky__summary" data-testid="calc-sticky-summary" @click="stickyExpanded = !stickyExpanded">
-        <span class="calcSticky__toggle">{{ stickyExpanded ? '▼' : '▶' }}</span>
+        <button
+          type="button"
+          class="calcSticky__toggle"
+          :class="{ 'calcSticky__toggle--expanded': stickyExpanded }"
+          :aria-expanded="stickyExpanded"
+          :aria-label="t(stickyExpanded ? 'calc.summaryCollapse' : 'calc.summaryExpand')"
+          @click.stop="stickyExpanded = !stickyExpanded"
+        ></button>
         <div class="calcSticky__summaryBody" :aria-busy="calc.planResultPending.value ? 'true' : undefined">
           <button v-if="showNoStockWarning" type="button" class="calcSticky__noStock" data-testid="calc-no-stock-warning" @click.stop="$emit('open-settings')">{{ t("calc.export.noStockWarning") }}</button>
           <span
@@ -106,7 +113,7 @@
           </div>
         </div>
 
-        <div class="calcBarBlock" data-testid="calc-shards-block">
+        <div class="calcBarBlock calcBarBlock--shards" data-testid="calc-shards-block">
           <div class="calcSum__head">
             <div class="calcSum__k">
               <span class="calcSum__kText">
@@ -154,6 +161,7 @@
       </div>
     </div>
 
+    <div ref="calcFollowingRef" class="calcFollowing" data-testid="calc-following">
     <div class="calcActions" data-testid="calc-actions">
       <div class="calcActions__group">
         <button class="btn btn--icon" :class="calc.canUndo.value ? 'btn--primary' : 'btn--ghost'" data-testid="calc-undo-button" type="button" @click="calc.undo()" :disabled="!calc.canUndo.value" :title="t('common.undo')" :aria-label="t('common.undo')">
@@ -307,6 +315,8 @@
               :title="t('calc.row.dragReorder')"
               :aria-label="t('calc.row.dragReorder')"
               @pointerdown="onRowPointerDown(r.id, $event)"
+              @touchstart="onRowTouchStart(r.id, $event)"
+              @mousedown="onRowMouseDown(r.id, $event)"
               @click.stop
             >
               <svg class="calcRow__dragIcon" aria-hidden="true" viewBox="0 0 16 17" width="14" height="15"><path d="M4.5 5.5L8 2 11.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 11.5L8 15 11.5 11.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -773,23 +783,6 @@
               </span>
             </div>
           </div>
-          <!-- Inline tooltip for step 3: rendered in normal DOM flow, no fixed positioning -->
-          <div v-if="onboardingStep3Active" class="calcEmpty__demoTip">
-            <div class="onboarding-tooltip__header">
-              <span class="onboarding-tooltip__step">3 / {{ onboardingRef?.totalSteps }}</span>
-            </div>
-            <h3 v-if="onboardingRef?.step.value?.titleKey" class="onboarding-tooltip__title">{{ t(onboardingRef.step.value.titleKey) }}</h3>
-            <p class="onboarding-tooltip__desc">{{ t("onboarding.step3Desc", { action: onboardingActionLabel }) }}</p>
-            <div class="onboarding-tooltip__footer">
-              <button
-                class="btn btn--primary onboarding-tooltip__next"
-                type="button"
-                @click="onboardingRef?.next()"
-              >
-                {{ t("onboarding.done") }}
-              </button>
-            </div>
-          </div>
         </div>
 
         <!-- Normal empty state steps (hidden during onboarding) -->
@@ -810,6 +803,41 @@
       </div>
     </div>
     </div>
+    </div>
+
+    <Teleport to="body">
+      <div
+        v-if="rowDragNavVisible"
+        class="calcReorderNav"
+        data-testid="calc-reorder-nav"
+        role="status"
+        aria-live="polite"
+        :aria-label="t('calc.row.reorderNavLabel')"
+        :style="{
+          left: `${rowDragNavLeft}px`,
+          top: `${rowDragNavTop}px`,
+          width: `${rowDragNavWidth}px`,
+          maxHeight: `${rowDragNavMaxHeight}px`,
+        }"
+      >
+        <div class="calcReorderNav__head">
+          <span>{{ t('calc.row.reorderNavLabel') }}</span>
+          <span>{{ t('calc.row.reorderNavPosition', { current: rowDragTargetIndex + 1, total: rowDragItems.length }) }}</span>
+        </div>
+        <div ref="rowDragNavListRef" class="calcReorderNav__list">
+          <div
+            v-for="(item, index) in rowDragPreviewItems"
+            :key="item.id"
+            class="calcReorderNav__item"
+            :class="{ 'calcReorderNav__item--moving': item.id === rowDragIdState }"
+            :data-testid="item.id === rowDragIdState ? 'calc-reorder-nav-moving' : 'calc-reorder-nav-item'"
+          >
+            <span class="calcReorderNav__index">{{ index + 1 }}</span>
+            <span class="calcReorderNav__title">{{ item.title }}</span>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <Teleport to="body">
       <div v-if="hintState.visible" class="hintOverlay" data-testid="calc-hint-overlay" @click.stop="closeHint"></div>
@@ -1007,16 +1035,6 @@ async function copyDebugExport() {
 /** Onboarding tour state (injected from App.vue) */
 const _onboardingActive = inject<import("vue").Ref<boolean>>("onboardingActive");
 const onboardingActive = computed(() => _onboardingActive?.value ?? false);
-
-type OnboardingReturn = ReturnType<typeof import("../composables/useOnboarding").useOnboarding>;
-const onboardingRef = inject<OnboardingReturn | null>("onboarding", null);
-const onboardingStep3Active = computed(() =>
-  onboardingRef?.isActive.value && onboardingRef?.currentStep.value === 2,
-);
-// Action label ("tap" / "click") — sourced from composable to avoid duplication
-const onboardingActionLabel = computed(() =>
-  t(onboardingRef?.actionI18nKey ?? "onboarding.actionClick"),
-);
 /** Sticky summary bar expand/collapse */
 const stickyExpanded = ref(false);
 
@@ -1037,6 +1055,192 @@ function onApplyToBoxWithFlash(rowId: string) {
  *（元Lv＝目標Lvの行や、睡眠だけで目標に届く行は在庫があっても 0 になる）。
  */
 const showNoStockWarning = computed(() => calc.rowsView.value.length > 0 && !candyStore.hasAnyStock.value);
+
+/**
+ * サマリーは内容に応じた自然高のままにする。結果確定で折り返し行数が変わったときは、
+ * 後続領域、結果行、サマリー項目を旧矩形から transform で移動させ、レイアウトシフトとして
+ * 数えられる瞬間移動を避ける。サマリーが sticky 中なら document のスクロール量も補正する。
+ */
+const calcFollowingRef = ref<HTMLElement | null>(null);
+let summaryFlipFrame = 0;
+let summaryFlipTimer: ReturnType<typeof setTimeout> | null = null;
+let summaryLayoutGeneration = 0;
+let lastUserScrollAt = Number.NEGATIVE_INFINITY;
+let pointerInteractionActive = false;
+const summaryFlipElements = new Set<HTMLElement>();
+
+function markUserScroll(): void {
+  lastUserScrollAt = performance.now();
+}
+
+function markPointerInteractionStart(): void {
+  pointerInteractionActive = true;
+  markUserScroll();
+}
+
+function markPointerInteractionEnd(): void {
+  pointerInteractionActive = false;
+}
+
+function clearSummaryFlip(): void {
+  if (summaryFlipFrame) cancelAnimationFrame(summaryFlipFrame);
+  if (summaryFlipTimer) clearTimeout(summaryFlipTimer);
+  summaryFlipFrame = 0;
+  summaryFlipTimer = null;
+
+  for (const element of summaryFlipElements) {
+    element.style.transition = "";
+    element.style.transform = "";
+    element.style.transformOrigin = "";
+  }
+  summaryFlipElements.clear();
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("wheel", markUserScroll, { passive: true });
+  window.addEventListener("scroll", markUserScroll, { passive: true });
+  window.addEventListener("touchmove", markUserScroll, { passive: true });
+  window.addEventListener("pointerdown", markPointerInteractionStart, { passive: true });
+  window.addEventListener("pointerup", markPointerInteractionEnd, { passive: true });
+  window.addEventListener("pointercancel", markPointerInteractionEnd, { passive: true });
+  window.addEventListener("touchstart", markPointerInteractionStart, { passive: true });
+  window.addEventListener("touchend", markPointerInteractionEnd, { passive: true });
+  window.addEventListener("touchcancel", markPointerInteractionEnd, { passive: true });
+  window.addEventListener("mousedown", markPointerInteractionStart, { passive: true });
+  window.addEventListener("mouseup", markPointerInteractionEnd, { passive: true });
+}
+
+watch(
+  () => [
+    calc.planResult.value,
+    calc.rowsView.value.length,
+    calc.boostKind.value,
+    showNoStockWarning.value,
+    calc.boostCandyShortageTotal.value > 0,
+  ] as const,
+  async () => {
+    const following = calcFollowingRef.value;
+    if (!following || following.getClientRects().length === 0) return;
+
+    const generation = ++summaryLayoutGeneration;
+    clearSummaryFlip();
+    const beforeTop = following.getBoundingClientRect().top;
+    const rowRects = new Map(
+      [...following.querySelectorAll<HTMLElement>('[data-testid="calc-row"]')]
+        .map(element => [element, element.getBoundingClientRect()] as const),
+    );
+    const resultRects = new Map(
+      [...following.querySelectorAll<HTMLElement>('[data-testid="resultRowReachable"]')]
+        .map(element => [element, element.getBoundingClientRect()] as const),
+    );
+    const summaryRects = [...document.querySelectorAll<HTMLElement>('.calcSticky__summaryBody > *')]
+      .map(element => element.getBoundingClientRect());
+    await nextTick();
+
+    if (generation !== summaryLayoutGeneration) return;
+    const currentFollowing = calcFollowingRef.value;
+    if (!currentFollowing || currentFollowing.getClientRects().length === 0) return;
+
+    const afterTop = currentFollowing.getBoundingClientRect().top;
+    const delta = afterTop - beforeTop;
+    // Teleportされたポップオーバーはtransformへ追従しない。操作中の更新はアニメーションせず、
+    // ポップオーバーと対象欄の位置関係を優先する。
+    if (document.querySelector('.levelPick__popover, [data-testid="calc-hint-popover"], [data-testid="sleep-hint-popover"]')) {
+      return;
+    }
+
+    const sticky = currentFollowing.previousElementSibling as HTMLElement | null;
+    const stickyOffset = sticky ? Number.parseFloat(getComputedStyle(sticky).top) || 0 : 0;
+    const stickyTop = sticky?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY;
+    const isStuck = window.scrollY > 0 && Math.abs(stickyTop - stickyOffset) < 1.5;
+    const userIsInteracting = pointerInteractionActive || performance.now() - lastUserScrollAt < 180;
+
+    if (isStuck && !userIsInteracting && Math.abs(delta) >= 0.5) {
+      window.scrollBy(0, delta);
+    }
+    // クリック直後の同期更新や長押し中の更新は、操作対象を動かす方が不利益になる。
+    // Workerの遅延結果など、操作が終わった後の更新だけをFLIP対象にする。
+    if (userIsInteracting) return;
+
+    const followingTranslateY = beforeTop - currentFollowing.getBoundingClientRect().top;
+
+    const invert = (
+      element: HTMLElement,
+      translateX: number,
+      translateY: number,
+      scaleX = 1,
+      scaleY = 1,
+    ): void => {
+      if (
+        Math.abs(translateX) < 0.5
+        && Math.abs(translateY) < 0.5
+        && Math.abs(scaleX - 1) < 0.005
+        && Math.abs(scaleY - 1) < 0.005
+      ) return;
+      element.style.transition = "none";
+      element.style.transformOrigin = "top left";
+      element.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scaleX}, ${scaleY})`;
+      summaryFlipElements.add(element);
+    };
+
+    invert(currentFollowing, 0, followingTranslateY);
+    const rowTranslations = new Map<HTMLElement, { x: number; y: number }>();
+    for (const [row, before] of rowRects) {
+      if (!row.isConnected) continue;
+      const after = row.getBoundingClientRect();
+      const x = before.left - after.left;
+      const y = before.top - after.top - followingTranslateY;
+      rowTranslations.set(row, { x, y });
+      // 行全体を拡縮すると入力欄のタップ領域まで一時的に縮むため、位置だけを補正する。
+      invert(row, x, y);
+    }
+    for (const [result, before] of resultRects) {
+      if (!result.isConnected) continue;
+      const after = result.getBoundingClientRect();
+      const row = result.closest<HTMLElement>('[data-testid="calc-row"]');
+      const rowTranslation = row ? rowTranslations.get(row) : undefined;
+      invert(
+        result,
+        before.left - after.left - (rowTranslation?.x ?? 0),
+        before.top - after.top - followingTranslateY - (rowTranslation?.y ?? 0),
+        after.width > 0 ? before.width / after.width : 1,
+        after.height > 0 ? before.height / after.height : 1,
+      );
+    }
+    const summaryItems = [...document.querySelectorAll<HTMLElement>('.calcSticky__summaryBody > *')];
+    for (const [index, item] of summaryItems.entries()) {
+      const before = summaryRects[index];
+      if (!before) continue;
+      const after = item.getBoundingClientRect();
+      invert(
+        item,
+        before.left - after.left,
+        before.top - after.top,
+        after.width > 0 ? before.width / after.width : 1,
+        after.height > 0 ? before.height / after.height : 1,
+      );
+    }
+
+    if (summaryFlipElements.size === 0) return;
+    // 強制レイアウトで逆変換を確定してから、transform だけを最終位置へ動かす。
+    void currentFollowing.offsetHeight;
+
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    summaryFlipFrame = requestAnimationFrame(() => {
+      summaryFlipFrame = 0;
+      for (const element of summaryFlipElements) {
+        element.style.transition = reduceMotion ? "transform 1ms linear" : "transform 180ms ease-out";
+        element.style.transform = "none";
+      }
+      summaryFlipTimer = setTimeout(() => {
+        if (generation !== summaryLayoutGeneration) return;
+        summaryFlipTimer = null;
+        clearSummaryFlip();
+      }, reduceMotion ? 50 : 200);
+    });
+  },
+  { flush: "pre" },
+);
 
 /**
  * expRemaining の表示値。計算機では常に実際の数値を表示する。
@@ -1136,91 +1340,231 @@ function getSlotBoostKindLabel(slotIndex: number): string {
   }
 }
 
-// ===== 行ドラッグ（Pointer Events — モバイル・PC共通） =====
-// モバイル（〜679px）: 隣と1回だけ入れ替え → pointerup まで追加スワップ禁止
-// PC（680px〜）: ドラッグ量に応じて移動先を決定（複数段移動可能）
-// document レベルでイベントを処理（DOM 再構築で要素が消えても追跡可能）
-let rowDragStartY = 0;
-const ROW_DRAG_SWAP_THRESHOLD = 25; // px — この距離を超えたら入れ替え
-/** ドラッグ中の行 ID */
-let rowDragId: string | null = null;
-/** 追跡中の pointerId */
-let rowDragPointerId: number | null = null;
-/** モバイル: 1回スワップ済みフラグ（pointerup までロック） */
-let rowDragDone = false;
+// ===== 行ドラッグ（全行ナビゲーション付き） =====
+// Popover API / HTML Drag and Drop API は使わない。Pointer Events 非対応の古いSafari向けに
+// Touch Events と Mouse Events も同じ処理へ流す。
+type RowDragNavItem = { id: string; title: string };
+const ROW_DRAG_ITEM_HEIGHT = 34;
+const ROW_DRAG_NAV_HEADER_HEIGHT = 28;
+const ROW_DRAG_NAV_MARGIN = 8;
+const ROW_DRAG_START_THRESHOLD = 5;
 
-/** 680px 以上かどうか */
-function isWideScreen(): boolean {
-  return window.matchMedia("(min-width: 680px)").matches;
+const rowDragNavVisible = ref(false);
+const rowDragNavLeft = ref(0);
+const rowDragNavTop = ref(0);
+const rowDragNavWidth = ref(240);
+const rowDragNavMaxHeight = ref(200);
+const rowDragNavListRef = ref<HTMLElement | null>(null);
+const rowDragItems = ref<RowDragNavItem[]>([]);
+const rowDragTargetIndex = ref(0);
+const rowDragIdState = ref<string | null>(null);
+const rowDragPreviewItems = computed(() => {
+  const items = [...rowDragItems.value];
+  const from = items.findIndex((item) => item.id === rowDragIdState.value);
+  if (from < 0) return items;
+  const [moving] = items.splice(from, 1);
+  if (!moving) return items;
+  items.splice(Math.max(0, Math.min(items.length, rowDragTargetIndex.value)), 0, moving);
+  return items;
+});
+
+let rowDragId: string | null = null;
+let rowDragStartY = 0;
+let rowDragPointerId: number | null = null;
+let rowDragTouchId: number | null = null;
+let rowDragInput: "pointer" | "touch" | "mouse" | null = null;
+
+function clampRowDragValue(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function beginRowDrag(rowId: string, clientY: number, handle: HTMLElement, input: "pointer" | "touch" | "mouse") {
+  if (rowDragId) return;
+  const items = calc.rowsView.value.map((row) => ({ id: row.id, title: row.title }));
+  const startIndex = items.findIndex((item) => item.id === rowId);
+  if (startIndex < 0) return;
+
+  rowDragId = rowId;
+  rowDragIdState.value = rowId;
+  rowDragStartY = clientY;
+  rowDragInput = input;
+  rowDragItems.value = items;
+  rowDragTargetIndex.value = startIndex;
+  calc.dragRowId.value = rowId;
+  calc.dragOverRowId.value = rowId;
+  window.getSelection()?.removeAllRanges();
+  document.body.classList.add("calcRowReordering");
+
+  const viewportWidth = Math.max(240, window.innerWidth);
+  const viewportHeight = Math.max(240, window.innerHeight);
+  const width = Math.min(280, viewportWidth - ROW_DRAG_NAV_MARGIN * 2);
+  const contentHeight = items.length * ROW_DRAG_ITEM_HEIGHT + ROW_DRAG_NAV_HEADER_HEIGHT;
+  const maxHeight = Math.min(contentHeight, viewportHeight - ROW_DRAG_NAV_MARGIN * 2);
+  const rect = handle.getBoundingClientRect();
+  let left = rect.right + ROW_DRAG_NAV_MARGIN;
+  if (left + width > viewportWidth - ROW_DRAG_NAV_MARGIN) left = rect.left - width - ROW_DRAG_NAV_MARGIN;
+  left = clampRowDragValue(left, ROW_DRAG_NAV_MARGIN, viewportWidth - width - ROW_DRAG_NAV_MARGIN);
+  const desiredTop = clientY - ROW_DRAG_NAV_HEADER_HEIGHT - (startIndex + 0.5) * ROW_DRAG_ITEM_HEIGHT;
+
+  rowDragNavWidth.value = width;
+  rowDragNavMaxHeight.value = maxHeight;
+  rowDragNavLeft.value = left;
+  rowDragNavTop.value = clampRowDragValue(
+    desiredTop,
+    ROW_DRAG_NAV_MARGIN,
+    viewportHeight - maxHeight - ROW_DRAG_NAV_MARGIN,
+  );
+  rowDragNavVisible.value = true;
+
+  void nextTick(() => {
+    const list = rowDragNavListRef.value;
+    if (!list) return;
+    const relativePointerY = clientY - list.getBoundingClientRect().top;
+    const wantedScrollTop = (startIndex + 0.5) * ROW_DRAG_ITEM_HEIGHT - relativePointerY;
+    list.scrollTop = clampRowDragValue(wantedScrollTop, 0, list.scrollHeight - list.clientHeight);
+  });
+}
+
+function updateRowDrag(clientY: number) {
+  if (!rowDragId) return;
+  if (Math.abs(clientY - rowDragStartY) < ROW_DRAG_START_THRESHOLD) return;
+  const list = rowDragNavListRef.value;
+  if (!list) return;
+  const rect = list.getBoundingClientRect();
+  const edge = Math.min(28, rect.height / 3);
+  if (clientY < rect.top + edge) list.scrollTop -= ROW_DRAG_ITEM_HEIGHT;
+  else if (clientY > rect.bottom - edge) list.scrollTop += ROW_DRAG_ITEM_HEIGHT;
+
+  const contentY = clientY - rect.top + list.scrollTop;
+  const targetIndex = clampRowDragValue(
+    Math.floor(contentY / ROW_DRAG_ITEM_HEIGHT),
+    0,
+    rowDragItems.value.length - 1,
+  );
+  rowDragTargetIndex.value = targetIndex;
+  calc.dragOverRowId.value = rowDragItems.value[targetIndex]?.id ?? rowDragId;
 }
 
 function onRowPointerDown(rowId: string, ev: PointerEvent) {
-  if (rowDragId) return;
+  if (typeof window.PointerEvent === "undefined") return;
   ev.preventDefault();
-  rowDragId = rowId;
-  rowDragStartY = ev.clientY;
   rowDragPointerId = ev.pointerId;
-  rowDragDone = false;
-  calc.dragRowId.value = rowId;
-
-  document.addEventListener("pointermove", onRowDocPointerMove);
+  beginRowDrag(rowId, ev.clientY, ev.currentTarget as HTMLElement, "pointer");
+  document.addEventListener("pointermove", onRowDocPointerMove, { passive: false });
   document.addEventListener("pointerup", onRowDocPointerUp);
   document.addEventListener("pointercancel", onRowDocPointerCancel);
 }
 
 function onRowDocPointerMove(ev: PointerEvent) {
-  if (!rowDragId || ev.pointerId !== rowDragPointerId) return;
-
-  const dy = ev.clientY - rowDragStartY;
-  if (Math.abs(dy) < ROW_DRAG_SWAP_THRESHOLD) return;
-
-  if (isWideScreen()) {
-    // --- PC: 閾値ごとに隣と入れ替え（連続スワップ可能） ---
-    if (dy > ROW_DRAG_SWAP_THRESHOLD && calc.canMoveRowDown(rowDragId)) {
-      calc.moveRowDown(rowDragId);
-      rowDragStartY = ev.clientY;
-    } else if (dy < -ROW_DRAG_SWAP_THRESHOLD && calc.canMoveRowUp(rowDragId)) {
-      calc.moveRowUp(rowDragId);
-      rowDragStartY = ev.clientY;
-    }
-  } else {
-    // --- モバイル: 隣と1回だけ入れ替え ---
-    if (rowDragDone) return;
-
-    if (dy > ROW_DRAG_SWAP_THRESHOLD && calc.canMoveRowDown(rowDragId)) {
-      calc.moveRowDown(rowDragId);
-      rowDragDone = true;
-    } else if (dy < -ROW_DRAG_SWAP_THRESHOLD && calc.canMoveRowUp(rowDragId)) {
-      calc.moveRowUp(rowDragId);
-      rowDragDone = true;
-    }
-  }
+  if (rowDragInput !== "pointer" || ev.pointerId !== rowDragPointerId) return;
+  ev.preventDefault();
+  updateRowDrag(ev.clientY);
 }
 
 function onRowDocPointerUp(ev: PointerEvent) {
-  if (!rowDragId || ev.pointerId !== rowDragPointerId) return;
-  releaseRowDrag();
+  if (rowDragInput !== "pointer" || ev.pointerId !== rowDragPointerId) return;
+  finishRowDrag(true);
 }
 
 function onRowDocPointerCancel(ev: PointerEvent) {
-  if (!rowDragId || ev.pointerId !== rowDragPointerId) return;
-  releaseRowDrag();
+  if (rowDragInput !== "pointer" || ev.pointerId !== rowDragPointerId) return;
+  finishRowDrag(false);
 }
 
-function releaseRowDrag() {
+function onRowTouchStart(rowId: string, ev: TouchEvent) {
+  if (typeof window.PointerEvent !== "undefined" || ev.changedTouches.length === 0) return;
+  const touch = ev.changedTouches[0]!;
+  ev.preventDefault();
+  rowDragTouchId = touch.identifier;
+  beginRowDrag(rowId, touch.clientY, ev.currentTarget as HTMLElement, "touch");
+  document.addEventListener("touchmove", onRowDocTouchMove, { passive: false });
+  document.addEventListener("touchend", onRowDocTouchEnd);
+  document.addEventListener("touchcancel", onRowDocTouchCancel);
+}
+
+function trackedTouch(ev: TouchEvent): Touch | null {
+  for (let i = 0; i < ev.changedTouches.length; i += 1) {
+    const touch = ev.changedTouches[i];
+    if (touch?.identifier === rowDragTouchId) return touch;
+  }
+  return null;
+}
+
+function onRowDocTouchMove(ev: TouchEvent) {
+  if (rowDragInput !== "touch") return;
+  const touch = trackedTouch(ev);
+  if (!touch) return;
+  ev.preventDefault();
+  updateRowDrag(touch.clientY);
+}
+
+function onRowDocTouchEnd(ev: TouchEvent) {
+  if (rowDragInput === "touch" && trackedTouch(ev)) finishRowDrag(true);
+}
+
+function onRowDocTouchCancel(ev: TouchEvent) {
+  if (rowDragInput === "touch" && trackedTouch(ev)) finishRowDrag(false);
+}
+
+function onRowMouseDown(rowId: string, ev: MouseEvent) {
+  if (typeof window.PointerEvent !== "undefined" || ev.button !== 0) return;
+  ev.preventDefault();
+  beginRowDrag(rowId, ev.clientY, ev.currentTarget as HTMLElement, "mouse");
+  document.addEventListener("mousemove", onRowDocMouseMove);
+  document.addEventListener("mouseup", onRowDocMouseUp);
+}
+
+function onRowDocMouseMove(ev: MouseEvent) {
+  if (rowDragInput !== "mouse") return;
+  ev.preventDefault();
+  updateRowDrag(ev.clientY);
+}
+
+function onRowDocMouseUp() {
+  if (rowDragInput === "mouse") finishRowDrag(true);
+}
+
+function finishRowDrag(commit: boolean) {
+  const movingId = rowDragId;
+  const targetIndex = rowDragTargetIndex.value;
+  if (commit && movingId) calc.moveRow(movingId, targetIndex);
   rowDragId = null;
+  rowDragIdState.value = null;
   rowDragPointerId = null;
-  rowDragDone = false;
+  rowDragTouchId = null;
+  rowDragInput = null;
+  rowDragNavVisible.value = false;
+  rowDragItems.value = [];
   calc.dragRowId.value = null;
   calc.dragOverRowId.value = null;
+  document.body.classList.remove("calcRowReordering");
   document.removeEventListener("pointermove", onRowDocPointerMove);
   document.removeEventListener("pointerup", onRowDocPointerUp);
   document.removeEventListener("pointercancel", onRowDocPointerCancel);
+  document.removeEventListener("touchmove", onRowDocTouchMove);
+  document.removeEventListener("touchend", onRowDocTouchEnd);
+  document.removeEventListener("touchcancel", onRowDocTouchCancel);
+  document.removeEventListener("mousemove", onRowDocMouseMove);
+  document.removeEventListener("mouseup", onRowDocMouseUp);
 }
 
 onUnmounted(() => {
-  if (rowDragId) releaseRowDrag();
+  if (rowDragId) finishRowDrag(false);
   if (debugExportStatusTimer) clearTimeout(debugExportStatusTimer);
+  clearSummaryFlip();
+  if (typeof window !== "undefined") {
+    window.removeEventListener("wheel", markUserScroll);
+    window.removeEventListener("scroll", markUserScroll);
+    window.removeEventListener("touchmove", markUserScroll);
+    window.removeEventListener("pointerdown", markPointerInteractionStart);
+    window.removeEventListener("pointerup", markPointerInteractionEnd);
+    window.removeEventListener("pointercancel", markPointerInteractionEnd);
+    window.removeEventListener("touchstart", markPointerInteractionStart);
+    window.removeEventListener("touchend", markPointerInteractionEnd);
+    window.removeEventListener("touchcancel", markPointerInteractionEnd);
+    window.removeEventListener("mousedown", markPointerInteractionStart);
+    window.removeEventListener("mouseup", markPointerInteractionEnd);
+  }
 });
 
 // ===== タブドラッグ（並べ替え） =====

@@ -31,6 +31,9 @@ export class BoxPanelPage {
   readonly subSkillSelects: Locator;
   readonly addToBoxButton: Locator;
   readonly addToCalcCheckbox: Locator;
+  readonly addTagSection: Locator;
+  readonly addTagNameInput: Locator;
+  readonly addTagButton: Locator;
 
   // === インポートパネル ===
   readonly importPanel: Locator;
@@ -54,6 +57,7 @@ export class BoxPanelPage {
   readonly advancedSettingsPanel: Locator;
   readonly advancedSettingsSummary: Locator;
   readonly filterJoinSelect: Locator;
+  readonly tagJoinSelect: Locator;
   readonly subSkillJoinSelect: Locator;
   readonly subSkillFilterList: Locator;
   readonly subSkillClearButton: Locator;
@@ -81,6 +85,8 @@ export class BoxPanelPage {
   readonly detailSubSkillSelects: Locator;
   readonly applyToCalcButton: Locator;
   readonly deleteFromBoxButton: Locator;
+  readonly deleteLinkedConfirm: Locator;
+  readonly deleteLinkedConfirmYesButton: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -117,6 +123,9 @@ export class BoxPanelPage {
     // 「ボックスに追加」ボタンと「計算機に追加」チェックボックス
     this.addToBoxButton = page.getByTestId('box-add-submit');
     this.addToCalcCheckbox = page.getByTestId('box-add-to-calc-checkbox');
+    this.addTagSection = page.getByTestId('box-add-tags');
+    this.addTagNameInput = page.getByTestId('box-add-tag-name-input');
+    this.addTagButton = page.getByTestId('box-add-tag-add');
 
     // インポートパネル
     this.importPanel = page.getByTestId('box-import-panel');
@@ -146,6 +155,7 @@ export class BoxPanelPage {
     this.advancedSettingsPanel = page.getByTestId('box-advanced-panel');
     this.advancedSettingsSummary = page.getByTestId('box-advanced-summary');
     this.filterJoinSelect = page.getByTestId('box-filter-join-select');
+    this.tagJoinSelect = page.getByTestId('box-tag-join-select');
     this.subSkillJoinSelect = page.getByTestId('box-subskill-join-select');
     this.subSkillFilterList = page.getByTestId('box-subskill-filter-list');
     this.subSkillClearButton = page.getByTestId('box-subskill-clear');
@@ -176,11 +186,14 @@ export class BoxPanelPage {
     this.detailSubSkillSelects = page.getByTestId('box-detail-subskills').locator('select');
     this.applyToCalcButton = page.getByTestId('box-detail-calc');
     this.deleteFromBoxButton = page.getByTestId('box-detail-delete');
+    this.deleteLinkedConfirm = page.getByTestId('box-delete-linked-confirm');
+    this.deleteLinkedConfirmYesButton = page.getByTestId('box-delete-linked-confirm-yes');
   }
 
   // === 新規追加パネル操作 ===
 
   async openAddNewPanel() {
+    await this.ensureBoxPanelVisible();
     const isOpen = await this.addNewPanel.getAttribute('open');
     if (isOpen === null) {
       await this.addNewSummary.click();
@@ -263,6 +276,7 @@ export class BoxPanelPage {
   // === インポートパネル操作 ===
 
   async openImportPanel() {
+    await this.ensureBoxPanelVisible();
     // `open` は属性があると空文字を返す。真偽で見ると「開いている」を閉じてしまう。
     if ((await this.importPanel.getAttribute('open')) === null) {
       await this.importSummary.click();
@@ -357,7 +371,16 @@ export class BoxPanelPage {
   // === BOXタイル操作 ===
 
   async selectBoxTile(index: number) {
-    await this.boxTiles.nth(index).click();
+    await this.ensureBoxPanelVisible();
+    const tile = this.boxTiles.nth(index);
+    // content-visibility:auto の画面外タイルは、低速環境では click の可視判定より
+    // レイアウト確定が遅れることがある。操作対象を先に表示領域へ入れる。
+    await tile.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+    await this.page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    }));
+    await expect(tile).toBeVisible();
+    await tile.click();
   }
 
   async expectDetailPanelVisible() {
@@ -372,7 +395,9 @@ export class BoxPanelPage {
 
   async fillNickname(name: string) {
     await this.detailNicknameInput.fill(name);
-    await this.detailNicknameInput.press('Tab');
+    // 実装は change で確定するため、Tabキー配送に依存せず明示的に blur する。
+    await this.detailNicknameInput.blur();
+    await expect(this.detailNicknameInput).toHaveValue(name);
   }
 
   async toggleDetailFavorite() {
@@ -406,6 +431,10 @@ export class BoxPanelPage {
     await this.deleteFromBoxButton.click();
   }
 
+  async confirmLinkedDelete() {
+    await this.deleteLinkedConfirmYesButton.click();
+  }
+
   /** 全消去はその場のインライン確認を挟む（`window.confirm` は使っていない）。 */
   async clickClearAllBox() {
     await this.clearAllBoxButton.click();
@@ -418,5 +447,24 @@ export class BoxPanelPage {
 
   async clickRedo() {
     await this.redoButton.click();
+  }
+
+  private async ensureBoxPanelVisible() {
+    const panel = this.page.locator('#neo-box');
+    const viewport = this.page.viewportSize();
+    const tab = this.page.locator('#mobile-panel-tab-box');
+
+    // viewport変更直後は、旧レイアウトのpanel可視状態を一瞬読めることがある。
+    // モバイル・タブレット幅ではナビが反映されるのを待ち、明示的にBOXを選ぶ。
+    if (viewport && viewport.width < 1400) {
+      await expect(tab).toBeVisible();
+      await tab.click();
+      await expect(panel).toBeVisible();
+      return;
+    }
+
+    if (await panel.isVisible()) return;
+    if (await tab.isVisible()) await tab.click();
+    await expect(panel).toBeVisible();
   }
 }

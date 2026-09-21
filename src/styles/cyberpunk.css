@@ -7,38 +7,38 @@
   /* Core Palette */
   --bg-decor: #020617;
   --paper: #0f172a;
-  --ink: #e2e8f0;
-  --ink-rgb: 226, 232, 240;
-  --muted: #a8b5c7;
+  --ink: #f1f5f9;
+  --ink-rgb: 241, 245, 249;
+  --muted: #c3cedd;
   --accent: #06b6d4;
   --accent-rgb: 6, 182, 212;
   --accent-strong: #00b8e0;
   --danger: #f43f5e;
   --danger-rgb: 244, 63, 94;
   --paper-rgb: 15, 23, 42;
-  --muted-rgb: 168, 181, 199;
+  --muted-rgb: 195, 206, 221;
 
   /* Surfaces */
-  --surface: #1e293b;
-  --surface-alt: #334155;
-  --border: #334155;
-  --border-rgb: 51, 65, 85;
+  --surface: #18263c;
+  --surface-alt: #2b3d57;
+  --border: #4b617d;
+  --border-rgb: 75, 97, 125;
 
   /* Overlay */
   --overlay-bg: rgba(2, 6, 23, 0.8);
   /* Interactive */
   --btn-bg: var(--accent);
   --btn-ink: #0f172a;
-  --input-bg: #0f172a;
-  --input-border: #334155;
+  --input-bg: #08111f;
+  --input-border: #4b617d;
   --ring: var(--accent);
   --ring-rgb: 6, 182, 212;
 
   /* Data Visualization */
   --bar-fill: #d946ef;
   --bar-fill-rgb: 217, 70, 239;
-  --bar-track: #334155;
-  --bar-track-rgb: 51, 65, 85;
+  --bar-track: #354965;
+  --bar-track-rgb: 53, 73, 101;
   --bar-over: var(--danger);
   --bar-over-rgb: 244, 63, 94;
   --export-divider: #06b6d4;
@@ -72,6 +72,14 @@
 
 }
 
+/* 育成プランの資源カードは、ネオン色を暗い面へ落として判別しやすくする。 */
+.exportSheet {
+  --export-card-accent-bg: #12384a;
+  --export-card-plain-bg: #35203d;
+  --export-card-primary-bg: #3a371e;
+  --export-card-danger-bg: #3a222f;
+}
+
 /* ===== Body ===== */
 body {
   background-image:
@@ -82,11 +90,13 @@ body {
 }
 
 /* ===== Hero & Panel ===== */
-.hero, .panel {
-  border: 1px solid rgba(6, 182, 212, 0.3);
-  box-shadow: 0 0 15px rgba(6, 182, 212, 0.1) inset;
-  background: rgba(15, 23, 42, 0.95);
-  backdrop-filter: blur(5px);
+.hero,
+.panel {
+  border: 1px solid rgba(var(--accent-rgb), 0.48);
+  box-shadow:
+    inset 0 0 0 1px rgba(var(--ink-rgb), 0.025),
+    inset 0 0 12px rgba(var(--accent-rgb), 0.08);
+  background: rgba(var(--paper-rgb), 0.98);
 }
 
 /* ===== Buttons ===== */
@@ -108,14 +118,16 @@ body {
 
 /* ===== Field Input ===== */
 .field__input {
-  background: #020617;
-  border: 1px solid #334155;
-  color: var(--accent);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--ink);
 }
 
 .field__input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
+  box-shadow:
+    0 0 0 2px rgba(var(--accent-rgb), 0.28),
+    0 0 10px rgba(var(--accent-rgb), 0.28);
 }
 
 .boxDetail__favBtn--on {
@@ -125,44 +137,42 @@ body {
 
 /* ===== Box Tiles ===== */
 .boxTile {
-  background: rgba(30, 41, 59, 0.6);
+  background: var(--surface);
   border: 1px solid var(--type-color);
   border-radius: 6px;
   transition: background 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.2s;
 }
 
 .boxTile.boxTile--hover {
-  box-shadow: 0 0 10px rgba(6, 182, 212, 0.2) inset, var(--type-shadow);
-  background: rgba(30, 41, 59, 0.9);
-  transform: translateY(-4px);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.2), var(--type-shadow);
+  background: var(--surface-alt);
+  transform: translateY(-2px);
 }
 
 /* ===== Chip Buttons ===== */
 .chipBtn {
-  background: #1e293b;
-  border: 1px solid #334155;
-  color: #94a3b8;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
 }
 
 .chipBtn--on {
-  background: rgba(6, 182, 212, 0.2);
+  background: rgba(var(--accent-rgb), 0.18);
   border-color: var(--accent);
   color: var(--accent);
-  box-shadow: 0 0 8px rgba(6, 182, 212, 0.3);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.2), 0 0 8px rgba(var(--accent-rgb), 0.22);
 }
 
 /* ===== Modal ===== */
 .modal {
-  background: rgba(15, 23, 42, 0.95);
+  background: rgba(var(--paper-rgb), 0.99);
   border: 1px solid var(--accent);
-  box-shadow: 0 0 30px rgba(6, 182, 212, 0.2);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.18), 0 0 24px rgba(var(--accent-rgb), 0.16);
 }
 
 /* ===== Mobile Nav ===== */
 .mobileNav {
-  background: rgba(15, 23, 42, 0.95);
-  border-top: 1px solid rgba(6, 182, 212, 0.3);
-  backdrop-filter: blur(10px);
+  background: #0f172a;
 }
 
 /* ===== Scrollbar ===== */

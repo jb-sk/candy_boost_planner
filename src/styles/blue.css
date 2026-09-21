@@ -6,52 +6,53 @@
 :root {
   /* Core Palette */
   --bg-decor: #E0F7FA;
+  --blue-page-bg: #EAF4F8;
   --paper: #FFFFFF;
   --ink: #01579B;
   --ink-rgb: 1, 87, 155;
   --muted: #37474F;
-  --accent: #00B0FF;
-  --accent-rgb: 0, 176, 255;
-  --accent-strong: #0090ff;
+  --accent: #0086C7;
+  --accent-rgb: 0, 134, 199;
+  --accent-strong: #006EAA;
   --danger: #D50000;
   --danger-rgb: 213, 0, 0;
   --paper-rgb: 255, 255, 255;
   --muted-rgb: 55, 71, 79;
 
   /* Surfaces */
-  --surface: #F1F8E9;
-  --surface-alt: #E1F5FE;
-  --border: #0288D1;
-  --border-rgb: 2, 136, 209;
+  --surface: #EEF8FC;
+  --surface-alt: #DDF1FA;
+  --border: #147DB5;
+  --border-rgb: 20, 125, 181;
 
   /* Overlay */
   --overlay-bg: rgba(1, 87, 155, 0.8);
   /* Interactive */
-  --btn-bg: #0091EA;
+  --btn-bg: #007DBB;
   --btn-ink: #FFFFFF;
   --input-bg: #FFFFFF;
-  --input-border: #0277BD;
-  --ring: #00B0FF;
-  --ring-rgb: 0, 176, 255;
+  --input-border: #176F9F;
+  --ring: #21A9E0;
+  --ring-rgb: 33, 169, 224;
 
   /* Data Visualization */
-  --bar-fill: #00C853;
-  --bar-fill-rgb: 0, 200, 83;
-  --bar-track: #B3E5FC;
-  --bar-track-rgb: 179, 229, 252;
+  --bar-fill: #00A86B;
+  --bar-fill-rgb: 0, 168, 107;
+  --bar-track: #CFEAF6;
+  --bar-track-rgb: 207, 234, 246;
   --bar-over: #D50000;
   --bar-over-rgb: 213, 0, 0;
   --export-divider: #4FC3F7;
 
   /* Pie Chart Palette */
   --pie-0: #0288D1;
-  --pie-1: #00C853;
-  --pie-2: #FFD600;
-  --pie-3: #FF6D00;
-  --pie-4: #4FC3F7;
-  --pie-5: #AB47BC;
-  --pie-6: #26A69A;
-  --pie-7: #78909C;
+  --pie-1: #7bcbbd;
+  --pie-2: #f3cf7c;
+  --pie-3: #f29a72;
+  --pie-4: #55b9df;
+  --pie-5: #9c8fdb;
+  --pie-6: #58b8ad;
+  --pie-7: #9aa9b5;
 
   /* Semantic Accents */
   --star-color: #FFD600;
@@ -72,12 +73,69 @@
 
 }
 
+/* 育成プランは青を軸に、水色・クリーム・桃色で資源カードを見分ける。 */
+.exportSheet {
+  --export-highlight: var(--accent-strong);
+  --export-highlight-rgb: 0, 110, 170;
+  --export-card-accent-bg: #d8eef9;
+  --export-card-plain-bg: #dff2f8;
+  --export-card-primary-bg: #fff0cf;
+  --export-card-danger-bg: #fde1d3;
+  --bar-fill: var(--accent);
+  --bar-fill-rgb: var(--accent-rgb);
+  --bar-track: #CFEAF6;
+  --bar-track-rgb: 207, 234, 246;
+}
+
 
 
 /* ===== Global Elements ===== */
 input, select, textarea {
   border: 2px solid var(--input-border);
   box-shadow: none;
+}
+
+/* ===== Hero ===== */
+.hero {
+  background: var(--blue-page-bg);
+}
+
+.hero .lang__btn {
+  box-shadow: none;
+}
+
+.hero .lang__btn:not(.lang__btn--on):not(.lang__btn--help) {
+  background: #FFFFFF;
+  color: var(--ink);
+  border-color: rgba(var(--ink-rgb), 0.4);
+}
+
+.hero .lang__btn:hover:not(.lang__btn--on):not(.lang__btn--help) {
+  background: var(--surface-alt);
+}
+
+.hero .support__link {
+  background: #FFFFFF;
+}
+
+.hero .support__link:hover {
+  background: var(--accent);
+  color: var(--paper);
+}
+
+/* カスタムタグ管理の名前欄は入力面としてフラットにする。
+   追加・削除ボタンのblueテーマ固有の影は残す。 */
+.boxTagManager__add .field__input,
+.boxTagManager__edit .field__input,
+.boxTagManager__name {
+  box-shadow: none;
+}
+
+.boxTagManager__add .field__input:focus-visible,
+.boxTagManager__edit .field__input:focus-visible,
+.boxTagManager__name:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 /* :where() keeps this at zero specificity so .btn--ghost etc. (border-color, background)
@@ -96,8 +154,26 @@ input, select, textarea {
 
 /* ===== Panel ===== */
 .panel {
+  background: var(--paper);
   border: 2px solid var(--border);
   box-shadow: var(--shadow-lg);
+}
+
+.calcSticky {
+  --calc-sticky-tint: rgba(var(--accent-rgb), 0.08);
+  border-bottom: 1px solid rgba(var(--border-rgb), 0.32);
+}
+
+.calcRow__resultRow {
+  --calc-result-tint: 0.08;
+}
+
+.calcRow__resultRow--required {
+  --calc-result-tint: 0.17;
+}
+
+.calcRow__resultRow--used:only-child {
+  --calc-result-tint: 0.11;
 }
 
 /* ===== Range slider — remove drop shadow ===== */
@@ -136,11 +212,6 @@ input, select, textarea {
   box-shadow: none;
 }
 
-/* ===== MobileNav — remove button shadow from home icon ===== */
-.mobileNav__home {
-  box-shadow: none;
-}
-
 /* ===== Box Tiles ===== */
 .boxTile {
   transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
@@ -150,3 +221,22 @@ input, select, textarea {
   transform: translateY(-4px);
 }
 
+/* ===== Chip Buttons ===== */
+.chipBtn--on,
+.chipBtn--on:hover {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+  color: var(--paper);
+  box-shadow: inset 0 0 0 1px rgba(var(--paper-rgb), 0.18), 2px 2px 0 rgba(var(--ink-rgb), 0.16);
+}
+
+/* ===== PC Desktop (≥ 1400px) ===== */
+@media (min-width: 1400px) {
+  body {
+    background: var(--blue-page-bg);
+  }
+
+  .hero {
+    background: transparent;
+  }
+}

@@ -135,6 +135,74 @@ describe("useBoxStore", () => {
     }
   });
 
+  it("assigns a tag only to filtered entries as one undoable operation", () => {
+    const t = ((key: string) => key) as unknown as Composer["t"];
+    const store = useBoxStore({ locale: ref("ja"), t });
+    const tagId = store.addCustomTag("睡眠で上げる");
+    expect(tagId).not.toBeNull();
+
+    store.addLabel.value = "対象A";
+    store.onCreateManual({ mode: "toBox", tagIds: [tagId!] });
+    store.addLabel.value = "対象B";
+    store.onCreateManual({ mode: "toBox" });
+    store.addLabel.value = "除外";
+    store.onCreateManual({ mode: "toBox" });
+    store.boxFilter.value = "対象";
+
+    expect(store.sortedBoxEntries.value).toHaveLength(2);
+    expect(store.assignCustomTagToFiltered(tagId!)).toBe(1);
+    expect(store.boxEntries.value.filter((entry) => entry.label.startsWith("対象")).every((entry) => entry.tagIds?.includes(tagId!))).toBe(true);
+    expect(store.boxEntries.value.find((entry) => entry.label === "除外")?.tagIds).toBeUndefined();
+    expect(store.assignCustomTagToFiltered(tagId!)).toBe(0);
+
+    store.onUndo();
+    expect(store.boxEntries.value.find((entry) => entry.label === "対象A")?.tagIds).toContain(tagId);
+    expect(store.boxEntries.value.find((entry) => entry.label === "対象B")?.tagIds).toBeUndefined();
+    store.onRedo();
+    expect(store.boxEntries.value.find((entry) => entry.label === "対象B")?.tagIds).toContain(tagId);
+  });
+
+  it("joins selected tags with OR by default and supports AND", () => {
+    const t = ((key: string) => key) as unknown as Composer["t"];
+    const store = useBoxStore({ locale: ref("ja"), t });
+    const tagA = store.addCustomTag("タグA")!;
+    const tagB = store.addCustomTag("タグB")!;
+
+    for (const [label, tagIds] of [
+      ["両方", [tagA, tagB]],
+      ["Aのみ", [tagA]],
+      ["Bのみ", [tagB]],
+      ["タグなし", []],
+    ] as const) {
+      store.addLabel.value = label;
+      store.onCreateManual({ mode: "toBox", tagIds });
+    }
+    store.selectedCustomTagIds.value = [tagA, tagB];
+
+    expect(store.tagJoinMode.value).toBe("or");
+    expect(store.sortedBoxEntries.value.map((entry) => entry.label).sort()).toEqual(["Aのみ", "Bのみ", "両方"]);
+
+    store.tagJoinMode.value = "and";
+    expect(store.sortedBoxEntries.value.map((entry) => entry.label)).toEqual(["両方"]);
+  });
+
+  it("closes a selected detail when filtering excludes it and does not reopen it after clearing", () => {
+    const t = ((key: string) => key) as unknown as Composer["t"];
+    const store = useBoxStore({ locale: ref("ja"), t });
+
+    store.addLabel.value = "選択対象";
+    store.onCreateManual({ mode: "toBox" });
+    const selectedId = store.boxEntries.value[0]!.id;
+    expect(store.selectedBoxId.value).toBe(selectedId);
+
+    store.boxFilter.value = "一致しない検索語";
+    expect(store.selectedBoxId.value).toBeNull();
+
+    store.boxFilter.value = "";
+    expect(store.sortedBoxEntries.value).toHaveLength(1);
+    expect(store.selectedBoxId.value).toBeNull();
+  });
+
   it("keeps import, delete, and clear consistent across the full undo and redo stack", () => {
     const t = ((key: string) => key) as unknown as Composer["t"];
     const store = useBoxStore({ locale: ref("ja"), t });

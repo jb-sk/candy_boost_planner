@@ -1263,7 +1263,11 @@ test.describe('03-settings デスクトップ', () => {
     // 25(ピカチュウ)と26(ライチュウ)は同一系統キー"25"へ集約され、値は系統内最大値max(88,99)=99。
     // candyInventory 自体のスキーマは V2 のまま（V3 の変更対象は計算機行とグローバル設定）。
     expect(restored.schemaVersion).toBe(3);
-    expect(restored.data.box).toEqual(expected.data.box);
+    expect(restored.data.box).toEqual({
+      ...expected.data.box,
+      // 旧形式にはカスタムタグが無いため、現行形式の空配列として補われる。
+      tags: [],
+    });
     expect(restored.data.globalSettings).toEqual({
       ...expected.data.globalSettings,
       // 旧形式には無い項目。未設定（＝目標Lvと同じ）として補われる
@@ -1419,6 +1423,27 @@ test.describe('03-settings モバイル', () => {
     });
     expect(unitStyle.whiteSpace).toBe('nowrap');
     expect(unitStyle.textLineCount).toBe(1);
+  });
+
+  test('29b-1. [Mobile] 睡眠育成設定の説明ボタンを右端で縦に揃える', async ({ page }) => {
+    const settings = new SettingsModalPage(page);
+    await settings.openSettingsFromMobile();
+
+    const hintButtons = [
+      settings.growthIncenseNormalHintButton,
+      settings.growthIncenseGsdHintButton,
+      settings.blueSeedWeekdayHintButton,
+      settings.blueSeedIncenseDaysHintButton,
+      settings.growthIncenseStockHintButton,
+      settings.projectedEventsHintButton,
+    ];
+    const rightEdges = await Promise.all(hintButtons.map(async button => {
+      const box = await button.boundingBox();
+      expect(box).not.toBeNull();
+      return (box?.x ?? 0) + (box?.width ?? 0);
+    }));
+
+    expect(Math.max(...rightEdges) - Math.min(...rightEdges)).toBeLessThanOrEqual(1);
   });
 
   test('29c. [Mobile] 睡眠育成設定をデスクトップと同じ順で縦に表示する', async ({ page }) => {

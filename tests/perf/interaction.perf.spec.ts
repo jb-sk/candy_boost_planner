@@ -259,6 +259,12 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+async function showCalculatorPanel(page: Page): Promise<void> {
+  const panel = page.locator('#neo-calc');
+  if (!(await panel.isVisible())) await page.getByTestId('mobile-nav-calc').click();
+  await expect(panel).toBeVisible();
+}
+
 test('collects local fbl04 interaction timings', async ({ page }, testInfo) => {
   const samples: ActionSample[] = [];
   const perfLogs: PerfLog[] = [];
@@ -271,6 +277,7 @@ test('collects local fbl04 interaction timings', async ({ page }, testInfo) => {
   await addBox.fillImportText(makeImportLines(280));
   await addBox.clickImport();
   await expect(addBox.boxTiles).toHaveCount(280);
+  await showCalculatorPanel(page);
   await addCalc.setBoostKind('none');
   await addModal.open();
   await clearBrowserMetrics(page);
@@ -355,12 +362,14 @@ test('collects local fbl04 interaction timings', async ({ page }, testInfo) => {
   await calcBox.clickImport();
   await expect(calcBox.boxTiles).toHaveCount(10);
   for (let slot = 0; slot < 3; slot++) {
+    await showCalculatorPanel(page);
     await calc.clickSlotTab(slot);
     await calc.setBoostKind('none');
     for (let row = 0; row < 10; row++) {
       await calcBox.selectBoxTile(row);
       await calcBox.clickApplyToCalc();
     }
+    await showCalculatorPanel(page);
     await calc.expectRowCount(10);
   }
   await calc.clickSlotTab(0);

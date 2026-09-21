@@ -1,57 +1,58 @@
-/* Green Theme — Forest */
+/* Green Theme — Fresh Garden */
 @import "./core/reset.css";
 @import "./core/components.css";
 
 /* ===== Variables ===== */
 :root {
   /* Core Palette */
-  --bg-decor: #1a2f23;
-  --paper: #fdfcf5;
-  --ink: #3e2723;
-  --ink-rgb: 62, 39, 35;
-  --muted: #4e342e;
-  --accent: #689f38;
-  --accent-rgb: 104, 159, 56;
-  --accent-strong: #4da812;
-  --danger: #bf360c;
-  --danger-rgb: 191, 54, 12;
-  --paper-rgb: 253, 252, 245;
-  --muted-rgb: 78, 52, 46;
+  --bg-decor: #dcebcf;
+  --forest-page-bg: #eef6e5;
+  --paper: #ffffff;
+  --ink: #344326;
+  --ink-rgb: 52, 67, 38;
+  --muted: #708168;
+  --accent: #6bab43;
+  --accent-rgb: 107, 171, 67;
+  --accent-strong: #4f8d2f;
+  --danger: #e53935;
+  --danger-rgb: 229, 57, 53;
+  --paper-rgb: 255, 255, 255;
+  --muted-rgb: 112, 129, 104;
 
   /* Surfaces */
-  --surface: #f1f8e9;
-  --surface-alt: #dcedc8;
-  --border: #8d6e63;
-  --border-rgb: 141, 110, 99;
+  --surface: #f6f9ef;
+  --surface-alt: #e3efd4;
+  --border: #a9bf94;
+  --border-rgb: 169, 191, 148;
 
   /* Overlay */
-  --overlay-bg: rgba(20, 30, 20, 0.85);
+  --overlay-bg: rgba(43, 58, 32, 0.76);
   /* Interactive */
-  --btn-bg: #558b2f;
+  --btn-bg: #69a941;
   --btn-ink: #ffffff;
-  --input-bg: #fffbf0;
-  --input-border: #a1887f;
-  --ring: #cddc39;
-  --ring-rgb: 205, 220, 57;
+  --input-bg: #ffffff;
+  --input-border: #a8bd96;
+  --ring: #8bc76a;
+  --ring-rgb: 139, 199, 106;
 
   /* Data Visualization */
-  --bar-fill: #ffa000;
-  --bar-fill-rgb: 255, 160, 0;
-  --bar-track: #d7ccc8;
-  --bar-track-rgb: 215, 204, 200;
-  --bar-over: #e64a19;
-  --bar-over-rgb: 230, 74, 25;
-  --export-divider: #a5d6a7;
+  --bar-fill: #8bd36a;
+  --bar-fill-rgb: 139, 211, 106;
+  --bar-track: #e3efd7;
+  --bar-track-rgb: 227, 239, 215;
+  --bar-over: #d96d49;
+  --bar-over-rgb: 217, 109, 73;
+  --export-divider: #a7ca8d;
 
   /* Pie Chart Palette */
-  --pie-0: #689f38;
-  --pie-1: #ffa000;
-  --pie-2: #8d6e63;
-  --pie-3: #43a047;
-  --pie-4: #e65100;
-  --pie-5: #5d4037;
-  --pie-6: #a5d6a7;
-  --pie-7: #bcaaa4;
+  --pie-0: #6aa944;
+  --pie-1: #f2a35a;
+  --pie-2: #ae8a65;
+  --pie-3: #7bcdb9;
+  --pie-4: #d8b35e;
+  --pie-5: #8fb76e;
+  --pie-6: #e99477;
+  --pie-7: #9eaaa0;
 
   /* Semantic Accents */
   --star-color: #fbc02d;
@@ -66,34 +67,143 @@
   --radius-pill: 99px;
 
   /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(46, 30, 20, 0.2);
-  --shadow-md: 0 4px 8px rgba(46, 30, 20, 0.25);
-  --shadow-lg: 0 10px 25px rgba(20, 35, 20, 0.4);
+  --shadow-sm: 0 2px 5px rgba(65, 91, 48, 0.12);
+  --shadow-md: 0 5px 14px rgba(65, 91, 48, 0.15);
+  --shadow-lg: 0 14px 36px rgba(45, 70, 31, 0.24);
 
 }
 
 /* ===== Body ===== */
 body {
-  background-image:
-    radial-gradient(circle at 20% 30%, #2e4a36 0%, transparent 40%),
-    radial-gradient(circle at 80% 70%, #142118 0%, transparent 40%);
+  background: var(--forest-page-bg);
+  background-image: none;
+}
+
+/* 育成プランは若草色を主役に、ミントと黄桃色で資源の種類を分ける。 */
+.exportSheet {
+  --export-highlight: #5fa33b;
+  --export-highlight-rgb: 95, 163, 59;
+  --export-card-accent-bg: #e1eecf;
+  --export-card-plain-bg: #d8efe6;
+  --export-card-primary-bg: #ffedc1;
+  --export-card-danger-bg: #fce0d4;
+  --bar-fill: #84ca64;
+  --bar-fill-rgb: 132, 202, 100;
+  --bar-track: #deecd1;
+  --bar-track-rgb: 222, 236, 209;
+  --bar-shards-fill: #ffad66;
+  --bar-shards-fill-rgb: 255, 173, 102;
+  --export-bar-fill-opacity: 0.76;
+}
+
+/* ===== Hero ===== */
+.hero {
+  background: var(--forest-page-bg);
+}
+
+.hero .lang__btn:not(.lang__btn--on):not(.lang__btn--help) {
+  background: #ffffff;
+  color: var(--ink);
+  border-color: rgba(var(--ink-rgb), 0.45);
+}
+
+.hero .lang__btn:hover:not(.lang__btn--on):not(.lang__btn--help) {
+  background: var(--surface-alt);
+}
+
+.hero .support__link {
+  background: #ffffff;
+}
+
+.hero .support__link:hover {
+  background: var(--accent);
+  color: var(--paper);
 }
 
 /* ===== Panel ===== */
 .panel {
-  border: 2px solid #8d6e63;
-  box-shadow: none;
+  background: var(--paper);
+  border: 1px solid rgba(var(--border-rgb), 0.82);
+  box-shadow: var(--shadow-md);
   margin-bottom: 0;
   position: relative;
   overflow: visible;
 }
 
+.panel__title {
+  color: var(--accent-strong);
+}
+
 /* ===== Buttons ===== */
+.btn--ghost,
+.btn--neutral {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--border);
+}
+
+.btn--ghost:hover,
+.btn--neutral:hover {
+  background: var(--surface-alt);
+}
+
+.panel--calc .btn--ghost,
+.panel--calc .btn--neutral {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--border);
+}
+
+.panel--calc .btn--ghost:hover:not(:disabled),
+.panel--calc .btn--neutral:hover:not(:disabled) {
+  background: var(--surface);
+}
+
+/* 並び替えハンドルはボタン面を持たず、選択中の行背景をそのまま見せる。 */
+.panel--calc .calcRow__dragHandle.btn--ghost,
+.panel--calc .calcRow__dragHandle.btn--ghost:hover:not(:disabled) {
+  background: transparent;
+}
+
+.calcSticky {
+  --calc-sticky-tint: rgba(var(--accent-rgb), 0.065);
+  --calc-shards-bar-fill: #ffad66;
+  --calc-shards-bar-fill-rgb: 255, 173, 102;
+  --calc-shards-bar-track: #ffe8d5;
+  border-bottom: 1px solid rgba(var(--border-rgb), 0.34);
+}
+
+.calcRow__resultRow {
+  --calc-result-tint: 0.07;
+  background: rgba(var(--accent-rgb), var(--calc-result-tint));
+}
+
+.calcRow__resultRow--required {
+  --calc-result-tint: 0.14;
+}
+
+.calcRow__resultRow--used:only-child {
+  --calc-result-tint: 0.1;
+}
+
+.boxSortRow__undoRedo .btn {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+.boxSortRow__undoRedo .btn:hover:not(:disabled) {
+  background: var(--surface-alt);
+}
+
 .btn--primary {
+  background: var(--btn-bg);
   border-radius: 20px 4px 20px 4px; /* Leaf shape */
-  border-bottom: 4px solid #33691e;
+  border-bottom: 4px solid #4b862d;
   transition: transform 0.1s, border-bottom-width 0.1s;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+  box-shadow: 0 4px 8px rgba(var(--accent-rgb), 0.24);
 }
 
 .btn--primary:active {
@@ -103,9 +213,9 @@ body {
 
 /* ===== Field Input ===== */
 .field__input {
-  background-color: #fffbf0;
-  border: 2px solid #bcaaa4;
-  box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+  background-color: var(--input-bg);
+  border: 2px solid var(--input-border);
+  box-shadow: inset 0 1px 3px rgba(var(--ink-rgb), 0.04);
 }
 
 .field__input:focus {
@@ -144,28 +254,31 @@ body {
   background: var(--accent);
   color: white;
   border-color: var(--accent);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  box-shadow: 0 2px 5px rgba(var(--accent-rgb), 0.24);
 }
 
 /* ===== Modal ===== */
 .modal {
-  border: 4px solid #5d4037;
+  border: 3px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow:
-    0 0 0 8px rgba(93, 64, 55, 0.3),
-    0 20px 50px rgba(0,0,0,0.6);
+    0 0 0 6px rgba(var(--accent-rgb), 0.1),
+    0 20px 50px rgba(var(--ink-rgb), 0.24);
 }
 
 /* ===== Mobile Nav ===== */
 .mobileNav {
-  background: rgba(255, 255, 255, 0.95);
-  border-top: 4px solid var(--accent);
-  backdrop-filter: blur(8px);
+  background: #fff;
 }
 
 /* ===== PC Desktop (≥ 1400px) ===== */
 @media (min-width: 1400px) {
   body {
+    background: var(--forest-page-bg);
     background-image: none;              /* remove radial-gradient overlays */
+  }
+
+  .hero {
+    background: transparent;
   }
 }

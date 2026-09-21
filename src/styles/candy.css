@@ -5,53 +5,60 @@
 /* ===== Variables ===== */
 :root {
   /* Core Palette */
-  --bg-decor: #fff1f1;
+  --bg-decor: #fff0f2;
   --paper: #ffffff;
-  --ink: #1e293b;
-  --ink-rgb: 30, 41, 59;
-  --muted: #475569;
-  --accent: #00b4d8;
-  --accent-rgb: 0, 180, 216;
-  --accent-strong: #00a0d0;
+  --ink: #55434f;
+  --ink-rgb: 85, 67, 79;
+  --muted: #806f79;
+  --accent: #e86f93;
+  --accent-rgb: 232, 111, 147;
+  --accent-strong: #c94f76;
   --danger: #ef4444;
   --danger-rgb: 239, 68, 68;
   --paper-rgb: 255, 255, 255;
-  --muted-rgb: 71, 85, 105;
+  --muted-rgb: 128, 111, 121;
 
   /* Surfaces */
-  --surface: #f0f9ff;
-  --surface-alt: #e0f2fe;
-  --border: #fbd0d8;
-  --border-rgb: 251, 208, 216;
+  --surface: #fff8f6;
+  --surface-alt: #fdf0eb;
+  --border: #edcdd4;
+  --border-rgb: 237, 205, 212;
+  --candy-pink: #ff7d9e;
+  --candy-pink-rgb: 255, 125, 158;
+  --candy-mint: #8dd8c3;
+  --candy-mint-soft: #d4f1e9;
+  --candy-mint-rgb: 141, 216, 195;
+  --candy-lavender: #9384dc;
+  --candy-lavender-rgb: 147, 132, 220;
 
   /* Overlay */
   --overlay-bg: rgba(255, 255, 255, 0.85);
   /* Interactive */
-  --btn-bg: #ff6b81;
+  --btn-bg: var(--candy-pink);
   --btn-ink: #ffffff;
   --input-bg: #ffffff;
-  --input-border: #f9abbe;
-  --ring: #00b4d8;
-  --ring-rgb: 0, 180, 216;
+  --input-border: #eeb8c5;
+  --ring: var(--accent);
+  --ring-rgb: var(--accent-rgb);
 
   /* Data Visualization */
-  --bar-fill: #00b4d8;
-  --bar-fill-rgb: 0, 180, 216;
-  --bar-track: #e0f2fe;
-  --bar-track-rgb: 224, 242, 254;
-  --bar-over: #ff6b81;
-  --bar-over-rgb: 255, 107, 129;
+  --bar-fill: #f58eac;
+  --bar-fill-rgb: 245, 142, 172;
+  --bar-track: #fde7ed;
+  --bar-track-rgb: 253, 231, 237;
+  --bar-over: var(--candy-pink);
+  --bar-over-rgb: var(--candy-pink-rgb);
   --export-divider: #f48ca0;
 
   /* Pie Chart Palette */
-  --pie-0: #ff6b81;
-  --pie-1: #00b4d8;
-  --pie-2: #fbbf24;
-  --pie-3: #a78bfa;
-  --pie-4: #34d399;
-  --pie-5: #f472b6;
-  --pie-6: #fb923c;
-  --pie-7: #94a3b8;
+  --pie-0: #f58eac;
+  --pie-1: #69c7b8;
+  --pie-2: #f2c96d;
+  --pie-3: #a99de3;
+  --pie-4: #8bd2ad;
+  --pie-5: #df94bf;
+  --pie-6: #ef9873;
+  --pie-7: #a79aa2;
 
   /* Semantic Accents */
   --star-color: #FFD600;
@@ -66,20 +73,38 @@
   --radius-pill: 999px;
 
   /* Shadows */
-  --shadow-sm: 2px 2px 0px rgba(240, 170, 170, 0.3);
-  --shadow-md: 4px 4px 0px rgba(240, 170, 170, 0.5);
-  --shadow-lg: 8px 8px 0px rgba(100, 149, 237, 0.2);
+  --shadow-sm: 2px 2px 0 rgba(var(--candy-pink-rgb), 0.25);
+  --shadow-md: 4px 4px 0 rgba(var(--candy-pink-rgb), 0.38);
+  --shadow-lg: 8px 8px 0 rgba(var(--candy-pink-rgb), 0.22);
 
+}
+
+/* 育成プランの資源カードは、桜色・白・若草色の三色団子を基調にする。 */
+.exportSheet {
+  --accent: #64bfa9;
+  --accent-rgb: 100, 191, 169;
+  --export-highlight: var(--candy-pink);
+  --export-highlight-rgb: var(--candy-pink-rgb);
+  --export-card-accent-bg: #fdebf0;
+  --export-card-plain-bg: #f7fcfb;
+  --export-card-primary-bg: #f1fae7;
+  --export-card-danger-bg: #fee9e4;
+  --bar-fill: #ef789b;
+  --bar-fill-rgb: 239, 120, 155;
+  --bar-track: #fbe1e8;
+  --bar-track-rgb: 251, 225, 232;
+  --bar-shards-fill: #e8b84c;
+  --bar-shards-fill-rgb: 232, 184, 76;
 }
 
 
 
 /* ===== Hero ===== */
 .hero {
-  background: #fff1f2;
-  color: #0f172a;
-  --muted: #475569;
-  box-shadow: 0 2px 8px rgba(240, 170, 170, 0.4);
+  background: #fff0f2;
+  color: var(--ink);
+  --muted: #806f79;
+  box-shadow: 0 3px 0 rgba(var(--candy-pink-rgb), 0.2);
 }
 
 /* Lang buttons (non-active) inside hero */
@@ -95,7 +120,7 @@
 }
 
 .hero .support__link:hover {
-  background: var(--accent);
+  background: var(--candy-pink);
   color: var(--paper);
 }
 
@@ -107,21 +132,27 @@
 
 /* ===== Sleep Chips (1000h / 2000h) & Hint ===== */
 .hintIcon {
-  background: rgba(var(--accent-rgb), 0.06);
-  color: #64748b;
-  border: 2px solid rgba(var(--accent-rgb), 0.3);
+  background: #e1f6f0;
+  color: var(--ink);
+  border: 2px solid var(--candy-mint);
 }
 
 /* ===== Ghost Buttons (e.g. "+ ポケモンを追加") ===== */
 .btn--ghost {
   background: var(--paper);
-  border-color: #f9abbe;
+  border-color: var(--input-border);
+  color: var(--ink);
+}
+
+.btn--ghost:hover {
+  background: var(--surface-alt);
 }
 
 /* ===== Buttons ===== */
 .btn--primary {
-  border: none;
-  border-bottom: 4px solid #e11d48;
+  background: var(--candy-pink);
+  border: 2px solid #f45f86;
+  border-bottom: 4px solid #e65379;
   transition: transform 0.1s, border-bottom-width 0.1s, margin-top 0.1s;
   font-weight: bold;
 }
@@ -135,13 +166,38 @@
 /* ===== Field Input ===== */
 .field__input {
   border: 2px solid var(--input-border);
-  box-shadow: inset 2px 2px 4px rgba(0,0,0,0.03);
+  box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.03);
   transition: all 0.2s;
 }
 
 .field__input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(0, 180, 216, 0.15);
+  box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.2);
+}
+
+/* 上部サマリーも計算結果と同じ青緑系にまとめる。 */
+.calcSticky {
+  --accent: #399f8d;
+  --accent-strong: #1f7f70;
+  --calc-sticky-background: var(--paper);
+  --calc-sticky-tint: rgba(var(--candy-mint-rgb), 0.1);
+  --calc-shards-bar-fill: #efc86b;
+  --calc-shards-bar-fill-rgb: 239, 200, 107;
+  --calc-shards-bar-track: #fcf1d8;
+}
+
+/* 計算結果は参考配色の淡い青緑を使い、入力欄と穏やかに見分ける。 */
+.calcRow__resultRow {
+  --accent-rgb: 31, 139, 121;
+  background: rgba(var(--candy-mint-rgb), 0.14);
+}
+
+.calcRow__resultRow--required {
+  background: rgba(var(--candy-mint-rgb), 0.26);
+}
+
+.calcRow__resultRow--used:only-child {
+  background: rgba(var(--candy-mint-rgb), 0.2);
 }
 
 /* ===== Box Disclosure (新規追加 / インポート) ===== */
@@ -185,18 +241,18 @@
 
 /* ===== Chip Buttons ===== */
 .chipBtn {
-  background: rgba(var(--accent-rgb), 0.06);
-  border: 2px solid rgba(var(--accent-rgb), 0.3);
+  background: var(--paper);
+  border: 2px solid var(--border);
   color: var(--ink);
   font-weight: 700;
   box-shadow: none;
 }
 
 .chipBtn--on {
-  background: var(--accent);
+  background: var(--candy-lavender);
   color: white;
-  border-color: var(--accent);
-  box-shadow: 2px 2px 0 rgba(0,0,0,0.1);
+  border-color: var(--candy-lavender);
+  box-shadow: 3px 3px 0 rgba(var(--candy-lavender-rgb), 0.24);
 }
 
 /* ===== Modal ===== */
@@ -205,18 +261,24 @@
   box-shadow: var(--shadow-lg);
 }
 
+/* 使い方・イベント履歴は、ピンクの器に青緑の本文アクセントを組み合わせる。 */
+.help-overlay .modal__body,
+.eventHistoryModal .modal__body {
+  --accent: #64bfa9;
+  --accent-rgb: 100, 191, 169;
+  --accent-strong: #338b76;
+}
+
 /* ===== Mobile Nav ===== */
 .mobileNav {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(8px);
-  border-top: 2px solid var(--border);
-  box-shadow: 0 -4px 10px rgba(0,0,0,0.05);
+  background: #fff;
+  box-shadow: 0 4px 10px rgba(var(--candy-pink-rgb), 0.12);
 }
 
 /* ===== PC Desktop (≥ 1400px) ===== */
 @media (min-width: 1400px) {
   body {
-    background: #fff1f2;                 /* match hero */
+    background: #fff0f2;                 /* match hero */
   }
   .hero {
     box-shadow: none;                    /* no card shadow when flush */

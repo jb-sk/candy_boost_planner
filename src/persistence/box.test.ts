@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { loadBox } from "./box";
+import { loadBox, loadBoxData, serializeBox } from "./box";
 
 describe("persistence/box", () => {
   beforeEach(() => {
@@ -58,5 +58,26 @@ describe("persistence/box", () => {
     expect(loadBox()).toEqual([
       expect.objectContaining({ id: "legacy-entry", label: "legacy" }),
     ]);
+  });
+
+  it("round-trips custom tag definitions and drops orphan tag assignments", () => {
+    const entries = [{
+      id: "entry-1",
+      source: "manual" as const,
+      rawText: "",
+      label: "tagged",
+      tagIds: ["tag-1", "missing-tag"],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    }];
+    localStorage.setItem(
+      "candy-boost-planner:box:v1",
+      serializeBox(entries, [{ id: "tag-1", name: "アメブ候補" }]),
+    );
+
+    expect(loadBoxData()).toEqual({
+      entries: [expect.objectContaining({ id: "entry-1", tagIds: ["tag-1"] })],
+      tags: [{ id: "tag-1", name: "アメブ候補" }],
+    });
   });
 });
