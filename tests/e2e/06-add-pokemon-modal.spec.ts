@@ -41,6 +41,40 @@ test.describe('AddPokemonModal - 基本動作', () => {
     await expect(modal.modal).not.toBeVisible();
   });
 
+  test('タブレット・PC幅でフッター背景がカード下端の角丸に収まる', async ({ page }) => {
+    for (const width of [768, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+
+      const radii = await modal.modal.evaluate((card) => {
+        const footer = card.querySelector<HTMLElement>('.addModal__footer');
+        if (!footer) throw new Error('addModal footer not found');
+        const cardStyle = getComputedStyle(card);
+        const footerStyle = getComputedStyle(footer);
+        return {
+          cardLeft: cardStyle.borderBottomLeftRadius,
+          cardRight: cardStyle.borderBottomRightRadius,
+          footerLeft: footerStyle.borderBottomLeftRadius,
+          footerRight: footerStyle.borderBottomRightRadius,
+          overflow: cardStyle.overflow,
+        };
+      });
+
+      expect(radii.footerLeft).toBe(radii.cardLeft);
+      expect(radii.footerRight).toBe(radii.cardRight);
+      // LevelPickerなどの浮遊UIはカード外へ表示できる状態を保つ。
+      expect(radii.overflow).toBe('visible');
+    }
+  });
+
+  test('vividテーマでも追加モーダルは傾斜しない', async ({ page }) => {
+    await page.evaluate(() => localStorage.setItem('candy-boost-planner:design', 'vivid'));
+    await page.reload();
+    modal = new AddPokemonModalPage(page);
+    await modal.open();
+
+    await expect.poll(() => modal.modal.evaluate((card) => getComputedStyle(card).transform)).toBe('none');
+  });
+
   test('名前未入力時は追加ボタンが無効', async () => {
     await expect(modal.submitButton).toBeDisabled();
   });
@@ -55,6 +89,29 @@ test.describe('AddPokemonModal - 基本動作', () => {
     const prefix = latestPokemonName.slice(0, 2);
     await modal.fillAndPickName(prefix);
     await expect(modal.submitButton).toBeEnabled();
+  });
+
+  test('タグを追加・選択してポケモンへ割り当てられる', async ({ page }) => {
+    await expect(modal.tagSection).toBeVisible();
+    await modal.tagNameInput.fill('アメブ候補');
+    await modal.tagAddButton.click();
+
+    const tagChoice = modal.tagSection.getByRole('button', { name: 'アメブ候補', exact: true });
+    await expect(tagChoice).toHaveClass(/chipBtn--on/);
+    await expect(tagChoice).toHaveAttribute('aria-pressed', 'true');
+    // この画面は追加と選択だけ。名称変更・削除はBOX側へ集約する。
+    await expect(modal.tagSection.locator('.boxTagManager__delete, .boxTagManager__edit')).toHaveCount(0);
+
+    await modal.fillAndPickName(latestPokemonName.slice(0, 2));
+    await modal.submitButton.click();
+    // 連続追加で前のポケモンのタグを誤って引き継がない。
+    await expect(tagChoice).not.toHaveClass(/chipBtn--on/);
+
+    await modal.close();
+    const box = new BoxPanelPage(page);
+    // 追加直後の個体は既に選択済み。タイルを押すと逆に詳細を閉じるため、そのまま確認する。
+    await expect(box.detailPanel).toBeVisible();
+    await expect(box.detailPanel.getByRole('button', { name: 'アメブ候補', exact: true })).toHaveClass(/chipBtn--on/);
   });
 
   test('進化系のどのポケモンから編集してもモーダル・計算機・BOXで同じ種族アメを共有する', async ({ page }) => {

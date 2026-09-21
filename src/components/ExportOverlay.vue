@@ -9,11 +9,19 @@
       >
         <div class="exportHead">
           <div class="exportHead__top">
-            <div class="exportBrand" data-testid="brandLabel"><span class="exportBrand__icon">🍬 </span>{{ boostKind === 'full' ? t("calc.export.brandBoost") : boostKind === 'mini' ? t("calc.export.brandMini") : t("calc.export.brand") }}</div>
+            <div class="exportBrand" data-testid="brandLabel">
+              <span class="exportBrand__product exportText exportText--left">{{ t("calc.export.brandProduct") }}</span>
+              <span class="exportBrand__plan exportText exportText--left">{{ boostKind === 'full' ? t("calc.export.planBoost") : boostKind === 'mini' ? t("calc.export.planMini") : t("calc.export.plan") }}</span>
+            </div>
           </div>
 
           <div class="exportMeta">
-            <div class="exportMonth" aria-label="month" data-testid="monthLabel">{{ exportMonthLabel }}</div>
+            <div class="exportMonth" :aria-label="exportMonthLabel" data-testid="monthLabel">
+              <span class="exportMonth__text exportText exportText--right">
+                <span class="exportMonth__year">{{ exportYearPartLabel }}</span>
+                <span class="exportMonth__month">{{ exportMonthPartLabel }}</span>
+              </span>
+            </div>
 
             <div class="exportActions" @click.stop>
               <button class="linkBtn" type="button" @click="downloadCalcExportPng" :disabled="exportBusy" data-testid="saveImageButton">
@@ -48,8 +56,8 @@
         <div v-if="exportStatus" class="exportStatus" data-testid="export-status" role="status">{{ exportStatus }}</div>
 
         <div class="exportCalc">
-          <div class="exportSectionTitle">{{ t("calc.export.sectionResources") }}</div>
-          <button v-if="showNoStockWarning" type="button" class="exportNoStock" @click="emit('open-settings')">{{ t("calc.export.noStockWarning") }}</button>
+          <div class="exportSectionTitle"><span class="exportText exportText--left">{{ t("calc.export.sectionResources") }}</span></div>
+          <button v-if="showNoStockWarning" type="button" class="exportNoStock exportText exportText--left" @click="emit('open-settings')">{{ t("calc.export.noStockWarning") }}</button>
           <div class="exportCalcTop">
             <div class="exportStats" :class="{ 'exportStats--normal': !isBoostMode }">
               <div
@@ -63,8 +71,8 @@
                 }"
                 data-testid="statCard"
               >
-                <div class="statCard__label">{{ card.label }}</div>
-                <div class="statCard__value" :class="{ 'statCard__value--danger': card.isDanger }">
+                <div class="statCard__label exportText exportText--left">{{ card.label }}</div>
+                <div class="statCard__value exportText exportText--left" :class="{ 'statCard__value--danger': card.isDanger }">
                   {{ fmtNum(card.value) }}
                 </div>
               </div>
@@ -73,13 +81,13 @@
             <div class="exportBars" :class="{ 'exportBars--muted': shardsCap <= 0 }">
               <div v-if="isBoostMode" class="exportBarBlock">
                 <div class="exportBarHead">
-                  <div class="exportBarK">
+                  <div class="exportBarK exportText exportText--left">
                     {{ t("calc.boostCandyUsage", { pct: boostUsagePct }) }}
                   </div>
-                  <div class="exportBarK exportBarK--right">{{ t("calc.cap", { cap: fmtNum(boostCap) }) }}</div>
+                  <div class="exportBarK exportBarK--right exportText exportText--right">{{ t("calc.cap", { cap: fmtNum(boostCap) }) }}</div>
                 </div>
                 <div
-                  class="exportBar"
+                  class="exportBar exportBar--boost"
                   role="progressbar"
                   :aria-valuenow="Math.max(0, boostUsed)"
                   aria-valuemin="0"
@@ -95,15 +103,15 @@
 
               <div class="exportBarBlock">
                 <div class="exportBarHead">
-                  <div class="exportBarK">
+                  <div class="exportBarK exportText exportText--left">
                     {{ shardsCap > 0 ? t("calc.shardsUsage", { pct: shardsUsagePct }) : t("calc.shardsUsageDash") }}
                   </div>
-                  <div class="exportBarK exportBarK--right">
+                  <div class="exportBarK exportBarK--right exportText exportText--right">
                     {{ shardsCap > 0 ? t("calc.cap", { cap: fmtNum(shardsCap) }) : t("calc.capUnset") }}
                   </div>
                 </div>
                 <div
-                  class="exportBar"
+                  class="exportBar exportBar--shards"
                   role="progressbar"
                   :aria-valuenow="Math.max(0, shardsUsed)"
                   aria-valuemin="0"
@@ -123,81 +131,97 @@
             </div>
           </div>
 
-          <div class="exportSectionTitle">{{ t("calc.export.sectionList") }}</div>
+          <div class="exportSectionTitle"><span class="exportText exportText--left">{{ t("calc.export.sectionList") }}</span></div>
           <div class="exportList" :class="{ 'exportList--normal': !isBoostMode }">
             <div class="exportList__head" data-testid="listHead">
-              <div class="exportList__col">{{ t("calc.export.colPokemon") }}</div>
-              <div class="exportList__col exportList__lvHead">{{ t("calc.export.colLv") }}</div>
-              <div v-if="isBoostMode" class="exportList__col u-align-right">{{ t("calc.export.colBoost") }}</div>
-              <div v-if="isBoostMode" class="exportList__col u-align-right">{{ t("calc.export.colNormal") }}</div>
-              <div class="exportList__col u-align-right">{{ t("calc.export.colTotal") }}</div>
-              <div class="exportList__col u-align-right">{{ t("calc.export.colShards") }}</div>
+              <div class="exportList__col"><span class="exportText exportText--left">{{ t("calc.export.colPokemon") }}</span></div>
+              <div class="exportList__col exportList__lvHead"><span class="exportText exportText--center">{{ t("calc.export.colLv") }}</span></div>
+              <div v-if="isBoostMode" class="exportList__col u-align-right"><span class="exportText exportText--right">{{ t("calc.export.colBoost") }}</span></div>
+              <div
+                v-if="isBoostMode"
+                class="exportList__col u-align-right"
+                :class="{ 'exportList__col--multiline': locale === 'en' }"
+              ><span class="exportText exportText--right">{{ t("calc.export.colNormal") }}</span></div>
+              <div class="exportList__col u-align-right"><span class="exportText exportText--right">{{ t("calc.export.colTotal") }}</span></div>
+              <div
+                class="exportList__col u-align-right"
+                :class="{ 'exportList__col--multiline': locale === 'en' }"
+              ><span class="exportText exportText--right">{{ t("calc.export.colShards") }}</span></div>
             </div>
 
             <div v-for="row in rows" :key="row.id" class="exportList__row" data-testid="listRow">
               <div class="exportList__col exportList__nameCol">
-                <span class="exportList__lvInline">Lv{{ row.srcLevel }}→{{ row.dstLevel }}</span>
-                <span class="exportList__name">{{ row.title }}</span>
-                <span v-if="row.natureLabel" class="exportList__badge">{{ row.natureLabel }}</span>
-                <span v-if="row.candySupply" class="exportList__supplyInline">{{ row.candySupply }}</span>
+                <span class="exportList__lvInline exportText exportText--left">
+                  Lv{{ row.srcLevel }}→{{ row.candyReachLevel ?? row.dstLevel }}
+                  <template v-if="row.sleepTargetLevel !== undefined">
+                    <span class="exportList__sleepMark">zzZ</span> {{ row.sleepTargetLevel }}
+                  </template>
+                </span>
+                <span class="exportList__name exportText exportText--left">{{ row.title }}</span>
+                <ExportNatureBadge v-if="row.natureLabel" :label="row.natureLabel" />
+                <span v-if="row.candySupply" class="exportList__supplyInline exportText exportText--left">{{ row.candySupply }}</span>
               </div>
               <div class="exportList__col u-align-center exportList__lvCol">
-                <div class="exportList__lvWrap">
+                <div class="exportList__lvWrap exportText exportText--center">
                   <span class="exportList__lvVal">{{ row.srcLevel }}</span>
                   <span class="exportList__arrow">→</span>
-                  <span class="exportList__lvVal">{{ row.dstLevel }}</span>
+                  <span class="exportList__lvVal">{{ row.candyReachLevel ?? row.dstLevel }}</span>
+                  <template v-if="row.sleepTargetLevel !== undefined">
+                    <span class="exportList__sleepMark">zzZ</span>
+                    <span class="exportList__lvVal">{{ row.sleepTargetLevel }}</span>
+                  </template>
                 </div>
               </div>
               <div v-if="isBoostMode" class="exportList__col u-align-right exportList__numCol">
-                <span class="u-mobile-label">{{ t("calc.export.colBoost") }}</span>
-                <span class="exportList__num">{{ fmtNum(row.boostCandy) }}</span>
+                <span class="u-mobile-label exportText exportText--left">{{ t("calc.export.colBoost") }}</span>
+                <span class="exportList__num exportText exportText--right">{{ fmtNum(row.boostCandy) }}</span>
               </div>
               <div v-if="isBoostMode" class="exportList__col u-align-right exportList__numCol">
-                <span class="u-mobile-label">{{ t("calc.export.colNormal") }}</span>
-                <span class="exportList__num">{{ fmtNum(row.normalCandy) }}</span>
+                <span class="u-mobile-label exportText exportText--left">{{ t("calc.export.colNormal") }}</span>
+                <span class="exportList__num exportText exportText--right">{{ fmtNum(row.normalCandy) }}</span>
               </div>
               <div class="exportList__col u-align-right exportList__numCol">
-                <span class="u-mobile-label">{{ t("calc.export.colTotal") }}</span>
-                <span class="exportList__num">{{ fmtNum(row.totalCandy) }}</span>
+                <span class="u-mobile-label exportText exportText--left">{{ t("calc.export.colTotal") }}</span>
+                <span class="exportList__num exportText exportText--right">{{ fmtNum(row.totalCandy) }}</span>
               </div>
               <div class="exportList__col u-align-right exportList__numCol">
-                <span class="u-mobile-label">{{ t("calc.export.colShards") }}</span>
-                <span class="exportList__num">{{ fmtNum(row.shards) }}</span>
+                <span class="u-mobile-label exportText exportText--left">{{ t("calc.export.colShards") }}</span>
+                <span class="exportList__num exportText exportText--right">{{ fmtNum(row.shards) }}</span>
               </div>
             </div>
 
             <div class="exportList__row exportList__row--total" aria-label="total" data-testid="totalRow">
               <div class="exportList__col exportList__nameCol">
-                <span class="exportList__name" aria-hidden="true"></span>
+                <span class="exportList__name exportList__totalLabel exportText exportText--left">{{ t("calc.export.rankingTotal") }}</span>
               </div>
               <div class="exportList__col u-align-center exportList__lvCol"></div>
               <div v-if="isBoostMode" class="exportList__col u-align-right exportList__numCol">
-                <span class="u-mobile-label">{{ t("calc.export.colBoost") }}</span>
-                <span class="exportList__num">{{ fmtNum(totals.boostCandy) }}</span>
+                <span class="u-mobile-label exportText exportText--left">{{ t("calc.export.colBoost") }}</span>
+                <span class="exportList__num exportText exportText--right">{{ fmtNum(totals.boostCandy) }}</span>
               </div>
               <div v-if="isBoostMode" class="exportList__col u-align-right exportList__numCol">
-                <span class="u-mobile-label">{{ t("calc.export.colNormal") }}</span>
-                <span class="exportList__num">{{ fmtNum(totals.normalCandy) }}</span>
+                <span class="u-mobile-label exportText exportText--left">{{ t("calc.export.colNormal") }}</span>
+                <span class="exportList__num exportText exportText--right">{{ fmtNum(totals.normalCandy) }}</span>
               </div>
               <div class="exportList__col u-align-right exportList__numCol">
-                <span class="u-mobile-label">{{ t("calc.export.colTotal") }}</span>
-                <span class="exportList__num" data-testid="export-total-row-total-candy">{{ fmtNum(totals.totalCandy) }}</span>
+                <span class="u-mobile-label exportText exportText--left">{{ t("calc.export.colTotal") }}</span>
+                <span class="exportList__num exportText exportText--right" data-testid="export-total-row-total-candy">{{ fmtNum(totals.totalCandy) }}</span>
               </div>
               <div class="exportList__col u-align-right exportList__numCol">
-                <span class="u-mobile-label">{{ t("calc.export.colShards") }}</span>
-                <span class="exportList__num" data-testid="export-total-row-shards">{{ fmtNum(totals.shards) }}</span>
+                <span class="u-mobile-label exportText exportText--left">{{ t("calc.export.colShards") }}</span>
+                <span class="exportList__num exportText exportText--right" data-testid="export-total-row-shards">{{ fmtNum(totals.shards) }}</span>
               </div>
             </div>
           </div>
 
           <!-- 万能アメ使用割合（円グラフ） -->
-          <div v-if="pieSlices.length > 0" class="exportSectionTitle" data-testid="export-ranking-title">{{ t("calc.export.universalRankingTitle") }}</div>
+          <div v-if="pieSlices.length > 0" class="exportSectionTitle" data-testid="export-ranking-title"><span class="exportText exportText--left">{{ t("calc.export.universalRankingTitle") }}</span></div>
           <div v-if="pieSlices.length > 0" class="exportRanking" data-testid="rankingSection">
             <div class="exportRanking__total" data-testid="export-ranking-total">
-              <span>{{ t("calc.export.rankingTotal") }}</span>
-              <span v-if="universalCandyUsedTotal.s > 0">{{ t("calc.export.totalUniversalS") }} {{ fmtNum(universalCandyUsedTotal.s) }}</span>
-              <span v-if="universalCandyUsedTotal.m > 0">{{ t("calc.export.totalUniversalM") }} {{ fmtNum(universalCandyUsedTotal.m) }}</span>
-              <span v-if="universalCandyUsedTotal.l > 0">{{ t("calc.export.totalUniversalL") }} {{ fmtNum(universalCandyUsedTotal.l) }}</span>
+              <span class="exportRanking__totalLabel exportText exportText--left">{{ t("calc.export.rankingTotal") }}</span>
+              <span v-if="universalCandyUsedTotal.s > 0" class="exportRanking__totalItem exportText exportText--left">{{ t("calc.export.totalUniversalS") }} {{ fmtNum(universalCandyUsedTotal.s) }}</span>
+              <span v-if="universalCandyUsedTotal.m > 0" class="exportRanking__totalItem exportText exportText--left">{{ t("calc.export.totalUniversalM") }} {{ fmtNum(universalCandyUsedTotal.m) }}</span>
+              <span v-if="universalCandyUsedTotal.l > 0" class="exportRanking__totalItem exportText exportText--left">{{ t("calc.export.totalUniversalL") }} {{ fmtNum(universalCandyUsedTotal.l) }}</span>
             </div>
 
             <div class="exportPie">
@@ -207,21 +231,29 @@
                   v-for="slice in pieSlices"
                   :key="slice.id"
                   :d="slice.path"
-                  :fill="slice.fillColor"
-                  :stroke="slice.strokeColor"
-                  stroke-width="1"
                   :class="`exportPie__slice exportPie__slice--${slice.colorIdx}`"
                 />
+                <circle
+                  class="exportPie__hole"
+                  :cx="PIE_CX"
+                  :cy="PIE_CY"
+                  :r="PIE_R * PIE_HOLE_RATIO"
+                />
+                <text
+                  class="exportPie__centerValue"
+                  :x="PIE_CX"
+                  :y="PIE_CY + PIE_CENTER_VALUE_OFFSET_Y"
+                >{{ fmtNum(universalCandyCount) }}</text>
               </svg>
 
               <!-- Legend -->
               <div :class="['exportPie__legend', pieSlices.length >= 3 && 'exportPie__legend--compact']">
                 <div v-for="slice in pieSlices" :key="slice.id" class="exportPie__legendItem" data-testid="rankingItem">
-                  <span :class="`exportPie__swatch exportPie__swatch--${slice.colorIdx}`" :style="{ background: slice.fillColor }"></span>
-                  <span class="exportPie__legendName">{{ slice.pokemonName }}</span>
-                  <span class="exportPie__legendPct">{{ slice.pct }}%</span>
+                  <span :class="`exportPie__swatch exportPie__swatch--${slice.colorIdx}`"></span>
+                  <span class="exportPie__legendName exportText exportText--left">{{ slice.pokemonName }}</span>
+                  <span class="exportPie__legendPct exportText exportText--right">{{ slice.pct }}%</span>
                   <span class="exportPie__legendDetail">
-                    <span v-if="slice.uniSUsed > 0 || slice.uniMUsed > 0 || slice.uniLUsed > 0" class="exportRanking__itemGroup">
+                    <span v-if="slice.uniSUsed > 0 || slice.uniMUsed > 0 || slice.uniLUsed > 0" class="exportRanking__itemGroup exportText exportText--left">
                       <span class="exportRanking__itemLabel">{{ t("calc.export.labelUni") }}</span>
                       <span v-if="slice.uniSUsed > 0">S{{ slice.uniSUsed }}</span>
                       <span v-if="slice.uniSUsed > 0 && (slice.uniMUsed > 0 || slice.uniLUsed > 0)"> / </span>
@@ -229,7 +261,7 @@
                       <span v-if="slice.uniMUsed > 0 && slice.uniLUsed > 0"> / </span>
                       <span v-if="slice.uniLUsed > 0">L{{ slice.uniLUsed }}</span>
                     </span>
-                    <span v-if="slice.typeSUsed > 0 || slice.typeMUsed > 0" class="exportRanking__itemGroup">
+                    <span v-if="slice.typeSUsed > 0 || slice.typeMUsed > 0" class="exportRanking__itemGroup exportText exportText--left">
                       <span class="exportRanking__itemLabel">{{ t("calc.export.labelType") }}</span>
                       <span v-if="slice.typeSUsed > 0">S{{ slice.typeSUsed }}</span>
                       <span v-if="slice.typeSUsed > 0 && slice.typeMUsed > 0"> / </span>
@@ -268,14 +300,23 @@
 import { computed, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import {
+  buildExportPieGeometry,
   buildExportImageModel,
+  countUniversalCandyItems,
   type ExportImageBoostKind,
   type ExportImageRankingItem,
   type ExportImageRow,
   type ExportImageSource,
   type ExportImageTotals,
   type ExportImageTranslate,
+  type ExportUniversalCandyUsed,
 } from "../export/exportImageModel";
+import ExportNatureBadge from "./ExportNatureBadge.vue";
+import {
+  EXPORT_FONT_WEIGHT_VALUES,
+  PIE_CENTER_VALUE_OFFSET_Y,
+  PIE_HOLE_RATIO,
+} from "../export/exportImageLayout";
 import { createExportImageCanvas, ExportImageError } from "../export/renderExportImage";
 import { saveExportImage, type SaveImageAdapter } from "../export/saveExportImage";
 import { isSharePending, setSharePending } from "../export/sharePendingState";
@@ -299,7 +340,7 @@ const props = defineProps<{
   shardsFillPct: number;
 
   universalCandyRanking: ExportImageRankingItem[];
-  universalCandyUsedTotal: { s: number; m: number; l: number };
+  universalCandyUsedTotal: ExportUniversalCandyUsed;
   boostKind: ExportImageBoostKind;
   /** アメ在庫が1つでも設定されているか（在庫未設定警告の表示条件） */
   hasCandyStock: boolean;
@@ -395,9 +436,11 @@ const statCards = computed<StatCardDef[]>(() => {
   return cards;
 });
 
-const exportMonthLabel = computed(() => {
-  return new Intl.DateTimeFormat(locale.value, { year: "numeric", month: "short" }).format(new Date());
-});
+const exportDisplayDate = new Date();
+const exportMonthFormatter = computed(() => new Intl.DateTimeFormat(locale.value, { year: "numeric", month: "short" }));
+const exportMonthLabel = computed(() => exportMonthFormatter.value.format(exportDisplayDate));
+const exportYearPartLabel = computed(() => new Intl.DateTimeFormat(locale.value, { year: "numeric" }).format(exportDisplayDate));
+const exportMonthPartLabel = computed(() => new Intl.DateTimeFormat(locale.value, { month: "short" }).format(exportDisplayDate));
 
 function csvCell(v: unknown): string {
   const s = String(v ?? "");
@@ -509,6 +552,15 @@ async function copyCalcExportCsv() {
 const PIE_R = 80;
 const PIE_CX = 90;
 const PIE_CY = 90;
+// SVG の全円は単一 arc では描けないため、2つの半円で構成する。
+const PIE_FULL_CIRCLE_PATH = [
+  `M${PIE_CX},${PIE_CY - PIE_R}`,
+  `A${PIE_R},${PIE_R} 0 1 1 ${PIE_CX},${PIE_CY + PIE_R}`,
+  `A${PIE_R},${PIE_R} 0 1 1 ${PIE_CX},${PIE_CY - PIE_R}`,
+  "Z",
+].join(" ");
+
+const universalCandyCount = computed(() => countUniversalCandyItems(props.universalCandyUsedTotal));
 
 type PieSlice = {
   id: string;
@@ -516,8 +568,6 @@ type PieSlice = {
   pct: number;
   path: string;
   colorIdx: number;
-  fillColor: string;
-  strokeColor: string;
   uniSUsed: number;
   uniMUsed: number;
   uniLUsed: number;
@@ -537,65 +587,22 @@ function describeArc(cx: number, cy: number, r: number, startAngle: number, endA
   return `M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${largeArc} 1 ${x2},${y2} Z`;
 }
 
-/** Resolve --pie-N and --paper CSS custom properties from the current theme */
-function resolvePieColors(): { fills: string[]; stroke: string } {
-  const el = exportSheetEl.value ?? document.documentElement;
-  const cs = getComputedStyle(el);
-  const fills: string[] = [];
-  for (let i = 0; i < 8; i++) {
-    fills.push(cs.getPropertyValue(`--pie-${i}`).trim() || "#888");
-  }
-  const stroke = cs.getPropertyValue("--paper").trim() || "#ffffff";
-  return { fills, stroke };
-}
-
 const pieSlices = computed<PieSlice[]>(() => {
-  const items = props.universalCandyRanking;
-  if (items.length === 0) return [];
-
-  const total = items.reduce((s, i) => s + i.universalValue, 0);
-  if (total <= 0) return [];
-
-  const { fills: pieColors, stroke: pieStroke } = resolvePieColors();
-
-  // Single item → full circle
-  if (items.length === 1) {
-    const it = items[0];
-    return [{
-      id: it.id,
-      pokemonName: it.pokemonName,
-      pct: 100,
-      // Full circle: two semicircles to avoid SVG arc rendering issues
-      path: `M${PIE_CX},${PIE_CY - PIE_R} A${PIE_R},${PIE_R} 0 1 1 ${PIE_CX},${PIE_CY + PIE_R} A${PIE_R},${PIE_R} 0 1 1 ${PIE_CX},${PIE_CY - PIE_R} Z`,
-      colorIdx: 0,
-      fillColor: pieColors[0],
-      strokeColor: pieStroke,
-      uniSUsed: it.uniSUsed, uniMUsed: it.uniMUsed, uniLUsed: it.uniLUsed,
-      typeSUsed: it.typeSUsed, typeMUsed: it.typeMUsed,
-    }];
-  }
-
-  const slices: PieSlice[] = [];
-  let angle = 0;
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i];
-    const pct = it.universalValue / total;
-    const sweep = pct * Math.PI * 2;
-    const idx = i % 8;
-    slices.push({
-      id: it.id,
-      pokemonName: it.pokemonName,
-      pct: Math.round(pct * 100),
-      path: describeArc(PIE_CX, PIE_CY, PIE_R, angle, angle + sweep),
-      colorIdx: idx,
-      fillColor: pieColors[idx],
-      strokeColor: pieStroke,
-      uniSUsed: it.uniSUsed, uniMUsed: it.uniMUsed, uniLUsed: it.uniLUsed,
-      typeSUsed: it.typeSUsed, typeMUsed: it.typeMUsed,
-    });
-    angle += sweep;
-  }
-  return slices;
+  const geometry = buildExportPieGeometry(props.universalCandyRanking);
+  return geometry.map((slice) => ({
+    id: slice.item.id,
+    pokemonName: slice.item.pokemonName,
+    pct: slice.displayPct,
+    path: geometry.length === 1
+      ? PIE_FULL_CIRCLE_PATH
+      : describeArc(PIE_CX, PIE_CY, PIE_R, slice.startAngle, slice.endAngle),
+    colorIdx: slice.colorIndex,
+    uniSUsed: slice.item.uniSUsed,
+    uniMUsed: slice.item.uniMUsed,
+    uniLUsed: slice.item.uniLUsed,
+    typeSUsed: slice.item.typeSUsed,
+    typeMUsed: slice.item.typeMUsed,
+  }));
 });
 
 // ── 画像保存（Canvas 2D 直接描画）──────────────────────────────────
@@ -632,12 +639,15 @@ function formatFileTimestamp(now: Date): string {
  * webfont 読込前の初回保存で崩れないよう document.fonts.ready を短い上限付きで待つ。
  * 待機失敗は保存全体の失敗にはせず、解決済み system fallback で描画する。
  */
-async function waitFontsReady(timeoutMs: number): Promise<void> {
+async function waitFontsReady(timeoutMs: number, sampleText: string): Promise<void> {
   try {
-    const fontsReady = document.fonts?.ready;
-    if (fontsReady && typeof fontsReady.then === "function") {
+    const fontSet = document.fonts;
+    if (fontSet) {
+      const exportFontLoads = EXPORT_FONT_WEIGHT_VALUES.map((weight) =>
+        fontSet.load(`${weight} 16px "M PLUS 2 Variable"`, sampleText),
+      );
       await Promise.race([
-        fontsReady,
+        Promise.allSettled([...exportFontLoads, fontSet.ready]),
         new Promise<void>((resolve) => window.setTimeout(resolve, timeoutMs)),
       ]);
     }
@@ -728,7 +738,7 @@ async function downloadCalcExportPng() {
 
   try {
     // webfont 待機（上限付き・非致命）
-    await waitFontsReady(600);
+    await waitFontsReady(2500, el.textContent ?? "");
 
     // 操作開始時刻を 1 度だけ取得し、月表示と filename で共有する
     const now = new Date();

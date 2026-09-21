@@ -71,6 +71,16 @@ function backup(): CandyBoostPlannerBackupV3 {
 }
 
 describe("backup codec", () => {
+  it("round-trips custom tag definitions and entry assignments", () => {
+    const value = backup();
+    value.data.box.tags = [{ id: "tag-1", name: "アメブ候補" }];
+    value.data.box.entries = [{ ...entry("entry-1"), tagIds: ["tag-1"] }];
+
+    const parsed = parseBackup(stringifyBackup(value)).backup;
+    expect(parsed.data.box.tags).toEqual([{ id: "tag-1", name: "アメブ候補" }]);
+    expect(parsed.data.box.entries[0]?.tagIds).toEqual(["tag-1"]);
+  });
+
   it("round-trips the V1 golden fixture", () => {
     const text = readFileSync(new URL("../../tests/fixtures/backup-v1.golden.json", import.meta.url), "utf8");
     const parsed = parseBackup(text);

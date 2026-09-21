@@ -13,24 +13,42 @@ import type {
   ExportModelTotalRow,
 } from "./exportImageModel";
 import {
-  computeExportImageLayout,
-  type ExportImageLayout,
+  BAR_BLOCK_H,
   BAR_HEAD_H,
   BAR_TRACK_H,
   CARD_H,
   CELL_PAD,
   LEGEND_SWATCH,
   LEGEND_SWATCH_GAP,
+  LEGEND_DETAIL_CHIP_PAD_X,
+  LEGEND_DETAIL_GROUP_GAP,
+  LEGEND_DETAIL_VALUE_GAP,
+  LEGEND_INLINE_GAP,
+  LV_CELL_PAD,
+  NAME_CELL_PAD,
   PIE_D,
+  PIE_HOLE_RATIO,
   PIE_LEGEND_GAP,
+  RANKING_CONTENT_PAD_X,
   RANKING_TOTAL_H,
   ROW_H,
   TABLE_HEAD_H,
+  TABLE_HEAD_LINE_H,
+  TABLE_HEAD_MULTILINE_PAD_X,
   TITLE_TEXT_H,
-  TITLE_UNDERLINE_GAP,
   TOTAL_ROW_H,
   WARNING_H,
+  computeExportImageLayout,
+  fitSleepLevelLine,
+  splitLegendDetail,
+  type ExportImageLayout,
 } from "./exportImageLayout";
+import {
+  EXPORT_NATURE_MARK_HEIGHT,
+  EXPORT_NATURE_MARK_TRIANGLES,
+  EXPORT_NATURE_MARK_WIDTH,
+  type ExportNatureTone,
+} from "./exportNatureMark";
 import { readExportImageStyle, type ExportImageStyle } from "./exportImageStyle";
 
 export type ExportImageErrorReason = "image_too_large" | "no_context" | "zero_size";
@@ -48,11 +66,17 @@ type Ctx = CanvasRenderingContext2D;
 
 const HALF_PI = Math.PI / 2;
 const TAU = Math.PI * 2;
+/** M PLUS 2 の字面を意匠上やや詰める、画像専用の横幅補正。 */
+const TEXT_WIDTH_SCALE = 0.97;
+/** Canvas の middle baseline では追加の上下補正は不要。 */
+const PIE_IMAGE_CENTER_VALUE_OFFSET_Y = 0;
 
-const CARD_PAD_X = 12;
-const CARD_LABEL_TOP = 12;
-const CARD_VALUE_BASELINE_FROM_BOTTOM = 14;
+const CARD_PAD_X = 16;
+const CARD_LABEL_BASELINE_FROM_TOP = 24;
+const CARD_VALUE_BASELINE_FROM_BOTTOM = 16;
 const BADGE_H = 18;
+const BAR_PANEL_PAD_X = 20;
+const BAR_PANEL_PAD_Y = 16;
 
 function roundRectPath(ctx: Ctx, x: number, y: number, w: number, h: number, r: number): void {
   const rr = Math.max(0, Math.min(r, w / 2, h / 2));
@@ -88,16 +112,31 @@ function fillRoundRect(
   ctx.restore();
 }
 
-function hLine(ctx: Ctx, x1: number, x2: number, y: number, color: string, width: number, alpha = 1): void {
+function line(
+  ctx: Ctx,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  color: string,
+  alpha = 1,
+): void {
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.strokeStyle = color;
-  ctx.lineWidth = width;
+  ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(x1, y);
-  ctx.lineTo(x2, y);
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
   ctx.stroke();
   ctx.restore();
+}
+
+function fillCircle(ctx: Ctx, x: number, y: number, radius: number, color: string): void {
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, TAU);
+  ctx.fillStyle = color;
+  ctx.fill();
 }
 
 function drawText(
@@ -114,7 +153,37 @@ function drawText(
   ctx.fillStyle = color;
   ctx.textAlign = align;
   ctx.textBaseline = baseline;
-  ctx.fillText(s, x, y);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(TEXT_WIDTH_SCALE, 1);
+  ctx.fillText(s, 0, 0);
+  ctx.restore();
+}
+
+function measureTextWidth(ctx: Ctx, text: string, font: string): number {
+  ctx.font = font;
+  return ctx.measureText(text).width * TEXT_WIDTH_SCALE;
+}
+
+function drawNatureMark(
+  ctx: Ctx,
+  tone: ExportNatureTone,
+  centerX: number,
+  centerY: number,
+  color: string,
+): void {
+  const left = centerX - EXPORT_NATURE_MARK_WIDTH / 2;
+  const top = centerY - EXPORT_NATURE_MARK_HEIGHT / 2;
+
+  ctx.beginPath();
+  for (const [first, second, third] of EXPORT_NATURE_MARK_TRIANGLES[tone]) {
+    ctx.moveTo(left + first.x, top + first.y);
+    ctx.lineTo(left + second.x, top + second.y);
+    ctx.lineTo(left + third.x, top + third.y);
+    ctx.closePath();
+  }
+  ctx.fillStyle = color;
+  ctx.fill();
 }
 
 function cellValue(row: ExportModelRow | ExportModelTotalRow, key: ExportColumn["key"]): string {
@@ -133,15 +202,41 @@ function cellValue(row: ExportModelRow | ExportModelTotalRow, key: ExportColumn[
 }
 
 function drawHeader(ctx: Ctx, model: ExportImageModel, layout: ExportImageLayout, style: ExportImageStyle): void {
-  ctx.fillStyle = style.sectionBackground;
+  ctx.fillStyle = style.paper;
   ctx.fillRect(0, 0, layout.logicalWidth, layout.headerHeight);
+  ctx.fillStyle = style.highlight;
+  ctx.fillRect(0, 0, layout.logicalWidth, 6);
+  line(ctx, 0, layout.headerHeight, layout.logicalWidth, layout.headerHeight, style.accent, 0.24);
   const midY = layout.headerHeight / 2;
-  drawText(ctx, model.brandLabel, layout.contentX, midY, layout.fonts.brand, style.ink, "left", "middle");
+  drawText(ctx, model.brandProduct, layout.contentX, midY - 13, layout.fonts.brandProduct, style.highlight, "left", "middle");
+  drawText(ctx, model.planLabel, layout.contentX, midY + 13, layout.fonts.brand, style.ink, "left", "middle");
+  const metaRight = layout.logicalWidth - layout.contentX;
   drawText(
     ctx,
-    model.monthLabel,
-    layout.logicalWidth - layout.contentX,
-    midY,
+    model.appName,
+    metaRight,
+    midY - 13,
+    layout.fonts.brandProduct,
+    style.highlight,
+    "right",
+    "middle",
+  );
+  const monthWidth = measureTextWidth(ctx, model.monthPartLabel, layout.fonts.month);
+  drawText(
+    ctx,
+    model.yearPartLabel,
+    metaRight - monthWidth - 7,
+    midY + 14,
+    layout.fonts.monthYear,
+    style.muted,
+    "right",
+    "middle",
+  );
+  drawText(
+    ctx,
+    model.monthPartLabel,
+    metaRight,
+    midY + 12,
     layout.fonts.month,
     style.ink,
     "right",
@@ -156,18 +251,17 @@ function drawSectionTitle(
   titleTop: number,
   label: string,
 ): void {
+  fillRoundRect(ctx, layout.contentX, titleTop + 5, 7, 20, 4, style.highlight);
   drawText(
     ctx,
     label,
-    layout.contentX,
+    layout.contentX + 15,
     titleTop + TITLE_TEXT_H / 2,
     layout.fonts.sectionTitle,
-    style.accent,
+    style.ink,
     "left",
     "middle",
   );
-  const underlineY = titleTop + TITLE_TEXT_H + TITLE_UNDERLINE_GAP;
-  hLine(ctx, layout.contentX, layout.contentX + layout.contentWidth, underlineY, style.accent, 2, 0.25);
 }
 
 function drawResources(ctx: Ctx, model: ExportImageModel, layout: ExportImageLayout, style: ExportImageStyle): void {
@@ -191,16 +285,22 @@ function drawResources(ctx: Ctx, model: ExportImageModel, layout: ExportImageLay
   model.statCards.forEach((card, i) => {
     const rect = r.cards[i];
     const isDanger = card.variant === "danger";
-    fillRoundRect(ctx, rect.x, rect.top, rect.width, CARD_H, 8, isDanger ? style.danger : style.ink, isDanger ? 0.08 : 0.04);
+    const cardColor = {
+      accent: style.statCardAccent,
+      plain: style.statCardPlain,
+      primary: style.statCardPrimary,
+      danger: style.statCardDanger,
+    }[card.variant];
+    fillRoundRect(ctx, rect.x, rect.top, rect.width, CARD_H, 12, cardColor);
     drawText(
       ctx,
       card.label,
       rect.x + CARD_PAD_X,
-      rect.top + CARD_LABEL_TOP,
+      rect.top + CARD_LABEL_BASELINE_FROM_TOP,
       layout.fonts.cardLabel,
       style.muted,
       "left",
-      "top",
+      "alphabetic",
     );
     drawText(
       ctx,
@@ -214,15 +314,33 @@ function drawResources(ctx: Ctx, model: ExportImageModel, layout: ExportImageLay
     );
   });
 
-  // bars
+  // bars: 上下に余白を持つ1つの領域へまとめる。
+  if (model.bars.length > 0) {
+    const lastBarTop = r.bars[r.bars.length - 1].top;
+    const panelTop = r.barsTop - BAR_PANEL_PAD_Y;
+    const panelHeight = lastBarTop + BAR_BLOCK_H - r.barsTop + BAR_PANEL_PAD_Y * 2;
+    fillRoundRect(
+      ctx,
+      layout.contentX,
+      panelTop,
+      layout.contentWidth,
+      panelHeight,
+      8,
+      style.accent,
+      0.055,
+    );
+  }
   model.bars.forEach((bar, i) => {
     const top = r.bars[i].top;
     const headMid = top + BAR_HEAD_H / 2;
-    drawText(ctx, bar.usageLabel, layout.contentX, headMid, layout.fonts.barLabel, style.ink, "left", "middle");
+    const barX = layout.contentX + BAR_PANEL_PAD_X;
+    const barWidth = layout.contentWidth - BAR_PANEL_PAD_X * 2;
+    const barFill = bar.key === "shards" ? style.shardsBarFill : style.barFill;
+    drawText(ctx, bar.usageLabel, barX, headMid, layout.fonts.barLabel, style.ink, "left", "middle");
     drawText(
       ctx,
       bar.capLabel,
-      layout.contentX + layout.contentWidth,
+      barX + barWidth,
       headMid,
       layout.fonts.barCap,
       style.muted,
@@ -230,17 +348,38 @@ function drawResources(ctx: Ctx, model: ExportImageModel, layout: ExportImageLay
       "middle",
     );
     const trackY = top + BAR_HEAD_H + 4;
-    fillRoundRect(ctx, layout.contentX, trackY, layout.contentWidth, BAR_TRACK_H, BAR_TRACK_H / 2, style.barTrack);
-    const fillW = (layout.contentWidth * bar.fillPct) / 100;
+    fillRoundRect(ctx, barX, trackY, barWidth, BAR_TRACK_H, BAR_TRACK_H / 2, barFill, 0.22);
+    const fillW = (barWidth * bar.fillPct) / 100;
     if (fillW > 0) {
-      fillRoundRect(ctx, layout.contentX, trackY, fillW, BAR_TRACK_H, BAR_TRACK_H / 2, style.barFill);
+      fillRoundRect(
+        ctx,
+        barX,
+        trackY,
+        fillW,
+        BAR_TRACK_H,
+        BAR_TRACK_H / 2,
+        barFill,
+        style.barFillAlpha,
+      );
+      // PNG の縮小表示でも白丸がトラック外へ飛び出して見えないよう、
+      // 上下に 3px、右端に 3px の色を残す。
+      const markerR = 4;
+      const markerX = Math.max(
+        barX + markerR + 3,
+        Math.min(barX + fillW - markerR - 3, barX + barWidth - markerR - 3),
+      );
+      fillCircle(ctx, markerX, trackY + BAR_TRACK_H / 2, markerR, "#ffffff");
     }
   });
 }
 
-function drawColumnLabelX(col: ExportImageLayout["columns"][number]): number {
-  if (col.align === "left") return col.x + CELL_PAD;
-  if (col.align === "right") return col.x + col.width - CELL_PAD;
+function drawColumnLabelX(
+  col: ExportImageLayout["columns"][number],
+  inlinePadding = CELL_PAD,
+): number {
+  if (col.key === "name") return col.x + NAME_CELL_PAD;
+  if (col.align === "left") return col.x + inlinePadding;
+  if (col.align === "right") return col.x + col.width - inlinePadding;
   return col.x + col.width / 2;
 }
 
@@ -248,21 +387,34 @@ function drawTable(ctx: Ctx, model: ExportImageModel, layout: ExportImageLayout,
   const tb = layout.table;
   drawSectionTitle(ctx, layout, style, tb.titleTop, model.sectionLabels.list);
 
-  // header
-  const headMid = tb.headTop + TABLE_HEAD_H / 2;
+  const tableBottom = tb.totalRowTop + TOTAL_ROW_H;
+  ctx.save();
+  ctx.globalAlpha = 0.09;
+  ctx.fillStyle = style.accent;
+  ctx.fillRect(layout.contentX, tb.headTop, layout.contentWidth, tb.headHeight);
+  ctx.globalAlpha = 0.11;
+  ctx.fillRect(layout.contentX, tb.totalRowTop, layout.contentWidth, TOTAL_ROW_H);
+  ctx.restore();
+
+  const headMid = tb.headTop + tb.headHeight / 2;
+  const headerInlinePadding = tb.headHeight > TABLE_HEAD_H
+    ? TABLE_HEAD_MULTILINE_PAD_X
+    : CELL_PAD;
   layout.columns.forEach((col) => {
-    drawText(
-      ctx,
-      col.displayLabel,
-      drawColumnLabelX(col),
-      headMid,
-      layout.fonts.tableHead,
-      style.muted,
-      col.align,
-      "middle",
-    );
+    const firstLineY = headMid - ((col.displayLines.length - 1) * TABLE_HEAD_LINE_H) / 2;
+    col.displayLines.forEach((lineLabel, index) => {
+      drawText(
+        ctx,
+        lineLabel,
+        drawColumnLabelX(col, headerInlinePadding),
+        firstLineY + index * TABLE_HEAD_LINE_H,
+        layout.fonts.tableHead,
+        style.muted,
+        col.align,
+        "middle",
+      );
+    });
   });
-  hLine(ctx, layout.contentX, layout.contentX + layout.contentWidth, tb.headTop + TABLE_HEAD_H, style.ink, 2);
 
   const nameCol = layout.columns.find((c) => c.key === "name")!;
   const lvCol = layout.columns.find((c) => c.key === "lv")!;
@@ -274,36 +426,67 @@ function drawTable(ctx: Ctx, model: ExportImageModel, layout: ExportImageLayout,
     const meta = layout.rows[i];
 
     // name + nature badge
-    const nameX = nameCol.x + CELL_PAD;
+    const nameX = drawColumnLabelX(nameCol);
     drawText(ctx, meta.displayName, nameX, midY, layout.fonts.cellName, style.ink, "left", "middle");
     if (meta.natureLabel && meta.natureBadgeWidth > 0) {
-      ctx.font = layout.fonts.cellName;
-      const nameW = ctx.measureText(meta.displayName).width;
-      const badgeX = nameX + nameW + 8;
-      fillRoundRect(ctx, badgeX, midY - BADGE_H / 2, meta.natureBadgeWidth, BADGE_H, 4, style.ink, 0.06);
+      const badgeX = nameCol.x + nameCol.width - NAME_CELL_PAD - meta.natureBadgeWidth;
+      const natureColor = meta.natureTone === "up"
+        ? style.natureUp
+        : meta.natureTone === "down"
+          ? style.natureDown
+          : style.muted;
+      fillRoundRect(ctx, badgeX, midY - BADGE_H / 2, meta.natureBadgeWidth, BADGE_H, 4, natureColor, 0.11);
+      if (meta.natureTone) {
+        drawNatureMark(ctx, meta.natureTone, badgeX + meta.natureBadgeWidth / 2, midY, natureColor);
+      } else {
+        drawText(
+          ctx,
+          meta.natureLabel,
+          badgeX + meta.natureBadgeWidth / 2,
+          midY,
+          layout.fonts.cellNature,
+          natureColor,
+          "center",
+          "middle",
+        );
+      }
+    }
+
+    // Lv: アメ到達地点を表示し、睡眠育成がある行だけ最終目標を zzZ で分ける。
+    const candyLevels = `${row.srcLevel} → ${row.candyReachLevel}`;
+    if (row.sleepTargetLevel === undefined) {
       drawText(
         ctx,
-        meta.natureLabel,
-        badgeX + meta.natureBadgeWidth / 2,
+        candyLevels,
+        lvCol.x + lvCol.width / 2,
         midY,
-        layout.fonts.cellNature,
-        style.muted,
+        layout.fonts.cellLv,
+        style.ink,
         "center",
         "middle",
       );
-    }
+    } else {
+      const sleepMark = "zzZ";
+      const gapBeforeMark = 7;
+      const gapBeforeLevel = 4;
+      const fitted = fitSleepLevelLine(
+        candyLevels,
+        row.sleepTargetLevel,
+        lvCol.width - LV_CELL_PAD * 2,
+        layout.fonts.cellLv,
+        layout.fonts.cellNature,
+        (text, font) => {
+          return measureTextWidth(ctx, text, font);
+        },
+      );
+      let levelX = lvCol.x + (lvCol.width - fitted.totalWidth) / 2;
 
-    // lv
-    drawText(
-      ctx,
-      `${row.srcLevel} → ${row.dstLevel}`,
-      lvCol.x + lvCol.width / 2,
-      midY,
-      layout.fonts.cellLv,
-      style.ink,
-      "center",
-      "middle",
-    );
+      drawText(ctx, candyLevels, levelX, midY, fitted.levelFont, style.ink, "left", "middle");
+      levelX += fitted.candyWidth + gapBeforeMark;
+      drawText(ctx, sleepMark, levelX, midY - 3, fitted.sleepMarkFont, style.accent, "left", "middle");
+      levelX += fitted.sleepMarkWidth + gapBeforeLevel;
+      drawText(ctx, row.sleepTargetLevel, levelX, midY, fitted.levelFont, style.ink, "left", "middle");
+    }
 
     // numeric columns
     for (const col of layout.columns) {
@@ -319,15 +502,21 @@ function drawTable(ctx: Ctx, model: ExportImageModel, layout: ExportImageLayout,
         "middle",
       );
     }
-
-    hLine(ctx, layout.contentX, layout.contentX + layout.contentWidth, top + ROW_H, style.ink, 1, 0.08);
   });
 
   // total row
   const tTop = tb.totalRowTop;
-  fillRoundRect(ctx, layout.contentX, tTop, layout.contentWidth, TOTAL_ROW_H, 0, style.ink, 0.04);
-  hLine(ctx, layout.contentX, layout.contentX + layout.contentWidth, tTop, style.ink, 2);
   const tMid = tTop + TOTAL_ROW_H / 2;
+  drawText(
+    ctx,
+    model.sectionLabels.total,
+    drawColumnLabelX(nameCol),
+    tMid,
+    layout.fonts.totalNum,
+    style.accent,
+    "left",
+    "middle",
+  );
   for (const col of layout.columns) {
     if (col.key === "name" || col.key === "lv") continue;
     drawText(
@@ -341,6 +530,19 @@ function drawTable(ctx: Ctx, model: ExportImageModel, layout: ExportImageLayout,
       "middle",
     );
   }
+
+  // 外枠と全セルの縦横罫線。縦線を含め、一覧を読みやすい通常の表として描く。
+  line(ctx, layout.contentX, tb.headTop, layout.contentX + layout.contentWidth, tb.headTop, style.accent, 0.38);
+  line(ctx, layout.contentX, tb.firstRowTop, layout.contentX + layout.contentWidth, tb.firstRowTop, style.accent, 0.38);
+  model.rows.forEach((_, i) => {
+    const y = tb.firstRowTop + (i + 1) * ROW_H;
+    line(ctx, layout.contentX, y, layout.contentX + layout.contentWidth, y, style.accent, 0.28);
+  });
+  line(ctx, layout.contentX, tableBottom, layout.contentX + layout.contentWidth, tableBottom, style.accent, 0.38);
+  line(ctx, layout.contentX, tb.headTop, layout.contentX, tableBottom, style.accent, 0.38);
+  layout.columns.forEach((col) => {
+    line(ctx, col.x + col.width, tb.headTop, col.x + col.width, tableBottom, style.accent, 0.32);
+  });
 }
 
 function drawRanking(ctx: Ctx, model: ExportImageModel, layout: ExportImageLayout, style: ExportImageStyle): void {
@@ -350,13 +552,14 @@ function drawRanking(ctx: Ctx, model: ExportImageModel, layout: ExportImageLayou
 
   // total line: "合計" + 万能アメS/M/L
   const totalMid = rk.totalTop + RANKING_TOTAL_H / 2;
-  drawText(ctx, model.pie.title, layout.contentX, totalMid, layout.fonts.rankingTotalLabel, style.muted, "left", "middle");
-  ctx.font = layout.fonts.rankingTotalLabel;
-  let x = layout.contentX + ctx.measureText(model.pie.title).width + 16;
-  ctx.font = layout.fonts.rankingTotalItem;
+  const rankingContentX = layout.contentX + RANKING_CONTENT_PAD_X;
+  drawText(ctx, model.pie.title, rankingContentX, totalMid, layout.fonts.rankingTotalLabel, style.muted, "left", "middle");
+  let x = rankingContentX
+    + measureTextWidth(ctx, model.pie.title, layout.fonts.rankingTotalLabel)
+    + 16;
   for (const label of model.pie.totalLabels) {
     drawText(ctx, label, x, totalMid, layout.fonts.rankingTotalItem, style.ink, "left", "middle");
-    x += ctx.measureText(label).width + 16;
+    x += measureTextWidth(ctx, label, layout.fonts.rankingTotalItem) + 16;
   }
 
   // pie
@@ -373,33 +576,77 @@ function drawRanking(ctx: Ctx, model: ExportImageModel, layout: ExportImageLayou
     }
     ctx.fillStyle = color;
     ctx.fill();
-    ctx.strokeStyle = style.paper;
-    ctx.lineWidth = 1;
-    ctx.stroke();
   }
 
+  ctx.beginPath();
+  ctx.arc(rk.pieCX, rk.pieCY, rk.pieR * PIE_HOLE_RATIO, 0, TAU);
+  ctx.fillStyle = style.paper;
+  ctx.fill();
+  drawText(
+    ctx,
+    model.pie.centerValue,
+    rk.pieCX,
+    rk.pieCY + PIE_IMAGE_CENTER_VALUE_OFFSET_Y,
+    layout.fonts.pieCenterValue,
+    style.ink,
+    "center",
+    "middle",
+  );
+
   // legend
-  const legendX = layout.contentX + PIE_D + PIE_LEGEND_GAP;
+  const legendX = rankingContentX + PIE_D + PIE_LEGEND_GAP;
   const nameX = legendX + LEGEND_SWATCH + LEGEND_SWATCH_GAP;
-  const pctRightX = layout.contentX + layout.contentWidth;
+  const pctX = nameX + rk.legendNameWidth + LEGEND_INLINE_GAP;
+  const detailX = pctX + rk.legendPctWidth + LEGEND_INLINE_GAP;
   for (const item of rk.legend) {
     const color = style.pie[item.slice.colorIndex];
     fillRoundRect(ctx, legendX, item.nameCenterY - LEGEND_SWATCH / 2, LEGEND_SWATCH, LEGEND_SWATCH, 3, color);
     drawText(ctx, item.displayName, nameX, item.nameCenterY, layout.fonts.legendName, style.ink, "left", "middle");
+    const pct = `${item.slice.displayPct}%`;
     drawText(
       ctx,
-      `${item.slice.displayPct}%`,
-      pctRightX,
+      pct,
+      pctX + rk.legendPctWidth,
       item.nameCenterY,
       layout.fonts.legendPct,
       style.ink,
       "right",
       "middle",
     );
-    if (item.detailCenterY !== undefined) {
-      const details = [item.slice.universalDetail, item.slice.typeDetail].filter(Boolean).join("    ");
-      if (details) {
-        drawText(ctx, details, nameX, item.detailCenterY, layout.fonts.legendDetail, style.ink, "left", "middle");
+    const detailParts = [
+      splitLegendDetail(item.slice.universalDetail),
+      splitLegendDetail(item.slice.typeDetail),
+    ].filter((part): part is NonNullable<typeof part> => part !== undefined);
+    let groupX = detailX;
+    for (const [index, part] of detailParts.entries()) {
+      if (index > 0) groupX += LEGEND_DETAIL_GROUP_GAP;
+      const chipWidth = measureTextWidth(ctx, part.label, layout.fonts.legendDetail)
+        + LEGEND_DETAIL_CHIP_PAD_X * 2;
+      fillRoundRect(
+        ctx,
+        groupX,
+        item.nameCenterY - 11,
+        chipWidth,
+        22,
+        6,
+        style.highlight,
+        0.1,
+      );
+      drawText(
+        ctx,
+        part.label,
+        groupX + chipWidth / 2,
+        item.nameCenterY,
+        layout.fonts.legendDetail,
+        style.muted,
+        "center",
+        "middle",
+      );
+      groupX += chipWidth;
+      if (part.value) {
+        groupX += LEGEND_DETAIL_VALUE_GAP;
+        drawText(ctx, part.value, groupX, item.nameCenterY, layout.fonts.legendDetail, style.ink, "left", "middle");
+        groupX += measureTextWidth(ctx, part.value, layout.fonts.legendDetail);
       }
     }
   }
@@ -435,8 +682,7 @@ export function createExportImageCanvas(
   if (!measureCtx) throw new ExportImageError("no_context");
 
   const measure = (text: string, font: string): number => {
-    measureCtx.font = font;
-    return measureCtx.measureText(text).width;
+    return measureTextWidth(measureCtx, text, font);
   };
 
   const layout = computeExportImageLayout(model, style, measure);

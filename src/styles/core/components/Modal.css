@@ -244,6 +244,38 @@
   padding-bottom: 6px;
 }
 
+.addModal__tags {
+  display: flex;
+  grid-column: 1 / -1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+
+.addModal__tagChoices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.addModal__tagAdd {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.addModal__tagAdd .btn {
+  white-space: nowrap;
+}
+
+.addModal__tagError {
+  margin: 0;
+}
+
 .addModal__footer {
   padding: 10px 16px;
   padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
@@ -323,5 +355,12 @@
 
   .addModal__body {
     overflow: visible;
+  }
+
+  /* The card stays overflow-visible for pickers and suggestions, so round the
+     footer surface itself instead of clipping those floating controls. */
+  .addModal__footer {
+    border-bottom-right-radius: inherit;
+    border-bottom-left-radius: inherit;
   }
 }

@@ -34,6 +34,40 @@ function getSearchPrefix(name: string): string {
   return name.slice(0, 2);
 }
 
+test.describe('オンボーディングツアー', () => {
+  test.use({
+    viewport: { width: 320, height: 568 },
+    storageState: { cookies: [], origins: [] },
+  });
+
+  test('古いiPhone幅でもスロットタブを中央に固定し、3つ目の案内を完了できる', async ({ page }) => {
+    await page.goto('/');
+
+    const tooltip = page.locator('.onboarding-tooltip');
+    await expect(tooltip).toBeVisible();
+    await tooltip.locator('.onboarding-tooltip__next').click();
+    await expect(tooltip.locator('.onboarding-tooltip__step')).toHaveText('2 / 3');
+    await tooltip.locator('.onboarding-tooltip__next').click();
+
+    const slotTabs = page.getByTestId('calc-slot-tabs');
+    const slotTabsCenter = await slotTabs.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.top + rect.height / 2;
+    });
+    const viewportCenter = await page.evaluate(() => (
+      (window.visualViewport?.offsetTop ?? 0)
+      + (window.visualViewport?.height ?? window.innerHeight) / 2
+    ));
+    expect(slotTabsCenter).toBeCloseTo(viewportCenter, 0);
+
+    await expect(tooltip.locator('.onboarding-tooltip__step')).toHaveText('3 / 3');
+    const done = tooltip.locator('.onboarding-tooltip__next');
+    await expect(done).toBeInViewport();
+    await done.click();
+    await expect(page.locator('.onboarding-backdrop')).toHaveCount(0);
+  });
+});
+
 // ============================================
 // 新規追加パネル
 // ============================================
@@ -57,6 +91,39 @@ test.describe('新規追加パネル', () => {
     // 閉じる
     await boxPanel.addNewSummary.click();
     await expect(boxPanel.addNewPanel).not.toHaveAttribute('open', '');
+  });
+
+  test('お気に入りと計算機を同じ行に置き、タグを追加・選択して登録できる', async ({ page }) => {
+    await boxPanel.openAddNewPanel();
+
+    const favorite = boxPanel.addNewPanel.locator('.boxAddFav');
+    const calculator = boxPanel.addNewPanel.locator('.boxAddCalcCheck');
+    const [favoriteBox, calculatorBox, tagsBox] = await Promise.all([
+      favorite.boundingBox(),
+      calculator.boundingBox(),
+      boxPanel.addTagSection.boundingBox(),
+    ]);
+    expect(favoriteBox).not.toBeNull();
+    expect(calculatorBox).not.toBeNull();
+    expect(tagsBox).not.toBeNull();
+    expect(calculatorBox!.y).toBeCloseTo(favoriteBox!.y, 0);
+    expect(tagsBox!.y).toBeGreaterThan(favoriteBox!.y + favoriteBox!.height);
+
+    await boxPanel.addTagNameInput.fill('睡眠で上げる');
+    await boxPanel.addTagButton.click();
+    const tagChoice = boxPanel.addTagSection.getByRole('button', { name: '睡眠で上げる', exact: true });
+    await expect(tagChoice).toHaveClass(/chipBtn--on/);
+    await expect(tagChoice).toHaveAttribute('aria-pressed', 'true');
+
+    await boxPanel.fillPokemonName('ピカチュウ');
+    await boxPanel.confirmPokemonName();
+    await boxPanel.clickAddToBox();
+
+    await expect(tagChoice).not.toHaveClass(/chipBtn--on/);
+    await expect(boxPanel.detailPanel.getByRole('button', { name: '睡眠で上げる', exact: true })).toHaveClass(/chipBtn--on/);
+    // 追加フォームでは名称変更・削除を提供しない。
+    await expect(boxPanel.addTagSection.locator('.boxTagManager__delete, .boxTagManager__edit')).toHaveCount(0);
+    await expect(page.getByTestId('box-add-to-calc-checkbox')).toBeChecked();
   });
 
   test('ポケモン名のサジェストが表示される（ツボ→ツボツボ）', async () => {

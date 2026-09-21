@@ -26,6 +26,10 @@ type LayoutShiftSample = {
 type ContainerFrame = {
   timeMs: number;
   summaryHeight: number;
+  followingTop: number;
+  followingTransform: string;
+  followingInlineTransform: string;
+  followingInlineTransition: string;
   actionsTop: number;
   slotsTop: number;
   containerTop: number;
@@ -191,12 +195,17 @@ test.beforeEach(async ({ page }) => {
         if (!(container instanceof HTMLElement)) return;
         const bounds = container.getBoundingClientRect();
         const summary = document.querySelector('[data-testid="calc-sticky-summary"]');
+        const following = document.querySelector('[data-testid="calc-following"]');
         const actions = document.querySelector('[data-testid="calc-actions"]');
         const slots = document.querySelector('.calcSlots');
         const exportButton = document.querySelector('[data-testid="calc-export-button"]');
         const frame: ContainerFrame = {
           timeMs: round(performance.now()),
           summaryHeight: summary instanceof HTMLElement ? round(summary.getBoundingClientRect().height) : 0,
+          followingTop: following instanceof HTMLElement ? round(following.getBoundingClientRect().top) : 0,
+          followingTransform: following instanceof HTMLElement ? getComputedStyle(following).transform : '',
+          followingInlineTransform: following instanceof HTMLElement ? following.style.transform : '',
+          followingInlineTransition: following instanceof HTMLElement ? following.style.transition : '',
           actionsTop: actions instanceof HTMLElement ? round(actions.getBoundingClientRect().top) : 0,
           slotsTop: slots instanceof HTMLElement ? round(slots.getBoundingClientRect().top) : 0,
           containerTop: round(bounds.top),
@@ -234,24 +243,45 @@ for (const scenario of [
   { name: 'empty-stock-full', emptyInventory: true, boostKind: 'full' },
   { name: 'stocked-normal', emptyInventory: false, boostKind: 'none' },
   { name: 'empty-stock-normal', emptyInventory: true, boostKind: 'none' },
+  { name: 'stocked-full-reduced-motion', emptyInventory: false, boostKind: 'full', reducedMotion: true },
+  { name: 'stocked-full-sticky', emptyInventory: false, boostKind: 'full', sticky: true, viewportWidth: 340 },
 ] as const) {
   test(`reproduces saved 10-row mobile layout shifts: ${scenario.name}`, async ({ page }, testInfo) => {
+    if ('viewportWidth' in scenario && scenario.viewportWidth !== undefined) {
+      await page.setViewportSize({ width: scenario.viewportWidth, height: 780 });
+    }
+    if ('reducedMotion' in scenario && scenario.reducedMotion) {
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+    }
     await page.goto('/?perf=1');
     await installFixture(page, scenario.emptyInventory, scenario.boostKind, 'boostCap' in scenario ? scenario.boostCap : undefined);
     try {
       await page.reload();
       expect(await page.evaluate(() => PerformanceObserver.supportedEntryTypes.includes('layout-shift'))).toBe(true);
       await expect(page.getByTestId('calc-row')).toHaveCount(10);
+      let stickyBaseline: { actionsTop: number; scrollY: number } | null = null;
+      if ('sticky' in scenario && scenario.sticky) {
+        stickyBaseline = await page.evaluate(() => {
+          const sticky = document.querySelector<HTMLElement>('.calcSticky');
+          const actions = document.querySelector<HTMLElement>('[data-testid="calc-actions"]');
+          if (!sticky || !actions) throw new Error('sticky probe elements are missing');
+          const stickyOffset = Number.parseFloat(getComputedStyle(sticky).top) || 0;
+          window.scrollTo(0, window.scrollY + sticky.getBoundingClientRect().top - stickyOffset + 1);
+          return { actionsTop: actions.getBoundingClientRect().top, scrollY: window.scrollY };
+        });
+        expect(await page.getByTestId('calc-export-button').isDisabled(), 'sticky probe must scroll before Worker result').toBe(true);
+      }
       await expect(page.getByTestId('calc-export-button')).toBeEnabled({ timeout: 60_000 });
       await page.waitForTimeout(1_100);
       const state = await page.evaluate(() => (window as unknown as { __fbl04Cls: BrowserClsState }).__fbl04Cls);
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const outputDirectory = resolve('_local', 'fbl04-cls-perf', `${timestamp}-${scenario.name}`);
+      const measuredViewport = page.viewportSize() ?? { width: VIEWPORT_WIDTH, height: 780 };
       mkdirSync(outputDirectory, { recursive: true });
       writeFileSync(resolve(outputDirectory, 'detail.json'), `${JSON.stringify({
         generatedAt: new Date().toISOString(),
         browser: 'chromium / mobile viewport',
-        viewport: { width: VIEWPORT_WIDTH, height: 780 },
+        viewport: measuredViewport,
         fixture: `reportedFullPostSwitchFixture / surplusFirst / 10 rows / ${scenario.name}`,
         cls: calculateCls(state.shifts),
         ...state,
@@ -266,8 +296,26 @@ for (const scenario of [
       expect(initialFrame, 'initial layout frame must be captured').toBeDefined();
       expect(finalFrame, 'final layout frame must be captured').toBeDefined();
       expect(cls, 'saved-plan initial render CLS must stay below 0.02').toBeLessThan(0.02);
-      for (const key of ['summaryHeight', 'actionsTop', 'slotsTop', 'containerTop'] as const) {
-        expect(Math.abs((finalFrame?.[key] ?? 0) - (initialFrame?.[key] ?? 0)), `${key} must remain stable`).toBeLessThan(0.5);
+      expect(finalFrame?.followingTransform, 'FLIP transform must be cleaned up').toBe('none');
+      expect(finalFrame?.followingInlineTransform, 'inline FLIP transform must not remain').toBe('');
+      expect(finalFrame?.followingInlineTransition, 'inline FLIP transition must not remain').toBe('');
+      const styleResidue = await page.evaluate(() =>
+        [...document.querySelectorAll<HTMLElement>('.calcFollowing, [data-testid="calc-row"], .calcSticky__summaryBody > *')]
+          .filter(element => element.style.transform || element.style.transition || element.style.transformOrigin)
+          .map(element => element.getAttribute('data-testid') ?? element.className),
+      );
+      expect(styleResidue, 'FLIP styles must be removed from every animated element').toEqual([]);
+      if (stickyBaseline) {
+        const stickyFinal = await page.evaluate(() => ({
+          actionsTop: document.querySelector<HTMLElement>('[data-testid="calc-actions"]')?.getBoundingClientRect().top ?? 0,
+          scrollY: window.scrollY,
+        }));
+        expect(Math.abs(stickyFinal.actionsTop - stickyBaseline.actionsTop), 'sticky compensation must preserve following content position').toBeLessThan(0.75);
+        expect(stickyFinal.scrollY - stickyBaseline.scrollY, 'sticky compensation must follow natural summary growth').toBeGreaterThan(5);
+        expect(
+          Math.abs((finalFrame?.summaryHeight ?? 0) - (initialFrame?.summaryHeight ?? 0)),
+          'sticky probe must keep its natural summary-height change',
+        ).toBeGreaterThan(0.5);
       }
     } finally {
       await page.evaluate(keys => keys.forEach(key => localStorage.removeItem(key)), TEST_STORAGE_KEYS);

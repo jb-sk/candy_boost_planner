@@ -133,6 +133,41 @@
           <input type="checkbox" v-model="addFavorite" />
           {{ t("box.add.addFavorite") }}
         </label>
+
+        <section class="addModal__tags" data-testid="add-modal-tags" :aria-label="t('box.tags.label')">
+          <span class="field__label">{{ t("box.tags.label") }}</span>
+          <div v-if="customTags.length" class="addModal__tagChoices">
+            <button
+              v-for="tag in customTags"
+              :key="tag.id"
+              class="chipBtn"
+              :class="{ 'chipBtn--on': selectedTagIds.includes(tag.id) }"
+              type="button"
+              :data-testid="`add-modal-tag-${tag.id}`"
+              :aria-pressed="selectedTagIds.includes(tag.id)"
+              @click="toggleTag(tag.id)"
+            >
+              <span class="chipBtn__text">{{ tag.name }}</span>
+            </button>
+          </div>
+          <form class="addModal__tagAdd" @submit.prevent="addAndSelectTag">
+            <input
+              v-model="newTagName"
+              class="field__input"
+              data-testid="add-modal-tag-name-input"
+              :maxlength="box.maxCustomTagNameLength"
+              :placeholder="t('box.tags.namePlaceholder')"
+              :aria-label="t('box.tags.namePlaceholder')"
+            />
+            <button
+              class="btn btn--ghost btn--sm"
+              type="submit"
+              data-testid="add-modal-tag-add"
+              :disabled="!newTagName.trim() || customTags.length >= box.maxCustomTags"
+            >{{ t("box.tags.add") }}</button>
+          </form>
+          <p v-if="tagError" class="field__error addModal__tagError" role="alert">{{ tagError }}</p>
+        </section>
       </div>
 
       <div class="addModal__footer">
@@ -184,6 +219,7 @@ const addLookup = box.addLookup;
 const addNameSuggestList = box.addNameSuggestList;
 const showAddNameSuggest = box.showAddNameSuggest;
 const isComposing = box.isComposing;
+const customTags = box.customTags;
 
 // ── Local form state (not shared with BoxPanel's add form) ──
 const srcLevel = ref(1);
@@ -191,6 +227,9 @@ const dstLevel = ref(60);
 const expRemainingInput = ref<string>("");
 const speciesCandyInput = ref<string>("");
 const sleepHoursInput = ref<string>("");
+const selectedTagIds = ref<string[]>([]);
+const newTagName = ref("");
+const tagError = ref("");
 
 const nameInputRef = ref<HTMLInputElement | null>(null);
 
@@ -233,6 +272,30 @@ const canSubmit = computed(() => {
   return !!(addLookup.value || addLabel.value.trim());
 });
 
+function toggleTag(id: string): void {
+  const next = new Set(selectedTagIds.value);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  selectedTagIds.value = [...next];
+}
+
+function addAndSelectTag(): void {
+  const name = newTagName.value.trim();
+  tagError.value = "";
+  if (customTags.value.length >= box.maxCustomTags) {
+    tagError.value = t("box.tags.limit", { count: box.maxCustomTags });
+    return;
+  }
+  if (customTags.value.some((tag) => tag.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+    tagError.value = t("box.tags.duplicate");
+    return;
+  }
+  const id = box.addCustomTag(name);
+  if (!id) return;
+  selectedTagIds.value = [...selectedTagIds.value, id];
+  newTagName.value = "";
+}
+
 // ── Submit ──
 function onSubmit(ev?: MouseEvent) {
   if (!canSubmit.value) return;
@@ -249,7 +312,7 @@ function onSubmit(ev?: MouseEvent) {
   box.addSleepHours.value = String(sleepHoursInput.value ?? "").trim();
 
   // Create box entry via store (expRemaining is now embedded in the entry)
-  box.onCreateManual({ mode: "toCalc" });
+  box.onCreateManual({ mode: "toCalc", tagIds: selectedTagIds.value });
 
   // Save species candy stock if a value was entered and species is known
   if (addLookup.value) {
@@ -280,6 +343,9 @@ function resetForm() {
   sleepHoursInput.value = "";
   addNature.value = "normal";
   addFavorite.value = true;
+  selectedTagIds.value = [];
+  newTagName.value = "";
+  tagError.value = "";
 
   // Focus name input for quick consecutive adds
   nextTick(() => {

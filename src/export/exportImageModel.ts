@@ -8,6 +8,8 @@
  * renderer 側は翻訳・数値整形を一切行わない。
  */
 
+import { exportNatureTone, type ExportNatureTone } from "./exportNatureMark";
+
 // ── source DTO（ExportOverlay.vue の props と共有する型）──────────────
 
 export type ExportImageRow = {
@@ -16,6 +18,10 @@ export type ExportImageRow = {
   natureLabel?: string;
   srcLevel: number;
   dstLevel: number;
+  /** 画面・画像に表示する、実際にアメを使い終えた時点の到達Lv。 */
+  candyReachLevel?: number;
+  /** 睡眠育成後の最終目標Lv。睡眠育成がなければ未指定。 */
+  sleepTargetLevel?: number;
   boostCandy: number;
   normalCandy: number;
   totalCandy: number;
@@ -30,6 +36,12 @@ export type ExportImageTotals = {
   totalCandy: number;
   shards: number;
 };
+
+export type ExportUniversalCandyUsed = { s: number; m: number; l: number };
+
+export function countUniversalCandyItems(used: ExportUniversalCandyUsed): number {
+  return used.s + used.m + used.l;
+}
 
 export type ExportImageRankingItem = {
   id: string;
@@ -62,7 +74,7 @@ export type ExportImageSource = {
   shardsFillPct: number;
 
   universalCandyRanking: ExportImageRankingItem[];
-  universalCandyUsedTotal: { s: number; m: number; l: number };
+  universalCandyUsedTotal: ExportUniversalCandyUsed;
 
   boostKind: ExportImageBoostKind;
 
@@ -116,8 +128,11 @@ export type ExportModelRow = {
   id: string;
   name: string;
   natureLabel?: string;
+  natureTone?: ExportNatureTone;
   srcLevel: string;
   dstLevel: string;
+  candyReachLevel: string;
+  sleepTargetLevel?: string;
   boostCandy?: string;
   normalCandy?: string;
   totalCandy: string;
@@ -148,13 +163,26 @@ export type ExportPieSlice = {
 export type ExportPie = {
   title: string;
   totalLabels: string[];
+  centerValue: string;
   slices: ExportPieSlice[];
 };
 
+export type ExportPieGeometrySlice = {
+  item: ExportImageRankingItem;
+  displayPct: number;
+  startAngle: number;
+  endAngle: number;
+  colorIndex: number;
+};
+
 export type ExportImageModel = {
+  appName: string;
   brandLabel: string;
-  monthLabel: string;
-  sectionLabels: { resources: string; list: string; ranking: string };
+  brandProduct: string;
+  planLabel: string;
+  yearPartLabel: string;
+  monthPartLabel: string;
+  sectionLabels: { resources: string; list: string; ranking: string; total: string };
   noStockWarning?: string;
   statCards: ExportStatCard[];
   bars: ExportBar[];
@@ -165,6 +193,38 @@ export type ExportImageModel = {
 };
 
 const TAU = Math.PI * 2;
+
+/** SVG と Canvas が共有する、万能アメランキングの割合・角度・色番号。 */
+export function buildExportPieGeometry(
+  items: ExportImageRankingItem[],
+): ExportPieGeometrySlice[] {
+  const total = items.reduce((sum, item) => sum + item.universalValue, 0);
+  if (items.length === 0 || total <= 0) return [];
+  if (items.length === 1) {
+    return [{
+      item: items[0],
+      displayPct: 100,
+      startAngle: 0,
+      endAngle: TAU,
+      colorIndex: 0,
+    }];
+  }
+
+  let angle = 0;
+  return items.map((item, index) => {
+    const fraction = item.universalValue / total;
+    const startAngle = angle;
+    const endAngle = index === items.length - 1 ? TAU : angle + fraction * TAU;
+    angle = endAngle;
+    return {
+      item,
+      displayPct: Math.round(fraction * 100),
+      startAngle,
+      endAngle,
+      colorIndex: index % 8,
+    };
+  });
+}
 
 function buildStatCards(
   source: ExportImageSource,
@@ -270,8 +330,11 @@ function buildRows(
     id: r.id,
     name: r.title,
     natureLabel: r.natureLabel,
+    natureTone: exportNatureTone(r.natureLabel),
     srcLevel: String(r.srcLevel),
     dstLevel: String(r.dstLevel),
+    candyReachLevel: String(r.candyReachLevel ?? r.dstLevel),
+    sleepTargetLevel: r.sleepTargetLevel === undefined ? undefined : String(r.sleepTargetLevel),
     boostCandy: isBoostMode ? fmt(r.boostCandy) : undefined,
     normalCandy: isBoostMode ? fmt(r.normalCandy) : undefined,
     totalCandy: fmt(r.totalCandy),
@@ -310,55 +373,29 @@ function buildPie(
   fmt: (n: number) => string,
   t: ExportImageTranslate,
 ): ExportPie | undefined {
-  const items = source.universalCandyRanking;
-  if (items.length === 0) return undefined;
-
-  const total = items.reduce((s, i) => s + i.universalValue, 0);
-  if (total <= 0) return undefined;
+  const geometry = buildExportPieGeometry(source.universalCandyRanking);
+  if (geometry.length === 0) return undefined;
 
   const uniLabel = t("calc.export.labelUni");
   const typeLabel = t("calc.export.labelType");
 
-  const toSlice = (
-    item: ExportImageRankingItem,
-    displayPct: number,
-    startAngle: number,
-    endAngle: number,
-    colorIndex: number,
-  ): ExportPieSlice => ({
-    id: item.id,
-    name: item.pokemonName,
-    displayPct,
-    startAngle,
-    endAngle,
-    colorIndex,
+  const slices: ExportPieSlice[] = geometry.map((slice) => ({
+    id: slice.item.id,
+    name: slice.item.pokemonName,
+    displayPct: slice.displayPct,
+    startAngle: slice.startAngle,
+    endAngle: slice.endAngle,
+    colorIndex: slice.colorIndex,
     universalDetail: joinDetail(uniLabel, [
-      ["S", item.uniSUsed],
-      ["M", item.uniMUsed],
-      ["L", item.uniLUsed],
+      ["S", slice.item.uniSUsed],
+      ["M", slice.item.uniMUsed],
+      ["L", slice.item.uniLUsed],
     ]),
     typeDetail: joinDetail(typeLabel, [
-      ["S", item.typeSUsed],
-      ["M", item.typeMUsed],
+      ["S", slice.item.typeSUsed],
+      ["M", slice.item.typeMUsed],
     ]),
-  });
-
-  let slices: ExportPieSlice[];
-  if (items.length === 1) {
-    slices = [toSlice(items[0], 100, 0, TAU, 0)];
-  } else {
-    slices = [];
-    let angle = 0;
-    const last = items.length - 1;
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i];
-      const fraction = it.universalValue / total;
-      const startAngle = angle;
-      const endAngle = i === last ? TAU : angle + fraction * TAU;
-      slices.push(toSlice(it, Math.round(fraction * 100), startAngle, endAngle, i % 8));
-      angle = endAngle;
-    }
-  }
+  }));
 
   const totalLabels: string[] = [];
   const used = source.universalCandyUsedTotal;
@@ -369,6 +406,7 @@ function buildPie(
   return {
     title: t("calc.export.rankingTotal"),
     totalLabels,
+    centerValue: fmt(countUniversalCandyItems(used)),
     slices,
   };
 }
@@ -377,6 +415,12 @@ function buildBrandLabel(kind: ExportImageBoostKind, t: ExportImageTranslate): s
   if (kind === "full") return t("calc.export.brandBoost");
   if (kind === "mini") return t("calc.export.brandMini");
   return t("calc.export.brand");
+}
+
+function buildPlanLabel(kind: ExportImageBoostKind, t: ExportImageTranslate): string {
+  if (kind === "full") return t("calc.export.planBoost");
+  if (kind === "mini") return t("calc.export.planMini");
+  return t("calc.export.plan");
 }
 
 export function buildExportImageModel(
@@ -388,18 +432,21 @@ export function buildExportImageModel(
   const fmt = (n: number): string => numberFormat.format(n);
   const isBoostMode = source.boostKind !== "none";
 
-  const monthLabel = new Intl.DateTimeFormat(locale, {
-    year: "numeric",
-    month: "short",
-  }).format(now);
+  const yearPartLabel = new Intl.DateTimeFormat(locale, { year: "numeric" }).format(now);
+  const monthPartLabel = new Intl.DateTimeFormat(locale, { month: "short" }).format(now);
 
   return {
+    appName: t("calc.export.appName"),
     brandLabel: buildBrandLabel(source.boostKind, t),
-    monthLabel,
+    brandProduct: t("calc.export.brandProduct"),
+    planLabel: buildPlanLabel(source.boostKind, t),
+    yearPartLabel,
+    monthPartLabel,
     sectionLabels: {
       resources: t("calc.export.sectionResources"),
       list: t("calc.export.sectionList"),
       ranking: t("calc.export.universalRankingTitle"),
+      total: t("calc.export.rankingTotal"),
     },
     noStockWarning: source.hasCandyStock ? undefined : t("calc.export.noStockWarning"),
     statCards: buildStatCards(source, isBoostMode, fmt, t),

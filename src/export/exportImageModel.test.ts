@@ -55,9 +55,20 @@ const jaPresentation = (t: ExportImageTranslate = fakeT) => ({
 });
 
 describe("buildExportImageModel — 情報同等性とブランド", () => {
+  it("年月を英語でも年・月へ分けて描画できる形で保持する", () => {
+    const model = buildExportImageModel(makeSource(), { ...jaPresentation(), locale: "en" });
+    expect(model.yearPartLabel).toBe("2026");
+    expect(model.monthPartLabel).toBe("Jul");
+  });
+
   it("full モードで brandBoost・6列・boost/normal 値を含む", () => {
     const model = buildExportImageModel(makeSource({ boostKind: "full" }), jaPresentation());
     expect(model.brandLabel).toBe("calc.export.brandBoost");
+    expect(model.appName).toBe("calc.export.appName");
+    expect(model.brandProduct).toBe("calc.export.brandProduct");
+    expect(model.planLabel).toBe("calc.export.planBoost");
+    expect(model.yearPartLabel).toBe("2026年");
+    expect(model.monthPartLabel).toBe("7月");
     expect(model.columns.map((c) => c.key)).toEqual([
       "name",
       "lv",
@@ -70,12 +81,14 @@ describe("buildExportImageModel — 情報同等性とブランド", () => {
     expect(model.rows[0].normalCandy).toBe("1,500");
     expect(model.rows[0].totalCandy).toBe("1,550");
     expect(model.rows[0].natureLabel).toBe("EXP▲▲");
+    expect(model.rows[0].natureTone).toBe("up");
     expect(model.totalRow.boostCandy).toBe("50");
   });
 
   it("mini モードで brandMini・6列を維持する", () => {
     const model = buildExportImageModel(makeSource({ boostKind: "mini" }), jaPresentation());
     expect(model.brandLabel).toBe("calc.export.brandMini");
+    expect(model.planLabel).toBe("calc.export.planMini");
     expect(model.columns).toHaveLength(6);
     expect(model.rows[0].boostCandy).toBeDefined();
   });
@@ -83,6 +96,7 @@ describe("buildExportImageModel — 情報同等性とブランド", () => {
   it("none モードで brand・4列・boost/normal を省く", () => {
     const model = buildExportImageModel(makeSource({ boostKind: "none" }), jaPresentation());
     expect(model.brandLabel).toBe("calc.export.brand");
+    expect(model.planLabel).toBe("calc.export.plan");
     expect(model.columns.map((c) => c.key)).toEqual(["name", "lv", "total", "shards"]);
     expect(model.rows[0].boostCandy).toBeUndefined();
     expect(model.rows[0].normalCandy).toBeUndefined();
@@ -97,6 +111,31 @@ describe("buildExportImageModel — 情報同等性とブランド", () => {
     const model = buildExportImageModel(makeSource(), jaPresentation());
     expect(model.columns.some((c) => (c.key as string) === "candySupply")).toBe(false);
     expect(model.columns.some((c) => c.label.includes("candySupply"))).toBe(false);
+  });
+
+  it("Lv はアメ到達地点と睡眠後の目標を分けて保持する", () => {
+    const source = makeSource();
+    source.rows[0] = {
+      ...source.rows[0],
+      srcLevel: 25,
+      dstLevel: 70,
+      candyReachLevel: 68,
+      sleepTargetLevel: 70,
+    };
+    const model = buildExportImageModel(source, jaPresentation());
+
+    expect(model.rows[0]).toMatchObject({
+      srcLevel: "25",
+      dstLevel: "70",
+      candyReachLevel: "68",
+      sleepTargetLevel: "70",
+    });
+  });
+
+  it("旧データでは最終目標Lvをアメ到達Lvのフォールバックにする", () => {
+    const model = buildExportImageModel(makeSource(), jaPresentation());
+    expect(model.rows[0].candyReachLevel).toBe("30");
+    expect(model.rows[0].sleepTargetLevel).toBeUndefined();
   });
 });
 
@@ -181,25 +220,25 @@ describe("buildExportImageModel — 在庫警告", () => {
 });
 
 describe("buildExportImageModel — locale と now", () => {
-  it("ja で年月と数値書式を固定する", () => {
+  it("ja で年月の各要素と数値書式を固定する", () => {
     const model = buildExportImageModel(makeSource(), {
       locale: "ja",
       now: new Date(2026, 6, 19),
       t: fakeT,
     });
-    expect(model.monthLabel).toContain("2026");
-    expect(model.monthLabel).toContain("7");
+    expect(model.yearPartLabel).toBe("2026年");
+    expect(model.monthPartLabel).toBe("7月");
     expect(model.rows[0].shards).toBe("12,345");
   });
 
-  it("en で年月書式が変わる", () => {
+  it("en で年月の各要素の書式が変わる", () => {
     const model = buildExportImageModel(makeSource(), {
       locale: "en",
       now: new Date(2026, 6, 19),
       t: fakeT,
     });
-    expect(model.monthLabel).toContain("2026");
-    expect(model.monthLabel).toContain("Jul");
+    expect(model.yearPartLabel).toBe("2026");
+    expect(model.monthPartLabel).toBe("Jul");
   });
 });
 
@@ -252,6 +291,7 @@ describe("buildExportImageModel — pie", () => {
     expect(slices[0].typeDetail).toBe("calc.export.labelType M3");
     expect(model.pie!.totalLabels[0]).toContain("calc.export.totalUniversalS");
     expect(model.pie!.totalLabels[0]).toContain("475");
+    expect(model.pie!.centerValue).toBe("475");
   });
 
   it("複数スライスは連続し最後の endAngle は厳密に 2π、合計角も 2π", () => {
@@ -280,6 +320,7 @@ describe("buildExportImageModel — pie", () => {
     // 表示 %（75 / 25）
     expect(slices[0].displayPct).toBe(75);
     expect(slices[1].displayPct).toBe(25);
+    expect(model.pie!.centerValue).toBe("4");
   });
 
   it("8 スライス超で colorIndex が 8 で循環する", () => {

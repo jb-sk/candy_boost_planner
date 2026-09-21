@@ -408,6 +408,19 @@ select.field__input {
   cursor: pointer;
 }
 
+/* ===== Responsive overrides ===== */
+
+/* Mobile/tablet panels are pages selected by the shared nav, not cards.
+   The dashboard-qualified selector intentionally outranks every theme's
+   `.panel` decoration while leaving the desktop two-card layout untouched. */
+@media (max-width: 1399px) {
+  .dashboard > .panel {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
 /* ===== PC desktop card treatment (≥ 1400px) ===== */
 @media (min-width: 1400px) {
   /* Body bg matches hero (--paper) so hero sits flush.

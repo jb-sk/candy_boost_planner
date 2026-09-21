@@ -1,4 +1,5 @@
 import type {
+  BoxCustomTag,
   BoxEntrySource,
   BoxSubSkillSlotV1,
   IngredientType,
@@ -9,17 +10,30 @@ import { toExpGainNature, toExpType, toInt } from "./shared";
 import { perfSpan } from "../utils/perf";
 
 export const BOX_STORAGE_KEY = "candy-boost-planner:box:v1";
-const SCHEMA_VERSION = 1 as const;
+const SCHEMA_VERSION = 2 as const;
 
-type BoxStoreV1 = {
+export const MAX_BOX_CUSTOM_TAGS = 30;
+export const MAX_BOX_CUSTOM_TAG_NAME_LENGTH = 20;
+
+type BoxStoreV2 = {
   schemaVersion: typeof SCHEMA_VERSION;
   entries: PokemonBoxEntryV1[];
+  tags?: BoxCustomTag[];
+};
+
+export type LoadedBoxData = {
+  entries: PokemonBoxEntryV1[];
+  tags: BoxCustomTag[];
 };
 
 export function loadBox(): PokemonBoxEntryV1[] {
+  return loadBoxData().entries;
+}
+
+export function loadBoxData(): LoadedBoxData {
   try {
     const raw = localStorage.getItem(BOX_STORAGE_KEY);
-    if (!raw) return [];
+    if (!raw) return { entries: [], tags: [] };
     const json = JSON.parse(raw);
     // legacy: array of entries
     const arr = Array.isArray(json)
@@ -27,32 +41,61 @@ export function loadBox(): PokemonBoxEntryV1[] {
       : json && typeof json === "object" && Array.isArray((json as Record<string, unknown>).entries)
         ? (json as Record<string, unknown>).entries as unknown[]
         : null;
-    if (!arr) return [];
+    if (!arr) return { entries: [], tags: [] };
+    const tags = normalizeTags(
+      !Array.isArray(json) && json && typeof json === "object"
+        ? (json as Record<string, unknown>).tags
+        : undefined,
+    );
+    const tagIds = new Set(tags.map((tag) => tag.id));
     // できるだけ壊れに強く（最低限の形だけ保証）
-    return arr
+    const entries = arr
       .filter((x: unknown): x is Record<string, unknown> => x != null && typeof x === "object")
-      .map((x) => normalizeEntry(x))
+      .map((x) => normalizeEntry(x, tagIds))
       .slice(0, 300);
+    return { entries, tags };
   } catch {
-    return [];
+    return { entries: [], tags: [] };
   }
 }
 
-export function saveBox(entries: PokemonBoxEntryV1[]) {
+export function saveBox(entries: PokemonBoxEntryV1[], tags: BoxCustomTag[] = []) {
   try {
-    const serialized = perfSpan("persist.box.serialize", () => serializeBox(entries));
+    const serialized = perfSpan("persist.box.serialize", () => serializeBox(entries, tags));
     perfSpan("persist.box.write", () => localStorage.setItem(BOX_STORAGE_KEY, serialized));
   } catch {
     // localStorage can throw (quota exceeded / blocked). Persistence must not break UI.
   }
 }
 
-export function serializeBox(entries: PokemonBoxEntryV1[]): string {
-  const v: BoxStoreV1 = { schemaVersion: SCHEMA_VERSION, entries };
+export function serializeBox(entries: PokemonBoxEntryV1[], tags: BoxCustomTag[] = []): string {
+  const v: BoxStoreV2 = { schemaVersion: SCHEMA_VERSION, entries, tags };
   return JSON.stringify(v);
 }
 
-function normalizeEntry(x: Record<string, unknown>): PokemonBoxEntryV1 {
+function normalizeTags(value: unknown): BoxCustomTag[] {
+  if (!Array.isArray(value)) return [];
+  const seenIds = new Set<string>();
+  const seenNames = new Set<string>();
+  const tags: BoxCustomTag[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const id = typeof row.id === "string" ? row.id.trim() : "";
+    const name = typeof row.name === "string"
+      ? row.name.trim().slice(0, MAX_BOX_CUSTOM_TAG_NAME_LENGTH)
+      : "";
+    const normalizedName = name.toLocaleLowerCase();
+    if (!id || !name || seenIds.has(id) || seenNames.has(normalizedName)) continue;
+    seenIds.add(id);
+    seenNames.add(normalizedName);
+    tags.push({ id, name });
+    if (tags.length >= MAX_BOX_CUSTOM_TAGS) break;
+  }
+  return tags;
+}
+
+function normalizeEntry(x: Record<string, unknown>, validTagIds = new Set<string>()): PokemonBoxEntryV1 {
   const now = new Date().toISOString();
   const source: BoxEntrySource = x.source === "manual" ? "manual" : "nitoyon";
 
@@ -97,6 +140,9 @@ function normalizeEntry(x: Record<string, unknown>): PokemonBoxEntryV1 {
     rawText: typeof x.rawText === "string" ? x.rawText : "",
     label: typeof x.label === "string" ? x.label : "",
     favorite: !!x.favorite,
+    tagIds: Array.isArray(x.tagIds)
+      ? [...new Set(x.tagIds.filter((id): id is string => typeof id === "string" && validTagIds.has(id)))]
+      : undefined,
     derived,
     planner,
     createdAt: typeof x.createdAt === "string" ? x.createdAt : now,

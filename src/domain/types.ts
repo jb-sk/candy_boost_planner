@@ -10,6 +10,12 @@ export type AppDataV1 = {
 
 export type BoxEntrySource = "nitoyon" | "manual";
 
+/** ユーザーがポケモンボックス内のグループ分けに使うカスタムタグ。 */
+export type BoxCustomTag = {
+  id: string;
+  name: string;
+};
+
 /**
  * ポケモンボックスの1件。
  * - にとよん形式（PokemonIv.serialize() + optional @nickname）は rawText として“そのまま保持”する
@@ -24,6 +30,8 @@ export type PokemonBoxEntryV1 = {
   label: string;
   /** お気に入り（★） */
   favorite?: boolean;
+  /** カスタムタグのID。名称変更で各エントリを書き換えないためIDで参照する。 */
+  tagIds?: string[];
   /** にとよんrawから最小限デコードできた情報（表示・初期値用） */
   derived?: {
     pokedexId: number;

@@ -63,8 +63,9 @@
 .exportSaveViewer__img {
   max-width: 100%;
   height: auto;
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-md);
+  /* 保存されるPNGそのものを確認できるよう、プレビュー固有の装飾を加えない。 */
+  border-radius: 0;
+  box-shadow: none;
   /* iOS の長押し保存メニューを確実に出す */
   -webkit-touch-callout: default;
   touch-action: manipulation;
@@ -75,6 +76,11 @@
 }
 
 .exportSheet {
+  --export-font-weight-regular: 550;
+  --export-font-weight-strong: 650;
+  --export-font-weight-emphasis: 750;
+  --export-font-weight-display: 800;
+  --export-text-width-scale: 0.97;
   position: relative;
   width: 100%;
   min-height: 100%;
@@ -82,20 +88,31 @@
   padding: 20px 16px;
   font-family: var(--font-body);
   color: var(--ink);
-  --export-accent: var(--accent);
-  --export-bar-fill: var(--bar-fill);
-  --export-bar-track: var(--bar-track);
+  --export-highlight: var(--accent);
+  --export-highlight-rgb: var(--accent-rgb);
   --export-danger: var(--danger);
-  --export-divider: var(--border);
-  --export-section-bg: rgba(var(--ink-rgb), 0.05);
+  --bar-shards-fill: var(--bar-fill);
+  --bar-shards-fill-rgb: var(--bar-fill-rgb);
+  --export-bar-fill-opacity: 0.62;
 }
+
+/* Canvas 保存画像と同じ文字幅。揃え方向を起点にして余白の見え方を保つ。 */
+.exportText {
+  transform: scaleX(var(--export-text-width-scale));
+}
+
+.exportText--left { transform-origin: left center; }
+.exportText--center { transform-origin: center; }
+.exportText--right { transform-origin: right center; }
 
 /* ===== Header ===== */
 .exportHead {
   position: relative;
-  padding: 14px 16px;
+  padding: 16px 16px 14px;
   margin: -20px -16px 20px;
-  background: var(--export-section-bg);
+  background: var(--paper);
+  border-top: 6px solid var(--export-highlight);
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.24);
 }
 
 .exportHead__top {
@@ -103,9 +120,23 @@
 }
 
 .exportBrand {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   font-family: var(--font-heading);
-  font-weight: 800;
-  font-size: 20px;
+  line-height: 1.3;
+}
+
+.exportBrand__product {
+  color: var(--export-highlight);
+  font-size: 12px;
+  font-weight: var(--export-font-weight-strong);
+  letter-spacing: 0.08em;
+}
+
+.exportBrand__plan {
+  font-size: 23px;
+  font-weight: var(--export-font-weight-display);
 }
 
 .exportMeta {
@@ -118,9 +149,25 @@
 }
 
 .exportMonth {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--ink);
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(var(--export-highlight-rgb), 0.1);
+  font-size: 14px;
+  color: var(--export-highlight);
+}
+
+.exportMonth__text {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.exportMonth__year {
+  font-weight: var(--export-font-weight-strong);
+}
+
+.exportMonth__month {
+  font-weight: var(--export-font-weight-display);
 }
 
 /* ===== Actions ===== */
@@ -187,17 +234,27 @@
 
 /* ===== Section title (shared) ===== */
 .exportSectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-family: var(--font-heading);
-  font-weight: 700;
+  font-weight: var(--export-font-weight-strong);
   font-size: 17px;
-  color: var(--accent);
-  margin: 20px 0 14px;
-  padding-bottom: 6px;
-  border-bottom: 2px solid rgba(var(--accent-rgb), 0.25);
+  color: var(--ink);
+  margin: 22px 0 12px;
 }
 
 .exportSectionTitle:first-child {
   margin-top: 0;
+}
+
+.exportSectionTitle::before {
+  content: "";
+  width: 8px;
+  height: 18px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--export-highlight);
 }
 
 /* No-stock warning link */
@@ -208,7 +265,7 @@
   padding: 0;
   margin: 6px 0 0;
   font-size: 17px;
-  font-weight: 700;
+  font-weight: var(--export-font-weight-strong);
   color: var(--export-danger);
   cursor: pointer;
   text-decoration: underline;
@@ -222,13 +279,9 @@
 
 /* ===== Summary section (stats + bars) ===== */
 .exportCalcTop {
-  padding: 0 0 8px;
-  margin: 0 -4px 0;
-}
-
-/* Hide emoji icon inside brand label (kept in markup for fallback) */
-.exportBrand__icon {
-  display: none;
+  padding: 0;
+  margin: 0 0 4px;
+  background: transparent;
 }
 
 /* ===== Stat cards ===== */
@@ -246,21 +299,32 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 10px 12px;
-  background: rgba(var(--ink-rgb), 0.04);
-  border: none;
-  border-radius: var(--radius-md);
+  padding: 12px 12px 10px;
+  background: rgba(var(--accent-rgb), 0.075);
+  border-radius: 10px;
   box-sizing: border-box;
 }
 
 .statCard--danger {
-  background: rgba(var(--danger-rgb), 0.08);
+  background: var(--export-card-danger-bg, rgba(var(--danger-rgb), 0.1));
+}
+
+.statCard--accent {
+  background: var(--export-card-accent-bg, rgba(var(--accent-rgb), 0.075));
+}
+
+.statCard--plain {
+  background: var(--export-card-plain-bg, rgba(var(--accent-rgb), 0.075));
+}
+
+.statCard--primary {
+  background: var(--export-card-primary-bg, rgba(var(--accent-rgb), 0.075));
 }
 
 .statCard__label {
   font-size: 12px;
   color: var(--muted);
-  font-weight: 700;
+  font-weight: var(--export-font-weight-strong);
   letter-spacing: 0.03em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -268,10 +332,11 @@
 
 .statCard__value {
   font-family: var(--font-heading);
-  font-weight: 800;
-  font-size: 26px;
+  font-weight: var(--export-font-weight-emphasis);
+  font-size: 29px;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
+  color: var(--ink);
 }
 
 .statCard__value--danger,
@@ -283,8 +348,11 @@
 .exportBars {
   display: grid;
   gap: 14px;
-  margin-bottom: 0;
-  padding-bottom: 0;
+  margin-bottom: 6px;
+  padding: 14px 12px 16px;
+  border-radius: 10px;
+  background: rgba(var(--accent-rgb), 0.055);
+  box-sizing: border-box;
 }
 
 .exportBars--muted {
@@ -300,7 +368,7 @@
 
 .exportBarK {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: var(--export-font-weight-regular);
 }
 
 .exportBarK--right {
@@ -310,9 +378,9 @@
 
 .exportBar__track {
   position: relative;
-  height: 8px;
-  border-radius: 4px;
-  background: var(--export-bar-track);
+  height: 14px;
+  border-radius: 999px;
+  background: rgba(var(--bar-fill-rgb), 0.22);
   overflow: hidden;
 }
 
@@ -323,53 +391,117 @@
   bottom: 0;
   left: 0;
   width: 0%;
-  border-radius: 4px;
-  background: var(--export-bar-fill);
+  border-radius: 999px;
+  background: rgba(var(--bar-fill-rgb), var(--export-bar-fill-opacity));
+}
+
+.exportBar--shards .exportBar__track {
+  background: rgba(var(--bar-shards-fill-rgb), 0.22);
+}
+
+.exportBar--shards .exportBar__fill {
+  background: rgba(var(--bar-shards-fill-rgb), var(--export-bar-fill-opacity));
+}
+
+.exportBar__fill::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fff;
+  transform: translateY(-50%);
 }
 
 /* ===== Pokemon list ===== */
 .exportList {
+  --export-list-columns:
+    minmax(0, 2.2fr) repeat(3, minmax(0, 0.9fr)) minmax(0, 1.35fr);
   display: flex;
   flex-direction: column;
+  gap: 0;
   font-size: 13px;
-  padding: 0 4px 8px;
+  padding: 0 0 8px;
 }
 
 .exportList__head {
-  display: none;
-  background: rgba(var(--ink-rgb), 0.04);
+  display: grid;
+  grid-template-columns: var(--export-list-columns);
+  align-items: stretch;
+  border: 1px solid rgba(var(--accent-rgb), 0.42);
+  background: rgba(var(--accent-rgb), 0.12);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: var(--export-font-weight-strong);
+}
+
+.exportList--normal {
+  --export-list-columns: minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1.35fr);
+}
+
+.exportList__head > .exportList__col {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 7px 4px;
+  border-right: 1px solid rgba(var(--ink-rgb), 0.14);
+  line-height: 1.35;
+}
+
+.exportList__head > .exportList__col:last-child {
+  border-right: 0;
+}
+
+.exportList__head > .exportList__col:first-child {
+  padding-left: 8px;
 }
 
 .exportList__row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 4px 8px;
-  padding: 8px 0 8px 6px;
-  align-items: center;
-  border-bottom: 1px solid rgba(var(--ink-rgb), 0.08);
+  grid-template-columns: var(--export-list-columns);
+  gap: 0;
+  padding: 0;
+  align-items: stretch;
+  border: 1px solid rgba(var(--accent-rgb), 0.32);
+  background: var(--paper);
+}
+
+.exportList__row + .exportList__row {
+  border-top: 0;
 }
 
 .exportList__nameCol {
-  grid-column: 1 / -1;
+  grid-column: span 1;
   display: flex;
-  align-items: baseline;
-  gap: 6px;
+  flex-direction: row;
+  align-items: center;
+  gap: 1px 4px;
   flex-wrap: wrap;
+  min-width: 0;
+  overflow: hidden;
+  padding: 8px;
+  border-right: 1px solid rgba(var(--ink-rgb), 0.14);
 }
 
 /* Inline Lv shown only on mobile (before name) */
 .exportList__lvInline {
-  font-size: 12px;
-  font-weight: 600;
+  order: 2;
+  flex: 0 0 100%;
+  font-size: 10px;
+  font-weight: var(--export-font-weight-regular);
   color: var(--muted);
   white-space: nowrap;
-  min-width: 5.5em;
+  min-width: auto;
   font-variant-numeric: tabular-nums;
 }
 
 .exportList__name {
-  font-weight: 700;
-  font-size: 15px;
+  order: 1;
+  font-weight: var(--export-font-weight-strong);
+  flex: 1;
+  font-size: 13px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -377,17 +509,53 @@
 }
 
 .exportList__badge {
+  display: inline-block;
+  position: relative;
+  order: 1;
+  flex: 0 0 auto;
   font-size: 10px;
-  font-weight: 600;
-  padding: 1px 5px;
-  background: var(--surface-alt);
-  color: var(--muted);
-  border-radius: 3px;
+  font-weight: var(--export-font-weight-regular);
+  padding: 4px;
+  border-radius: 4px;
   align-self: center;
 }
 
+.exportList__badgeMark {
+  display: block;
+  /* viewBox / Canvas の基準寸法は exportNatureMark.ts。ここはレスポンシブ表示寸法。 */
+  width: 18px;
+  height: 6px;
+  fill: currentColor;
+}
+
+.exportList__badge--up::before,
+.exportList__badge--down::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: inherit;
+  background: currentColor;
+  opacity: 0.11;
+}
+
+.exportList__badge--up {
+  color: var(--nature-up);
+}
+
+.exportList__badge--down {
+  color: var(--nature-down);
+}
+
+.exportList__badge--neutral {
+  color: var(--muted);
+  background: var(--surface-alt);
+}
+
 .exportList__supplyInline {
-  display: inline-flex;
+  display: none;
   align-items: center;
   max-width: 100%;
   padding: 1px 5px;
@@ -395,7 +563,7 @@
   background: var(--surface-alt);
   color: var(--ink);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: var(--export-font-weight-regular);
   white-space: nowrap;
 }
 
@@ -404,6 +572,16 @@
   align-items: center;
   gap: 4px;
   font-variant-numeric: tabular-nums;
+  font-weight: var(--export-font-weight-regular);
+}
+
+.exportList__sleepMark {
+  color: var(--accent);
+  font-size: 0.72em;
+  font-weight: var(--export-font-weight-strong);
+  letter-spacing: -0.04em;
+  transform: translateY(-0.18em);
+  white-space: nowrap;
 }
 
 .exportList__arrow {
@@ -413,11 +591,24 @@
 
 .exportList__col.u-align-right,
 .exportList__col.u-align-center {
-  text-align: left;
+  min-width: 0;
+  text-align: right;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
   grid-column: span 1;
+  padding: 8px 4px;
+  border-right: 1px solid rgba(var(--ink-rgb), 0.14);
+}
+
+.exportList__head > .exportList__col--multiline {
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.exportList__row > .exportList__col:last-child {
+  border-right: 0;
 }
 
 /* Lv column — hidden on mobile, shown at 680px+.
@@ -426,45 +617,50 @@
   display: none;
 }
 
-.exportList__lvHead {
-  text-align: right;
+.exportList__head > .exportList__lvHead {
+  display: none;
+  text-align: center;
 }
 
 .u-mobile-label {
-  display: block;
+  display: none;
   font-size: 11px;
   color: var(--muted);
 }
 
 .exportList__numCol .exportList__num {
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: var(--export-font-weight-regular);
   font-variant-numeric: tabular-nums;
 }
 
 /* Currently unused in template — kept for future extension */
 .exportList__num--danger {
   color: var(--export-danger);
-  font-weight: 700;
+  font-weight: var(--export-font-weight-strong);
 }
 
 /* Total row */
 .exportList__row--total {
-  background: rgba(var(--ink-rgb), 0.04);
-  border-bottom: none;
-  font-weight: 700;
-  border-top: 2px solid var(--ink);
-  padding: 10px 0 10px 6px;
+  background: rgba(var(--accent-rgb), 0.11);
+  border-color: rgba(var(--accent-rgb), 0.36);
+  font-weight: var(--export-font-weight-strong);
+  padding: 0;
 }
 
-.exportList__row--total .exportList__nameCol,
 .exportList__row--total .exportList__lvCol {
   display: none;
 }
 
+.exportList__totalLabel {
+  color: var(--accent);
+}
+
 .exportList__row--total .exportList__numCol {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
   grid-column: span 1;
 }
 
@@ -483,8 +679,8 @@
 
 /* ===== Ranking ===== */
 .exportRanking {
-  margin: 0 -4px 0;
-  padding: 0 16px 8px;
+  margin: 0 -8px;
+  padding: 0 8px 8px;
 }
 
 .exportRanking__total {
@@ -493,29 +689,34 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  font-weight: 600;
   flex-wrap: wrap;
 }
 
-.exportRanking__total span:first-child {
+.exportRanking__totalLabel {
   color: var(--muted);
   font-size: 12px;
+  font-weight: var(--export-font-weight-strong);
+}
+
+.exportRanking__totalItem {
+  font-weight: var(--export-font-weight-regular);
 }
 
 /* ===== Pie Chart ===== */
 .exportPie {
   display: flex;
+  flex-direction: row;
   align-items: center;
-  gap: 20px;
+  gap: 12px;
 }
 
 .exportPie__svg {
-  width: 120px;
-  height: 120px;
+  width: 104px;
+  height: 104px;
   flex-shrink: 0;
 }
 
-.exportPie__slice { stroke: var(--paper); stroke-width: 1; }
+.exportPie__slice { stroke: none; }
 .exportPie__slice--0 { fill: var(--pie-0); }
 .exportPie__slice--1 { fill: var(--pie-1); }
 .exportPie__slice--2 { fill: var(--pie-2); }
@@ -525,20 +726,44 @@
 .exportPie__slice--6 { fill: var(--pie-6); }
 .exportPie__slice--7 { fill: var(--pie-7); }
 
+.exportPie__hole {
+  fill: var(--paper);
+}
+
+.exportPie__centerValue {
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+  fill: var(--ink);
+  font-family: var(--font-heading);
+  font-size: 28px;
+  font-weight: var(--export-font-weight-emphasis);
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scaleX(var(--export-text-width-scale));
+}
+
 .exportPie__legend {
   flex: 1;
   min-width: 0;
-  display: grid;
-  grid-template-columns: 14px auto auto;
-  column-gap: 8px;
-  row-gap: 0;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
   font-size: 13px;
-  justify-content: start;
 }
 
 .exportPie__legendItem {
-  display: contents;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) max-content;
+  column-gap: 8px;
+  row-gap: 2px;
+  align-items: center;
+  min-width: 0;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.14);
+}
+
+.exportPie__legendItem:last-child {
+  border-bottom: 0;
 }
 
 .exportPie__swatch {
@@ -557,7 +782,7 @@
 .exportPie__swatch--7 { background: var(--pie-7); }
 
 .exportPie__legendName {
-  font-weight: 700;
+  font-weight: var(--export-font-weight-strong);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -565,18 +790,18 @@
 
 .exportPie__legendPct {
   font-family: var(--font-heading);
-  font-weight: 700;
+  font-weight: var(--export-font-weight-strong);
   font-size: 14px;
   text-align: right;
   white-space: nowrap;
 }
 
 .exportPie__legendDetail {
-  grid-column: 1 / -1;
+  grid-column: 2 / -1;
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  padding: 2px 0 6px 22px;
+  padding: 0;
   font-size: 13px;
 }
 
@@ -584,7 +809,7 @@
   display: inline-flex;
   gap: 3px;
   align-items: center;
-  font-weight: 600;
+  font-weight: var(--export-font-weight-regular);
   font-size: 13px;
   color: var(--ink);
 }
@@ -592,9 +817,9 @@
 .exportRanking__itemLabel {
   display: inline-block;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: inherit;
   color: var(--muted);
-  background: var(--surface-alt);
+  background: rgba(var(--export-highlight-rgb), 0.11);
   padding: 1px 6px;
   border-radius: var(--radius-sm);
 }
@@ -603,7 +828,9 @@
 /* Base (mobile) intentionally has no compact overrides so the legend
    stays in the normal 2-line layout regardless of the class. */
 
-/* ===== Tablet+ single-row list (≥ 680px) ===== */
+/* ===== Tablet+ single-row list (≥ 680px) =====
+   Keep breakpoint overrides after every mobile rule: equal-specificity declarations
+   below intentionally win through the cascade. */
 /* 画像保存は Canvas 直接描画（renderExportImage.ts）へ移行済み。
    このブロックは画面表示のデスクトップレイアウト専用で、画像出力とは独立している。 */
 @media (min-width: 680px) {
@@ -619,27 +846,43 @@
     margin: 0 auto;
     min-height: auto;
     padding: 28px 32px;
+    border-radius: 14px;
+    overflow: hidden;
   }
 
   .exportHead {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
     margin: -28px -32px 20px;
-    padding: 14px 32px;
+    padding: 18px 32px 16px;
   }
 
-  .exportBrand {
-    font-size: 26px;
+  .exportHead__top {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .exportBrand__product {
+    font-size: 13px;
+  }
+
+  .exportBrand__plan {
+    font-size: 29px;
   }
 
   .exportMeta {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
     justify-content: flex-end;
+    margin-top: 0;
     padding-right: 16px;
   }
 
   .exportMonth {
-    position: absolute;
-    top: 14px;
-    right: 48px;
-    font-size: 22px;
+    position: static;
+    font-size: 15px;
   }
 
   .exportSectionTitle {
@@ -659,8 +902,8 @@
   }
 
   .exportCalcTop {
-    padding: 0 24px 8px;
-    margin: 0 -8px 0;
+    padding: 0;
+    margin: 0;
   }
 
   .exportStats {
@@ -679,8 +922,11 @@
   }
 
   .exportList {
-    padding: 0 24px 8px;
-    margin: 0 -8px;
+    --export-list-columns:
+      minmax(0, 2.25fr) minmax(0, 1.5fr) repeat(3, minmax(0, 1fr)) minmax(0, 1.3fr);
+    padding: 0 0 8px;
+    margin: 0;
+    gap: 0;
   }
 
   .exportRanking {
@@ -688,37 +934,60 @@
     padding: 0 24px;
   }
 
-  /* Show table header */
   .exportList__head {
     display: grid;
-    grid-template-columns: 2.5fr 1fr repeat(3, 1fr) 1.3fr;
-    gap: 8px;
-    padding: 10px 12px;
+    gap: 0;
+    padding: 0;
     font-size: 15px;
-    font-weight: 700;
+    font-weight: var(--export-font-weight-strong);
     color: var(--muted);
-    border-bottom: 2px solid var(--ink);
-    align-items: end;
+    border: 1px solid rgba(var(--accent-rgb), 0.36);
+    background: rgba(var(--accent-rgb), 0.09);
+    align-items: stretch;
   }
 
-  /* Data rows — single line */
-  .exportList__row {
-    grid-template-columns: 2.5fr 1fr repeat(3, 1fr) 1.3fr;
-    gap: 8px;
+  .exportList__head > .exportList__col {
     padding: 10px 12px;
+    border-right: 1px solid rgba(var(--accent-rgb), 0.28);
   }
 
-  .exportList--normal .exportList__head,
-  .exportList--normal .exportList__row {
-    grid-template-columns: 2.5fr 1fr 1fr 1.3fr;
+  .exportList__head > .exportList__col:last-child {
+    border-right: 0;
+  }
+
+  .exportList__head > .exportList__col:first-child {
+    padding-left: 12px;
+  }
+
+  .exportList__head > .exportList__lvHead {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .exportList__row {
+    gap: 0;
+    padding: 0;
+    border-top: 0;
+    border-color: rgba(var(--accent-rgb), 0.32);
+    background: var(--paper);
+  }
+
+  .exportList--normal {
+    --export-list-columns: minmax(0, 2.25fr) minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1.3fr);
   }
 
   /* Reset mobile overrides on name / lv columns */
   .exportList__nameCol {
     grid-column: span 1;
+    flex-direction: row;
+    align-items: baseline;
     flex-wrap: nowrap;
     overflow: hidden;
     min-width: 0;
+    padding: 10px 12px;
+    border-right: 1px solid rgba(var(--accent-rgb), 0.24);
+    border-bottom: 0;
   }
 
   .exportList__lvInline {
@@ -728,8 +997,12 @@
   .exportList__col.exportList__lvCol {
     display: flex;
     grid-column: span 1;
-    justify-self: end;
+    justify-self: stretch;
+    justify-content: center;
+    text-align: center;
     font-size: 17px;
+    padding: 10px 12px;
+    border-right: 1px solid rgba(var(--accent-rgb), 0.24);
   }
 
   /* Number columns — single value, right-aligned */
@@ -738,6 +1011,7 @@
     align-items: center;
     text-align: right;
     justify-content: flex-end;
+    padding: 10px 12px;
   }
 
   .exportList__col.u-align-center {
@@ -745,22 +1019,25 @@
     align-items: center;
     text-align: center;
     justify-content: center;
+    padding: 10px 12px;
   }
 
-  /* Hide per-cell labels (shown in header instead) */
+  .exportList__head > .exportList__col--multiline {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
   .u-mobile-label {
     display: none;
   }
 
-  /* Total row — show as single line too */
   .exportList__row--total {
-    padding: 12px;
+    padding: 0;
+    background: rgba(var(--accent-rgb), 0.11);
   }
 
-  .exportList__row--total .exportList__nameCol,
   .exportList__row--total .exportList__lvCol {
-    display: block;
-    visibility: hidden;
+    display: flex;
   }
 
   .exportList__row--total .exportList__numCol {
@@ -771,6 +1048,7 @@
 
   /* Enlarge list labels & numbers */
   .exportList__name {
+    order: 0;
     font-size: 17px;
     flex: 1;
     min-width: 5em;
@@ -782,6 +1060,12 @@
 
   .exportList__badge {
     font-size: 12px;
+    padding: 5px;
+  }
+
+  .exportList__badgeMark {
+    width: 22px;
+    height: 8px;
   }
 
   .exportList__arrow {
@@ -800,11 +1084,13 @@
     font-size: 17px;
   }
 
-  .exportRanking__total span:first-child {
+  .exportRanking__totalLabel {
     font-size: 15px;
   }
 
   .exportPie {
+    flex-direction: row;
+    align-items: center;
     gap: 24px;
   }
 
@@ -814,10 +1100,16 @@
   }
 
   .exportPie__legend {
-    column-gap: 10px;
+    display: grid;
+    grid-template-columns: 14px auto auto;
+    column-gap: 14px;
+    row-gap: 0;
+    align-items: center;
+    justify-content: start;
   }
 
   .exportPie__legendItem {
+    display: contents;
     font-size: 17px;
   }
 
@@ -839,7 +1131,7 @@
 
   /* Compact legend overrides for desktop */
   .exportPie__legend--compact {
-    grid-template-columns: 14px auto 1fr auto;
+    grid-template-columns: 14px max-content max-content minmax(0, 1fr);
   }
 
   .exportPie__legend--compact .exportPie__legendDetail {

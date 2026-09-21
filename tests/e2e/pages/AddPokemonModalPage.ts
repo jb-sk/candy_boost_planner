@@ -20,6 +20,9 @@ export class AddPokemonModalPage {
   readonly submitButton: Locator;
   readonly closeButton: Locator;
   readonly addedMessage: Locator;
+  readonly tagSection: Locator;
+  readonly tagNameInput: Locator;
+  readonly tagAddButton: Locator;
 
   // === レベルピッカー（srcLevel / dstLevel） ===
   readonly srcLevelTrigger: Locator;
@@ -45,6 +48,9 @@ export class AddPokemonModalPage {
     this.closeButton = page.locator('.addModal__head .btn--ghost');
     // 追加成功フィードバック（閉じるボタン左の「✓ 追加しました」）
     this.addedMessage = page.getByTestId('add-modal-added');
+    this.tagSection = page.getByTestId('add-modal-tags');
+    this.tagNameInput = page.getByTestId('add-modal-tag-name-input');
+    this.tagAddButton = page.getByTestId('add-modal-tag-add');
 
     // LevelPicker内の入力フィールド（モーダル内に2つある: src/dst）
     this.srcLevelTrigger = this.modal.getByTestId('level-picker-trigger').nth(0);

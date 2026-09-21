@@ -79,7 +79,7 @@ export function applyBackup(backup: CandyBoostPlannerBackupV3, options: ApplyBac
   // 復元先の端末に残っていた設定を持ち越さない。
   const defaultBoostReachLevel = backup.data.globalSettings.defaultBoostReachLevel;
   const writes = new Map<string, string | null>([
-    [BOX_STORAGE_KEY, serializeBox(restoreInternalBoxEntries(backup))],
+    [BOX_STORAGE_KEY, serializeBox(restoreInternalBoxEntries(backup), backup.data.box.tags ?? [])],
     [CANDY_STORAGE_KEY, serializeCandyInventory(backup.data.globalSettings.candyInventory)],
     [CANDY_STORAGE_KEY_V1, null],
     [CALC_SLOTS_STORAGE_KEY, serializeCalcSlots(backup.data.calculator.slots)],

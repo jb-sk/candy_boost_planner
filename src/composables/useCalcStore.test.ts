@@ -308,6 +308,29 @@ describe("useCalcStore", () => {
     expect(store.rows.value[0]?.nature).toBe("down");
   });
 
+  it("ボックス削除では開いていないスロットを含む連動行をUndoなしで削除する", async () => {
+    const t = ((key: string) => key) as unknown as Composer["t"];
+    const store = useCalcStore({ locale: ref("ja"), t });
+
+    store.upsertFromBox({ boxId: "shared", srcLevel: 10, expType: 600, nature: "normal" });
+    store.upsertFromBox({ boxId: "slot-zero-only", srcLevel: 10, expType: 600, nature: "normal" });
+    await nextTick();
+    store.switchToSlot(1);
+    store.upsertFromBox({ boxId: "shared", srcLevel: 20, expType: 900, nature: "up" });
+    store.upsertFromBox({ boxId: "slot-one-only", srcLevel: 20, expType: 900, nature: "up" });
+    await nextTick();
+    store.switchToSlot(0);
+
+    expect(store.countRowsByBoxIds(["shared"])).toBe(2);
+    expect(store.removeRowsByBoxIds(["shared"])).toBe(2);
+    expect(store.canUndo.value).toBe(false);
+    expect(store.rows.value.map((row) => row.boxId)).toEqual(["slot-zero-only"]);
+
+    store.switchToSlot(1);
+    expect(store.rows.value.map((row) => row.boxId)).toEqual(["slot-one-only"]);
+    expect(store.countRowsByBoxIds(["shared"])).toBe(0);
+  });
+
   it("repairs an active row only when the row ID structure changes", async () => {
     const t = ((key: string) => key) as unknown as Composer["t"];
     const store = useCalcStore({ locale: ref("ja"), t });

@@ -7,9 +7,8 @@
         class="onboarding-spotlight"
       ></div>
 
-      <!-- Tooltip bubble (steps 1 & 2 only; step 3 uses inline tooltip in CalcPanel) -->
+      <!-- Tooltip bubble -->
       <div
-        v-if="!isInlineStep"
         ref="tooltipRef"
         class="onboarding-tooltip"
         :class="'onboarding-tooltip--' + actualPlacement"
@@ -19,7 +18,7 @@
           <button class="onboarding-tooltip__skip" type="button" @click="onboarding.skip()">{{ t("onboarding.skip") }}</button>
         </div>
         <h3 v-if="step.titleKey" class="onboarding-tooltip__title">{{ t(step.titleKey) }}</h3>
-        <p class="onboarding-tooltip__desc">{{ t(step.descKey, { action: actionLabel }) }}</p>
+        <p class="onboarding-tooltip__desc">{{ t(step.descKey) }}</p>
         <div class="onboarding-tooltip__footer">
           <button
             class="btn btn--primary onboarding-tooltip__next"
@@ -48,14 +47,8 @@ const onboarding = props.onboarding;
 const tooltipRef = ref<HTMLElement | null>(null);
 const spotlightRef = ref<HTMLElement | null>(null);
 
-// Action label ("tap" / "click") — sourced from composable to avoid duplication
-const actionLabel = computed(() => t(onboarding.actionI18nKey));
-
 const step = computed(() => onboarding.step.value);
 const isLastStep = computed(() => onboarding.currentStep.value === onboarding.totalSteps - 1);
-
-/** Step 3 uses inline tooltip rendered by CalcPanel instead of fixed overlay */
-const isInlineStep = computed(() => onboarding.currentStep.value === 2);
 
 const actualPlacement = ref<"top" | "bottom">("bottom");
 
@@ -90,8 +83,6 @@ function getViewport() {
 /**
  * Position spotlight (+ tooltip for non-inline steps) based on current
  * viewport coordinates of the cached target element.
- * For inline steps (step 3), only the spotlight is positioned;
- * the tooltip is rendered by CalcPanel in normal DOM flow.
  */
 function applyPositions() {
   const spotEl = spotlightRef.value;
@@ -110,12 +101,6 @@ function applyPositions() {
   spotEl.style.width = `${r.width + SPOTLIGHT_PAD * 2}px`;
   spotEl.style.height = `${r.height + SPOTLIGHT_PAD * 2}px`;
   spotEl.style.transform = `translate(${r.left - SPOTLIGHT_PAD}px, ${r.top - SPOTLIGHT_PAD}px)`;
-
-  // For inline steps, spotlight only — no fixed tooltip
-  if (isInlineStep.value) {
-    if (tipEl) tipEl.style.display = "none";
-    return;
-  }
 
   if (!tipEl) return;
 
@@ -165,10 +150,8 @@ function applyPositions() {
 // ---------- Step initialization ----------
 
 /**
- * Trial 17: For steps 1 & 2, scrollIntoView(center) + fixed overlay (Trial 1 baseline).
- * For step 3, scrollIntoView(center) the data-onboarding="result-row" container
- * which now includes the inline tooltip as part of the DOM flow.
- * No fixed tooltip/spotlight needed for step 3 — CalcPanel renders everything inline.
+ * The document is locked during onboarding, so the initial slot-tab centering in App.vue
+ * remains authoritative. scrollIntoView is retained for layouts where the document is not locked.
  */
 function initStep() {
   cachedTargetEl = null;
@@ -184,10 +167,10 @@ function initStep() {
   if (!el) return;
   cachedTargetEl = el;
 
-  // Scroll the target (or target+inline-tooltip container) to center
+  // Scroll the target to center when the surrounding document allows it.
   (el as HTMLElement).scrollIntoView({ block: "center", behavior: "auto" });
 
-  // Position fixed overlay after scroll (only for non-inline steps)
+  // Position fixed overlay after scroll.
   requestAnimationFrame(() => {
     applyPositions();
   });

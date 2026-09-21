@@ -10,6 +10,7 @@ import { CalcPanelPage } from './pages/CalcPanelPage';
 import { BoxPanelPage } from './pages/BoxPanelPage';
 import { SettingsModalPage } from './pages/SettingsModalPage';
 import { ExportPanelPage } from './pages/ExportPanelPage';
+import { EXPORT_NATURE_MARK_PATH } from '../../src/export/exportNatureMark';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -127,6 +128,54 @@ test.describe('05-export A. オーバーレイの開閉', () => {
     await exportPanel.expectOverlayVisible();
   });
 
+  test('1b. 1行の日本語は元の余白、英語の2行列見出しは狭い余白で中央に揃う', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const exportPanel = new ExportPanelPage(page);
+    await calc.clickExport();
+
+    let head = page.getByTestId('listHead');
+    let firstCell = head.locator('.exportList__col').first();
+    await expect(firstCell).toHaveCSS('padding-top', '10px');
+    await expect(firstCell).toHaveCSS('padding-bottom', '10px');
+
+    await exportPanel.close();
+    await page.getByRole('button', { name: 'EN', exact: true }).click();
+    await expect(page.locator('main.shell')).toHaveAttribute('data-locale', 'en');
+    await calc.clickExport();
+
+    head = page.getByTestId('listHead');
+    firstCell = head.locator('.exportList__col').first();
+    await expect(firstCell).toHaveCSS('align-items', 'center');
+    await expect(firstCell).toHaveCSS('padding-top', '10px');
+    await expect(firstCell).toHaveCSS('padding-bottom', '10px');
+    const multilineCells = head.locator('.exportList__col--multiline');
+    await expect(multilineCells).toHaveCount(2);
+    await expect(multilineCells.first()).toHaveCSS('padding-top', '6px');
+    await expect(multilineCells.first()).toHaveCSS('padding-bottom', '6px');
+
+    const centerDelta = await firstCell.evaluate((cell) => {
+      const cellRect = cell.getBoundingClientRect();
+      const textNode = cell.firstChild;
+      if (!textNode) return Number.POSITIVE_INFINITY;
+      const textRange = document.createRange();
+      textRange.selectNodeContents(cell);
+      const textRect = textRange.getBoundingClientRect();
+      return Math.abs(
+        cellRect.top + cellRect.height / 2 - (textRect.top + textRect.height / 2),
+      );
+    });
+    expect(centerDelta).toBeLessThanOrEqual(1);
+  });
+
+  test('1c. スマホ幅ではLvヘッダーを隠してデータ列と揃える', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await new CalcPanelPage(page).clickExport();
+
+    const head = page.getByTestId('listHead');
+    await expect(head.locator('.exportList__lvHead')).toBeHidden();
+    await expect(head.locator('.exportList__col:visible')).toHaveCount(5);
+  });
+
   test('2. 閉じるボタンでオーバーレイが閉じる', async ({ page }) => {
     const calc = new CalcPanelPage(page);
     const exportPanel = new ExportPanelPage(page);
@@ -147,6 +196,51 @@ test.describe('05-export A. オーバーレイの開閉', () => {
 
     await exportPanel.closeByBackgroundClick();
     await exportPanel.expectOverlayHidden();
+  });
+
+  test('3b. タブレット・PC幅で開閉しても背景の位置が動かない', async ({ page }) => {
+    await page.locator('.shell__scroll').evaluate((shell) => {
+      const spacer = document.createElement('div');
+      spacer.style.height = '1000px';
+      shell.appendChild(spacer);
+    });
+
+    const exportPanel = new ExportPanelPage(page);
+    for (const width of [1024, 1440]) {
+      await page.setViewportSize({ width, height: 768 });
+      const exportButton = page.getByTestId('calc-export-button');
+      await expect(exportButton).toBeEnabled();
+      // scrollToは入力イベントを発火しないため、実操作相当のpointerdownを先に通知する。
+      await exportButton.dispatchEvent('pointerdown', { pointerId: 1 });
+      await page.evaluate(() => window.scrollTo(0, 240));
+
+      const calcPanel = page.locator('#neo-calc');
+      const before = await calcPanel.boundingBox();
+      const scrollbarWidth = await page.evaluate(() => window.innerWidth - document.documentElement.clientWidth);
+      expect(before).not.toBeNull();
+
+      await exportButton.evaluate((button: HTMLButtonElement) => button.click());
+      await exportPanel.expectOverlayVisible();
+      await expect.poll(() => page.evaluate(() => document.body.style.position)).toBe('fixed');
+
+      const whileOpen = await calcPanel.boundingBox();
+      expect(whileOpen).not.toBeNull();
+      expect(whileOpen!.x).toBeCloseTo(before!.x, 1);
+      expect(whileOpen!.y).toBeCloseTo(before!.y, 1);
+      expect(whileOpen!.width).toBeCloseTo(before!.width, 1);
+      expect(await page.evaluate(() => Number.parseFloat(document.body.style.paddingRight) || 0))
+        .toBe(scrollbarWidth);
+
+      await exportPanel.close();
+      await exportPanel.expectOverlayHidden();
+      await expect.poll(() => page.evaluate(() => document.body.style.position)).toBe('');
+      const afterClose = await calcPanel.boundingBox();
+      expect(afterClose).not.toBeNull();
+      expect(afterClose!.x).toBeCloseTo(before!.x, 1);
+      expect(afterClose!.y).toBeCloseTo(before!.y, 1);
+      expect(afterClose!.width).toBeCloseTo(before!.width, 1);
+      expect(await page.evaluate(() => document.body.style.paddingRight)).toBe('');
+    }
   });
 });
 
@@ -255,8 +349,12 @@ test.describe('05-export B. 画像出力', () => {
 
     const viewer = page.getByTestId('export-save-viewer');
     const hint = viewer.locator('.exportSaveViewer__hint');
-    await expect(viewer).toBeVisible();
+    const preview = viewer.locator('.exportSaveViewer__img');
+    // CI の低速環境では webfont 読込と Canvas 生成に5秒以上かかる場合がある。
+    await expect(viewer).toBeVisible({ timeout: 15_000 });
     await expect(hint).toBeVisible();
+    await expect(preview).toHaveCSS('border-radius', '0px');
+    await expect(preview).toHaveCSS('box-shadow', 'none');
 
     const hintBox = await hint.boundingBox();
     expect(hintBox, '長押し保存の案内に表示領域がある').not.toBeNull();
@@ -488,6 +586,16 @@ test.describe('05-export F. 万能アメランキング', () => {
     await expect(exportPanel.rankingSection).toBeVisible();
   });
 
+  test('24b. 英語ではランキングではなく万能アメ消費量として表示される', async ({ page }) => {
+    const exportPanel = new ExportPanelPage(page);
+    const calc = new CalcPanelPage(page);
+    await exportPanel.close();
+    await page.getByRole('button', { name: 'EN', exact: true }).click();
+    await expect(page.locator('main.shell')).toHaveAttribute('data-locale', 'en');
+    await calc.clickExport();
+    await expect(exportPanel.rankingTitle).toHaveText('Handy Candy Usage');
+  });
+
   test('25. ランキングにポケモン名と使用率が表示される', async ({ page }) => {
     const exportPanel = new ExportPanelPage(page);
     const item = exportPanel.getRankingItem(0);
@@ -501,6 +609,33 @@ test.describe('05-export F. 万能アメランキング', () => {
     const exportPanel = new ExportPanelPage(page);
     const totalText = await exportPanel.getRankingTotalText();
     expect(totalText).toContain('万能アメ');
+  });
+
+  test('26b. EXP性格補正マークがスマホ幅でも表示される', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    const natureBadge = page.locator('.exportList__badge--down').first();
+    await expect(natureBadge).toBeVisible();
+    await expect(natureBadge).toHaveAttribute('role', 'img');
+    await expect(natureBadge).toHaveAttribute('aria-label', '▼▼');
+    const natureMark = natureBadge.locator('.exportList__badgeMark');
+    await expect(natureMark).toBeVisible();
+    await expect(natureMark).toHaveCSS('width', '18px');
+    await expect(natureMark).toHaveCSS('height', '6px');
+    await expect(natureBadge).toHaveCSS('padding', '4px');
+    await expect(natureMark).toHaveAttribute('viewBox', '0 0 20 7');
+    await expect(natureMark.locator('path')).toHaveAttribute('d', EXPORT_NATURE_MARK_PATH.down);
+    const badgeBackground = await natureBadge.evaluate((element) => {
+      const style = getComputedStyle(element, '::before');
+      return { color: style.backgroundColor, opacity: style.opacity };
+    });
+    expect(badgeBackground.color).not.toBe('rgba(0, 0, 0, 0)');
+    expect(badgeBackground.opacity).toBe('0.11');
+
+    await page.setViewportSize({ width: 768, height: 1024 });
+    await expect(natureMark).toHaveCSS('width', '22px');
+    await expect(natureMark).toHaveCSS('height', '8px');
+    await expect(natureBadge).toHaveCSS('padding', '5px');
   });
 });
 
@@ -565,6 +700,30 @@ test.describe('05-export G. 計算機との整合性検証', () => {
     expect(values.pct).toBe('100%');
     expect(values.items).toContain('S475');
     expect(values.items).toContain('M3');
+  });
+
+  test('32a. DOMはシステムフォント、画像用タイポグラフィとは太さと文字幅だけを揃える', async ({ page }) => {
+    const exportPanel = new ExportPanelPage(page);
+    await expect(exportPanel.sheet).toHaveCSS('font-family', /system-ui/);
+    await expect(exportPanel.rankingTitle).toHaveCSS('font-family', /system-ui/);
+
+    await expect(page.locator('.exportBrand__plan')).toHaveCSS('font-weight', '800');
+    await expect(page.locator('.exportMonth__year')).toHaveCSS('font-weight', '650');
+    await expect(page.locator('.exportMonth__month')).toHaveCSS('font-weight', '800');
+    await expect(page.locator('.statCard__value').first()).toHaveCSS('font-weight', '750');
+    await expect(page.locator('.exportList__name').first()).toHaveCSS('font-weight', '650');
+    await expect(page.locator('.exportList__num').first()).toHaveCSS('font-weight', '550');
+    await expect(page.locator('.statCard__value').first()).toHaveCSS('transform', 'matrix(0.97, 0, 0, 1, 0, 0)');
+  });
+
+  test('32b. Greenの育成プラン横棒はテーマ固有の色と濃さを使う', async ({ page }) => {
+    await page.evaluate(() => localStorage.setItem('candy-boost-planner:design', 'green'));
+    await page.reload();
+    await new CalcPanelPage(page).clickExport();
+
+    const fills = page.locator('.exportBar__fill');
+    await expect(fills.nth(0)).toHaveCSS('background-color', 'rgba(132, 202, 100, 0.76)');
+    await expect(fills.nth(1)).toHaveCSS('background-color', 'rgba(255, 173, 102, 0.76)');
   });
 
   test('33. CSVに実使用アイテム内訳が含まれる', async ({ page }) => {

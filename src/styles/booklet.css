@@ -5,59 +5,66 @@
 /* ===== Variables ===== */
 :root {
   /* Core Palette */
-  --bg-decor: #d0d4d8;
-  --paper: #fdf6ed;
-  --ink: #1f2122;
-  --ink-rgb: 31, 33, 34;
-  --muted: #5a5f63;
-  --accent: #2a7c6f;
-  --accent-rgb: 42, 124, 111;
-  --accent-strong: #0e8a72;
-  --danger: #c03a28;
-  --danger-rgb: 192, 58, 40;
-  --paper-rgb: 253, 246, 237;
-  --muted-rgb: 90, 95, 99;
+  --bg-decor: #ece8e4;
+  --paper: #ffffff;
+  --ink: #352f2b;
+  --ink-rgb: 53, 47, 43;
+  --muted: #71665f;
+  --accent: #c65332;
+  --accent-rgb: 198, 83, 50;
+  --accent-strong: #a84025;
+  /* 破壊的操作は赤、計算機の不足・上限超過は青で役割を分ける。 */
+  --booklet-destructive: #d11a2a;
+  --booklet-destructive-rgb: 209, 26, 42;
+  --danger: var(--booklet-destructive);
+  --danger-rgb: var(--booklet-destructive-rgb);
+  --booklet-shortage: #236ba5;
+  --booklet-shortage-rgb: 35, 107, 165;
+  --paper-rgb: 255, 255, 255;
+  --muted-rgb: 113, 102, 95;
 
   /* Surfaces */
   --surface: #ffffff;
-  --surface-alt: #9ab9d5;
-  --border: #1f2122;
-  --border-rgb: 31, 33, 34;
+  --surface-alt: #f2efec;
+  --border: #4c4039;
+  --border-rgb: 76, 64, 57;
+  --booklet-soft: #f8f4f0;
+  --booklet-warm: #fff0e6;
 
   /* Overlay */
-  --overlay-bg: rgba(31, 33, 34, 0.6);
+  --overlay-bg: rgba(53, 47, 43, 0.62);
   /* Interactive */
-  --btn-bg: #9ab9d5;
-  --btn-ink: #1f2122;
-  --input-bg: #fdf6ed;
-  --input-border: #1f2122;
-  --ring: #2a7c6f;
-  --ring-rgb: 42, 124, 111;
+  --btn-bg: #ffd9bd;
+  --btn-ink: #352f2b;
+  --input-bg: #ffffff;
+  --input-border: #4c4039;
+  --ring: #c65332;
+  --ring-rgb: 198, 83, 50;
 
   /* Data Visualization */
-  --bar-fill: #2a7c6f;
-  --bar-fill-rgb: 42, 124, 111;
-  --bar-track: #e7e1d9;
-  --bar-track-rgb: 231, 225, 217;
-  --bar-over: #1f2122;
-  --bar-over-rgb: 31, 33, 34;
-  --export-divider: #2a7c6f;
+  --bar-fill: #c65332;
+  --bar-fill-rgb: 198, 83, 50;
+  --bar-track: #f4e2d7;
+  --bar-track-rgb: 244, 226, 215;
+  --bar-over: #352f2b;
+  --bar-over-rgb: 53, 47, 43;
+  --export-divider: #c65332;
 
   /* Pie Chart Palette */
-  --pie-0: #2a7c6f;
-  --pie-1: #d68758;
-  --pie-2: #6b8caf;
-  --pie-3: #8b6f4e;
-  --pie-4: #4a8c7d;
-  --pie-5: #c4956a;
-  --pie-6: #5a7f9b;
-  --pie-7: #9a9a9a;
+  --pie-0: #c65332;
+  --pie-1: #e4a23e;
+  --pie-2: #73a176;
+  --pie-3: #d98772;
+  --pie-4: #9d855f;
+  --pie-5: #efbd77;
+  --pie-6: #8b7062;
+  --pie-7: #a59b94;
 
   /* Semantic Accents */
   --star-color: #eab308;
-  /* ▲▲ = 赤系 / ▼▼ = 青系。印刷風の朱と藍を、クリーム紙で沈まない明度まで上げる */
-  --nature-up: #CF4A2C;
-  --nature-down: #3179BD;
+  /* ▲▲ = 赤系 / ▼▼ = 青系。白い紙面でも沈まない印刷風の朱と藍。 */
+  --nature-up: #c94f31;
+  --nature-down: #3978ad;
 
   /* Border Radius */
   --radius-sm: 0px;
@@ -72,17 +79,19 @@
 
 }
 
-
+body {
+  background: var(--paper);
+}
 
 /* ===== Hero ===== */
 .hero {
   background: var(--paper);
   border-bottom: none;
   position: relative;
-  background-image: repeating-linear-gradient(transparent, transparent 31px, rgba(31, 33, 34, 0.05) 31px, rgba(31, 33, 34, 0.05) 32px);
+  background-image: repeating-linear-gradient(transparent, transparent 31px, rgba(var(--accent-rgb), 0.055) 31px, rgba(var(--accent-rgb), 0.055) 32px);
 }
 
-/* Red tab attached to hero bottom */
+/* Accent tab attached to hero bottom */
 .hero::before {
   content: "";
   position: absolute;
@@ -97,7 +106,7 @@
   z-index: 10;
 }
 
-/* Lang buttons — cream fill for contrast on both hero lines and blue panel */
+/* Lang buttons — opaque paper fill prevents the ruled lines from bleeding through. */
 .lang__btn {
   background: var(--paper);
   color: var(--ink);
@@ -126,7 +135,7 @@
   color: var(--paper);
 }
 
-/* ===== Panel — Blue Folder ===== */
+/* ===== Panel — warm neutral folder ===== */
 .panel {
   background: var(--surface-alt);
   border: 3px solid var(--ink);
@@ -136,9 +145,15 @@
 }
 
 /* ===== Buttons ===== */
+.btn {
+  background: var(--btn-bg);
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
 .btn--primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--paper);
   border: 2px solid var(--ink);
   font-weight: bold;
   text-transform: uppercase;
@@ -157,28 +172,32 @@
   box-shadow: 0px 0px 0px var(--ink);
 }
 
-/* 破壊的操作のボタンは白抜きにする。
-   共通の `.btn--danger` は `--btn-ink` を使うが、このテーマの `--btn-ink` は #1f2122 で、
-   暗い `--danger`（#c03a28）に重ねるとコントラストが約2.9:1 しかなく読めない。
-   `--danger` が明るい他テーマ（dark / vivid / cyberpunk）は黒のほうが読めるので、
-   直すのはこのテーマだけでよい。 */
+/* 暗い破壊色の上は、共通の `--btn-ink` ではなく白抜きにする。 */
 .btn--danger {
-  color: #fff;
+  background: var(--danger);
+  color: var(--paper);
+  border-color: var(--danger);
+}
+
+.btn--done {
+  background: #167a50;
+  color: var(--paper);
+  border-color: #167a50;
 }
 
 .btn--ghost {
-  background: var(--paper);
-  color: #1a5148;
+  background: var(--btn-bg);
+  color: var(--ink);
 }
 
 /* ===== Field Input ===== */
 .field__input {
   border: 2px solid var(--ink);
-  background: var(--surface);
+  background: var(--input-bg);
   border-radius: 2px;
   padding: 0 12px;
   height: 38px;
-  box-shadow: inset 2px 2px 0px rgba(0,0,0,0.05);
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
 .field__input:focus {
@@ -186,26 +205,66 @@
   box-shadow: 2px 2px 0px var(--accent);
 }
 
+/* 計算行は紙色や内側シャドウを重ねず、入力面を純白として見せる。 */
+.calcRow .field__input,
+.calcRow .levelPick__input,
+.calcRow select.field__input {
+  background-color: var(--input-bg);
+  background-image: none;
+  box-shadow: none;
+}
+
+.calcRow .field__input:focus,
+.calcRow .levelPick__input:focus,
+.calcRow select.field__input:focus {
+  box-shadow: 2px 2px 0 var(--accent);
+}
+
+/* 純白の入力欄が紙面へ溶け込まないよう、計算行の下地だけを暖かい薄灰色にする。 */
+.calcSlotContainer {
+  background: var(--booklet-soft);
+}
+
+.slotTab--active {
+  background: var(--paper);
+  border-bottom-color: var(--paper);
+}
+
 /* ===== Calc — Sticky Summary ===== */
+.panel--calc {
+  /* bookletの計算機だけ、不足・上限超過を青で示す。 */
+  --danger: var(--booklet-shortage);
+  --danger-rgb: var(--booklet-shortage-rgb);
+}
+
+/* 行削除は不足ではなく破壊的操作なので、赤を維持する。 */
+.panel--calc .linkBtn--danger {
+  color: var(--booklet-destructive);
+}
+
+.panel--calc .linkBtn--danger:hover:not(:disabled) {
+  color: rgba(var(--booklet-destructive-rgb), 0.7);
+}
+
 .calcSticky {
   --calc-sticky-background: var(--surface-alt);
   --calc-sticky-tint: transparent;
 }
 
 .calcSticky__toggle {
-  color: #2c5a82;
+  color: var(--accent-strong);
 }
 
 
 .calcSticky .calcBar__fill--active {
-  background: #2c5a82;
+  background: var(--accent);
 }
 
 .calcSticky .calcBar__fill--others {
-  background: rgba(44, 90, 130, 0.4);
+  background: rgba(var(--accent-rgb), 0.36);
 }
 
-/* Sleep growth chips — tinted card on blue panel */
+/* Sleep growth chips — subtle accent tint on the neutral panel. */
 .hintIcon {
   background: rgba(var(--accent-rgb), 0.08);
   color: var(--ink);
@@ -233,12 +292,13 @@
 .sleepCalcPanel {
   background: var(--paper);
   border: 1px solid var(--ink);
-  box-shadow: inset 2px 2px 0px rgba(0,0,0,0.05);
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
 /* ===== Box Tiles ===== */
 .boxTile {
-  background: var(--surface);
+  background: var(--paper);
+  background-image: none;
   border: 1px solid var(--type-color);
   border-radius: 2px;
   transition: transform 0.1s, box-shadow 0.1s;
@@ -252,8 +312,8 @@
   left: 0;
   width: 100%;
   height: 4px;
-  background: rgba(31, 33, 34, 0.05);
-  border-bottom: 1px solid rgba(31, 33, 34, 0.1);
+  background: rgba(var(--ink-rgb), 0.05);
+  border-bottom: 1px solid rgba(var(--ink-rgb), 0.1);
   pointer-events: none;
 }
 
@@ -286,6 +346,22 @@
   border-radius: 4px;
 }
 
+.modal__header {
+  background: var(--booklet-warm);
+}
+
+.modal__body {
+  background: var(--paper);
+}
+
+/* 育成プランもモーダルと同じ白い本文面に揃える。
+   見出しと年月は罫線と同じ黒で締め、データ表現のコーラルと役割を分ける。 */
+.exportSheet {
+  --export-highlight: var(--ink);
+  --export-highlight-rgb: var(--ink-rgb);
+  background: var(--paper);
+}
+
 /* ===== Export — Ranking Item Label ===== */
 .exportRanking__itemLabel {
   color: var(--ink);
@@ -294,8 +370,7 @@
 /* ===== Mobile Nav ===== */
 .mobileNav {
   background: var(--paper);
-  border-top: 2px solid var(--ink);
-  box-shadow: 0 -4px 0px rgba(31, 33, 34, 0.1);
+  box-shadow: 0 4px 0px rgba(var(--ink-rgb), 0.1);
 }
 
 /* ===== Toast =====
@@ -306,10 +381,32 @@
   box-shadow: none;
 }
 
-/* ===== Event history — アクセント塗りの上の文字 =====
-   このテーマの `--btn-ink` は黒（#1f2122）なので、アクセント地のバッジ・チップが黒字になる。
-   他のアクセント塗り（`.lang__btn--help` など）と同じくクリーム色の紙色へ揃える。 */
+/* ===== Event history — アクセント塗りの上は白文字に揃える ===== */
 .eventHistory__yearBadge,
 .eventHistory__chip--flower {
   color: var(--paper);
+}
+
+/* ===== Responsive overrides =====
+   Keep these after all base/theme rules so the breakpoint variants win by
+   source order without adding selector specificity. */
+
+/* The folder tab visually belongs to the desktop card frame. Once mobile and
+   tablet panels are frameless it becomes a detached ornament above the nav. */
+@media (max-width: 1399px) {
+  .hero::before {
+    display: none;
+  }
+}
+
+/* PCではノート罫線をhero内だけで切らず、ページ背景として下端まで続ける。 */
+@media (min-width: 1400px) {
+  body {
+    background-color: var(--paper);
+    background-image: repeating-linear-gradient(transparent, transparent 31px, rgba(var(--accent-rgb), 0.055) 31px, rgba(var(--accent-rgb), 0.055) 32px);
+  }
+
+  .hero {
+    background: transparent;
+  }
 }

@@ -11,16 +11,27 @@ export type ExportImageStyle = {
   ink: string;
   muted: string;
   accent: string;
+  /** テーマ固有の補助アクセント。未指定テーマでは accent と同色。 */
+  highlight: string;
   danger: string;
+  natureUp: string;
+  natureDown: string;
   sectionBackground: string;
+  statCardAccent: string;
+  statCardPlain: string;
+  statCardPrimary: string;
+  statCardDanger: string;
   barFill: string;
+  shardsBarFill: string;
   barTrack: string;
+  barFillAlpha: number;
   pie: [string, string, string, string, string, string, string, string];
   bodyFontFamily: string;
   headingFontFamily: string;
 };
 
-const FALLBACK_FONT = "system-ui, -apple-system, sans-serif";
+/** DOMのシステムフォントとは分離した、プレビュー画像・保存画像専用フォント。 */
+export const EXPORT_IMAGE_FONT_FAMILY = '"M PLUS 2 Variable", sans-serif';
 
 /** base.css の既定値に一致させた静的 fallback。 */
 export const FALLBACK_STYLE: ExportImageStyle = {
@@ -28,13 +39,22 @@ export const FALLBACK_STYLE: ExportImageStyle = {
   ink: "#1e293b",
   muted: "#64748b",
   accent: "#10b981",
+  highlight: "#10b981",
   danger: "#ef4444",
+  natureUp: "#dc2626",
+  natureDown: "#2563eb",
   sectionBackground: "rgba(30, 41, 59, 0.05)",
+  statCardAccent: "rgba(99, 102, 241, 0.075)",
+  statCardPlain: "rgba(99, 102, 241, 0.075)",
+  statCardPrimary: "rgba(99, 102, 241, 0.075)",
+  statCardDanger: "rgba(239, 68, 68, 0.1)",
   barFill: "#ec4899",
+  shardsBarFill: "#ec4899",
   barTrack: "#e2e8f0",
+  barFillAlpha: 0.62,
   pie: ["#10b981", "#6366f1", "#f59e0b", "#ec4899", "#06b6d4", "#8b5cf6", "#f97316", "#64748b"],
-  bodyFontFamily: FALLBACK_FONT,
-  headingFontFamily: FALLBACK_FONT,
+  bodyFontFamily: EXPORT_IMAGE_FONT_FAMILY,
+  headingFontFamily: EXPORT_IMAGE_FONT_FAMILY,
 };
 
 const HEX_RE = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
@@ -64,6 +84,21 @@ export function rgbaFromTriple(triple: string | null | undefined, alpha: number,
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+/** CSS の 0..1 または percentage を Canvas 用の 0..1 へ正規化する。 */
+export function normalizeUnitInterval(
+  value: string | null | undefined,
+  fallback: number,
+): number {
+  const source = (value ?? "").trim();
+  if (!source) return fallback;
+  const isPercentage = source.endsWith("%");
+  const parsed = Number(isPercentage ? source.slice(0, -1) : source);
+  const normalized = isPercentage ? parsed / 100 : parsed;
+  return Number.isFinite(normalized) && normalized >= 0 && normalized <= 1
+    ? normalized
+    : fallback;
+}
+
 /**
  * export sheet 要素から現在テーマのスタイルを読む（読取専用）。
  * ブラウザ専用（getComputedStyle 依存）。
@@ -77,21 +112,35 @@ export function readExportImageStyle(el: Element): ExportImageStyle {
     color(`--pie-${i}`, FALLBACK_STYLE.pie[i]),
   ) as ExportImageStyle["pie"];
 
-  const bodyFontFamily =
-    (cs.fontFamily && cs.fontFamily.trim()) || prop("--font-body") || FALLBACK_FONT;
-  const headingFontFamily = prop("--font-heading") || bodyFontFamily || FALLBACK_FONT;
+  const accent = color("--accent", FALLBACK_STYLE.accent);
+  const danger = color("--danger", FALLBACK_STYLE.danger);
+  const barFill = color("--bar-fill", FALLBACK_STYLE.barFill);
+  const accentCardFallback = rgbaFromTriple(prop("--accent-rgb"), 0.075, FALLBACK_STYLE.statCardAccent);
+  const dangerCardFallback = rgbaFromTriple(prop("--danger-rgb"), 0.1, FALLBACK_STYLE.statCardDanger);
 
   return {
     paper: color("--paper", FALLBACK_STYLE.paper),
     ink: color("--ink", FALLBACK_STYLE.ink),
     muted: color("--muted", FALLBACK_STYLE.muted),
-    accent: color("--accent", FALLBACK_STYLE.accent),
-    danger: color("--danger", FALLBACK_STYLE.danger),
+    accent,
+    highlight: color("--export-highlight", accent),
+    danger,
+    natureUp: color("--nature-up", FALLBACK_STYLE.natureUp),
+    natureDown: color("--nature-down", FALLBACK_STYLE.natureDown),
     sectionBackground: rgbaFromTriple(prop("--ink-rgb"), 0.05, FALLBACK_STYLE.sectionBackground),
-    barFill: color("--bar-fill", FALLBACK_STYLE.barFill),
+    statCardAccent: color("--export-card-accent-bg", accentCardFallback),
+    statCardPlain: color("--export-card-plain-bg", accentCardFallback),
+    statCardPrimary: color("--export-card-primary-bg", accentCardFallback),
+    statCardDanger: color("--export-card-danger-bg", dangerCardFallback),
+    barFill,
+    shardsBarFill: color("--bar-shards-fill", barFill),
     barTrack: color("--bar-track", FALLBACK_STYLE.barTrack),
+    barFillAlpha: normalizeUnitInterval(
+      prop("--export-bar-fill-opacity"),
+      FALLBACK_STYLE.barFillAlpha,
+    ),
     pie,
-    bodyFontFamily,
-    headingFontFamily,
+    bodyFontFamily: EXPORT_IMAGE_FONT_FAMILY,
+    headingFontFamily: EXPORT_IMAGE_FONT_FAMILY,
   };
 }

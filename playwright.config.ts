@@ -58,7 +58,13 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      testIgnore: '**/responsive-panels.spec.ts',
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
+    },
+    {
+      name: 'chromium-mobile',
+      testMatch: '**/responsive-panels.spec.ts',
+      use: { ...devices['iPhone 13'], browserName: 'chromium' },
     },
     // Firefox と WebKit は必要に応じて有効化
     // {

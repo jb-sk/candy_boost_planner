@@ -220,15 +220,51 @@
                 </label>
               </div>
             </div>
-            <label class="boxAddFav">
-              <input type="checkbox" v-model="box.addFavorite.value" />
-              {{ t("box.add.addFavorite") }}
-            </label>
-            <div class="boxAddActions">
+            <div class="boxAddOptions">
+              <label class="boxAddFav">
+                <input type="checkbox" v-model="box.addFavorite.value" />
+                {{ t("box.add.addFavorite") }}
+              </label>
               <label class="boxAddCalcCheck">
                 <input type="checkbox" v-model="addToCalcChecked" data-testid="box-add-to-calc-checkbox" />
                 {{ t("box.add.addToCalc") }}
               </label>
+            </div>
+            <section class="boxAddTags" data-testid="box-add-tags" :aria-label="t('box.tags.label')">
+              <span class="field__label">{{ t("box.tags.label") }}</span>
+              <div v-if="customTags.length" class="boxAddTags__choices">
+                <button
+                  v-for="tag in customTags"
+                  :key="tag.id"
+                  class="chipBtn"
+                  :class="{ 'chipBtn--on': boxAddSelectedTagIds.includes(tag.id) }"
+                  type="button"
+                  :data-testid="`box-add-tag-${tag.id}`"
+                  :aria-pressed="boxAddSelectedTagIds.includes(tag.id)"
+                  @click="toggleBoxAddTag(tag.id)"
+                >
+                  <span class="chipBtn__text">{{ tag.name }}</span>
+                </button>
+              </div>
+              <form class="boxAddTags__create" @submit.prevent="addAndSelectBoxAddTag">
+                <input
+                  v-model="boxAddNewTagName"
+                  class="field__input"
+                  data-testid="box-add-tag-name-input"
+                  :maxlength="box.maxCustomTagNameLength"
+                  :placeholder="t('box.tags.namePlaceholder')"
+                  :aria-label="t('box.tags.namePlaceholder')"
+                />
+                <button
+                  class="btn btn--ghost btn--sm"
+                  type="submit"
+                  data-testid="box-add-tag-add"
+                  :disabled="!boxAddNewTagName.trim() || customTags.length >= box.maxCustomTags"
+                >{{ t("box.tags.add") }}</button>
+              </form>
+              <p v-if="boxAddTagError" class="field__error boxAddTags__error" role="alert">{{ boxAddTagError }}</p>
+            </section>
+            <div class="boxAddActions">
               <button class="btn btn--primary" type="button" data-testid="box-add-submit" @click="onCreateToBox()">
                 {{ t("box.add.toBox") }}
               </button>
@@ -377,6 +413,133 @@
           </button>
         </div>
 
+        <div class="boxCustomTagFilters" data-testid="box-custom-tag-filters">
+          <span v-if="customTags.length" class="boxCustomTagFilters__label">{{ t("box.tags.label") }}</span>
+          <button
+            v-for="tag in customTags"
+            :key="tag.id"
+            class="chipBtn"
+            :class="{ 'chipBtn--on': selectedCustomTagIds.includes(tag.id) }"
+            type="button"
+            :data-testid="`box-filter-tag-${tag.id}`"
+            :aria-pressed="selectedCustomTagIds.includes(tag.id)"
+            @click="box.toggleCustomTagFilter(tag.id)"
+          >
+            <span class="chipBtn__text">{{ tag.name }}</span>
+          </button>
+          <button
+            v-if="customTags.length"
+            class="chipBtn boxCustomTagFilters__manage"
+            :class="{ 'boxCustomTagFilters__manage--open': bulkTagOpen }"
+            type="button"
+            data-testid="box-tag-bulk-toggle"
+            :aria-expanded="bulkTagOpen"
+            @click="toggleBulkTagPanel"
+          >
+            <span class="chipBtn__text">{{ t("box.tags.bulkOpen") }}</span>
+          </button>
+          <button
+            class="chipBtn boxCustomTagFilters__manage"
+            :class="{ 'boxCustomTagFilters__manage--open': tagManagerOpen }"
+            type="button"
+            data-testid="box-tag-manager-toggle"
+            :aria-expanded="tagManagerOpen"
+            @click="toggleTagManager"
+          >
+            <span class="chipBtn__text">{{ t("box.tags.manage") }}</span>
+          </button>
+        </div>
+
+        <section v-if="bulkTagOpen" class="boxTagBulk" data-testid="box-tag-bulk">
+          <span class="boxTagBulk__title">{{ t("box.tags.bulkTitle", { count: sortedBoxEntries.length }) }}</span>
+          <div class="boxTagBulk__controls">
+            <select
+              v-model="bulkTagId"
+              class="field__input"
+              data-testid="box-tag-bulk-select"
+              :aria-label="t('box.tags.bulkTitle', { count: sortedBoxEntries.length })"
+              @change="bulkTagStatus = ''"
+            >
+              <option v-for="tag in customTags" :key="tag.id" :value="tag.id">{{ tag.name }}</option>
+            </select>
+            <button
+              class="btn btn--primary btn--sm"
+              type="button"
+              data-testid="box-tag-bulk-apply"
+              :disabled="!bulkTagId || bulkAssignableCount === 0"
+              @click="assignTagToFiltered"
+            >{{ t("box.tags.bulkApply") }}</button>
+          </div>
+          <p v-if="bulkTagStatus" class="boxTagBulk__status" role="status">{{ bulkTagStatus }}</p>
+        </section>
+
+        <section v-if="tagManagerOpen" ref="tagManagerRef" class="boxTagManager" data-testid="box-tag-manager" :aria-label="t('box.tags.manageTitle')">
+          <form class="boxTagManager__add" @submit.prevent="addCustomTag">
+            <input
+              v-model="newTagName"
+              class="field__input"
+              data-testid="box-tag-name-input"
+              :maxlength="box.maxCustomTagNameLength"
+              :placeholder="t('box.tags.namePlaceholder')"
+              :aria-label="t('box.tags.namePlaceholder')"
+            />
+            <button class="btn btn--primary btn--sm" type="submit" data-testid="box-tag-add" :disabled="!newTagName.trim() || customTags.length >= box.maxCustomTags">
+              {{ t("box.tags.add") }}
+            </button>
+          </form>
+          <p v-if="tagManagerError" class="field__error boxTagManager__error" role="alert">{{ tagManagerError }}</p>
+          <div v-if="customTags.length" class="boxTagManager__list">
+            <div v-for="tag in customTags" :key="tag.id" class="boxTagManager__item">
+              <template v-if="editingTagId === tag.id">
+                <form class="boxTagManager__edit" @submit.prevent="saveTagName(tag.id)">
+                  <input
+                    v-model="editingTagName"
+                    class="field__input"
+                    :data-testid="`box-tag-edit-input-${tag.id}`"
+                    :maxlength="box.maxCustomTagNameLength"
+                    :aria-label="t('box.tags.renameAria', { name: tag.name })"
+                    @keydown.escape.prevent="cancelTagRename"
+                  />
+                  <button class="btn btn--primary btn--sm" type="submit" :disabled="!editingTagName.trim()">{{ t("box.tags.save") }}</button>
+                  <button class="btn btn--neutral btn--sm" type="button" @click="cancelTagRename">{{ t("common.cancel") }}</button>
+                </form>
+              </template>
+              <template v-else>
+                <button
+                  class="boxTagManager__name"
+                  type="button"
+                  :data-testid="`box-tag-rename-${tag.id}`"
+                  @click="startTagRename(tag.id, tag.name)"
+                >
+                  <span class="boxTagManager__nameText">{{ tag.name }}</span>
+                  <span class="boxTagManager__usage">{{ t("box.tags.usageCount", { count: box.customTagUsageCount(tag.id) }) }}</span>
+                </button>
+                <button
+                  class="boxTagManager__delete"
+                  type="button"
+                  :data-testid="`box-tag-delete-${tag.id}`"
+                  :aria-label="t('box.tags.deleteAria', { name: tag.name })"
+                  @click="pendingDeleteTagId = pendingDeleteTagId === tag.id ? null : tag.id"
+                >×</button>
+              </template>
+              <div
+                v-if="pendingDeleteTagId === tag.id"
+                class="inlineConfirm boxTagManager__confirm"
+                role="group"
+                :aria-label="t('box.tags.deleteConfirm', { count: box.customTagUsageCount(tag.id) })"
+                :data-testid="`box-tag-delete-confirm-${tag.id}`"
+              >
+                <p class="inlineConfirm__question">{{ t("box.tags.deleteConfirm", { count: box.customTagUsageCount(tag.id) }) }}</p>
+                <p class="inlineConfirm__note">{{ t("box.tags.deleteUndoNote") }}</p>
+                <div class="inlineConfirm__actions">
+                  <button class="btn btn--danger btn--sm" type="button" @click="confirmDeleteTag(tag.id)">{{ t("box.tags.delete") }}</button>
+                  <button class="btn btn--neutral btn--sm" type="button" @click="pendingDeleteTagId = null">{{ t("common.cancel") }}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <!-- 詳細設定 -->
         <details class="boxAdvanced" data-testid="box-advanced-panel" @toggle="onBoxAdvancedToggle">
           <summary class="boxAdvanced__summary" data-testid="box-advanced-summary">
@@ -388,6 +551,13 @@
               <select v-model="filterJoinMode" class="field__input boxAdvanced__select" data-testid="box-filter-join-select" :aria-label="t('box.list.join')">
                 <option value="and">{{ t("box.list.joinAnd") }}</option>
                 <option value="or">{{ t("box.list.joinOr") }}</option>
+              </select>
+            </div>
+            <div class="boxAdvanced__row">
+              <span class="boxAdvanced__label">{{ t("box.list.tagJoin") }}</span>
+              <select v-model="tagJoinMode" class="field__input boxAdvanced__select" data-testid="box-tag-join-select" :aria-label="t('box.list.tagJoin')">
+                <option value="or">{{ t("box.list.tagJoinOr") }}</option>
+                <option value="and">{{ t("box.list.tagJoinAnd") }}</option>
               </select>
             </div>
             <div class="boxAdvanced__section">
@@ -466,7 +636,9 @@
           id-prefix="box-clear-confirm"
           container-class="boxClearConfirm"
           :question="t('confirm.clearBox', { n: boxEntries.length })"
-          :note="t('confirm.clearBoxNote')"
+          :note="linkedCalcRowCountForAllBox > 0
+            ? t('confirm.clearLinkedBoxNote', { count: linkedCalcRowCountForAllBox })
+            : t('confirm.clearBoxNote')"
           :confirm-label="t('box.clearAllConfirmAction')"
           :cancel-label="t('common.cancel')"
           test-id="box-clear-confirm"
@@ -475,20 +647,30 @@
           :disabled="!boxEntries.length"
           close-when-disabled
           :confirm-focus-target="undoButtonRef"
-          @confirm="box.onClearBox"
+          @confirm="onClearBoxWithCalc"
         />
 
         <div class="boxList" ref="boxListRef" v-if="sortedBoxEntries.length">
           <template v-for="(e, idx) in sortedBoxEntries" :key="e.id">
             <div
               class="boxTile"
-              :class="[boxTileClassById.get(e.id) ?? 'boxTile--type-unknown', { 'boxTile--active': e.id === selectedBoxId, 'boxTile--hover': hoveredTileId === e.id || e.id === selectedBoxId }]"
+              :class="[boxTileClassById.get(e.id) ?? 'boxTile--type-unknown', { 'boxTile--active': e.id === selectedBoxId, 'boxTile--hover': hoveredTileId === e.id || e.id === selectedBoxId, 'boxTile--pressing': shouldShowTilePressFeedback(e.id) }]"
               :data-type="e.derived ? getPokemonType(e.derived.pokedexId, e.derived.form) : 'unknown'"
               @mouseenter="onTileMouseEnter(e.id)"
               @mouseleave="onTileMouseLeave"
               @touchstart="onTileTouchStart"
+              @pointerdown="onTilePressStart($event, e.id)"
+              @pointermove="onTilePressMove"
+              @pointerup="onTilePressEnd"
+              @pointercancel="onTilePressCancel"
             >
-              <button type="button" class="boxTile__select" data-testid="box-tile" @click="box.onSelectBox(e.id)">
+              <button
+                type="button"
+                class="boxTile__select"
+                data-testid="box-tile"
+                :title="calcLinkedBoxIds.has(e.id) ? t('box.list.longPressRemoveCalc') : t('box.list.longPressAddCalc')"
+                @click="onTileSelectClick($event, e.id)"
+              >
                 <div class="boxTile__topRow">
                   <span class="boxTile__lv">Lv{{ e.planner?.level ?? e.derived?.level ?? "-" }}</span>
                   <!-- 未設定・0h は表示しない。aria-label は付けない（付けるとタイル名から時間が消える） -->
@@ -507,7 +689,7 @@
                 :aria-label="t('box.list.favorite')"
                 :aria-pressed="!!e.favorite"
                 :title="t('box.list.favorite')"
-                @click="box.toggleFavoriteById(e.id)"
+                @click="onTileFavoriteClick($event, e.id)"
               ></button>
             </div>
 
@@ -524,11 +706,40 @@
                   >
                     {{ calcBtnFlash ? calcBtnLabel : t("box.add.toCalc") }}
                   </button>
-                  <button class="btn btn--danger" type="button" data-testid="box-detail-delete" @click="box.onDeleteSelected">
+                  <button
+                    class="btn boxDetail__viewCalc"
+                    type="button"
+                    data-testid="box-detail-view-calc"
+                    @click="$emit('view-calc')"
+                  >
+                    {{ t("box.add.viewCalc") }}
+                  </button>
+                  <button
+                    class="btn btn--danger"
+                    type="button"
+                    data-testid="box-detail-delete"
+                    @click="onDeleteSelectedRequest($event.currentTarget)"
+                  >
                     {{ t("box.deleteFromBox") }}
                   </button>
                 </div>
               </div>
+
+              <InlineConfirm
+                :ref="setDeleteConfirmRef"
+                id-prefix="box-delete-linked-confirm"
+                container-class="boxDetail__deleteConfirm"
+                :question="t('confirm.deleteLinkedBox', { name: boxDisplayTitleById.get(selectedBox.id) ?? box.displayBoxTitle(selectedBox) })"
+                :note="t('confirm.deleteLinkedBoxNote', { count: selectedLinkedCalcRowCount })"
+                :confirm-label="t('box.deleteFromBox')"
+                :cancel-label="t('common.cancel')"
+                test-id="box-delete-linked-confirm"
+                confirm-test-id="box-delete-linked-confirm-yes"
+                cancel-test-id="box-delete-linked-confirm-no"
+                :disabled="selectedLinkedCalcRowCount === 0"
+                close-when-disabled
+                @confirm="onDeleteSelectedWithCalc"
+              />
 
               <div class="boxDetail__grid">
                 <div class="boxDetail__col">
@@ -610,6 +821,25 @@
                         ></button>
                       </div>
                     </div>
+                  </div>
+
+                  <div class="boxDetail__kv boxDetail__kv--wide">
+                    <div class="boxDetail__k">{{ t("box.tags.label") }}</div>
+                    <div v-if="customTags.length" class="boxDetail__tagList" data-testid="box-detail-tags">
+                      <button
+                        v-for="tag in customTags"
+                        :key="tag.id"
+                        class="chipBtn"
+                        :class="{ 'chipBtn--on': selectedBox.tagIds?.includes(tag.id) }"
+                        type="button"
+                        :data-testid="`box-detail-tag-${tag.id}`"
+                        :aria-pressed="selectedBox.tagIds?.includes(tag.id) ?? false"
+                        @click="box.toggleSelectedCustomTag(tag.id)"
+                      >
+                        <span class="chipBtn__text">{{ tag.name }}</span>
+                      </button>
+                    </div>
+                    <p v-else class="boxDetail__minor boxDetail__tagEmpty">{{ t("box.tags.emptyHint") }}</p>
                   </div>
 
                   <div class="boxDetail__specs">
@@ -935,6 +1165,8 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   (e: "apply-to-calc"): void;
+  (e: "toggle-calc", boxId: string): void;
+  (e: "view-calc"): void;
   (e: "open-settings"): void;
 }>();
 
@@ -945,6 +1177,8 @@ const gt = props.gt;
 
 const undoButtonRef = ref<HTMLButtonElement | null>(null);
 const clearConfirmRef = ref<InstanceType<typeof InlineConfirm> | null>(null);
+const deleteConfirmRef = ref<InstanceType<typeof InlineConfirm> | null>(null);
+const tagManagerRef = ref<HTMLElement | null>(null);
 
 // Aliases for v-model so the template compiler updates `.value` correctly.
 const boxEntries = box.boxEntries;
@@ -963,6 +1197,8 @@ const selectedSpecialtySelectValue = box.selectedSpecialtySelectValue;
 const availableSubSkills = box.availableSubSkills;
 const boxSortDir = box.boxSortDir;
 const selectedSpecialties = box.selectedSpecialties;
+const customTags = box.customTags;
+const selectedCustomTagIds = box.selectedCustomTagIds;
 const canUndo = box.canUndo;
 const canRedo = box.canRedo;
 const relinkFound = box.relinkFound;
@@ -971,6 +1207,156 @@ const showRelinkSuggest = box.showRelinkSuggest;
 const relinkStatus = box.relinkStatus;
 const boxEditSubInputs = box.boxEditSubInputs;
 const boxEditSubErrors = box.boxEditSubErrors;
+const selectedLinkedCalcRowCount = computed(() => {
+  const id = selectedBox.value?.id;
+  return id ? calc.countRowsByBoxIds([id]) : 0;
+});
+const linkedCalcRowCountForAllBox = computed(() =>
+  calc.countRowsByBoxIds(boxEntries.value.map((entry) => entry.id)),
+);
+
+// 詳細パネルはタイルの v-for 内にあるため、通常の template ref は配列になる。
+function setDeleteConfirmRef(instance: Element | ComponentPublicInstance | null): void {
+  deleteConfirmRef.value = instance as InstanceType<typeof InlineConfirm> | null;
+}
+
+/* ===== Custom tags ===== */
+const tagManagerOpen = ref(false);
+const bulkTagOpen = ref(false);
+const newTagName = ref("");
+const editingTagId = ref<string | null>(null);
+const editingTagName = ref("");
+const pendingDeleteTagId = ref<string | null>(null);
+const tagManagerError = ref("");
+const boxAddSelectedTagIds = ref<string[]>([]);
+const boxAddNewTagName = ref("");
+const boxAddTagError = ref("");
+const bulkTagId = ref("");
+const bulkTagStatus = ref("");
+
+const bulkAssignableCount = computed(() => {
+  const id = bulkTagId.value;
+  if (!id) return 0;
+  return sortedBoxEntries.value.filter((entry) => !entry.tagIds?.includes(id)).length;
+});
+
+function duplicateTagName(name: string, exceptId?: string): boolean {
+  const normalized = name.trim().toLocaleLowerCase();
+  return customTags.value.some((tag) => tag.id !== exceptId && tag.name.toLocaleLowerCase() === normalized);
+}
+
+function toggleBoxAddTag(id: string): void {
+  const next = new Set(boxAddSelectedTagIds.value);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  boxAddSelectedTagIds.value = [...next];
+}
+
+function addAndSelectBoxAddTag(): void {
+  const name = boxAddNewTagName.value.trim();
+  boxAddTagError.value = "";
+  if (customTags.value.length >= box.maxCustomTags) {
+    boxAddTagError.value = t("box.tags.limit", { count: box.maxCustomTags });
+    return;
+  }
+  if (duplicateTagName(name)) {
+    boxAddTagError.value = t("box.tags.duplicate");
+    return;
+  }
+  const id = box.addCustomTag(name);
+  if (!id) return;
+  boxAddSelectedTagIds.value = [...boxAddSelectedTagIds.value, id];
+  boxAddNewTagName.value = "";
+}
+
+watch(customTags, (tags) => {
+  const validIds = new Set(tags.map((tag) => tag.id));
+  boxAddSelectedTagIds.value = boxAddSelectedTagIds.value.filter((id) => validIds.has(id));
+  if (!validIds.has(bulkTagId.value)) bulkTagId.value = tags[0]?.id ?? "";
+  if (!tags.length) bulkTagOpen.value = false;
+}, { immediate: true });
+
+function assignTagToFiltered(): void {
+  const count = box.assignCustomTagToFiltered(bulkTagId.value);
+  bulkTagStatus.value = count > 0
+    ? t("box.tags.bulkDone", { count })
+    : t("box.tags.bulkAlready");
+}
+
+function toggleTagManager(): void {
+  tagManagerOpen.value = !tagManagerOpen.value;
+  if (tagManagerOpen.value) bulkTagOpen.value = false;
+}
+
+function toggleBulkTagPanel(): void {
+  bulkTagOpen.value = !bulkTagOpen.value;
+  bulkTagStatus.value = "";
+  if (bulkTagOpen.value) tagManagerOpen.value = false;
+}
+
+watch(
+  () => sortedBoxEntries.value.map((entry) => entry.id).join("\u0000"),
+  () => { bulkTagStatus.value = ""; },
+  { flush: "sync" },
+);
+
+function addCustomTag(): void {
+  const name = newTagName.value.trim();
+  tagManagerError.value = "";
+  if (customTags.value.length >= box.maxCustomTags) {
+    tagManagerError.value = t("box.tags.limit", { count: box.maxCustomTags });
+    return;
+  }
+  if (duplicateTagName(name)) {
+    tagManagerError.value = t("box.tags.duplicate");
+    return;
+  }
+  if (!box.addCustomTag(name)) return;
+  newTagName.value = "";
+}
+
+function startTagRename(id: string, name: string): void {
+  pendingDeleteTagId.value = null;
+  tagManagerError.value = "";
+  editingTagId.value = id;
+  editingTagName.value = name;
+}
+
+function cancelTagRename(): void {
+  editingTagId.value = null;
+  editingTagName.value = "";
+  tagManagerError.value = "";
+}
+
+function saveTagName(id: string): void {
+  const name = editingTagName.value.trim();
+  const current = customTags.value.find((tag) => tag.id === id);
+  tagManagerError.value = "";
+  if (!current || !name) return;
+  if (name === current.name) {
+    cancelTagRename();
+    return;
+  }
+  if (duplicateTagName(name, id)) {
+    tagManagerError.value = t("box.tags.duplicate");
+    return;
+  }
+  if (box.renameCustomTag(id, name)) cancelTagRename();
+}
+
+function confirmDeleteTag(id: string): void {
+  box.deleteCustomTag(id);
+  pendingDeleteTagId.value = null;
+  if (editingTagId.value === id) cancelTagRename();
+  nextTick(() => undoButtonRef.value?.focus());
+}
+
+watch(tagManagerOpen, (open) => {
+  if (open) return;
+  cancelTagRename();
+  pendingDeleteTagId.value = null;
+  tagManagerError.value = "";
+});
 /**
  * あとEXP: フォーカス中のみ編集中の文字列を保持し、フォーカスアウト／Enter でストアへ確定する。
  * 1文字ごとに確定させると "1500" の途中の "1" が上限クランプに巻き込まれて戻せなくなるため、
@@ -1162,6 +1548,7 @@ const importText = box.importText;
 const importStatus = box.importStatus;
 const boxFilter = box.boxFilter;
 const filterJoinMode = box.filterJoinMode;
+const tagJoinMode = box.tagJoinMode;
 const favoritesOnly = box.favoritesOnly;
 const inCalculatorOnly = box.inCalculatorOnly;
 const subSkillJoinMode = box.subSkillJoinMode;
@@ -1237,7 +1624,110 @@ function flashBtn(flashRef: { value: boolean }, labelRef: { value: string }, msg
 // On touch devices, iOS fires synthetic mouseenter after touchstart.
 // We suppress mouse hover entirely once a touch is detected.
 const hoveredTileId = ref<string | null>(null);
+const pressingTileId = ref<string | null>(null);
 let isTouchDevice = false;
+const TILE_LONG_PRESS_MS = 300;
+const TILE_LONG_PRESS_MOVE_TOLERANCE = 12;
+let tilePressTimer: ReturnType<typeof setTimeout> | null = null;
+let tilePressPointerId: number | null = null;
+let tilePressPointerType = "";
+let tilePressStartX = 0;
+let tilePressStartY = 0;
+let tileLongPressTriggered = false;
+let suppressTileClick = false;
+let suppressTileClickTimer: ReturnType<typeof setTimeout> | null = null;
+
+function shouldShowTilePressFeedback(boxId: string): boolean {
+  return pressingTileId.value === boxId && !calcLinkedBoxIds.value.has(boxId);
+}
+
+function clearTilePressTimer(): void {
+  if (tilePressTimer) clearTimeout(tilePressTimer);
+  tilePressTimer = null;
+  pressingTileId.value = null;
+}
+
+function scheduleTileClickSuppressionClear(delay = 0): void {
+  if (suppressTileClickTimer) clearTimeout(suppressTileClickTimer);
+  suppressTileClickTimer = setTimeout(() => {
+    suppressTileClick = false;
+    tileLongPressTriggered = false;
+    suppressTileClickTimer = null;
+  }, delay);
+}
+
+function onTilePressStart(event: PointerEvent, boxId: string): void {
+  if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
+  clearTilePressTimer();
+  tilePressPointerId = event.pointerId;
+  tilePressPointerType = event.pointerType;
+  tilePressStartX = event.clientX;
+  tilePressStartY = event.clientY;
+  tileLongPressTriggered = false;
+  pressingTileId.value = boxId;
+  tilePressTimer = setTimeout(() => {
+    tilePressTimer = null;
+    tileLongPressTriggered = true;
+    suppressTileClick = true;
+    pressingTileId.value = null;
+    emit("toggle-calc", boxId);
+    // pointerupが来ない異常系でも抑止状態を残さない。
+    scheduleTileClickSuppressionClear(1500);
+  }, TILE_LONG_PRESS_MS);
+}
+
+function onTilePressMove(event: PointerEvent): void {
+  if (event.pointerId !== tilePressPointerId || !tilePressTimer) return;
+  const dx = event.clientX - tilePressStartX;
+  const dy = event.clientY - tilePressStartY;
+  if (Math.hypot(dx, dy) > TILE_LONG_PRESS_MOVE_TOLERANCE) {
+    clearTilePressTimer();
+    tilePressPointerId = null;
+  }
+}
+
+function onTilePressEnd(event: PointerEvent): void {
+  if (event.pointerId !== tilePressPointerId) return;
+  clearTilePressTimer();
+  tilePressPointerId = null;
+  if (tileLongPressTriggered) {
+    // iOSは指を離した後にclickを遅延合成するため、タッチだけ抑止を長めに保つ。
+    scheduleTileClickSuppressionClear(tilePressPointerType === "touch" ? 500 : 0);
+  }
+  tilePressPointerType = "";
+}
+
+function onTilePressCancel(event?: PointerEvent): void {
+  if (event && event.pointerId !== tilePressPointerId) return;
+  clearTilePressTimer();
+  tilePressPointerId = null;
+  if (tileLongPressTriggered) {
+    scheduleTileClickSuppressionClear(tilePressPointerType === "touch" ? 500 : 0);
+  }
+  tilePressPointerType = "";
+}
+
+function consumeLongPressClick(event: MouseEvent): boolean {
+  if (!suppressTileClick || !tileLongPressTriggered) return false;
+  event.preventDefault();
+  event.stopPropagation();
+  suppressTileClick = false;
+  tileLongPressTriggered = false;
+  if (suppressTileClickTimer) clearTimeout(suppressTileClickTimer);
+  suppressTileClickTimer = null;
+  return true;
+}
+
+function onTileSelectClick(event: MouseEvent, id: string): void {
+  if (consumeLongPressClick(event)) return;
+  box.onSelectBox(id);
+}
+
+function onTileFavoriteClick(event: MouseEvent, id: string): void {
+  if (consumeLongPressClick(event)) return;
+  box.toggleFavoriteById(id);
+}
+
 function onTileMouseEnter(id: string) {
   if (!isTouchDevice) hoveredTileId.value = id;
 }
@@ -1249,6 +1739,11 @@ function onTileTouchStart() {
   hoveredTileId.value = null;
 }
 
+onBeforeUnmount(() => {
+  clearTilePressTimer();
+  if (suppressTileClickTimer) clearTimeout(suppressTileClickTimer);
+});
+
 // .boxList の DOM 要素を composable の ResizeObserver に渡す
 const boxListRef = ref<HTMLElement | null>(null);
 watch(boxListRef, (el) => { box.boxListEl.value = el; }, { immediate: true });
@@ -1256,6 +1751,27 @@ watch(boxListRef, (el) => { box.boxListEl.value = el; }, { immediate: true });
 function onApplyToCalcWithFlash() {
   emit("apply-to-calc");
   flashBtn(calcBtnFlash, calcBtnLabel, `✓ ${t("status.reflected")}`, 1500);
+}
+
+function onDeleteSelectedRequest(trigger: EventTarget | null): void {
+  if (selectedLinkedCalcRowCount.value > 0) {
+    deleteConfirmRef.value?.open(trigger);
+    return;
+  }
+  box.onDeleteSelected();
+}
+
+function onDeleteSelectedWithCalc(): void {
+  const boxId = selectedBox.value?.id;
+  if (!boxId) return;
+  calc.removeRowsByBoxIds([boxId]);
+  box.onDeleteSelected();
+}
+
+function onClearBoxWithCalc(): void {
+  if (!boxEntries.value.length) return;
+  calc.removeRowsByBoxIds(boxEntries.value.map((entry) => entry.id));
+  box.onClearBox();
 }
 
 function onImportWithFlash() {
@@ -1275,17 +1791,19 @@ function onCreateToBox() {
     }
   }
 
-  if (addToCalcChecked.value) {
-    // ボックスに追加して計算機にも反映
-    box.onCreateManual({ mode: "toCalc" });
-    emit("apply-to-calc");
-  } else {
-    // ボックスにのみ追加
-    box.onCreateManual({ mode: "toBox" });
-  }
+  const existingIds = new Set(boxEntries.value.map((entry) => entry.id));
+  const mode = addToCalcChecked.value ? "toCalc" : "toBox";
+  box.onCreateManual({ mode, tagIds: boxAddSelectedTagIds.value });
+  const created = boxEntries.value.some((entry) => !existingIds.has(entry.id));
+  if (!created) return;
+
+  if (addToCalcChecked.value) emit("apply-to-calc");
 
   // Reset candy input for next add
   addSpeciesCandy.value = "";
+  boxAddSelectedTagIds.value = [];
+  boxAddNewTagName.value = "";
+  boxAddTagError.value = "";
 }
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null);

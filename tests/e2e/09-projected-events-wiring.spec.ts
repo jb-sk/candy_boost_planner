@@ -29,6 +29,7 @@ async function prepareProjectedRow(page: Page): Promise<{ calc: CalcPanelPage; r
   await box.clickImport();
   await box.selectBoxTile(0);
   await box.clickApplyToCalc();
+  await page.getByTestId('box-detail-view-calc').click();
 
   const calc = new CalcPanelPage(page);
   const row = calc.getRow(0);

@@ -1,4 +1,4 @@
-import type { PokemonBoxEntryV1, SleepSettings } from "../domain/types";
+import type { BoxCustomTag, PokemonBoxEntryV1, SleepSettings } from "../domain/types";
 import type { CalcSaveSlotV1 } from "../persistence/calc";
 import type { CandyInventoryV1, CandyInventoryV2 } from "../persistence/candy";
 
@@ -11,7 +11,7 @@ export const BACKUP_MAX_ROWS_PER_SLOT = 60;
 export type BackupBoxEntryV1 = Omit<PokemonBoxEntryV1, "source">;
 
 type CandyBoostPlannerBackupData<TCandyInventory, TGlobalExtras = object> = {
-  box: { entries: BackupBoxEntryV1[] };
+  box: { entries: BackupBoxEntryV1[]; tags?: BoxCustomTag[] };
   globalSettings: {
     totalShards: number;
     sleepSettings: SleepSettings;
