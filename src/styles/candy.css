@@ -5,29 +5,29 @@
 /* ===== Variables ===== */
 :root {
   /* Core Palette */
-  --bg-decor: #fff0f2;
+  --bg-decor: #ffe4eb;
   --paper: #ffffff;
   --ink: #55434f;
   --ink-rgb: 85, 67, 79;
-  --muted: #806f79;
+  --muted: #76646f;
   --accent: #e86f93;
   --accent-rgb: 232, 111, 147;
   --accent-strong: #c94f76;
   --danger: #ef4444;
   --danger-rgb: 239, 68, 68;
   --paper-rgb: 255, 255, 255;
-  --muted-rgb: 128, 111, 121;
+  --muted-rgb: 118, 100, 111;
 
   /* Surfaces */
-  --surface: #fff8f6;
-  --surface-alt: #fdf0eb;
-  --border: #edcdd4;
-  --border-rgb: 237, 205, 212;
+  --surface: #fff3f6;
+  --surface-alt: #ffe6ed;
+  --border: #f2b5c4;
+  --border-rgb: 242, 181, 196;
   --candy-pink: #ff7d9e;
   --candy-pink-rgb: 255, 125, 158;
-  --candy-mint: #8dd8c3;
-  --candy-mint-soft: #d4f1e9;
-  --candy-mint-rgb: 141, 216, 195;
+  /* 育成プランの表と同じ水色 */
+  --candy-aqua: #5ec8d0;
+  --candy-aqua-rgb: 94, 200, 208;
   --candy-lavender: #9384dc;
   --candy-lavender-rgb: 147, 132, 220;
 
@@ -37,25 +37,23 @@
   --btn-bg: var(--candy-pink);
   --btn-ink: #ffffff;
   --input-bg: #ffffff;
-  --input-border: #eeb8c5;
+  --input-border: #f0a2b7;
   --ring: var(--accent);
   --ring-rgb: var(--accent-rgb);
 
   /* Data Visualization */
-  --bar-fill: #f58eac;
-  --bar-fill-rgb: 245, 142, 172;
-  --bar-track: #fde7ed;
-  --bar-track-rgb: 253, 231, 237;
+  --bar-fill: #ff7d9e;
+  --bar-fill-rgb: 255, 125, 158;
+  --bar-track: #ffe0e9;
   --bar-over: var(--candy-pink);
   --bar-over-rgb: var(--candy-pink-rgb);
-  --export-divider: #f48ca0;
 
   /* Pie Chart Palette */
-  --pie-0: #f58eac;
-  --pie-1: #69c7b8;
+  --pie-0: #ff7d9e;
+  --pie-1: #5ec8d0;
   --pie-2: #f2c96d;
   --pie-3: #a99de3;
-  --pie-4: #8bd2ad;
+  --pie-4: #8fdde0;
   --pie-5: #df94bf;
   --pie-6: #ef9873;
   --pie-7: #a79aa2;
@@ -74,37 +72,48 @@
 
   /* Shadows */
   --shadow-sm: 2px 2px 0 rgba(var(--candy-pink-rgb), 0.25);
-  --shadow-md: 4px 4px 0 rgba(var(--candy-pink-rgb), 0.38);
+  --shadow-md: 4px 4px 0 rgba(var(--candy-pink-rgb), 0.5);
   --shadow-lg: 8px 8px 0 rgba(var(--candy-pink-rgb), 0.22);
 
 }
 
-/* 育成プランの資源カードは、桜色・白・若草色の三色団子を基調にする。 */
+/* 育成プランは桜を主役に、白い紙と水色で華やかに。見出しの印・アメブは桜、表・通常アメ・かけらは水色。
+   表の線・淡い下地は水色（--accent-rgb）、表の文字は濃い水色（--accent。白地で 4.7）。
+   見出しの印・日付は濃い桜（--export-highlight。白地で 4.9）。 */
 .exportSheet {
-  --accent: #64bfa9;
-  --accent-rgb: 100, 191, 169;
-  --export-highlight: var(--candy-pink);
-  --export-highlight-rgb: var(--candy-pink-rgb);
-  --export-card-accent-bg: #fdebf0;
-  --export-card-plain-bg: #f7fcfb;
-  --export-card-primary-bg: #f1fae7;
-  --export-card-danger-bg: #fee9e4;
-  --bar-fill: #ef789b;
-  --bar-fill-rgb: 239, 120, 155;
-  --bar-track: #fbe1e8;
-  --bar-track-rgb: 251, 225, 232;
-  --bar-shards-fill: #e8b84c;
-  --bar-shards-fill-rgb: 232, 184, 76;
+  --accent: #1f7f88;
+  --accent-rgb: 94, 200, 208;
+  --danger: #d93636;
+  --danger-rgb: 217, 54, 54;
+  --export-highlight: #cc3569;
+  --export-highlight-rgb: 255, 125, 158;
+  --export-card-accent-bg: #ffd9e4;
+  --export-card-plain-bg: #d4f1f3;
+  --export-card-primary-bg: #fff1cc;
+  --export-card-danger-bg: #ffe1d9;
+  --bar-fill: #ff7d9e;
+  --bar-fill-rgb: 255, 125, 158;
+  --bar-shards-fill: #5ec8d0;
+  --bar-shards-fill-rgb: 94, 200, 208;
+  --export-bar-fill-opacity: 1;
+  --pie-0: #ff7d9e;
+  --pie-1: #5ec8d0;
+  --pie-2: #f5c65a;
+  --pie-3: #ffb3c8;
+  --pie-4: #a99de3;
+  --pie-5: #8fdde0;
+  --pie-6: #ef9873;
+  --pie-7: #a79aa2;
 }
 
 
 
 /* ===== Hero ===== */
 .hero {
-  background: #fff0f2;
+  background: #ffe4eb;
   color: var(--ink);
-  --muted: #806f79;
-  box-shadow: 0 3px 0 rgba(var(--candy-pink-rgb), 0.2);
+  --muted: #76646f;
+  box-shadow: 0 3px 0 rgba(var(--candy-pink-rgb), 0.3);
 }
 
 /* Lang buttons (non-active) inside hero */
@@ -132,9 +141,9 @@
 
 /* ===== Sleep Chips (1000h / 2000h) & Hint ===== */
 .hintIcon {
-  background: #e1f6f0;
+  background: #e7f7f8;
   color: var(--ink);
-  border: 2px solid var(--candy-mint);
+  border: 2px solid var(--candy-aqua);
 }
 
 /* ===== Ghost Buttons (e.g. "+ ポケモンを追加") ===== */
@@ -175,29 +184,36 @@
   box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.2);
 }
 
-/* 上部サマリーも計算結果と同じ青緑系にまとめる。 */
+/* 上部サマリーも計算結果と同じ水色系（育成プランの表と同じ）にまとめる。 */
 .calcSticky {
-  --accent: #399f8d;
-  --accent-strong: #1f7f70;
+  --accent: #1f7f88;
+  /* サマリーの数字。深緑に見えないよう、澄んだ水色寄りの青にする（下地の上で 4.5） */
+  --accent-strong: #1f79a8;
   --calc-sticky-background: var(--paper);
-  --calc-sticky-tint: rgba(var(--candy-mint-rgb), 0.1);
+  --calc-sticky-tint: rgba(var(--candy-aqua-rgb), 0.13);
   --calc-shards-bar-fill: #efc86b;
   --calc-shards-bar-fill-rgb: 239, 200, 107;
   --calc-shards-bar-track: #fcf1d8;
 }
 
-/* 計算結果は参考配色の淡い青緑を使い、入力欄と穏やかに見分ける。 */
+/* 選択中の行は、計算結果の水色と見分けやすいよう桜色を少し濃くする（既定は 6%） */
+.calcRow--active {
+  background: rgba(var(--accent-rgb), 0.1);
+}
+
+/* 計算結果は淡い水色を使い、入力欄と穏やかに見分ける。
+   選択中の行（薄いピンク）の上でも濁らないよう、半透明ではなく白に重ねた色（水色 11% / 19% / 15%）で塗る。 */
 .calcRow__resultRow {
-  --accent-rgb: 31, 139, 121;
-  background: rgba(var(--candy-mint-rgb), 0.14);
+  --accent-rgb: 31, 127, 136;
+  background: #edf9fa;
 }
 
 .calcRow__resultRow--required {
-  background: rgba(var(--candy-mint-rgb), 0.26);
+  background: #e0f5f6;
 }
 
 .calcRow__resultRow--used:only-child {
-  background: rgba(var(--candy-mint-rgb), 0.2);
+  background: #e7f7f8;
 }
 
 /* ===== Box Disclosure (新規追加 / インポート) ===== */
@@ -261,12 +277,12 @@
   box-shadow: var(--shadow-lg);
 }
 
-/* 使い方・イベント履歴は、ピンクの器に青緑の本文アクセントを組み合わせる。 */
+/* 使い方・イベント履歴は、ピンクの器に水色の本文アクセントを組み合わせる。 */
 .help-overlay .modal__body,
 .eventHistoryModal .modal__body {
-  --accent: #64bfa9;
-  --accent-rgb: 100, 191, 169;
-  --accent-strong: #338b76;
+  --accent: #5ec8d0;
+  --accent-rgb: 94, 200, 208;
+  --accent-strong: #1f7f88;
 }
 
 /* ===== Mobile Nav ===== */
@@ -278,7 +294,7 @@
 /* ===== PC Desktop (≥ 1400px) ===== */
 @media (min-width: 1400px) {
   body {
-    background: #fff0f2;                 /* match hero */
+    background: #ffe4eb;                 /* match hero */
   }
   .hero {
     box-shadow: none;                    /* no card shadow when flush */

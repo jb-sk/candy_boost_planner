@@ -343,6 +343,7 @@
 
 .boxTagManager {
   --box-tag-row-width: 338px;
+  --box-tag-handle-width: 28px;
   margin-top: 8px;
   padding: 10px 0 0;
   border: 0;
@@ -350,10 +351,12 @@
   background: transparent;
 }
 
+/* 追加欄は、下の一覧のタグ名の列（取っ手の右）にそろえる */
 .boxTagManager__add {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 52px;
-  width: min(100%, var(--box-tag-row-width));
+  width: min(100% - var(--box-tag-handle-width) - 6px, var(--box-tag-row-width));
+  margin-left: calc(var(--box-tag-handle-width) + 6px);
   justify-content: start;
   align-items: stretch;
   gap: 6px;
@@ -399,18 +402,18 @@
 
 .boxTagManager__item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 52px;
-  width: min(100%, var(--box-tag-row-width));
+  grid-template-columns: var(--box-tag-handle-width) minmax(0, 1fr) 52px;
+  width: min(100%, var(--box-tag-row-width) + var(--box-tag-handle-width) + 6px);
   align-items: stretch;
   gap: 6px;
 }
 
+/* 名前の変更・削除の確認は取っ手の列を空け、タグ名の列から右に収める */
 .boxTagManager__edit,
 .boxTagManager__confirm {
-  grid-column: 1 / -1;
+  grid-column: 2 / -1;
 }
 
-.boxTagManager__name,
 .boxTagManager__delete {
   min-height: 32px;
   border: 1px solid var(--border);
@@ -419,21 +422,26 @@
   cursor: pointer;
 }
 
+/* 見た目は名前の変更欄と同じ .field__input（書体・大きさ・高さ・左余白・枠）。
+   テーマごとに入力欄の高さが違うので、ここで寸法を持たずにクラスごと共有する。
+   これで編集に切り替えても文字と行の高さが動かない。 */
 .boxTagManager__name {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
+  padding-right: 8px;
   font-weight: 400;
   text-align: left;
+  cursor: pointer;
 }
 
+/* 入力欄と同じく1行。収まらない分は省略する（変更欄を開けば全体が見える） */
 .boxTagManager__nameText {
   min-width: 0;
-  font-size: 15px;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .boxTagManager__usage {
@@ -465,6 +473,44 @@
 
 .boxTagManager__confirm {
   margin-top: 2px;
+}
+
+/* 並べ替えの取っ手。計算機の行の取っ手（.calcRow__dragHandle）と同じ見た目。
+   touch-action: none でないと、スマホではドラッグがページのスクロールに取られる。 */
+.boxTagManager__handle {
+  -webkit-appearance: none;
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  /* ボタンに影を付けるテーマ（blue など）でも付けない。見た目はアイコンだけ */
+  box-shadow: none;
+  background: transparent;
+  color: rgba(var(--ink-rgb), 0.72);
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+}
+
+.boxTagManager__handle:hover {
+  color: var(--ink);
+}
+
+.boxTagManager__handleIcon {
+  display: block;
+  width: 14px;
+  height: 15px;
+}
+
+.boxTagManager__item--dragging {
+  opacity: 0.6;
+}
+
+.boxTagManager__item--dragging .boxTagManager__handle {
+  cursor: grabbing;
 }
 
 .boxTagBulk {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { loadCalcSlots, loadDefaultBoostReachLevel, loadSleepSettings, loadTotalShards, saveDefaultBoostReachLevel, saveSleepSettings, saveTotalShards, serializeCalcSlots, DEFAULT_BOOST_REACH_LEVEL_KEY, DEFAULT_SLEEP_SETTINGS } from "./calc";
+import { loadCalcSlots, loadDefaultBoostReachLevel, loadMinimizeBoost, loadSleepSettings, loadTotalShards, saveDefaultBoostReachLevel, saveMinimizeBoost, saveSleepSettings, saveTotalShards, serializeCalcSlots, DEFAULT_BOOST_REACH_LEVEL_KEY, MINIMIZE_BOOST_KEY, DEFAULT_SLEEP_SETTINGS } from "./calc";
 import { calcExp } from "../domain/pokesleep/exp";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 
@@ -187,6 +187,24 @@ describe("persistence/calc sleepSettings", () => {
       fullMoon: false,
       afterFullMoon: true,
     });
+  });
+});
+
+describe("persistence/calc minimizeBoost", () => {
+  beforeEach(() => installLocalStorageMock());
+
+  it("defaults to false and round-trips the setting", () => {
+    expect(loadMinimizeBoost()).toBe(false);
+    saveMinimizeBoost(true);
+    expect(localStorage.getItem(MINIMIZE_BOOST_KEY)).toBe("true");
+    expect(loadMinimizeBoost()).toBe(true);
+    saveMinimizeBoost(false);
+    expect(loadMinimizeBoost()).toBe(false);
+  });
+
+  it("treats invalid stored values as false", () => {
+    localStorage.setItem(MINIMIZE_BOOST_KEY, "yes");
+    expect(loadMinimizeBoost()).toBe(false);
   });
 });
 
@@ -486,6 +504,54 @@ describe("persistence/calc slots", () => {
       JSON.stringify({ schemaVersion: 2, slots: [slot, null, null] }),
     );
     expect(loadCalcSlots()[0]?.rows[0]?.boostOrExpAdjustment).toBe(50);
+  });
+
+  it("persists boostReachAuto and reads older rows as automatic", () => {
+    const slot = {
+      slotId: "slot-auto-flag",
+      savedAt: "2026-07-28T00:00:00.000Z",
+      rows: [{ ...row, boostReachAuto: false }],
+      activeRowId: "row-1",
+      boostKind: "full" as const,
+    };
+    localStorage.setItem("candy-boost-planner:calc:slots:v1", serializeCalcSlots([slot]));
+    expect(loadCalcSlots()[0]?.rows[0]?.boostReachAuto).toBe(false);
+
+    const oldRow = { ...row } as Record<string, unknown>;
+    delete oldRow.boostReachAuto;
+    localStorage.setItem(
+      "candy-boost-planner:calc:slots:v1",
+      JSON.stringify({ schemaVersion: 2, slots: [{ ...slot, rows: [oldRow] }, null, null] }),
+    );
+    expect(loadCalcSlots()[0]?.rows[0]?.boostReachAuto).toBe(true);
+  });
+
+  it("persists boostMinimizeRow and reads older rows without the flag", () => {
+    const slot = {
+      slotId: "slot-stock-min-flag",
+      savedAt: "2026-07-28T00:00:00.000Z",
+      rows: [{ ...row, boostMinimizeRow: true as const }],
+      activeRowId: "row-1",
+      boostKind: "full" as const,
+    };
+    localStorage.setItem("candy-boost-planner:calc:slots:v1", serializeCalcSlots([slot]));
+    expect(loadCalcSlots()[0]?.rows[0]?.boostMinimizeRow).toBe(true);
+
+    const conflictingRow = { ...row, boostOrExpAdjustment: 50, boostMinimizeRow: true as const };
+    localStorage.setItem(
+      "candy-boost-planner:calc:slots:v1",
+      serializeCalcSlots([{ ...slot, rows: [conflictingRow] }]),
+    );
+    expect(loadCalcSlots()[0]?.rows[0]?.boostOrExpAdjustment).toBe(50);
+    expect(loadCalcSlots()[0]?.rows[0]?.boostMinimizeRow).toBeUndefined();
+
+    const oldRow = { ...row, boostOrExpAdjustment: 50 } as Record<string, unknown>;
+    delete oldRow.boostMinimizeRow;
+    localStorage.setItem(
+      "candy-boost-planner:calc:slots:v1",
+      JSON.stringify({ schemaVersion: 2, slots: [{ ...slot, rows: [oldRow] }, null, null] }),
+    );
+    expect(loadCalcSlots()[0]?.rows[0]?.boostMinimizeRow).toBeUndefined();
   });
 
   it("recovers effectiveN ≤ m without cutting saved boostReachLevel down to dstLevel", () => {

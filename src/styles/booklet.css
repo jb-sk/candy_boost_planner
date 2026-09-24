@@ -45,10 +45,8 @@
   --bar-fill: #c65332;
   --bar-fill-rgb: 198, 83, 50;
   --bar-track: #f4e2d7;
-  --bar-track-rgb: 244, 226, 215;
   --bar-over: #352f2b;
   --bar-over-rgb: 53, 47, 43;
-  --export-divider: #c65332;
 
   /* Pie Chart Palette */
   --pie-0: #c65332;
@@ -86,7 +84,6 @@ body {
 /* ===== Hero ===== */
 .hero {
   background: var(--paper);
-  border-bottom: none;
   position: relative;
   background-image: repeating-linear-gradient(transparent, transparent 31px, rgba(var(--accent-rgb), 0.055) 31px, rgba(var(--accent-rgb), 0.055) 32px);
 }
@@ -271,6 +268,13 @@ body {
   border-color: var(--ink);
 }
 
+/* 計算機の --danger は不足用の青なので、共通の警告枠（--danger の 70%）は濃い枠の中で灰色に見えて気づけない。
+   ? の警告枠は破壊的操作と同じ赤にする。 */
+.panel--calc .hintIcon.hintIcon--warn,
+.panel--calc .hintIcon.hintIcon--warn:hover {
+  border-color: var(--booklet-destructive);
+}
+
 /* ===== Box Disclosure (Add / Import) ===== */
 .boxDisclosure {
   background: var(--paper);
@@ -354,12 +358,36 @@ body {
   background: var(--paper);
 }
 
-/* 育成プランもモーダルと同じ白い本文面に揃える。
-   見出しと年月は罫線と同じ黒で締め、データ表現のコーラルと役割を分ける。 */
+/* 育成プランは画面より元気に、明るいオレンジと黒でまとめる。
+   塗り・淡い下地は明るいオレンジ（--accent-rgb）、文字は同じ系統の濃いオレンジ（--accent。白地で 4.8）。
+   合計カードは4色に分ける（オレンジ・藍・若草・山吹）。アメブ未使用は計算機と同じく不足の藍で示す
+   （赤は破壊的操作だけに使い、オレンジとも混ざらない）。 */
 .exportSheet {
+  --ink: #1a1714;
+  --ink-rgb: 26, 23, 20;
+  --accent: #cc440e;
+  --accent-rgb: 255, 122, 26;
   --export-highlight: var(--ink);
   --export-highlight-rgb: var(--ink-rgb);
-  background: var(--paper);
+  --danger: var(--booklet-shortage);
+  --danger-rgb: var(--booklet-shortage-rgb);
+  --export-card-accent-bg: #ffe3cc;
+  --export-card-danger-bg: #deebf7;
+  --export-card-plain-bg: #e2f0dc;
+  --export-card-primary-bg: #fff0c9;
+  --bar-fill: #ff7a1a;
+  --bar-fill-rgb: 255, 122, 26;
+  --bar-shards-fill: #f2a922;
+  --bar-shards-fill-rgb: 242, 169, 34;
+  --export-bar-fill-opacity: 1;
+  --pie-0: #ff7a1a;
+  --pie-1: #f2a922;
+  --pie-2: #5fae6b;
+  --pie-3: #1a1714;
+  --pie-4: #3f86c6;
+  --pie-5: #ffb27a;
+  --pie-6: #9d855f;
+  --pie-7: #a59b94;
 }
 
 /* ===== Export — Ranking Item Label ===== */

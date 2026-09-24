@@ -162,6 +162,88 @@ describe("useBoxStore", () => {
     expect(store.boxEntries.value.find((entry) => entry.label === "対象B")?.tagIds).toContain(tagId);
   });
 
+  describe("custom tag order", () => {
+    const t = ((key: string) => key) as unknown as Composer["t"];
+
+    function createStoreWithTags(names: string[]) {
+      const store = useBoxStore({ locale: ref("ja"), t });
+      const ids = names.map((name) => store.addCustomTag(name)!);
+      return { store, ids };
+    }
+
+    function tagOrder(store: ReturnType<typeof useBoxStore>) {
+      return store.customTags.value.map((tag) => tag.id);
+    }
+
+    it("moves tags from the beginning, end, and middle", () => {
+      const { store, ids } = createStoreWithTags(["タグA", "タグB", "タグC", "タグD"]);
+
+      expect(store.moveCustomTag(ids[0]!, 3)).toBe(true);
+      expect(tagOrder(store)).toEqual([ids[1], ids[2], ids[3], ids[0]]);
+
+      expect(store.moveCustomTag(ids[0]!, 0)).toBe(true);
+      expect(tagOrder(store)).toEqual(ids);
+
+      expect(store.moveCustomTag(ids[1]!, 3)).toBe(true);
+      expect(tagOrder(store)).toEqual([ids[0], ids[2], ids[3], ids[1]]);
+    });
+
+    it("clamps the target index to the valid range", () => {
+      const { store, ids } = createStoreWithTags(["タグA", "タグB", "タグC"]);
+
+      expect(store.moveCustomTag(ids[0]!, 99)).toBe(true);
+      expect(tagOrder(store)).toEqual([ids[1], ids[2], ids[0]]);
+
+      expect(store.moveCustomTag(ids[0]!, -10)).toBe(true);
+      expect(tagOrder(store)).toEqual(ids);
+    });
+
+    it("does not create undo entries for unknown tags or unchanged positions", () => {
+      const tags = [
+        { id: "tag-a", name: "タグA" },
+        { id: "tag-b", name: "タグB" },
+      ];
+      localStorage.setItem("candy-boost-planner:box:v1", JSON.stringify({ schemaVersion: 2, entries: [], tags }));
+      const store = useBoxStore({ locale: ref("ja"), t });
+
+      expect(store.canUndo.value).toBe(false);
+      expect(store.moveCustomTag("missing", 1)).toBe(false);
+      expect(store.moveCustomTag("tag-a", 0)).toBe(false);
+      expect(tagOrder(store)).toEqual(["tag-a", "tag-b"]);
+      expect(store.canUndo.value).toBe(false);
+    });
+
+    it("restores and reapplies a moved order with undo and redo", () => {
+      const { store, ids } = createStoreWithTags(["タグA", "タグB", "タグC"]);
+      const originalOrder = [...ids];
+
+      expect(store.moveCustomTag(ids[0]!, 2)).toBe(true);
+      const movedOrder = [ids[1], ids[2], ids[0]];
+      expect(tagOrder(store)).toEqual(movedOrder);
+
+      store.onUndo();
+      expect(tagOrder(store)).toEqual(originalOrder);
+
+      store.onRedo();
+      expect(tagOrder(store)).toEqual(movedOrder);
+    });
+
+    it("preserves moved tag order through persistence and reload", async () => {
+      const { store, ids } = createStoreWithTags(["タグA", "タグB", "タグC"]);
+      expect(store.moveCustomTag(ids[0]!, 2)).toBe(true);
+      const movedOrder = [ids[1], ids[2], ids[0]];
+
+      await nextTick();
+      flushPersist("box");
+
+      const saved = JSON.parse(localStorage.getItem("candy-boost-planner:box:v1") ?? "null");
+      expect(saved.tags.map((tag: { id: string }) => tag.id)).toEqual(movedOrder);
+
+      const reloaded = useBoxStore({ locale: ref("ja"), t });
+      expect(tagOrder(reloaded)).toEqual(movedOrder);
+    });
+  });
+
   it("joins selected tags with OR by default and supports AND", () => {
     const t = ((key: string) => key) as unknown as Composer["t"];
     const store = useBoxStore({ locale: ref("ja"), t });

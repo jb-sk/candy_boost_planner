@@ -465,7 +465,9 @@
   border-radius: 0;
   position: relative;
   z-index: 1;
-  padding: 8px 0;
+  /* 1行目がこの余白ぶん上へ伸びて、選択中の下地をタブの線まで届かせる（.calcRows > .calcRow:first-child） */
+  --calc-slot-pad-y: 8px;
+  padding: var(--calc-slot-pad-y) 0;
   min-height: 120px;
   /* Full-bleed: break out of .panel padding */
   margin-left: -16px;
@@ -491,13 +493,21 @@
 }
 
 .calcRow {
-  padding: 8px 10px;
+  --calc-row-pad-y: 8px;
+  padding: var(--calc-row-pad-y) 10px;
   border-bottom: 1px solid var(--border);
   min-width: 0;
 }
 
 .calcRow:last-of-type {
   border-bottom: none;
+}
+
+/* 1行目は枠の上の余白ぶん上へ伸ばし、同じだけ内側に足す。見た目の位置は変えずに、
+   選択中の下地がタブの線まで届く（余白が白く残らない）。 */
+.calcRows > .calcRow:first-child {
+  margin-top: calc(-1 * var(--calc-slot-pad-y));
+  padding-top: calc(var(--calc-row-pad-y) + var(--calc-slot-pad-y));
 }
 
 .calcRow--active {
@@ -917,6 +927,16 @@ body.calcRowReordering * {
 .hintIcon:hover {
   background: var(--surface);
   color: var(--ink);
+}
+
+/* 中の案内に警告がある ?。テーマ側の `.hintIcon` の枠色より強くするため2クラスで指定する。
+   気づける程度に控えめにし、枠の色だけ変える（太さ・文字・背景はテーマのまま）。 */
+.hintIcon.hintIcon--warn {
+  border-color: rgba(var(--danger-rgb), 0.7);
+}
+
+.hintIcon.hintIcon--warn:hover {
+  border-color: var(--danger);
 }
 
 
@@ -1466,6 +1486,13 @@ body.calcRowReordering * {
 
 .hintPopover__heading:first-child {
   margin-top: 0;
+}
+
+/* このポケモンだけのアメブ最小化（配置は .inlineCheck）。行の高さはポップオーバー本文に合わせる。 */
+.hintPopover__check {
+  --inline-check-line-height: 1.6;
+  margin: 8px 0 0;
+  cursor: pointer;
 }
 
 /* 睡眠EXPの頭打ち警告。マークを文字列に混ぜるとベースライン揃えになって下がって見えるので、

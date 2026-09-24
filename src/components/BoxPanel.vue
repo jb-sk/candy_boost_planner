@@ -489,7 +489,28 @@
           </form>
           <p v-if="tagManagerError" class="field__error boxTagManager__error" role="alert">{{ tagManagerError }}</p>
           <div v-if="customTags.length" class="boxTagManager__list">
-            <div v-for="tag in customTags" :key="tag.id" class="boxTagManager__item">
+            <div
+              v-for="tag in tagManagerTags"
+              :key="tag.id"
+              class="boxTagManager__item"
+              :class="{ 'boxTagManager__item--dragging': tagDrag?.id === tag.id }"
+              :data-tag-id="tag.id"
+            >
+              <!-- 取っ手でドラッグして並べ替える（計算機の行と同じアイコン）。上下キーでも動かせる。
+                   名前の変更中も出したままにする（消えると行の左端がずれる）。 -->
+              <button
+                class="boxTagManager__handle"
+                type="button"
+                :data-testid="`box-tag-handle-${tag.id}`"
+                :aria-label="t('box.tags.reorderAria', { name: tag.name })"
+                @pointerdown="onTagHandlePointerDown(tag.id, $event)"
+                @touchstart="onTagHandleTouchStart(tag.id, $event)"
+                @mousedown="onTagHandleMouseDown(tag.id, $event)"
+                @keydown.up.prevent="moveTagByKey(tag.id, -1)"
+                @keydown.down.prevent="moveTagByKey(tag.id, 1)"
+              >
+                <svg class="boxTagManager__handleIcon" aria-hidden="true" viewBox="0 0 16 17" width="14" height="15"><path d="M4.5 5.5L8 2 11.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 11.5L8 15 11.5 11.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
               <template v-if="editingTagId === tag.id">
                 <form class="boxTagManager__edit" @submit.prevent="saveTagName(tag.id)">
                   <input
@@ -506,7 +527,7 @@
               </template>
               <template v-else>
                 <button
-                  class="boxTagManager__name"
+                  class="field__input boxTagManager__name"
                   type="button"
                   :data-testid="`box-tag-rename-${tag.id}`"
                   @click="startTagRename(tag.id, tag.name)"
@@ -1320,6 +1341,10 @@ function startTagRename(id: string, name: string): void {
   tagManagerError.value = "";
   editingTagId.value = id;
   editingTagName.value = name;
+  // 1回のタップで入力できるよう、変更欄に切り替えたらすぐ入力欄にフォーカスする。
+  // iOS はタップの処理の中で focus() しないとキーボードを出さないので、
+  // setTimeout などで遅らせない（nextTick はタップの処理の中で実行される）。
+  nextTick(() => tagManagerRef.value?.querySelector<HTMLInputElement>(`[data-testid="box-tag-edit-input-${id}"]`)?.focus());
 }
 
 function cancelTagRename(): void {
@@ -1351,8 +1376,146 @@ function confirmDeleteTag(id: string): void {
   nextTick(() => undoButtonRef.value?.focus());
 }
 
+/* ===== Custom tags: 並べ替え ===== */
+/**
+ * ドラッグ中の状態。thresholds は、つかんだ行以外の各行について、指がそのYを越えたら
+ * その行より下に入る境目（ドラッグ開始時に決め、並び替え表示中もそのまま使う）。
+ */
+type TagDrag = {
+  id: string;
+  /** どの入力で始めたか（"pointer:<id>" / "touch:<id>" / "mouse"）。別の指や入力の動きは無視する。 */
+  input: string;
+  thresholds: number[];
+  toIndex: number;
+};
+const tagDrag = ref<TagDrag | null>(null);
+
+/** ドラッグ中は、離したときの並びをその場で見せる。 */
+const tagManagerTags = computed(() => {
+  const drag = tagDrag.value;
+  if (!drag) return customTags.value;
+  const rest = customTags.value.filter((tag) => tag.id !== drag.id);
+  const moving = customTags.value.find((tag) => tag.id === drag.id);
+  if (!moving) return customTags.value;
+  rest.splice(drag.toIndex, 0, moving);
+  return rest;
+});
+
+/* 入力の種類によらないドラッグ本体。入口は Pointer Events、無い端末（iOS 13 未満など）だけ touch / mouse
+   （計算機の行の並べ替えと同じ）。イベントは document で受ける。並び替え表示で取っ手の要素が DOM 上を
+   移動すると、要素に付けたポインターキャプチャは外れてしまうため。 */
+function startTagDrag(id: string, clientY: number, input: string): boolean {
+  // ドラッグ中は新しく始めない（別の指やキャンセル漏れで document のリスナーが重ならないように）
+  if (tagDrag.value) return false;
+  const items = [...(tagManagerRef.value?.querySelectorAll<HTMLElement>(".boxTagManager__item") ?? [])];
+  const fromIndex = customTags.value.findIndex((tag) => tag.id === id);
+  if (fromIndex < 0 || items.length !== customTags.value.length) return false;
+  // つかんだ行の中心が隣の行に差し掛かったら入れ替える（上の行は下端、下の行は上端が境目）。
+  // 指のYで比べられるよう、つかんだ位置から行の中心までの差を引いておく。
+  const rects = items.map((el) => el.getBoundingClientRect());
+  const own = rects[fromIndex]!;
+  const offset = own.top + own.height / 2 - clientY;
+  tagDrag.value = {
+    id,
+    input,
+    thresholds: rects
+      .filter((_, index) => index !== fromIndex)
+      .map((rect, index) => (index < fromIndex ? rect.bottom : rect.top) - offset),
+    toIndex: fromIndex,
+  };
+  return true;
+}
+
+function moveTagDrag(input: string, clientY: number): void {
+  const drag = tagDrag.value;
+  if (!drag || drag.input !== input) return;
+  // 越えた境目の数＝入る位置
+  const toIndex = drag.thresholds.filter((y) => y < clientY).length;
+  if (toIndex !== drag.toIndex) tagDrag.value = { ...drag, toIndex };
+}
+
+function dropTagDrag(input: string): void {
+  const drag = tagDrag.value;
+  if (!drag || drag.input !== input) return;
+  endTagDrag();
+  box.moveCustomTag(drag.id, drag.toIndex);
+}
+
+function endTagDrag(): void {
+  tagDrag.value = null;
+  document.removeEventListener("pointermove", onTagPointerMove);
+  document.removeEventListener("pointerup", onTagPointerUp);
+  document.removeEventListener("pointercancel", endTagDrag);
+  document.removeEventListener("touchmove", onTagTouchMove);
+  document.removeEventListener("touchend", onTagTouchEnd);
+  document.removeEventListener("touchcancel", endTagDrag);
+  document.removeEventListener("mousemove", onTagMouseMove);
+  document.removeEventListener("mouseup", onTagMouseUp);
+}
+
+function onTagHandlePointerDown(id: string, ev: PointerEvent): void {
+  if (typeof window.PointerEvent === "undefined" || ev.button !== 0 || !startTagDrag(id, ev.clientY, `pointer:${ev.pointerId}`)) return;
+  ev.preventDefault();
+  document.addEventListener("pointermove", onTagPointerMove);
+  document.addEventListener("pointerup", onTagPointerUp);
+  document.addEventListener("pointercancel", endTagDrag);
+}
+
+function onTagPointerMove(ev: PointerEvent): void {
+  moveTagDrag(`pointer:${ev.pointerId}`, ev.clientY);
+}
+
+function onTagPointerUp(ev: PointerEvent): void {
+  dropTagDrag(`pointer:${ev.pointerId}`);
+}
+
+function onTagHandleTouchStart(id: string, ev: TouchEvent): void {
+  const touch = ev.changedTouches[0];
+  if (typeof window.PointerEvent !== "undefined" || !touch || !startTagDrag(id, touch.clientY, `touch:${touch.identifier}`)) return;
+  ev.preventDefault();
+  // passive: false でないと preventDefault できず、ドラッグがページのスクロールに取られる
+  document.addEventListener("touchmove", onTagTouchMove, { passive: false });
+  document.addEventListener("touchend", onTagTouchEnd);
+  document.addEventListener("touchcancel", endTagDrag);
+}
+
+function onTagTouchMove(ev: TouchEvent): void {
+  if (!tagDrag.value) return;
+  ev.preventDefault();
+  for (const touch of Array.from(ev.changedTouches)) moveTagDrag(`touch:${touch.identifier}`, touch.clientY);
+}
+
+function onTagTouchEnd(ev: TouchEvent): void {
+  for (const touch of Array.from(ev.changedTouches)) dropTagDrag(`touch:${touch.identifier}`);
+}
+
+function onTagHandleMouseDown(id: string, ev: MouseEvent): void {
+  if (typeof window.PointerEvent !== "undefined" || ev.button !== 0 || !startTagDrag(id, ev.clientY, "mouse")) return;
+  ev.preventDefault();
+  document.addEventListener("mousemove", onTagMouseMove);
+  document.addEventListener("mouseup", onTagMouseUp);
+}
+
+function onTagMouseMove(ev: MouseEvent): void {
+  moveTagDrag("mouse", ev.clientY);
+}
+
+function onTagMouseUp(): void {
+  dropTagDrag("mouse");
+}
+
+function moveTagByKey(id: string, delta: number): void {
+  const index = customTags.value.findIndex((tag) => tag.id === id);
+  if (index < 0 || !box.moveCustomTag(id, index + delta)) return;
+  // 行が入れ替わっても同じタグの取っ手にフォーカスを残す（続けて押せるように）
+  nextTick(() => tagManagerRef.value?.querySelector<HTMLElement>(`[data-testid="box-tag-handle-${id}"]`)?.focus());
+}
+
+onBeforeUnmount(endTagDrag);
+
 watch(tagManagerOpen, (open) => {
   if (open) return;
+  endTagDrag();
   cancelTagRename();
   pendingDeleteTagId.value = null;
   tagManagerError.value = "";

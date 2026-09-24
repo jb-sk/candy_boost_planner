@@ -64,11 +64,7 @@
                 v-for="card in statCards"
                 :key="card.key"
                 class="statCard"
-                :class="{
-                  [`statCard--${card.variant}`]: card.variant,
-                  'statCard--danger': card.variant === 'danger',
-                  'statCard--wide': card.key === 'shards',
-                }"
+                :class="[`statCard--${card.variant}`, { 'statCard--wide': card.key === 'shards' }]"
                 data-testid="statCard"
               >
                 <div class="statCard__label exportText exportText--left">{{ card.label }}</div>
@@ -309,6 +305,7 @@ import {
   type ExportImageSource,
   type ExportImageTotals,
   type ExportImageTranslate,
+  type ExportStatCardVariant,
   type ExportUniversalCandyUsed,
 } from "../export/exportImageModel";
 import ExportNatureBadge from "./ExportNatureBadge.vue";
@@ -384,7 +381,7 @@ type StatCardDef = {
   icon: string;
   label: string;
   value: number;
-  variant?: "accent" | "primary" | "danger";
+  variant: ExportStatCardVariant;
   isDanger?: boolean;
   show: boolean;
 };
@@ -421,6 +418,7 @@ const statCards = computed<StatCardDef[]>(() => {
     icon: "⚪",
     label: t("calc.export.sumNormalTotal"),
     value: props.totals.normalCandy,
+    variant: "plain",
     show: true,
   });
 

@@ -722,8 +722,8 @@ test.describe('05-export G. 計算機との整合性検証', () => {
     await new CalcPanelPage(page).clickExport();
 
     const fills = page.locator('.exportBar__fill');
-    await expect(fills.nth(0)).toHaveCSS('background-color', 'rgba(132, 202, 100, 0.76)');
-    await expect(fills.nth(1)).toHaveCSS('background-color', 'rgba(255, 173, 102, 0.76)');
+    await expect(fills.nth(0)).toHaveCSS('background-color', 'rgb(156, 203, 82)');
+    await expect(fills.nth(1)).toHaveCSS('background-color', 'rgb(108, 198, 219)');
   });
 
   test('33. CSVに実使用アイテム内訳が含まれる', async ({ page }) => {

@@ -11,6 +11,7 @@ export type BackupSnapshotSources = {
   candyInventory: CandyInventoryV2;
   /** 既定のアメブ目標Lv。`null` は未設定（＝目標Lvと同じ）。 */
   defaultBoostReachLevel: number | null;
+  minimizeBoost: boolean;
   calculator: {
     activeSlotIndex: 0 | 1 | 2;
     slots: [CalcSaveSlotV1 | null, CalcSaveSlotV1 | null, CalcSaveSlotV1 | null];
@@ -50,6 +51,7 @@ export function createBackup(sources: BackupSnapshotSources, now = new Date()): 
         sleepSettings: clone(sources.sleepSettings),
         candyInventory: clone(sources.candyInventory),
         defaultBoostReachLevel: sources.defaultBoostReachLevel,
+        minimizeBoost: sources.minimizeBoost,
       },
       calculator: clone(sources.calculator),
     },

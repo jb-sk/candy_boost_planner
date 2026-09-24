@@ -38,10 +38,8 @@
   --bar-fill: #d946ef;
   --bar-fill-rgb: 217, 70, 239;
   --bar-track: #354965;
-  --bar-track-rgb: 53, 73, 101;
   --bar-over: var(--danger);
   --bar-over-rgb: 244, 63, 94;
-  --export-divider: #06b6d4;
 
   /* Pie Chart Palette */
   --pie-0: #06b6d4;
@@ -72,12 +70,22 @@
 
 }
 
-/* 育成プランの資源カードは、ネオン色を暗い面へ落として判別しやすくする。 */
+/* 育成プランの合計カードは、鮮やかなネオン色（シアン・コーラル・マゼンタ・レモン）に白を 5% だけ混ぜた明るい色でポップにし、
+   文字は紺にする（どの色の上でも対比 7 以上）。暗い面に薄く重ねるとカードが沈むため。黄色は濃く見えないよう明るいレモン色。
+   横棒はアメブ＝シアン、かけら＝レモン（白を混ぜる前のカードの色）。背景は塗りの色を暗くした既定の作り方（暗い青緑・オリーブ）。 */
 .exportSheet {
-  --export-card-accent-bg: #12384a;
-  --export-card-plain-bg: #35203d;
-  --export-card-primary-bg: #3a371e;
-  --export-card-danger-bg: #3a222f;
+  --export-card-accent-bg: #2dd5ef;
+  --export-card-danger-bg: #ff9481;
+  --export-card-plain-bg: #e980f9;
+  --export-card-primary-bg: #fde250;
+  --export-card-label: rgba(15, 23, 42, 0.85);
+  --export-card-ink: #0f172a;
+  --export-card-danger-ink: #0f172a;
+  --bar-fill: #22d3ee;
+  --bar-fill-rgb: 34, 211, 238;
+  --bar-shards-fill: #fde047;
+  --bar-shards-fill-rgb: 253, 224, 71;
+  --export-bar-fill-opacity: 1;
 }
 
 /* ===== Body ===== */

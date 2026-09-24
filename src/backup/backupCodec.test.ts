@@ -66,6 +66,7 @@ function backup(): CandyBoostPlannerBackupV3 {
     },
     candyInventory: { schemaVersion: 2, universal: { s: 0, m: 0, l: 0 }, typeCandy: {}, species: {} },
     defaultBoostReachLevel: null,
+    minimizeBoost: false,
     calculator: { activeSlotIndex: 0, slots: [null, null, null] },
   }, new Date("2026-07-22T07:30:00.000Z"));
 }
@@ -184,6 +185,51 @@ describe("backup codec", () => {
     const parsed = parseBackup(stringifyBackup(value)).backup;
 
     expect(parsed.data.globalSettings.defaultBoostReachLevel).toBe(35);
+  });
+
+  it("round-trips minimizeBoost and treats older backups without it as false", () => {
+    const value = backup();
+    value.data.globalSettings.minimizeBoost = true;
+    expect(parseBackup(stringifyBackup(value)).backup.data.globalSettings.minimizeBoost).toBe(true);
+
+    const old = JSON.parse(JSON.stringify(value));
+    delete old.data.globalSettings.minimizeBoost;
+    expect(parseBackup(JSON.stringify(old)).backup.data.globalSettings.minimizeBoost).toBe(false);
+  });
+
+  it("round-trips boostReachAuto and defaults missing row flags to automatic", () => {
+    const value = backup();
+    value.data.calculator.slots = [slot("flag-slot", [{ ...row("manual"), boostReachAuto: false }]), null, null];
+    expect(parseBackup(stringifyBackup(value)).backup.data.calculator.slots[0]?.rows[0]?.boostReachAuto).toBe(false);
+
+    const old = JSON.parse(JSON.stringify(value));
+    delete old.data.calculator.slots[0].rows[0].boostReachAuto;
+    expect(parseBackup(JSON.stringify(old)).backup.data.calculator.slots[0]?.rows[0]?.boostReachAuto).toBe(true);
+  });
+
+  it("round-trips boostMinimizeRow and defaults older rows without the flag", () => {
+    const value = backup();
+    value.data.calculator.slots = [slot("stock-min-flag-slot", [{
+      ...row("stock-min-flag"),
+      boostMinimizeRow: true,
+    }]), null, null];
+    expect(parseBackup(stringifyBackup(value)).backup.data.calculator.slots[0]?.rows[0]?.boostMinimizeRow).toBe(true);
+
+    const old = JSON.parse(JSON.stringify(value));
+    delete old.data.calculator.slots[0].rows[0].boostMinimizeRow;
+    expect(parseBackup(JSON.stringify(old)).backup.data.calculator.slots[0]?.rows[0]?.boostMinimizeRow).toBeUndefined();
+
+    old.data.calculator.slots[0].rows[0].boostMinimizeRow = false;
+    expect(() => parseBackup(JSON.stringify(old))).toThrow(BackupValidationError);
+
+    value.data.calculator.slots = [slot("explicit-boost-stock-min", [{
+      ...row("explicit-boost-stock-min"),
+      boostOrExpAdjustment: 50,
+      boostMinimizeRow: true,
+    }]), null, null];
+    const restored = parseBackup(stringifyBackup(value)).backup.data.calculator.slots[0]!.rows[0]!;
+    expect(restored.boostOrExpAdjustment).toBe(50);
+    expect(restored.boostMinimizeRow).toBeUndefined();
   });
 
   it("round-trips time zone, Growth Incense, and manual event settings", () => {
@@ -494,6 +540,7 @@ describe("backup codec", () => {
       },
       candyInventory: { schemaVersion: 2, universal: { s: 0, m: 0, l: 0 }, typeCandy: {}, species: {} },
       defaultBoostReachLevel: null,
+      minimizeBoost: false,
       calculator: { activeSlotIndex: 0, slots: [null, null, null] },
     });
     expect(value.data.box.entries[0]).not.toHaveProperty("source");

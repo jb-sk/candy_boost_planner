@@ -6,6 +6,11 @@ if (isCI()) {
   throw new Error('The interaction performance runner is local-only and must not run in CI.');
 }
 
+// ポートの切り替えは playwright.config.ts と同じ `E2E_PORT`（既定 5173）。
+const envPort = Number(process.env.E2E_PORT);
+const port = Number.isInteger(envPort) && envPort >= 1 && envPort <= 65535 ? envPort : 5173;
+const baseURL = `http://localhost:${port}`;
+
 export default defineConfig({
   testDir: './tests/perf',
   fullyParallel: false,
@@ -19,7 +24,7 @@ export default defineConfig({
   outputDir: './_local/playwright-perf-artifacts',
   use: {
     actionTimeout: 10_000,
-    baseURL: 'http://localhost:5173',
+    baseURL,
     locale: 'ja-JP',
     trace: 'off',
     screenshot: 'off',
@@ -28,7 +33,7 @@ export default defineConfig({
       cookies: [],
       origins: [
         {
-          origin: 'http://localhost:5173',
+          origin: baseURL,
           localStorage: [
             { name: 'candy-boost-planner:onboarding-done', value: '1' },
             { name: 'candy-boost-planner:lang', value: 'ja' },
@@ -44,8 +49,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'pnpm run dev',
-    url: 'http://localhost:5173',
+    command: `pnpm run dev --port ${port}`,
+    url: baseURL,
     reuseExistingServer: true,
   },
 });

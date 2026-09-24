@@ -1,6 +1,12 @@
 <template>
   <Teleport to="body">
-    <div v-if="step" class="onboarding-backdrop" @click.self="onboarding.next()">
+    <div
+      v-if="step"
+      class="onboarding-backdrop"
+      @click.self="onboarding.next()"
+      @touchmove="preventBackgroundScroll"
+      @wheel="preventBackgroundScroll"
+    >
       <!-- Spotlight cutout: GPU-composited via transform -->
       <div
         ref="spotlightRef"
@@ -147,11 +153,29 @@ function applyPositions() {
   tipEl.style.bottom = "";
 }
 
+/**
+ * Old iOS ignores overflow: hidden on html, so the backdrop cancels scroll gestures itself.
+ * A tooltip taller than a short (landscape) viewport scrolls internally, so it is left alone.
+ */
+function preventBackgroundScroll(event: TouchEvent | WheelEvent) {
+  const tipEl = tooltipRef.value;
+  if (
+    tipEl
+    && event.target instanceof Node
+    && tipEl.contains(event.target)
+    && tipEl.scrollHeight > tipEl.clientHeight
+  ) {
+    return;
+  }
+  event.preventDefault();
+}
+
 // ---------- Step initialization ----------
 
 /**
  * The document is locked during onboarding, so the initial slot-tab centering in App.vue
- * remains authoritative. scrollIntoView is retained for layouts where the document is not locked.
+ * remains authoritative. Steps never scroll: the in-place lock still allows programmatic
+ * scrolling, and moving the page per step would break the centered layout.
  */
 function initStep() {
   cachedTargetEl = null;
@@ -167,10 +191,6 @@ function initStep() {
   if (!el) return;
   cachedTargetEl = el;
 
-  // Scroll the target to center when the surrounding document allows it.
-  (el as HTMLElement).scrollIntoView({ block: "center", behavior: "auto" });
-
-  // Position fixed overlay after scroll.
   requestAnimationFrame(() => {
     applyPositions();
   });
@@ -191,6 +211,8 @@ function onResize() {
 onMounted(() => {
   initStep();
   window.addEventListener("resize", onResize);
+  // The lock keeps programmatic scrolling (e.g. focus moving behind the backdrop), so follow it.
+  window.addEventListener("scroll", onResize, { passive: true });
   window.addEventListener("orientationchange", onResize);
   window.visualViewport?.addEventListener("resize", onResize);
   window.visualViewport?.addEventListener("scroll", onResize);
@@ -198,6 +220,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener("resize", onResize);
+  window.removeEventListener("scroll", onResize);
   window.removeEventListener("orientationchange", onResize);
   window.visualViewport?.removeEventListener("resize", onResize);
   window.visualViewport?.removeEventListener("scroll", onResize);

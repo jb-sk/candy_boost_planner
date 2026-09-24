@@ -221,6 +221,8 @@ test.describe('検索・フィルタ', () => {
     await expect(manager.locator('.boxTagManager__usage').first()).toHaveCSS('margin-right', '6px');
     await manager.locator('.boxTagManager__name').filter({ hasText: '睡眠候補' }).click();
     const renameInput = manager.locator('.boxTagManager__edit input');
+    // 1回のタップで入力できる（入力欄にフォーカスが移っている）
+    await expect(renameInput).toBeFocused();
     await renameInput.fill('睡眠で上げる');
     await manager.locator('.boxTagManager__edit').getByRole('button', { name: '保存' }).click();
     await expect(filters.getByRole('button', { name: '睡眠で上げる', exact: true })).toBeVisible();
@@ -278,6 +280,91 @@ test.describe('検索・フィルタ', () => {
     }));
     expect(widths.scroll).toBeLessThanOrEqual(widths.client);
     expect(widths.documentScroll).toBeLessThanOrEqual(widths.documentClient);
+  });
+
+  test('タグ管理で取っ手をドラッグ・上下キーで並べ替えられ、Undoで戻せる', async ({ page }) => {
+    const filters = page.getByTestId('box-custom-tag-filters');
+    await page.getByTestId('box-tag-manager-toggle').click();
+    const manager = page.getByTestId('box-tag-manager');
+    for (const name of ['タグA', 'タグB', 'タグC']) {
+      await page.getByTestId('box-tag-name-input').fill(name);
+      await page.getByTestId('box-tag-add').click();
+    }
+    const names = manager.locator('.boxTagManager__nameText');
+    await expect(names).toHaveText(['タグA', 'タグB', 'タグC']);
+
+    // タグC の取っ手をタグA の上までドラッグする
+    const handleC = manager.locator('.boxTagManager__item').filter({ hasText: 'タグC' }).locator('.boxTagManager__handle');
+    const firstItem = await manager.locator('.boxTagManager__item').first().boundingBox();
+    const itemB = await manager.locator('.boxTagManager__item').nth(1).boundingBox();
+    const itemC = await manager.locator('.boxTagManager__item').nth(2).boundingBox();
+    const handleBox = await handleC.boundingBox();
+    const handleY = handleBox!.y + handleBox!.height / 2;
+    await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleY);
+    await page.mouse.down();
+    // 行の中心が上の行に差し掛かっただけで入れ替わる（上の行の中心まで動かさなくてよい）
+    const cToBBottom = itemC!.y + itemC!.height / 2 - (itemB!.y + itemB!.height);
+    await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleY - cToBBottom - 2, { steps: 4 });
+    await expect(names).toHaveText(['タグA', 'タグC', 'タグB']);
+    await page.mouse.move(handleBox!.x + handleBox!.width / 2, firstItem!.y + 2, { steps: 8 });
+    // 離す前から、離したときの並びが見える
+    await expect(names).toHaveText(['タグC', 'タグA', 'タグB']);
+    await page.mouse.up();
+    await expect(names).toHaveText(['タグC', 'タグA', 'タグB']);
+    // 絞り込みのチップも同じ順になる
+    await expect(filters.locator('.chipBtn__text')).toContainText(['タグC', 'タグA', 'タグB']);
+
+    // 上下キーでも1つずつ動かせる。フォーカスは同じタグの取っ手に残る
+    const handleA = manager.locator('.boxTagManager__item').filter({ hasText: 'タグA' }).locator('.boxTagManager__handle');
+    await handleA.focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(names).toHaveText(['タグC', 'タグB', 'タグA']);
+    await expect(manager.locator('.boxTagManager__item').filter({ hasText: 'タグA' }).locator('.boxTagManager__handle')).toBeFocused();
+
+    // Undo は1操作ずつ戻る
+    await boxPanel.undoButton.click();
+    await expect(names).toHaveText(['タグC', 'タグA', 'タグB']);
+    await boxPanel.undoButton.click();
+    await expect(names).toHaveText(['タグA', 'タグB', 'タグC']);
+  });
+
+  test('Pointer Events の無い端末でも、タグ管理の取っ手をタッチでドラッグして並べ替えられる', async ({ page }) => {
+    await page.getByTestId('box-tag-manager-toggle').click();
+    const manager = page.getByTestId('box-tag-manager');
+    for (const name of ['タグA', 'タグB', 'タグC']) {
+      await page.getByTestId('box-tag-name-input').fill(name);
+      await page.getByTestId('box-tag-add').click();
+    }
+    const names = manager.locator('.boxTagManager__nameText');
+    const handleC = manager.locator('.boxTagManager__item').filter({ hasText: 'タグC' }).locator('.boxTagManager__handle');
+    const firstItemTop = (await manager.locator('.boxTagManager__item').first().boundingBox())!.y;
+
+    // 古い iOS Safari（13 未満）と同じく PointerEvent が無い状態で、touch イベントだけを送る
+    const dispatchTouch = (type: 'touchstart' | 'touchmove' | 'touchend', clientY?: number) =>
+      handleC.evaluate((element, { type, clientY }) => {
+        if (type === 'touchstart') Object.defineProperty(window, 'PointerEvent', { configurable: true, value: undefined });
+        const rect = element.getBoundingClientRect();
+        const touch = new Touch({
+          identifier: 3,
+          target: element,
+          clientX: rect.left + rect.width / 2,
+          clientY: clientY ?? rect.top + rect.height / 2,
+        });
+        const target = type === 'touchstart' ? element : document;
+        target.dispatchEvent(new TouchEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          touches: type === 'touchend' ? [] : [touch],
+          changedTouches: [touch],
+        }));
+      }, { type, clientY });
+
+    await dispatchTouch('touchstart');
+    await dispatchTouch('touchmove', firstItemTop + 2);
+    await expect(names).toHaveText(['タグC', 'タグA', 'タグB']);
+    await dispatchTouch('touchend', firstItemTop + 2);
+    await expect(names).toHaveText(['タグC', 'タグA', 'タグB']);
+    await expect(manager.locator('.boxTagManager__item--dragging')).toHaveCount(0);
   });
 
   test('検索・フィルターで表示中の個体だけにタグを一括登録し、Undoできる', async ({ page }) => {

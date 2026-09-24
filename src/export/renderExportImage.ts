@@ -204,9 +204,7 @@ function cellValue(row: ExportModelRow | ExportModelTotalRow, key: ExportColumn[
 function drawHeader(ctx: Ctx, model: ExportImageModel, layout: ExportImageLayout, style: ExportImageStyle): void {
   ctx.fillStyle = style.paper;
   ctx.fillRect(0, 0, layout.logicalWidth, layout.headerHeight);
-  ctx.fillStyle = style.highlight;
-  ctx.fillRect(0, 0, layout.logicalWidth, 6);
-  line(ctx, 0, layout.headerHeight, layout.logicalWidth, layout.headerHeight, style.accent, 0.24);
+  line(ctx, 0, layout.headerHeight, layout.logicalWidth, layout.headerHeight, style.accentTint, 0.24);
   const midY = layout.headerHeight / 2;
   drawText(ctx, model.brandProduct, layout.contentX, midY - 13, layout.fonts.brandProduct, style.highlight, "left", "middle");
   drawText(ctx, model.planLabel, layout.contentX, midY + 13, layout.fonts.brand, style.ink, "left", "middle");
@@ -298,7 +296,7 @@ function drawResources(ctx: Ctx, model: ExportImageModel, layout: ExportImageLay
       rect.x + CARD_PAD_X,
       rect.top + CARD_LABEL_BASELINE_FROM_TOP,
       layout.fonts.cardLabel,
-      style.muted,
+      style.statCardLabel,
       "left",
       "alphabetic",
     );
@@ -308,7 +306,7 @@ function drawResources(ctx: Ctx, model: ExportImageModel, layout: ExportImageLay
       rect.x + CARD_PAD_X,
       rect.top + CARD_H - CARD_VALUE_BASELINE_FROM_BOTTOM,
       layout.fonts.cardValue,
-      isDanger ? style.danger : style.ink,
+      isDanger ? style.statCardDangerInk : style.statCardInk,
       "left",
       "alphabetic",
     );
@@ -326,7 +324,7 @@ function drawResources(ctx: Ctx, model: ExportImageModel, layout: ExportImageLay
       layout.contentWidth,
       panelHeight,
       8,
-      style.accent,
+      style.accentTint,
       0.055,
     );
   }
@@ -336,6 +334,7 @@ function drawResources(ctx: Ctx, model: ExportImageModel, layout: ExportImageLay
     const barX = layout.contentX + BAR_PANEL_PAD_X;
     const barWidth = layout.contentWidth - BAR_PANEL_PAD_X * 2;
     const barFill = bar.key === "shards" ? style.shardsBarFill : style.barFill;
+    const barTrack = bar.key === "shards" ? style.shardsBarTrack : style.barTrack;
     drawText(ctx, bar.usageLabel, barX, headMid, layout.fonts.barLabel, style.ink, "left", "middle");
     drawText(
       ctx,
@@ -348,7 +347,8 @@ function drawResources(ctx: Ctx, model: ExportImageModel, layout: ExportImageLay
       "middle",
     );
     const trackY = top + BAR_HEAD_H + 4;
-    fillRoundRect(ctx, barX, trackY, barWidth, BAR_TRACK_H, BAR_TRACK_H / 2, barFill, 0.22);
+    // 背景の指定がないテーマは、塗りの色を薄く重ねる（CSS の .exportBar__track と同じ）
+    fillRoundRect(ctx, barX, trackY, barWidth, BAR_TRACK_H, BAR_TRACK_H / 2, barTrack ?? barFill, barTrack ? 1 : 0.22);
     const fillW = (barWidth * bar.fillPct) / 100;
     if (fillW > 0) {
       fillRoundRect(
@@ -390,7 +390,7 @@ function drawTable(ctx: Ctx, model: ExportImageModel, layout: ExportImageLayout,
   const tableBottom = tb.totalRowTop + TOTAL_ROW_H;
   ctx.save();
   ctx.globalAlpha = 0.09;
-  ctx.fillStyle = style.accent;
+  ctx.fillStyle = style.accentTint;
   ctx.fillRect(layout.contentX, tb.headTop, layout.contentWidth, tb.headHeight);
   ctx.globalAlpha = 0.11;
   ctx.fillRect(layout.contentX, tb.totalRowTop, layout.contentWidth, TOTAL_ROW_H);
@@ -532,16 +532,16 @@ function drawTable(ctx: Ctx, model: ExportImageModel, layout: ExportImageLayout,
   }
 
   // 外枠と全セルの縦横罫線。縦線を含め、一覧を読みやすい通常の表として描く。
-  line(ctx, layout.contentX, tb.headTop, layout.contentX + layout.contentWidth, tb.headTop, style.accent, 0.38);
-  line(ctx, layout.contentX, tb.firstRowTop, layout.contentX + layout.contentWidth, tb.firstRowTop, style.accent, 0.38);
+  line(ctx, layout.contentX, tb.headTop, layout.contentX + layout.contentWidth, tb.headTop, style.accentTint, 0.38);
+  line(ctx, layout.contentX, tb.firstRowTop, layout.contentX + layout.contentWidth, tb.firstRowTop, style.accentTint, 0.38);
   model.rows.forEach((_, i) => {
     const y = tb.firstRowTop + (i + 1) * ROW_H;
-    line(ctx, layout.contentX, y, layout.contentX + layout.contentWidth, y, style.accent, 0.28);
+    line(ctx, layout.contentX, y, layout.contentX + layout.contentWidth, y, style.accentTint, 0.28);
   });
-  line(ctx, layout.contentX, tableBottom, layout.contentX + layout.contentWidth, tableBottom, style.accent, 0.38);
-  line(ctx, layout.contentX, tb.headTop, layout.contentX, tableBottom, style.accent, 0.38);
+  line(ctx, layout.contentX, tableBottom, layout.contentX + layout.contentWidth, tableBottom, style.accentTint, 0.38);
+  line(ctx, layout.contentX, tb.headTop, layout.contentX, tableBottom, style.accentTint, 0.38);
   layout.columns.forEach((col) => {
-    line(ctx, col.x + col.width, tb.headTop, col.x + col.width, tableBottom, style.accent, 0.32);
+    line(ctx, col.x + col.width, tb.headTop, col.x + col.width, tableBottom, style.accentTint, 0.32);
   });
 }
 
@@ -629,8 +629,8 @@ function drawRanking(ctx: Ctx, model: ExportImageModel, layout: ExportImageLayou
         chipWidth,
         22,
         6,
-        style.highlight,
-        0.1,
+        style.highlightTint,
+        0.11,
       );
       drawText(
         ctx,

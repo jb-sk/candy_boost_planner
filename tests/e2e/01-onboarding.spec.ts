@@ -66,6 +66,51 @@ test.describe('オンボーディングツアー', () => {
     await done.click();
     await expect(page.locator('.onboarding-backdrop')).toHaveCount(0);
   });
+
+  test('自動で始まる案内がレイアウトシフトを起こさず、背景はスクロール位置のまま固定される', async ({ page }) => {
+    // 案内は操作なしで始まるため、ここで起きたシフトは CLS に数えられる
+    await page.addInitScript(() => {
+      const w = window as unknown as { __unexpectedShift: number };
+      w.__unexpectedShift = 0;
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries() as unknown as Array<{ value: number; hadRecentInput: boolean }>) {
+          if (!entry.hadRecentInput) w.__unexpectedShift += entry.value;
+        }
+      }).observe({ type: 'layout-shift', buffered: true });
+    });
+    await page.goto('/');
+    await expect(page.locator('.onboarding-tooltip')).toBeVisible();
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+
+    const locked = await page.evaluate(() => ({
+      shift: (window as unknown as { __unexpectedShift: number }).__unexpectedShift,
+      scrollY: window.scrollY,
+      rootOverflow: document.documentElement.style.overflow,
+      bodyPosition: document.body.style.position,
+    }));
+    expect(locked.shift).toBe(0);
+    expect(locked.scrollY).toBeGreaterThan(0);
+    expect(locked.rootOverflow).toBe('hidden');
+    expect(locked.bodyPosition).toBe('');
+
+    // 固定中もプログラムによるスクロール（フォーカス移動など）は起きるため、スポットライトが対象に追従する
+    const spotlightOffset = () => page.evaluate(() => {
+      const spot = document.querySelector('.onboarding-spotlight')!.getBoundingClientRect();
+      const target = document.querySelector('[data-onboarding="add-pokemon"]')!;
+      return Math.round(spot.top - target.getBoundingClientRect().top);
+    });
+    const offsetBefore = await spotlightOffset();
+    await page.evaluate(() => window.scrollBy(0, -40));
+    await expect.poll(spotlightOffset).toBe(offsetBefore);
+    await page.evaluate((y) => window.scrollTo(0, y), locked.scrollY);
+
+    await page.mouse.move(160, 100);
+    await page.mouse.wheel(0, 400);
+    await page.locator('.onboarding-tooltip__skip').click();
+    await expect(page.locator('.onboarding-backdrop')).toHaveCount(0);
+    expect(await page.evaluate(() => window.scrollY)).toBe(locked.scrollY);
+    expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('');
+  });
 });
 
 // ============================================

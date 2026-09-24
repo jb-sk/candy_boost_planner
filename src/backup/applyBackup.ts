@@ -9,6 +9,7 @@ import {
   BOOST_CANDY_REMAINING_KEY,
   CALC_SLOTS_STORAGE_KEY,
   DEFAULT_BOOST_REACH_LEVEL_KEY,
+  MINIMIZE_BOOST_KEY,
   SLEEP_SETTINGS_KEY,
   TOTAL_SHARDS_KEY,
   serializeCalcSlots,
@@ -88,13 +89,14 @@ export function applyBackup(backup: CandyBoostPlannerBackupV3, options: ApplyBac
     [ACTIVE_SLOT_STORAGE_KEY, String(backup.data.calculator.activeSlotIndex)],
     [BOOST_CANDY_REMAINING_KEY, null],
     [DEFAULT_BOOST_REACH_LEVEL_KEY, defaultBoostReachLevel == null ? null : String(defaultBoostReachLevel)],
+    [MINIMIZE_BOOST_KEY, String(backup.data.globalSettings.minimizeBoost)],
   ]);
 
   flush();
   const previous = new Map<string, string | null>();
   for (const key of writes.keys()) previous.set(key, storage.getItem(key));
 
-  // pending の単一 setItem が失敗した場合は、対象9キーへ一切触れていない。
+  // pending の単一 setItem が失敗した場合は、対象キーへ一切触れていない。
   storage.setItem(RESTORE_PENDING_KEY, serializePendingRestore(writes));
 
   try {

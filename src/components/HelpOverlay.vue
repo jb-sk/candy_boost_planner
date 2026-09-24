@@ -17,6 +17,8 @@
             <dd>{{ t("help.basic.stockDesc") }}</dd>
             <dt>{{ t("settings.defaultBoostReachLevelLabel") }}</dt>
             <dd>{{ t("settings.defaultBoostReachLevelHelp") }}</dd>
+            <dt>{{ t("settings.minimizeBoostLabel") }}</dt>
+            <dd>{{ t("settings.minimizeBoostHelp") }}</dd>
             <dt>{{ t("help.basic.sleepTitle") }}</dt>
             <dd>{{ t("help.basic.sleepDesc") }}</dd>
             <dt>{{ t("help.basic.tabSettingsTitle") }}</dt>

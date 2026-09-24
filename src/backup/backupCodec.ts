@@ -289,6 +289,12 @@ function validateRow(value: unknown, path: string, sourceSchemaVersion: 1 | 2 | 
     : candyTarget === undefined
       ? storedBoostOrExpAdjustment
       : Math.min(storedBoostOrExpAdjustment, candyTarget);
+  const storedBoostMinimizeRow = row.boostMinimizeRow === undefined
+    ? undefined
+    : row.boostMinimizeRow === true
+      ? true
+      : fail(`${path}.boostMinimizeRow`, "must be true");
+  const boostMinimizeRow = boostOrExpAdjustment === undefined ? storedBoostMinimizeRow : undefined;
   if (candyTarget === undefined && boostOrExpAdjustment === undefined && dstExpInLevel !== undefined && dstExpInLevel > 0) {
     fail(`${path}.dstExpInLevel`, "must be 0 without a candy-count anchor");
   }
@@ -307,6 +313,8 @@ function validateRow(value: unknown, path: string, sourceSchemaVersion: 1 | 2 | 
     nature: enumAt(row.nature, `${path}.nature`, natures) as "down" | "normal" | "up",
     boostReachLevel: numberAt(row.boostReachLevel, `${path}.boostReachLevel`, srcLevel, MAX_LEVEL),
     boostOrExpAdjustment,
+    boostMinimizeRow,
+    boostReachAuto: row.boostReachAuto === undefined ? true : booleanAt(row.boostReachAuto, `${path}.boostReachAuto`),
     candyTarget,
     sleepHours: optionalNumber(row.sleepHours, `${path}.sleepHours`, 0),
     sleepTargetHours: sleepTargetMode !== undefined || row.sleepTargetHours === undefined
@@ -401,6 +409,10 @@ function validateDefaultBoostReachLevel(value: unknown, sourceSchemaVersion: 1 |
   return numberAt(value, path, 1, MAX_LEVEL);
 }
 
+function validateMinimizeBoost(value: unknown): boolean {
+  return value === undefined ? false : booleanAt(value, "$.data.globalSettings.minimizeBoost");
+}
+
 export function parseBackup(text: string): ValidatedBackup {
   if (new TextEncoder().encode(text).byteLength > BACKUP_MAX_BYTES) fail("$", `maximum size is ${BACKUP_MAX_BYTES} bytes`);
   let parsed: unknown;
@@ -475,6 +487,7 @@ export function parseBackup(text: string): ValidatedBackup {
       box: { entries, tags },
       globalSettings: {
         defaultBoostReachLevel: validateDefaultBoostReachLevel(globals.defaultBoostReachLevel, sourceSchemaVersion),
+        minimizeBoost: validateMinimizeBoost(globals.minimizeBoost),
         totalShards: numberAt(globals.totalShards, "$.data.globalSettings.totalShards", 0),
         sleepSettings: {
           dailySleepHours: numberAt(sleep.dailySleepHours, "$.data.globalSettings.sleepSettings.dailySleepHours", 1, 13, false),

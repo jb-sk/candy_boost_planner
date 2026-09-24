@@ -258,6 +258,27 @@ select.field__input {
   padding-right: 32px;
 }
 
+/* チェックボックス＋折り返す文言。チェックボックスは1行目の中央にそろえる
+   （行の高さからチェックボックスの高さを引いた半分だけ下げる）。
+   行の高さは --inline-check-line-height で指定し、余白も同じ値 × 1em で計算する。
+   **`lh` 単位は使わない**（iOS 16.4 未満の Safari は未対応で、指定ごと無視されて上にずれる）。 */
+.inlineCheck {
+  --inline-check-line-height: 1.5;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  line-height: var(--inline-check-line-height);
+}
+
+.inlineCheck > input[type="checkbox"] {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  /* em を文言と同じ大きさにする */
+  font-size: inherit;
+  margin: calc((var(--inline-check-line-height) * 1em - 13px) / 2) 0 0;
+}
+
 /* ===== Buttons ===== */
 .btn {
   display: inline-flex;

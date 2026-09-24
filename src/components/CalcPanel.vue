@@ -458,10 +458,13 @@
           <div class="field field--sm" v-if="calc.boostKind.value !== 'none'">
             <div class="field__labelRow">
               <span class="field__label">{{ t("calc.row.boostCandyCount") }}</span>
+              <!-- 中の案内に警告があるときは赤枠にして、開く前に気づけるようにする。 -->
               <button
                 data-testid="hintBtn"
                 type="button"
                 class="hintIcon"
+                :class="{ 'hintIcon--warn': boostCandyHintWarningRowIds.has(r.id) }"
+                :aria-label="t(boostCandyHintWarningRowIds.has(r.id) ? 'calc.row.boostCandyHintWarnLabel' : 'calc.row.boostCandyHintLabel')"
                 @click.stop.prevent="showHint($event, r)"
               >?</button>
               <button
@@ -733,7 +736,7 @@
           かけら不足 512 = 1,384 − 872。睡眠5日は onboardingSleepTimeText と一致する。
           結果行の項目・順序は上の実データ行（:426-530）に合わせること。
         -->
-        <div v-if="onboardingActive" class="calcEmpty__demo" data-onboarding="result-row">
+        <div v-if="onboardingDemoVisible" class="calcEmpty__demo" data-onboarding="result-row">
           <div class="calcRow__title calcEmpty__demoTitle">{{ t("onboarding.demoTitle") }}</div>
           <div class="calcRow__resultCollapse">
             <div class="calcRow__resultRow calcRow__resultRow--required">
@@ -855,17 +858,58 @@
 
         どの案内を出すかは各 computed が kind で判断する。ここで枝を分けないこと
         （分けると入れ子が深くなり、案内の追加ごとに置き場所を選び直すことになる）。
-      --><p v-if="hintQuotaNote" class="hintPopover__warn hintPopover__warn--alert" data-testid="calc-hint-quota-warn"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintQuotaNote }}</span></p>
-        <p v-if="hintCapNote" class="hintPopover__warn"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintCapNote }}</span></p>
+      --><p v-if="hintBoostCandyWarnings.quota" class="hintPopover__warn hintPopover__warn--alert" data-testid="calc-hint-quota-warn"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintBoostCandyWarnings.quota }}</span></p>
+        <p v-if="hintBoostCandyWarnings.cap" class="hintPopover__warn"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintBoostCandyWarnings.cap }}</span></p>
+        <p v-if="hintBoostCandyWarnings.minimizeFallback" class="hintPopover__warn" data-testid="calc-hint-minimize-fallback-note"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintBoostCandyWarnings.minimizeFallback }}</span></p>
+        <p v-if="hintBoostCandyWarnings.minimizeSharedStock" class="hintPopover__warn" data-testid="calc-hint-minimize-shared-stock-note"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintBoostCandyWarnings.minimizeSharedStock }}</span></p>
         <p v-if="hintAllSleepNote" class="hintPopover__warn" data-testid="calc-hint-all-sleep-note"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintAllSleepNote }}</span></p>
         <p v-if="hintSleepTeamNote" class="hintPopover__warn" data-testid="calc-hint-sleep-team-note"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintSleepTeamNote }}</span></p>
         <template v-if="hintState.kind === 'candyTarget'"
-          ><p class="hintPopover__note">{{ t('calc.row.candyTargetHintNote') }}</p></template
+          ><p class="hintPopover__note">{{ t('calc.row.candyTargetHintNote') }}</p>
+          <div class="hintPopover__field" data-testid="candy-target-min-boost-tool">
+            <p class="hintPopover__heading">{{ t('calc.row.candyTargetMinBoostTitle') }}</p>
+            <label class="field__label" for="calc-candy-target-min-boost-level">{{ t('calc.row.candyTargetMinBoostLevel') }}</label>
+            <div class="hintPopover__inputRow">
+              <select
+                id="calc-candy-target-min-boost-level"
+                data-testid="candy-target-min-boost-level"
+                v-model.number="minBoostCandyTargetLevel"
+                class="field__input hintPopover__input"
+                :disabled="!canRunMinBoostForCandyTarget"
+                @change="minBoostCandyTargetResult = null"
+              >
+                <option v-for="level in minBoostCandyTargetLevelOptions" :key="level" :value="level">Lv{{ level }}</option>
+              </select>
+            </div>
+            <button
+              type="button"
+              class="btn btn--primary btn--xs"
+              data-testid="candy-target-min-boost-run"
+              :disabled="!canRunMinBoostForCandyTarget"
+              @click="runMinBoostForCandyTarget"
+            >{{ t('calc.row.candyTargetMinBoostRun') }}</button>
+            <p v-if="minBoostCandyTargetResult === 'unreachable'" class="hintPopover__note" role="status" data-testid="candy-target-min-boost-unreachable">
+              {{ t('calc.row.candyTargetMinBoostUnreachable') }}
+            </p>
+          </div>
+        </template
         >
         <template v-else-if="hintState.kind === 'boostCandy'"
           ><p class="hintPopover__heading">{{ t('calc.row.boostCandyCount') }}</p
-          ><p class="hintPopover__note">{{ t('calc.row.boostCandyCountHintNote') }}</p
-          ><p class="hintPopover__heading">{{ t('calc.boostRemainingLabel') }}</p
+          ><p class="hintPopover__note">{{ t('calc.row.boostCandyCountHintNote') }}</p>
+        <!-- 設定のアメブ最小化を OFF にしている人が、このポケモンだけ最小化するためのチェックボックス。
+             文言は設定と同じ。設定が ON なら全行が対象なので出さない。
+             印の付いた行は、個数指定・睡眠目標で一時的に対象外でも外せるように出す。 -->
+        <label v-if="showRowMinimizeBoost" class="inlineCheck hintPopover__check" data-testid="row-minimize-boost">
+          <input
+            type="checkbox"
+            data-testid="row-minimize-boost-checkbox"
+            :checked="hintRow?.boostMinimizeRow === true"
+            @change="onRowMinimizeBoostChange(($event.target as HTMLInputElement).checked)"
+          />
+          <span>{{ t('settings.minimizeBoostLabel') }}</span>
+        </label>
+        <p class="hintPopover__heading">{{ t('calc.boostRemainingLabel') }}</p
           ><p class="hintPopover__note">{{ t('calc.row.boostRemainingHintNote') }}</p>
         <!-- 設定モーダルを開かずここで直接変えられるようにする。値の正規化・全行再計算は
              ストアの onBoostCandyRemainingInput が担当する（SettingsOverlay と同じ入口）。
@@ -1032,9 +1076,9 @@ async function copyDebugExport() {
   }, 2500);
 }
 
-/** Onboarding tour state (injected from App.vue) */
-const _onboardingActive = inject<import("vue").Ref<boolean>>("onboardingActive");
-const onboardingActive = computed(() => _onboardingActive?.value ?? false);
+/** Onboarding demo row visibility (injected from App.vue) */
+const _onboardingDemoVisible = inject<import("vue").Ref<boolean>>("onboardingDemoVisible");
+const onboardingDemoVisible = computed(() => _onboardingDemoVisible?.value ?? false);
 /** Sticky summary bar expand/collapse */
 const stickyExpanded = ref(false);
 
@@ -2153,6 +2197,40 @@ function boostReachWarnings(r: CalcRowView): string[] {
   return warnings;
 }
 
+type BoostCandyHintWarnings = {
+  quota?: string;
+  cap?: string;
+  minimizeFallback?: string;
+  minimizeSharedStock?: string;
+};
+
+/**
+ * アメブ個数の ? に出す警告。**? の赤枠とポップオーバーの本文はどちらもここから引く。**
+ * 別々の式にすると、警告を足したときに片方だけ更新して食い違う。
+ *
+ * - quota: アメブ枠の超過。このヒントの中から上限そのものを変えられるので、打ち手の1つとして併記する
+ * - cap: 睡眠・在庫の頭打ち（アメブ側の話なので、アメ個数指定のヒントには出さない）
+ * - minimizeFallback: アメブ最小化（設定、またはこのポケモンだけ）が ON なのに、この行に回るアメ在庫で目標Lvに届かず既定のアメブ目標Lvへ戻った
+ * - minimizeSharedStock: 上に同じアメを使う行があり、在庫をそちらが先に使った（minimizeFallback の補足。単独では出ない）
+ *
+ * 「すべて睡眠」の案内は含めない。ユーザーが選んだモードで欄が無効になっている理由の説明で、
+ * 直すべき問題ではない（赤くすると入力エラーのように見える）。
+ */
+function boostCandyHintWarnings(r: CalcRowView): BoostCandyHintWarnings {
+  return {
+    quota: boostQuotaHint(r),
+    cap: r.ui.boostCapActive ? boostCapHint(r) : undefined,
+    minimizeFallback: r.ui.boostMinimizeFallback ? t('calc.row.boostMinimizeFallbackHint') : undefined,
+    minimizeSharedStock: r.ui.boostMinimizeFallbackSharedStock ? t('calc.row.boostMinimizeSharedStockHint') : undefined,
+  };
+}
+
+/** ? を赤枠にする行。行ごとにテンプレートから2回引くので、まとめて1回だけ求める。 */
+const boostCandyHintWarningRowIds = computed(() => new Set(
+  calc.rowsView.value
+    .filter((r) => Object.values(boostCandyHintWarnings(r)).some((w) => w !== undefined))
+    .map((r) => r.id),
+));
 
 // ヒントアイコン用
 // ヒントポップオーバーの状態
@@ -2175,18 +2253,54 @@ const hintRow = computed(() =>
   hintState.value.rowId ? calc.rowsView.value.find((r) => r.id === hintState.value.rowId) ?? null : null
 );
 
-// 睡眠・在庫の頭打ちはアメブ側の話なので、アメ個数指定のヒントには出さない。
-const hintCapNote = computed(() => {
+const minBoostCandyTargetLevel = ref<number>(MAX_LEVEL);
+const minBoostCandyTargetResult = ref<"unreachable" | null>(null);
+const minBoostCandyTargetLevelOptions = computed(() => {
   const row = hintRow.value;
-  return hintState.value.kind === 'boostCandy' && row?.ui.boostCapActive
-    ? boostCapHint(row)
-    : undefined;
+  if (!row || row.srcLevel >= MAX_LEVEL) return [];
+  return Array.from({ length: MAX_LEVEL - row.srcLevel }, (_, index) => row.srcLevel + index + 1);
+});
+const canRunMinBoostForCandyTarget = computed(() => {
+  const row = hintRow.value;
+  return hintState.value.kind === "candyTarget"
+    && row !== null
+    && (row.candyTarget ?? 0) > 0
+    && row.sleepTargetMode !== "all"
+    && row.sleepTargetMode !== "stock"
+    && calc.boostKind.value !== "none"
+    && minBoostCandyTargetLevelOptions.value.length > 0;
+});
+
+// このポケモンだけのアメブ最小化。値は保存せず、設定 ON と同じく毎回導出する。
+const showRowMinimizeBoost = computed(() => {
+  const row = hintRow.value;
+  if (hintState.value.kind !== "boostCandy" || !row || calc.minimizeBoost.value) return false;
+  return row.boostMinimizeRow === true || calc.canSetRowMinimizeBoost(row.id);
+});
+
+function onRowMinimizeBoostChange(on: boolean): void {
+  const row = hintRow.value;
+  if (!row) return;
+  calc.setRowMinimizeBoost(row.id, on);
+}
+
+function runMinBoostForCandyTarget(): void {
+  const row = hintRow.value;
+  if (!row || !canRunMinBoostForCandyTarget.value) return;
+  const result = calc.applyMinBoostForCandyTarget(row.id, minBoostCandyTargetLevel.value);
+  minBoostCandyTargetResult.value = result === "unreachable" ? result : null;
+}
+
+// アメブ個数のヒントの警告。中身と出す条件は `boostCandyHintWarnings` が持つ。
+const hintBoostCandyWarnings = computed<BoostCandyHintWarnings>(() => {
+  const row = hintRow.value;
+  return hintState.value.kind === 'boostCandy' && row ? boostCandyHintWarnings(row) : {};
 });
 
 /**
  * 「すべて睡眠」でアメ関連の欄が無効化されている理由。**破線の理由はここだけで読める。**
  *
- * 頭打ち（`hintCapNote`）と違い、**両方のヒントに出す。** すべて睡眠ではアメ個数指定も
+ * 頭打ち（`boostCandyHintWarnings` の cap）と違い、**両方のヒントに出す。** すべて睡眠ではアメ個数指定も
  * 無効化されるので、アメブ側の話では済まない。
  *
  * title には出さない（スマホでは表示されない）。アメブ目標Lvは disabled でピッカーが
@@ -2212,13 +2326,6 @@ const hintSleepTeamNote = computed(() =>
   hintState.value.kind === 'sleepTeam' ? t('calc.row.sleepTeamOverflowNote') : undefined
 );
 
-// アメブ枠の超過。このヒントの中から上限そのものを変えられるので、打ち手の1つとして併記する。
-const hintQuotaNote = computed(() => {
-  const row = hintRow.value;
-  return hintState.value.kind === 'boostCandy' && row ? boostQuotaHint(row) : undefined;
-});
-
-
 const hintPopoverRef = ref<HTMLElement | null>(null);
 
 const {
@@ -2232,6 +2339,11 @@ async function showHint(ev: MouseEvent, row?: CalcRowView, kind: HintKind = 'boo
   const target = ev.target as HTMLElement;
   const rect = target.getBoundingClientRect();
   const gap = 4;
+
+  minBoostCandyTargetResult.value = null;
+  if (kind === "candyTarget" && row) {
+    minBoostCandyTargetLevel.value = Math.min(MAX_LEVEL, Math.max(row.srcLevel + 1, row.dstLevel));
+  }
 
   // 画面端の考慮（水平）
   const viewportWidth = window.innerWidth;
