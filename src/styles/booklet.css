@@ -246,20 +246,18 @@ body {
 .calcSticky {
   --calc-sticky-background: var(--surface-alt);
   --calc-sticky-tint: transparent;
+  /* 横棒は育成プランと同じ「アメブ＝オレンジ・かけら＝山吹」にそろえる。かけらの背景はプランと同じく山吹を 22% 重ねた色 */
+  --bar-fill: #ff7a1a;
+  --bar-fill-rgb: 255, 122, 26;
+  --calc-shards-bar-fill: #f2a922;
+  --calc-shards-bar-fill-rgb: 242, 169, 34;
+  --calc-shards-bar-track: #fcecce;
 }
 
 .calcSticky__toggle {
   color: var(--accent-strong);
 }
 
-
-.calcSticky .calcBar__fill--active {
-  background: var(--accent);
-}
-
-.calcSticky .calcBar__fill--others {
-  background: rgba(var(--accent-rgb), 0.36);
-}
 
 /* Sleep growth chips — subtle accent tint on the neutral panel. */
 .hintIcon {

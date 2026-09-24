@@ -175,8 +175,14 @@ input, select, textarea {
   box-shadow: var(--shadow-lg);
 }
 
+/* 横棒は育成プランと同じ「アメブ＝空色・かけら＝太陽の黄色」にそろえる */
 .calcSticky {
   --calc-sticky-tint: rgba(var(--accent-rgb), 0.08);
+  --bar-fill: #2ca1e9;
+  --bar-fill-rgb: 44, 161, 233;
+  --calc-shards-bar-fill: #ffc629;
+  --calc-shards-bar-fill-rgb: 255, 198, 41;
+  --calc-shards-bar-track: #ffeeb2;
   border-bottom: 1px solid rgba(var(--border-rgb), 0.32);
 }
 

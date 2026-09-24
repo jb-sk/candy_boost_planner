@@ -191,9 +191,10 @@
   --accent-strong: #1f79a8;
   --calc-sticky-background: var(--paper);
   --calc-sticky-tint: rgba(var(--candy-aqua-rgb), 0.13);
-  --calc-shards-bar-fill: #efc86b;
-  --calc-shards-bar-fill-rgb: 239, 200, 107;
-  --calc-shards-bar-track: #fcf1d8;
+  /* かけらの横棒は育成プランと同じ水色。背景はプランと同じく水色を 22% 重ねた色 */
+  --calc-shards-bar-fill: #5ec8d0;
+  --calc-shards-bar-fill-rgb: 94, 200, 208;
+  --calc-shards-bar-track: #dcf3f5;
 }
 
 /* 選択中の行は、計算結果の水色と見分けやすいよう桜色を少し濃くする（既定は 6%） */

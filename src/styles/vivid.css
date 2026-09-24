@@ -90,6 +90,14 @@
   --export-shards-bar-track: #3a3a3a;
 }
 
+/* サマリーの横棒も育成プランと同じ「アメブ＝ピンク・かけら＝ライム」にそろえる */
+.calcSticky {
+  --bar-fill: #f02d7d;
+  --bar-fill-rgb: 240, 45, 125;
+  --calc-shards-bar-fill: #bdff00;
+  --calc-shards-bar-fill-rgb: 189, 255, 0;
+}
+
 
 
 /* ===== Global Elements ===== */
@@ -231,6 +239,11 @@ input:focus, select:focus, textarea:focus {
 /* ===== Mobile Nav ===== */
 .mobileNav {
   background-color: #101010;
+}
+
+/* 既定の 8% だと黒地に沈んで暗い赤紫に見えるので、ピンクを濃く重ねる（濃くしすぎるとピンクの文字が読みづらい） */
+.mobileNav__item--active {
+  background: rgba(var(--accent-rgb), 0.12);
 }
 
 /* ===== Box Detail ===== */

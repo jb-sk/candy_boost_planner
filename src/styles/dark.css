@@ -87,6 +87,12 @@
   --export-bar-fill-opacity: 1;
 }
 
+/* サマリーのかけらの横棒も育成プランと同じラベンダーにする（既定の --accent だとアメブと同じ黄色になる） */
+.calcSticky {
+  --calc-shards-bar-fill: #b39cf5;
+  --calc-shards-bar-fill-rgb: 179, 156, 245;
+}
+
 
 
 /* ===== Hero ===== */

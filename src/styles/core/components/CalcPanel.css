@@ -1610,6 +1610,11 @@ body.calcRowReordering * {
     font-size: 17px;
   }
 
+  /* 幅に余裕があるので、シェブロンを右端から左の余白（14px）と同じだけ離す */
+  .calcSticky__toggle {
+    right: 3px;
+  }
+
   /*
    * 左端は結果テキストと揃える（字下げしない）。カードの面と枠で「行の中の別ブロック」
    * だと分かるので、字下げを足すと左だけ余白が二重になる。
@@ -1637,6 +1642,11 @@ body.calcRowReordering * {
        summary, including its top padding, inside the viewport. */
     top: 0;
     padding: 12px 10px;
+  }
+
+  /* 左の余白が 10px になるので、シェブロンも右端から 10px にそろえる */
+  .calcSticky__toggle {
+    right: -1px;
   }
 
   .calcSumInline__k {
