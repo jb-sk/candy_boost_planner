@@ -1943,42 +1943,43 @@ test.describe('04-calculator G. プログレスバー・サマリー表示', () 
     await expect(calc.shardsBar).toBeVisible();
   });
 
-  test('36b. Blue・Candy・Greenはアメ・かけらの横棒を別色で表示する', async ({ page }) => {
+  test('36b. 全テーマでサマリーの横棒が育成プランと同じ色になる', async ({ page }) => {
     const calc = new CalcPanelPage(page);
-    await calc.stickySummary.click();
-
     const boostFill = calc.boostCandyBar.locator('.calcBar__fill--active');
     const shardsFill = calc.shardsBar.locator('.calcBar__fill--active');
     const backgroundColor = (el: Element) => getComputedStyle(el).backgroundColor;
+    // 育成プラン（.exportSheet）の横棒の色を、仮の要素に塗って読み取る
+    const planColors = () =>
+      page.evaluate(() => {
+        const sheet = document.createElement('div');
+        sheet.className = 'exportSheet';
+        const probe = document.createElement('div');
+        sheet.append(probe);
+        document.body.append(sheet);
+        const read = (name: string) => {
+          probe.style.background = `var(${name})`;
+          return getComputedStyle(probe).backgroundColor;
+        };
+        const colors = { boost: read('--bar-fill'), shards: read('--bar-shards-fill') };
+        sheet.remove();
+        return colors;
+      });
 
-    await expect.poll(() => boostFill.evaluate(backgroundColor)).toBe('rgb(0, 168, 107)');
-    await expect.poll(() => shardsFill.evaluate(backgroundColor)).toBe('rgb(0, 134, 199)');
+    const themes = await page.locator('.design-switch-select option').evaluateAll((options) =>
+      options.map((o) => (o as HTMLOptionElement).value),
+    );
+    expect(themes.length).toBeGreaterThanOrEqual(7);
 
-    await page.evaluate(() => localStorage.setItem('candy-boost-planner:design', 'candy'));
-    await page.reload();
-    await calc.stickySummary.click();
-    expect({
-      theme: await page.locator('.design-switch-select').inputValue(),
-      boost: await boostFill.evaluate(backgroundColor),
-      shards: await shardsFill.evaluate(backgroundColor),
-    }).toEqual({
-      theme: 'candy',
-      boost: 'rgb(255, 125, 158)',
-      shards: 'rgb(239, 200, 107)',
-    });
-
-    await page.evaluate(() => localStorage.setItem('candy-boost-planner:design', 'green'));
-    await page.reload();
-    await calc.stickySummary.click();
-    expect({
-      theme: await page.locator('.design-switch-select').inputValue(),
-      boost: await boostFill.evaluate(backgroundColor),
-      shards: await shardsFill.evaluate(backgroundColor),
-    }).toEqual({
-      theme: 'green',
-      boost: 'rgb(134, 173, 102)',
-      shards: 'rgb(255, 173, 102)',
-    });
+    for (const theme of themes) {
+      await page.evaluate((id) => localStorage.setItem('candy-boost-planner:design', id), theme);
+      await page.reload();
+      await expect(page.locator('.design-switch-select')).toHaveValue(theme);
+      await calc.stickySummary.click();
+      const plan = await planColors();
+      expect({ theme, boost: await boostFill.evaluate(backgroundColor), shards: await shardsFill.evaluate(backgroundColor) })
+        .toEqual({ theme, ...plan });
+      expect(plan.boost, theme).not.toBe(plan.shards);
+    }
   });
 
   test('37. サマリー（合計アメブ、合計かけら）が表示される', async ({ page }) => {

@@ -191,9 +191,12 @@ body {
 
 .calcSticky {
   --calc-sticky-tint: rgba(var(--accent-rgb), 0.065);
-  --calc-shards-bar-fill: #ffad66;
-  --calc-shards-bar-fill-rgb: 255, 173, 102;
-  --calc-shards-bar-track: #ffe8d5;
+  /* 横棒は育成プランと同じ「アメブ＝緑・かけら＝青」にそろえる。かけらの背景はプランと同じく青を 22% 重ねた色 */
+  --bar-fill: #9ccb52;
+  --bar-fill-rgb: 156, 203, 82;
+  --calc-shards-bar-fill: #6cc6db;
+  --calc-shards-bar-fill-rgb: 108, 198, 219;
+  --calc-shards-bar-track: #dff3f7;
   border-bottom: 1px solid rgba(var(--border-rgb), 0.34);
 }
 

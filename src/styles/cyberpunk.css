@@ -88,6 +88,14 @@
   --export-bar-fill-opacity: 1;
 }
 
+/* サマリーの横棒も育成プランと同じ「アメブ＝シアン・かけら＝レモン」にそろえる */
+.calcSticky {
+  --bar-fill: #22d3ee;
+  --bar-fill-rgb: 34, 211, 238;
+  --calc-shards-bar-fill: #fde047;
+  --calc-shards-bar-fill-rgb: 253, 224, 71;
+}
+
 /* ===== Body ===== */
 body {
   background-image:
@@ -98,7 +106,11 @@ body {
 }
 
 /* ===== Hero & Panel ===== */
-.hero,
+/* hero は枠で囲まず、下端の区切り線（共通）だけにする */
+.hero {
+  background: rgba(var(--paper-rgb), 0.98);
+}
+
 .panel {
   border: 1px solid rgba(var(--accent-rgb), 0.48);
   box-shadow:
@@ -205,8 +217,6 @@ body {
     background-image: none;
   }
   .hero {
-    border: none;
-    box-shadow: none;
-    background: #0f172a;                 /* solid, not semi-transparent */
+    background: #0f172a;                /* solid, not semi-transparent */
   }
 }
