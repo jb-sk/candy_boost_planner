@@ -5,6 +5,7 @@ import {
   BOOST_CANDY_REMAINING_KEY,
   CALC_SLOTS_STORAGE_KEY,
   DEFAULT_BOOST_REACH_LEVEL_KEY,
+  MINIMIZE_BOOST_KEY,
   SLEEP_SETTINGS_KEY,
   TOTAL_SHARDS_KEY,
 } from "../persistence/calc";
@@ -36,6 +37,7 @@ function backup() {
     },
     candyInventory: { schemaVersion: 2, universal: { s: 1, m: 2, l: 3 }, typeCandy: {}, species: {} },
     defaultBoostReachLevel: null,
+    minimizeBoost: false,
     calculator: { activeSlotIndex: 2, slots: [null, null, null] },
   }, new Date("2026-07-22T07:30:00.000Z"));
 }
@@ -56,6 +58,7 @@ const TARGET_KEYS = [
   ACTIVE_SLOT_STORAGE_KEY,
   BOOST_CANDY_REMAINING_KEY,
   DEFAULT_BOOST_REACH_LEVEL_KEY,
+  MINIMIZE_BOOST_KEY,
 ];
 
 function storageMock(
@@ -108,6 +111,7 @@ describe("applyBackup", () => {
     expect(mock.values.has(BOOST_CANDY_REMAINING_KEY)).toBe(false);
     // 未設定のバックアップを復元したら、復元先に残っていた設定を持ち越さない
     expect(mock.values.has(DEFAULT_BOOST_REACH_LEVEL_KEY)).toBe(false);
+    expect(mock.values.get(MINIMIZE_BOOST_KEY)).toBe("false");
     expect(JSON.parse(mock.values.get(CANDY_STORAGE_KEY) ?? "null").schemaVersion).toBe(2);
     expect(mock.values.has(CANDY_STORAGE_KEY_V1)).toBe(false);
     expect(JSON.parse(mock.values.get(SLEEP_SETTINGS_KEY) ?? "null").blueSeedIncenseDays).toBe(4);
@@ -122,6 +126,16 @@ describe("applyBackup", () => {
     applyBackup(value, { storage: mock.storage, flush: () => {}, cancelPending: () => {}, reload: () => {} });
 
     expect(mock.values.get(DEFAULT_BOOST_REACH_LEVEL_KEY)).toBe("35");
+  });
+
+  it("restores minimizeBoost", () => {
+    const value = backup();
+    value.data.globalSettings.minimizeBoost = true;
+    const mock = storageMock({ [MINIMIZE_BOOST_KEY]: "false" });
+
+    applyBackup(value, { storage: mock.storage, flush: () => {}, cancelPending: () => {}, reload: () => {} });
+
+    expect(mock.values.get(MINIMIZE_BOOST_KEY)).toBe("true");
   });
 
   it("reconstructs the internal source without exposing it in the backup DTO", () => {

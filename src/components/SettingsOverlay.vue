@@ -91,6 +91,17 @@
                   @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
                 />
               </label>
+              <!-- 既定のアメブ目標Lvの補足設定なので同じ行にまとめ、入力列の左端へ寄せる。
+                   文言はアメブ個数の ? にある同じ設定（このポケモンだけ ON）と共通。 -->
+              <label class="inlineCheck settingsSubOption">
+                <input
+                  type="checkbox"
+                  data-testid="settings-minimize-boost-checkbox"
+                  :checked="calc.minimizeBoost.value"
+                  @change="calc.setMinimizeBoost(($event.target as HTMLInputElement).checked)"
+                />
+                <span>{{ t("settings.minimizeBoostLabel") }}</span>
+              </label>
             </div>
             <!-- 各項目の説明文はヘルプへ移した（設定は入力欄だけにして見通しを保つ）。
                  ここでは title 属性で同じ文言を出す。 -->

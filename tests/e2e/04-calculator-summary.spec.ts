@@ -589,6 +589,9 @@ test.describe('04-calculator C. 元に戻す/やり直し', () => {
   test('13b. 元に戻すを連打すると通知が積み上がり、新着が下に入る', async ({ page }) => {
     const box = new BoxPanelPage(page);
     const calc = new CalcPanelPage(page);
+    // 通知は2秒で自動的に消える。実時間のままだと負荷が高いとき判定前に消えるので、
+    // ページの時計を差し替えておき、通知を出す直前に時間を止めて数える
+    await page.clock.install();
 
     await box.selectBoxTile(0);
     await box.clickApplyToCalc();
@@ -598,6 +601,8 @@ test.describe('04-calculator C. 元に戻す/やり直し', () => {
 
     const toasts = page.locator('.appToast');
 
+    // 止める時刻は少し先にする（評価から pauseAt までに実時間が進むと「過去」になる）
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
     await calc.clickUndo();
     await expect(toasts).toHaveCount(1);
     // **位置だけで確かめない。** どちらの並びでも「上の要素の y は下より小さい」は成り立つので、
@@ -609,7 +614,10 @@ test.describe('04-calculator C. 元に戻す/やり直し', () => {
     await calc.clickUndo();
     // **待ちが要る。** 上書き実装でも、消えていく側は leave アニメーション中（0.16秒）だけ
     // DOM に残るので、直後に数えると2件に見えてしまう。
-    // 自動で消えるのは 2秒後なので、0.4秒後に2件あれば「積み上がっている」と言い切れる
+    // ページの時計（rAF・タイマー）を進めて leave を始めさせ、CSS の遷移は実時間で終わらせる。
+    // 自動で消す2秒のタイマーは止まっているので、実時間を待っても1件目は消えない。
+    // その上で2件あれば「積み上がっている」と言い切れる
+    await page.clock.runFor(400);
     await page.waitForTimeout(400);
     await expect(toasts).toHaveCount(2);
 
@@ -623,6 +631,8 @@ test.describe('04-calculator C. 元に戻す/やり直し', () => {
     // 下端は固定なので、先に出た通知は1行ぶん上へ動く（アニメーションはしない）
     expect(older!.y).toBeLessThan(firstBefore!.y);
 
+    // 以降は見た目の確認で、ページ内の setTimeout を使うので時計を動かす
+    await page.clock.resume();
     const look = await page.evaluate(async () => {
       const all = [...document.querySelectorAll('.appToastStack .appToast')] as HTMLElement[];
       // 入場の開始状態を再現する。2件目は「1件目だけフェード」の対象外。
@@ -1059,6 +1069,8 @@ test.describe('04-calculator E. 行の入力操作', () => {
     await expect(boostCandy).toHaveAttribute('title', /アメの在庫を増やしてください/);
     await expect(boostCandy).not.toBeDisabled();
     await expect(boostCandy).not.toHaveClass(/field__input--sleepCapped/);
+    // 在庫の頭打ちはヒントの警告なので、? も赤枠になる
+    await expect(row.getByTestId('hintBtn')).toHaveClass(/hintIcon--warn/);
 
     await expect(calc.getRowBoostReachLevelInput(row)).toHaveAttribute('max', '59');
     await calc.openLevelPicker(row, 'boostReachLevel');
@@ -1197,6 +1209,8 @@ test.describe('04-calculator E. 行の入力操作', () => {
     await expect(candyTarget).toHaveClass(/field__input--allSleep/);
     await expect(boostCandy).toHaveClass(/field__input--allSleep/);
     await expect(boostReach).toHaveClass(/levelPick--allSleep/);
+    // すべて睡眠の案内は選んだモードの説明で、直すべき問題ではないので ? は赤くしない
+    await expect(row.getByTestId('hintBtn')).not.toHaveClass(/hintIcon--warn/);
 
     // 破線の理由は3欄それぞれの場所で読める。アメ関連はヒント2つ、
     // アメブ目標Lvには ? が無いのでピッカー内の note（disabled でも開ける）で読ませる。
@@ -1349,8 +1363,9 @@ test.describe('04-calculator E. 行の入力操作', () => {
     const sleepReach = await calc.getRowSleepReachLevel(row);
     expect(Number(sleepReach.replace('約', '').replace(/（.*$/, ''))).toBeGreaterThan(55);
 
-    // アメ到達Lvは睡眠前の地点なので現在Lvのまま。別の地点であることを固定する
-    expect(await calc.getRowReachedLevel(row)).toBe('50');
+    // アメ到達Lvは睡眠前の地点なので現在Lvのまま。別の地点であることを固定する。
+    // 結果欄は planner の debounce 後に更新されるので、1回読みではなく待って判定する
+    await expect.poll(async () => calc.getRowReachedLevel(row)).toBe('50');
 
     // 並び順: 残EXP（目標Lvまでの時間）→ 睡眠到達Lv（睡眠目標を寝きった時点）。
     // 逆に置くと、どちらの時間がどちらの到達点のものか読めなくなる
@@ -1948,7 +1963,7 @@ test.describe('04-calculator G. プログレスバー・サマリー表示', () 
       shards: await shardsFill.evaluate(backgroundColor),
     }).toEqual({
       theme: 'candy',
-      boost: 'rgb(245, 142, 172)',
+      boost: 'rgb(255, 125, 158)',
       shards: 'rgb(239, 200, 107)',
     });
 
@@ -1961,7 +1976,7 @@ test.describe('04-calculator G. プログレスバー・サマリー表示', () 
       shards: await shardsFill.evaluate(backgroundColor),
     }).toEqual({
       theme: 'green',
-      boost: 'rgb(139, 211, 106)',
+      boost: 'rgb(134, 173, 102)',
       shards: 'rgb(255, 173, 102)',
     });
   });
@@ -2230,7 +2245,16 @@ test.describe('04-calculator H. 行の並べ替え', () => {
     await expect(nav).toBeVisible();
     await expect(page.locator('body')).toHaveClass(/calcRowReordering/);
     await expect(calc.getRow(0).locator('.calcRow__title')).toHaveCSS('user-select', 'none');
-    await page.evaluate(() => {
+
+    // 移動先はナビの2番目の項目で実測する（43b と同じ）。ハンドル位置からの相対値にすると、
+    // ナビが画面端で位置を補正されたとき（負荷でレイアウトがずれてハンドルが端に寄ったとき）に
+    // 別の項目へ当たり、間欠的に失敗する。
+    const rowCount = await nav.locator('.calcReorderNav__item').count();
+    const secondItemY = await nav.locator('.calcReorderNav__item').nth(1).evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.top + rect.height / 2;
+    });
+    const dispatchTouch = (type: 'touchmove' | 'touchend', clientY: number) => page.evaluate(({ type, clientY }) => {
       const state = (window as typeof window & {
         __rowDragTouch?: { element: Element; clientX: number; clientY: number; identifier: number };
       }).__rowDragTouch!;
@@ -2238,21 +2262,19 @@ test.describe('04-calculator H. 行の並べ替え', () => {
         identifier: state.identifier,
         target: state.element,
         clientX: state.clientX,
-        clientY: state.clientY + 40,
+        clientY,
       });
-      document.dispatchEvent(new TouchEvent('touchmove', {
+      document.dispatchEvent(new TouchEvent(type, {
         bubbles: true,
         cancelable: true,
-        touches: [touch],
+        touches: type === 'touchmove' ? [touch] : [],
         changedTouches: [touch],
       }));
-      document.dispatchEvent(new TouchEvent('touchend', {
-        bubbles: true,
-        cancelable: true,
-        touches: [],
-        changedTouches: [touch],
-      }));
-    });
+    }, { type, clientY });
+
+    await dispatchTouch('touchmove', secondItemY);
+    await expect(nav.locator('.calcReorderNav__head')).toContainText(`2 / ${rowCount}`);
+    await dispatchTouch('touchend', secondItemY);
 
     await expect(nav).toBeHidden();
     await expect(page.locator('body')).not.toHaveClass(/calcRowReordering/);
@@ -2642,8 +2664,10 @@ test.describe('04-calculator L. ヒント表示', () => {
     // アメブ上限の本文は箇条書き2つ＋締めの3行
     const capLines = (await notes.nth(1).innerText()).split('\n').map((s) => s.trim()).filter(Boolean);
     expect(capLines).toHaveLength(3);
-    // 設定モーダルへのリンクは廃止し、ヒント内で直接アメブ上限を変更する
+    // 設定モーダルへのリンクは廃止し、ヒント内で直接アメブ上限を変更する。
     await expect(calc.hintPopover.locator('button')).toHaveCount(0);
+    // 設定の最小化が OFF のときは、このポケモンだけ最小化するチェックボックスがある
+    await expect(calc.hintPopover.getByTestId('row-minimize-boost-checkbox')).toBeVisible();
     await expect(calc.hintPopover.getByTestId('calc-hint-boost-remaining-input')).toBeVisible();
   });
 
@@ -3105,6 +3129,104 @@ test.describe('04-calculator N. アメブ再割当と枠超過', () => {
     await capInput.blur();
     await expect(warn).toHaveCount(0);
     await expect(calc.getRowBoostCandyInput(row)).not.toHaveClass(/field__input--overQuota/);
+    await expect(row.getByTestId('hintBtn')).not.toHaveClass(/hintIcon--warn/);
+  });
+
+  test('67b. ヒントに警告があるときはアメブ個数の ? が赤枠になる', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const settings = new SettingsModalPage(page);
+    await calc.setBoostKind('full');
+
+    const row = calc.getRow(0);
+    const hintBtn = row.getByTestId('hintBtn');
+    await expect(hintBtn).not.toHaveClass(/hintIcon--warn/);
+
+    await calc.settingsButton.click();
+    await settings.setBoostCandyRemaining('10');
+    await settings.closeByButton();
+    await calc.setRowBoostCandy(row, 500);
+    await expect(hintBtn).toHaveClass(/hintIcon--warn/);
+  });
+
+  test('67d. 設定が OFF でも ? からこのポケモンだけ最小限のアメブ個数にでき、在庫と目標Lvに追従する', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const settings = new SettingsModalPage(page);
+    await calc.setBoostKind('full');
+
+    const row = calc.getRow(0);
+    const hintBtn = row.getByTestId('hintBtn');
+    const boostCandy = calc.getRowBoostCandyInput(row);
+    const dstLevel = calc.getRowDstLevelInput(row);
+    await dstLevel.fill('70');
+    await dstLevel.blur();
+    await calc.setRowSpeciesCandy(row, 99999);
+    const derived = Number(await boostCandy.getAttribute('placeholder'));
+
+    await hintBtn.click();
+    const checkbox = page.getByTestId('row-minimize-boost-checkbox');
+    await expect(checkbox).not.toBeChecked();
+    await checkbox.check();
+    await expect(checkbox).toBeChecked();
+    await page.getByTestId('calc-hint-overlay').click({ position: { x: 5, y: 5 } });
+
+    // 個数は保存せず（空欄のまま）導出値が最小限になる
+    await expect(boostCandy).toHaveValue('');
+    await expect.poll(async () => Number(await boostCandy.getAttribute('placeholder'))).toBeLessThan(derived);
+
+    // 在庫を減らすと計算し直し、届かなければ ? が赤枠になる。
+    // このポケモンだけ ON にした行は、在庫0でも知らせる
+    await calc.setRowSpeciesCandy(row, 0);
+    await expect(hintBtn).toHaveClass(/hintIcon--warn/);
+    await calc.setRowSpeciesCandy(row, 99999);
+    await expect(hintBtn).not.toHaveClass(/hintIcon--warn/);
+
+    // 自分で個数を入れると、このポケモンの最小化は外れる
+    await calc.setRowBoostCandy(row, 10);
+    await hintBtn.click();
+    await expect(page.getByTestId('row-minimize-boost-checkbox')).not.toBeChecked();
+    await page.getByTestId('calc-hint-overlay').click({ position: { x: 5, y: 5 } });
+
+    // 設定で最小化を ON にすると全行が対象なので、チェックボックスは出さない
+    await calc.settingsButton.click();
+    await page.getByTestId('settings-minimize-boost-checkbox').check();
+    await settings.closeByButton();
+    await hintBtn.click();
+    await expect(page.getByTestId('calc-hint-popover')).toBeVisible();
+    await expect(page.getByTestId('row-minimize-boost')).toHaveCount(0);
+  });
+
+  test('67c. アメブ最小化で在庫が足りず既定Lvへ戻った行は ? が赤枠になり、理由が読める', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const settings = new SettingsModalPage(page);
+    await calc.setBoostKind('full');
+
+    await calc.settingsButton.click();
+    await page.getByTestId('settings-minimize-boost-checkbox').check();
+    await settings.closeByButton();
+
+    const row = calc.getRow(0);
+    const hintBtn = row.getByTestId('hintBtn');
+    const dstLevel = calc.getRowDstLevelInput(row);
+    await dstLevel.fill('70');
+    await dstLevel.blur();
+
+    // 在庫はあるが目標Lvに届かない → 既定のアメブ目標Lvへ戻り、? が赤枠
+    await calc.setRowSpeciesCandy(row, 1);
+    await expect(hintBtn).toHaveClass(/hintIcon--warn/);
+    await hintBtn.click();
+    await expect(page.getByTestId('calc-hint-minimize-fallback-note')).toContainText('既定のアメブ目標Lv');
+    // 上に同じアメを使う行が無いので、在庫の取り合いの案内は出さない
+    await expect(page.getByTestId('calc-hint-minimize-shared-stock-note')).toHaveCount(0);
+    await page.getByTestId('calc-hint-overlay').click({ position: { x: 5, y: 5 } });
+
+
+    // 在庫で届けば最小化されて警告は消える
+    await calc.setRowSpeciesCandy(row, 99999);
+    await expect(hintBtn).not.toHaveClass(/hintIcon--warn/);
+
+    // 在庫0（未登録）は警告しない（在庫未入力の警告に任せる）
+    await calc.setRowSpeciesCandy(row, 0);
+    await expect(hintBtn).not.toHaveClass(/hintIcon--warn/);
   });
 });
 

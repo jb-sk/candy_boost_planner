@@ -126,6 +126,7 @@ async function buildCurrentBackupText(): Promise<string> {
     sleepSettings: props.calc.sleepSettings.value,
     candyInventory: candyStore.getInventory(),
     defaultBoostReachLevel: props.calc.defaultBoostReachLevel.value,
+    minimizeBoost: props.calc.minimizeBoost.value,
     calculator: props.calc.getBackupSnapshot(),
   });
   const text = stringifyBackup(backup);

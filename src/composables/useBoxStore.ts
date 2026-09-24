@@ -1152,6 +1152,23 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     return true;
   }
 
+  /** カスタムタグを指定位置へ移動する。位置が変わった場合のみUndoに記録する。 */
+  function moveCustomTag(id: string, toIndex: number): boolean {
+    const fromIndex = customTags.value.findIndex((tag) => tag.id === id);
+    if (fromIndex === -1 || Number.isNaN(toIndex)) return false;
+
+    const lastIndex = customTags.value.length - 1;
+    const targetIndex = Math.max(0, Math.min(lastIndex, Math.trunc(toIndex)));
+    if (fromIndex === targetIndex) return false;
+
+    pushUndoSnapshot();
+    const next = [...customTags.value];
+    const [tag] = next.splice(fromIndex, 1);
+    next.splice(targetIndex, 0, tag!);
+    customTags.value = next;
+    return true;
+  }
+
   function customTagUsageCount(id: string): number {
     return boxEntries.value.reduce((count, entry) => count + (entry.tagIds?.includes(id) ? 1 : 0), 0);
   }
@@ -1598,6 +1615,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     toggleFavoriteById,
     addCustomTag,
     renameCustomTag,
+    moveCustomTag,
     deleteCustomTag,
     customTagUsageCount,
     toggleCustomTagFilter,

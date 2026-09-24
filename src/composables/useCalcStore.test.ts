@@ -12,6 +12,7 @@ import { targetFromCandy } from "../domain/level-planner/deriveTarget";
 import { minCandyForTarget } from "../domain/pokesleep/minCandyForTarget";
 import { calcExp, calcExpAndCandy, calcLevelByCandy } from "../domain/pokesleep/exp";
 import { minBoostForTarget } from "../domain/pokesleep/minBoostForTarget";
+import { minBoostWithinBudget } from "../domain/pokesleep/minBoostWithinBudget";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { detectTimeZone, normalizeTimeZone, type GameDate } from "../domain/pokesleep/game-date";
 import { projectPastYearEvents } from "../domain/pokesleep/projected-events";
@@ -551,6 +552,24 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     return { store, id };
   }
 
+  function makeCandyTargetClearStore(boostCandy: number, candyTarget = 400) {
+    const store = useCalcStore({ locale: ref("ja"), t });
+    store.setSlotBoostKind("full");
+    store.onBoostCandyRemainingInput("5000");
+    store.upsertFromBox({
+      boxId: "candy-target-clear",
+      pokedexId: 25,
+      srcLevel: 10,
+      dstLevelDefault: 40,
+      expType: 600,
+      nature: "normal",
+    });
+    const id = store.rows.value[0]!.id;
+    store.onRowBoostCandy(id, String(boostCandy));
+    store.onRowCandyTarget(id, String(candyTarget));
+    return { store, id };
+  }
+
   const rowOf = (store: ReturnType<typeof useCalcStore>, id: string) => store.rows.value.find((r) => r.id === id)!;
 
   /** ストアと独立に (m, n) の到達点Lvを求める（保存された目標Lvがそれと一致することの検証用）。 */
@@ -566,6 +585,119 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
       boostKind: store.boostKind.value,
     }).level;
   };
+
+  it("個数指定から目標Lvへ届く最小アメブを適用する", () => {
+    const { store, id } = makeStore();
+    store.setSlotBoostKind("full");
+    const before = rowOf(store, id);
+    const targetLevel = 45;
+    const budget = calcExpAndCandy({
+      srcLevel: before.srcLevel,
+      dstLevel: targetLevel,
+      expType: before.expType,
+      nature: before.nature,
+      boost: "full",
+    }).candy;
+    store.onRowCandyTarget(id, String(budget));
+
+    expect(store.applyMinBoostForCandyTarget(id, targetLevel)).toBe("applied");
+
+    const applied = rowOf(store, id);
+    const n = applied.boostOrExpAdjustment!;
+    expect(n).toBe(minBoostWithinBudget({
+      srcLevel: applied.srcLevel,
+      targetLevel,
+      targetExpInLevel: 0,
+      expType: applied.expType,
+      nature: applied.nature,
+      boostKind: "full",
+      budget,
+      expGot: 0,
+    }));
+    expect(n).toBeGreaterThan(0);
+    expect(n).toBeLessThanOrEqual(applied.candyTarget!);
+
+    const reached = targetFromCandy({
+      srcLevel: applied.srcLevel,
+      expGot: 0,
+      candyTarget: applied.candyTarget!,
+      boostCandy: n,
+      expType: applied.expType,
+      nature: applied.nature,
+      boostKind: "full",
+    });
+    const oneLess = targetFromCandy({
+      srcLevel: applied.srcLevel,
+      expGot: 0,
+      candyTarget: applied.candyTarget!,
+      boostCandy: n - 1,
+      expType: applied.expType,
+      nature: applied.nature,
+      boostKind: "full",
+    });
+    expect(applied.dstLevel).toBe(reached.level);
+    expect(applied.dstExpInLevel).toBe(reached.expInLevel);
+    expect(reached.level).toBeGreaterThanOrEqual(targetLevel);
+    expect(oneLess.level).toBeLessThan(targetLevel);
+  });
+
+  it("個数指定の逆算結果を適用すると行単位の最小化フラグを解除する", () => {
+    const { store, id } = makeStore();
+    store.setSlotBoostKind("full");
+    expect(store.setRowMinimizeBoost(id, true)).toBe("applied");
+    store.onRowCandyTarget(id, "1000");
+    expect(rowOf(store, id).boostMinimizeRow).toBe(true);
+
+    expect(store.applyMinBoostForCandyTarget(id, 40)).toBe("applied");
+
+    expect(rowOf(store, id).boostOrExpAdjustment).toBeDefined();
+    expect(rowOf(store, id).boostMinimizeRow).toBeUndefined();
+  });
+
+  it("指定Lvにすでに届いていればアメブ0を適用する", () => {
+    const { store, id } = makeStore();
+    store.setSlotBoostKind("full");
+    store.onRowCandyTarget(id, "100");
+
+    expect(store.applyMinBoostForCandyTarget(id, rowOf(store, id).srcLevel)).toBe("applied");
+    expect(rowOf(store, id).boostOrExpAdjustment).toBe(0);
+    expect(rowOf(store, id).candyTarget).toBe(100);
+  });
+
+  it("個数指定で届かないときは行を変えず unreachable を返す", () => {
+    const { store, id } = makeStore();
+    store.setSlotBoostKind("full");
+    store.onRowCandyTarget(id, "1");
+    const before = { ...rowOf(store, id) };
+
+    expect(store.applyMinBoostForCandyTarget(id, MAX_LEVEL)).toBe("unreachable");
+    expect(rowOf(store, id)).toEqual(before);
+  });
+
+  it("個数指定が空または0なら逆算ツールは変更しない", () => {
+    const { store, id } = makeStore();
+    store.setSlotBoostKind("full");
+    const emptyBefore = { ...rowOf(store, id) };
+    expect(store.applyMinBoostForCandyTarget(id, 40)).toBe("disabled");
+    expect(rowOf(store, id)).toEqual(emptyBefore);
+
+    store.onRowCandyTarget(id, "0");
+    const zeroBefore = { ...rowOf(store, id) };
+    expect(store.applyMinBoostForCandyTarget(id, 40)).toBe("disabled");
+    expect(rowOf(store, id)).toEqual(zeroBefore);
+  });
+
+  it("逆算ツールの適用はundo 1回で元の行へ戻る", () => {
+    const { store, id } = makeStore();
+    store.setSlotBoostKind("full");
+    store.onRowCandyTarget(id, "1000");
+    const before = { ...rowOf(store, id) };
+
+    expect(store.applyMinBoostForCandyTarget(id, 40)).toBe("applied");
+    expect(rowOf(store, id)).not.toEqual(before);
+    store.undo();
+    expect(rowOf(store, id)).toEqual(before);
+  });
 
   it("個数指定を入力すると dstLevel が実効目標のLvへ同期される", () => {
     const { store, id } = makeStore();
@@ -992,6 +1124,52 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     expect(r.dstExpInLevel).toBeUndefined();
   });
 
+  it("現在Lv変更は明示アメブ個数を保ち、睡眠上限を超えた分だけ縮める（§9.2）", () => {
+    const makeExample = () => {
+      const store = useCalcStore({ locale: ref("ja"), t });
+      store.setSlotBoostKind("full");
+      store.upsertFromBox({
+        boxId: "src-level-explicit",
+        pokedexId: 380,
+        srcLevel: 64,
+        dstLevelDefault: 70,
+        expType: 1080,
+        nature: "normal",
+        sleepHours: 1000,
+      });
+      const id = store.rows.value[0]!.id;
+      store.setBoostLevel(id, 64);
+      expect(store.rowsView.value[0]!.ui.boostCandyInputMax).toBeGreaterThanOrEqual(350);
+      store.onRowBoostCandy(id, "350");
+      expect(rowOf(store, id).boostOrExpAdjustment).toBe(350);
+      // 睡眠目標の設定後も保存個数は残る。現在Lv変更時に新しい T' 上限を適用する。
+      store.setRowSleepTargetHours(id, 2000);
+      expect(rowOf(store, id).boostOrExpAdjustment).toBe(350);
+      expect(store.rowsView.value[0]!.ui.boostCandyInputMax).toBeGreaterThanOrEqual(350);
+      return { store, id };
+    };
+
+    const lowered = makeExample();
+    lowered.store.setSrcLevel(lowered.id, 63);
+    const afterLower = rowOf(lowered.store, lowered.id);
+    expect(afterLower.srcLevel).toBe(63);
+    expect(afterLower.dstLevel).toBe(70);
+    expect(afterLower.boostReachLevel).toBe(64);
+    expect(afterLower.boostOrExpAdjustment).toBe(350);
+    expect(afterLower.boostOrExpAdjustment).toBeGreaterThan(0);
+    expect(afterLower.candyTarget).toBeUndefined();
+
+    const raised = makeExample();
+    raised.store.setSrcLevel(raised.id, 65);
+    const after = rowOf(raised.store, raised.id);
+    const inputMax = raised.store.rowsView.value[0]!.ui.boostCandyInputMax;
+    expect(after.srcLevel).toBe(65);
+    expect(after.dstLevel).toBe(70);
+    expect(after.boostReachLevel).toBe(65);
+    expect(after.boostOrExpAdjustment).toBe(Math.min(350, inputMax));
+    expect(after.candyTarget).toBeUndefined();
+  });
+
   it("ボックス同期は元Lvが変わらなければ個数指定・睡眠目標を維持し、dstLevel も戻さない", () => {
     const { store, id } = makeStore();
     store.setDstLevel(id, 45);
@@ -1019,6 +1197,31 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     expect(r.srcLevel).toBe(20);
     expect(r.candyTarget).toBeUndefined();
     expect(r.sleepTargetHours).toBe(1000);
+  });
+
+  it("ボックス同期で元Lvが変わっても明示アメブ個数を保つ（§9.2）", () => {
+    const { store, id } = makeStore();
+    store.setSlotBoostKind("full");
+    store.setDstLevel(id, 60);
+    store.onRowBoostCandy(id, "10");
+    const before = rowOf(store, id);
+    expect(before.boostOrExpAdjustment).toBe(10);
+
+    store.upsertFromBox({
+      boxId: "box-1",
+      pokedexId: 25,
+      srcLevel: 20,
+      dstLevelDefault: 60,
+      expType: 600,
+      nature: "normal",
+    });
+
+    expect(rowOf(store, id)).toMatchObject({
+      srcLevel: 20,
+      dstLevel: 60,
+      boostOrExpAdjustment: 10,
+      candyTarget: undefined,
+    });
   });
 
   it("個数指定 → アメブ変更を往復しても値が振動しない", () => {
@@ -1061,6 +1264,61 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     expect(cleared.candyTarget).toBeUndefined();
     expect(cleared.dstLevel).toBe(before.dstLevel);
     expect(cleared.boostOrExpAdjustment).toBe(before.boostOrExpAdjustment);
+  });
+
+  it("明示アメブ149で個数指定を消すとLvちょうどになり、undo 1回で戻る", () => {
+    const { store, id } = makeCandyTargetClearStore(149);
+    const beforeClear = { ...rowOf(store, id) };
+    expect(beforeClear).toMatchObject({
+      dstLevel: 38,
+      dstExpInLevel: 575,
+      boostOrExpAdjustment: 149,
+      candyTarget: 400,
+    });
+
+    store.onRowCandyTarget(id, "");
+
+    expect(rowOf(store, id)).toMatchObject({
+      dstLevel: 38,
+      dstExpInLevel: 0,
+      boostOrExpAdjustment: 149,
+      candyTarget: undefined,
+    });
+    store.undo();
+    expect(rowOf(store, id)).toEqual(beforeClear);
+  });
+
+  it("明示アメブ0で個数指定を消しても目標Lvは保ち、Lv内EXPを0にする", () => {
+    const { store, id } = makeCandyTargetClearStore(0);
+    const beforeClear = { ...rowOf(store, id) };
+    expect(beforeClear.candyTarget).toBe(400);
+    expect(beforeClear.boostOrExpAdjustment).toBe(0);
+
+    store.onRowCandyTarget(id, "");
+
+    expect(rowOf(store, id)).toMatchObject({
+      dstLevel: beforeClear.dstLevel,
+      dstExpInLevel: 0,
+      boostOrExpAdjustment: 0,
+      candyTarget: undefined,
+    });
+  });
+
+  it("明示アメブだけで保存目標を超える場合は到達点までラチェットする", () => {
+    const { store, id } = makeCandyTargetClearStore(149, 149);
+    const beforeClear = { ...rowOf(store, id) };
+    expect(beforeClear.dstLevel).toBe(30);
+    expect(beforeClear.dstExpInLevel).toBe(648);
+
+    store.onRowCandyTarget(id, "");
+
+    expect(rowOf(store, id)).toMatchObject({
+      dstLevel: 30,
+      // n = m = 149 reaches Lv30 + 648 EXP, so the ratchet restores that point.
+      dstExpInLevel: 648,
+      boostOrExpAdjustment: 149,
+      candyTarget: undefined,
+    });
   });
 
   it("個数指定の確定値だけを受け取る（入力途中の桁でアメブ個数を潰さない）", () => {
@@ -1430,6 +1688,7 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
 
     // 上限0の欄で入力を受け取ると「明示的に0個」が確定し、睡眠を解除しても戻らなくなる。
     store.onRowBoostCandy(id, "500");
+    store.onRowBoostCandy(id, "");
     expect(rowOf(store, id).boostOrExpAdjustment).toBeUndefined();
 
     store.setRowSleepTargetHours(id, undefined);
@@ -1442,6 +1701,7 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     store.setSlotBoostKind("none");
 
     store.onRowBoostCandy(id, "500");
+    store.onRowBoostCandy(id, "");
 
     expect(rowOf(store, id).boostOrExpAdjustment).toBeUndefined();
   });
@@ -1454,8 +1714,43 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     expect(store.rowsView.value.find((row) => row.id === id)!.ui.boostCandyInputMax).toBe(0);
 
     store.onRowBoostCandy(id, "500");
+    store.onRowBoostCandy(id, "");
 
     expect(rowOf(store, id).boostOrExpAdjustment).toBeUndefined();
+  });
+
+  it("アメブ個数を空白で確定すると明示0になり、undo 1回で未入力へ戻る（§9.3）", () => {
+    const { store, id } = makeStore();
+    store.setSlotBoostKind("full");
+    const derived = store.rowsView.value.find((row) => row.id === id)!.ui.boostCandyInput;
+    expect(derived).toBeGreaterThan(0);
+    expect(rowOf(store, id).boostOrExpAdjustment).toBeUndefined();
+
+    store.upsertFromBox({ boxId: "untouched-row", pokedexId: 26, srcLevel: 10, dstLevelDefault: 30, expType: 600, nature: "normal" });
+    const untouchedId = store.rows.value[1]!.id;
+    const untouchedInput = store.rowsView.value.find((row) => row.id === untouchedId)!.ui.boostCandyInput;
+    expect(rowOf(store, untouchedId).boostOrExpAdjustment).toBeUndefined();
+
+    store.onRowBoostCandy(id, "");
+    expect(rowOf(store, id).boostOrExpAdjustment).toBe(0);
+    expect(store.rowsView.value.find((row) => row.id === id)!.ui.boostCandyInput).toBe(0);
+    expect(rowOf(store, untouchedId).boostOrExpAdjustment).toBeUndefined();
+    expect(store.rowsView.value.find((row) => row.id === untouchedId)!.ui.boostCandyInput).toBe(untouchedInput);
+
+    store.undo();
+    expect(rowOf(store, id).boostOrExpAdjustment).toBeUndefined();
+    expect(store.rowsView.value.find((row) => row.id === id)!.ui.boostCandyInput).toBe(derived);
+  });
+
+  it("在庫0の stock 行は空白確定で明示0を保存できる（§9.3）", () => {
+    const { store, id } = makeStore();
+    store.setSlotBoostKind("full");
+    store.updateSpeciesCandy(25, 0);
+    store.setRowSleepTarget(id, "stock");
+    expect(store.rowsView.value.find((row) => row.id === id)!.ui.boostCandyInputMax).toBe(0);
+
+    store.onRowBoostCandy(id, "");
+    expect(rowOf(store, id).boostOrExpAdjustment).toBe(0);
   });
 
   it("上限が1以上ならアメブ個数を保存し、超過分は上限へクランプする", () => {
@@ -2745,8 +3040,7 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
   });
 
   it("アメブ境界の行は個数だけでなくアメブ目標Lvも実投入数の到達点まで下げる", () => {
-    // 保存値を目標Lv60のまま残すと、あとで個数が捨てられたとき（元Lv変更など）に
-    // 60から導出し直して枠を大きく超える値が復活する。保存値と表示を一致させる。
+    // §9.2: 元Lv変更後も明示個数を保ち、新条件の上限を超える分だけ縮める。
     const store = makeQuotaStore();
     const [first, boundary, below] = store.rows.value;
 
@@ -2759,8 +3053,12 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     expect(store.rowsView.value.map((row) => row.ui.boostReachLevel))
       .toEqual(store.rows.value.map((row) => row.boostReachLevel));
 
-    // 個数を捨てる操作（元Lv変更）をしても、枠を超える値は復活しない
+    const countBefore = boundary!.boostOrExpAdjustment!;
+    // §9.2: 明示個数は保持し、更新後の目標上限を超えた分だけ縮める。枠は配り直さない。
     store.setSrcLevel(boundary!.id, 12);
+    const countAfter = store.rows.value[1]!.boostOrExpAdjustment;
+    expect(countAfter).toBeDefined();
+    expect(countAfter).toBeLessThanOrEqual(countBefore);
     expect(store.rowsView.value[1]!.ui.boostQuotaViolation).toBeNull();
   });
 
@@ -2873,6 +3171,40 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     store.setDstLevel(id, 59);
 
     expect(rowOf(store, id).boostOrExpAdjustment).toBe(400);
+  });
+
+  it("目標Lvを下げて明示個数が上限を超えたら、目標到達数まで縮める（§9.2）", () => {
+    const store = useCalcStore({ locale: ref("ja"), t });
+    store.setSlotBoostKind("full");
+    store.upsertFromBox({
+      boxId: "lower-target-explicit",
+      pokedexId: 25,
+      srcLevel: 28,
+      dstLevelDefault: 70,
+      expType: 600,
+      nature: "normal",
+    });
+    const id = store.rows.value[0]!.id;
+    const initialMax = store.rowsView.value[0]!.ui.boostCandyInputMax;
+    store.onRowBoostCandy(id, String(initialMax));
+    expect(rowOf(store, id).boostOrExpAdjustment).toBe(initialMax);
+
+    store.setDstLevel(id, 40);
+    const row = rowOf(store, id);
+    const targetMax = calcExpAndCandy({
+      srcLevel: row.srcLevel,
+      dstLevel: 40,
+      dstExpInLevel: 0,
+      expType: row.expType,
+      nature: row.nature,
+      boost: store.boostKind.value,
+      expGot: 0,
+    }).candy;
+    expect(targetMax).toBeLessThan(initialMax);
+    expect(row.dstLevel).toBe(40);
+    expect(row.dstExpInLevel).toBe(0);
+    expect(row.candyTarget).toBeUndefined();
+    expect(row.boostOrExpAdjustment).toBe(targetMax);
   });
 
   it("グローバル睡眠設定の変更でも個数指定があるときの最終目標が追従する（§11.10）", () => {
@@ -3088,6 +3420,7 @@ describe("useCalcStore: すべて睡眠", () => {
       boostReachLevel: 35,
     };
     currentLevelPair.withMode.setSrcLevel(currentLevelPair.modeId, 15);
+    // §9.2: 明示個数は上限まで引いて保つが、上限0の行へは明示0を焼き付けず未入力へ戻す（§11.11）。
     expect(currentLevelPair.withMode.rows.value[0]!.boostOrExpAdjustment).toBeUndefined();
     expect(currentLevelPair.withMode.rows.value[0]!.boostReachLevel).toBe(35);
     expectModeConsumesNoQuota(currentLevelPair.withMode, currentLevelPair.control, currentLevelPair.modeId);
@@ -3106,6 +3439,7 @@ describe("useCalcStore: すべて睡眠", () => {
       expType: 600,
       nature: "normal",
     });
+    // §9.2: ボックス同期も現在Lvの変更と同じ扱い（上限0なので未入力へ戻る）。
     expect(syncPair.withMode.rows.value[0]!.boostOrExpAdjustment).toBeUndefined();
     expect(syncPair.withMode.rows.value[0]!.boostReachLevel).toBe(35);
     expectModeConsumesNoQuota(syncPair.withMode, syncPair.control, syncPair.modeId);
@@ -3469,6 +3803,7 @@ describe("useCalcStore: すべて睡眠", () => {
     const id = store.rows.value[0]!.id;
     store.onRowBoostCandy(id, "25");
     const dormant = store.rows.value[0]!.boostOrExpAdjustment;
+    expect(store.rows.value[0]!.boostMinimizeRow).toBeUndefined();
 
     store.setRowSleepTarget(id, "all");
     expect(store.rows.value[0]).toMatchObject({
@@ -3497,6 +3832,7 @@ describe("useCalcStore: すべて睡眠", () => {
       boostOrExpAdjustment: dormant,
     });
     expect(store.rows.value[0]!.sleepTargetHours).toBeUndefined();
+    expect(store.rows.value[0]!.boostMinimizeRow).toBeUndefined();
   });
 
 
@@ -3603,4 +3939,828 @@ describe("useCalcStore: ボーナス内訳の日数・睡眠スコア", () => {
     });
   });
 
+});
+
+describe("useCalcStore: アメブ最小化", () => {
+  beforeEach(() => {
+    cancelPersist();
+    installLocalStorageMock();
+  });
+
+  afterEach(() => {
+    cancelPersist();
+  });
+
+  const t = ((key: string) => key) as unknown as Composer["t"];
+
+  function addRow(store: ReturnType<typeof useCalcStore>, boxId: string, pokedexId = 25, dstLevelDefault = 40) {
+    store.upsertFromBox({ boxId, pokedexId, srcLevel: 10, dstLevelDefault, expType: 600, nature: "normal" });
+    return store.rows.value.find((row) => row.boxId === boxId)!;
+  }
+
+  function targetBeforeSleep(store: ReturnType<typeof useCalcStore>, row: CalcRow) {
+    const expGot = row.expRemaining > 0
+      ? Math.max(0, calcExp(row.srcLevel, row.srcLevel + 1, row.expType) - row.expRemaining)
+      : 0;
+    const toTarget = Math.max(0,
+      calcExp(row.srcLevel, row.dstLevel, row.expType) + (row.dstExpInLevel ?? 0) - expGot,
+    );
+    const forCandy = Math.max(0, toTarget - (row.sleepTargetHours === undefined ? 0 : store.rowSleepExpFor(row.id)));
+    let level = row.srcLevel;
+    let carry = expGot + forCandy;
+    while (level < MAX_LEVEL) {
+      const toNext = calcExp(level, level + 1, row.expType);
+      if (carry < toNext) break;
+      carry -= toNext;
+      level++;
+    }
+    return { level, expInLevel: level >= MAX_LEVEL ? 0 : carry };
+  }
+
+  function expectedMinimum(store: ReturnType<typeof useCalcStore>, row: CalcRow): number | undefined {
+    const target = row.sleepTargetHours === undefined
+      ? { level: row.dstLevel, expInLevel: row.dstExpInLevel ?? 0 }
+      : targetBeforeSleep(store, row);
+    return minBoostWithinBudget({
+      srcLevel: row.srcLevel,
+      targetLevel: target.level,
+      targetExpInLevel: target.expInLevel,
+      expType: row.expType,
+      nature: row.nature,
+      boostKind: store.boostKind.value as "full" | "mini",
+      budget: store.rowStockCandyAvailableFor(row.id)!,
+      expGot: row.expRemaining > 0
+        ? Math.max(0, calcExp(row.srcLevel, row.srcLevel + 1, row.expType) - row.expRemaining)
+        : 0,
+    });
+  }
+
+  function newBoostStore() {
+    const store = useCalcStore({ locale: ref("ja"), t });
+    store.setSlotBoostKind("full");
+    store.onBoostCandyRemainingInput("5000");
+    return store;
+  }
+
+  it("設定OFFは従来値を保ち、ONは保存値を変えず在庫で届く最小値を表示する", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      store.setDefaultBoostReachLevel(15);
+      const row = addRow(store, "min-live");
+      const fullNeed = calcExpAndCandy({
+        srcLevel: row.srcLevel, dstLevel: row.dstLevel, expType: row.expType,
+        nature: row.nature, boost: "full",
+      }).candy;
+      store.updateSpeciesCandy(row.pokedexId!, fullNeed);
+      const before = { ...store.rows.value[0]! };
+      const offValue = store.rowsView.value[0]!.ui.boostCandyInput;
+      expect(store.minimizeBoost.value).toBe(false);
+      expect(store.rows.value[0]!.boostReachAuto).toBe(true);
+
+      store.setMinimizeBoost(true);
+
+      const expected = expectedMinimum(store, store.rows.value[0]!);
+      expect(expected).toBeGreaterThan(0);
+      expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(expected);
+      expect(store.rowsView.value[0]!.ui.boostMinimizeFallback).toBe(false);
+      expect(store.rows.value[0]).toEqual(before);
+      expect(store.rowsView.value[0]!.ui.boostReachLevel).toBeGreaterThan(15);
+      expect(store.rowsView.value[0]!.ui.boostCandyInput).not.toBe(offValue);
+
+      store.undo();
+      expect(store.minimizeBoost.value).toBe(false);
+      expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(offValue);
+      store.redo();
+      expect(store.minimizeBoost.value).toBe(true);
+      expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(expected);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("在庫不足で目標に届かない場合は既定アメブ目標Lvから導出する", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      store.setDefaultBoostReachLevel(25);
+      const row = addRow(store, "min-infeasible");
+      store.updateSpeciesCandy(row.pokedexId!, 1);
+      const fallback = store.rowsView.value[0]!.ui.boostCandyInput;
+      expect(store.rowsView.value[0]!.ui.boostMinimizeFallback).toBe(false);
+
+      store.setMinimizeBoost(true);
+
+      expect(expectedMinimum(store, store.rows.value[0]!)).toBeUndefined();
+      expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(fallback);
+      expect(store.rowsView.value[0]!.ui.boostMinimizeFallback).toBe(true);
+      expect(store.rows.value[0]!.boostReachLevel).toBe(25);
+      expect(store.rows.value[0]!.boostOrExpAdjustment).toBeUndefined();
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("ファミリー在庫が未登録なら最小化フォールバックを示さない", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const row = addRow(store, "min-no-stock");
+      store.setMinimizeBoost(true);
+
+      expect(store.rowStockCandyAvailableFor(row.id)).toBe(0);
+      expect(store.rowsView.value[0]!.ui.boostMinimizeFallback).toBe(false);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("最小化フォールバック行より上に同じファミリーの行があれば共有在庫を示す", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const upper = addRow(store, "min-shared-upper", 25);
+      const lower = addRow(store, "min-shared-lower", 26);
+      store.updateSpeciesCandy(upper.pokedexId!, 1);
+      store.setMinimizeBoost(true);
+
+      const lowerView = store.rowsView.value.find((row) => row.id === lower.id)!;
+      expect(lowerView.ui.boostMinimizeFallback).toBe(true);
+      expect(lowerView.ui.boostMinimizeFallbackSharedStock).toBe(true);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("別ファミリーの上位行だけならフォールバックしても共有在庫を示さない", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      addRow(store, "min-shared-different-upper", 25);
+      const lower = addRow(store, "min-shared-different-lower", 133);
+      store.updateSpeciesCandy(lower.pokedexId!, 1);
+      store.setMinimizeBoost(true);
+
+      const lowerView = store.rowsView.value.find((row) => row.id === lower.id)!;
+      expect(lowerView.ui.boostMinimizeFallback).toBe(true);
+      expect(lowerView.ui.boostMinimizeFallbackSharedStock).toBe(false);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("同じファミリーの行が下にだけある場合は上のフォールバック行に共有在庫を示さない", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const upper = addRow(store, "min-shared-below-upper", 25);
+      addRow(store, "min-shared-below-lower", 26);
+      store.updateSpeciesCandy(upper.pokedexId!, 1);
+      store.setMinimizeBoost(true);
+
+      const upperView = store.rowsView.value.find((row) => row.id === upper.id)!;
+      expect(upperView.ui.boostMinimizeFallback).toBe(true);
+      expect(upperView.ui.boostMinimizeFallbackSharedStock).toBe(false);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("同じファミリーの上位行があってもフォールバックしない行には共有在庫を示さない", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      addRow(store, "min-shared-nonfallback-upper", 25);
+      const lower = addRow(store, "min-shared-nonfallback-lower", 26);
+      store.updateSpeciesCandy(lower.pokedexId!, 5_000);
+      store.setMinimizeBoost(true);
+
+      const lowerView = store.rowsView.value.find((row) => row.id === lower.id)!;
+      expect(lowerView.ui.boostMinimizeFallback).toBe(false);
+      expect(lowerView.ui.boostMinimizeFallbackSharedStock).toBe(false);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("睡眠時間行は睡眠EXPを引いたT'を使う", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const row = addRow(store, "min-sleep");
+      store.setRowSleepTarget(row.id, 500);
+      const current = store.rows.value[0]!;
+      const target = targetBeforeSleep(store, current);
+      expect(store.rowSleepExpFor(row.id)).toBeGreaterThan(0);
+      expect(target.level).toBeLessThan(current.dstLevel);
+      const budget = calcExpAndCandy({
+        srcLevel: current.srcLevel,
+        dstLevel: target.level,
+        dstExpInLevel: target.expInLevel,
+        expType: current.expType,
+        nature: current.nature,
+        boost: "full",
+      }).candy;
+      store.updateSpeciesCandy(current.pokedexId!, budget);
+      store.setMinimizeBoost(true);
+
+      expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(expectedMinimum(store, store.rows.value[0]!));
+      expect(store.rows.value[0]!.boostOrExpAdjustment).toBeUndefined();
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("再割当ではアメ在庫＋睡眠の行も、上の行を最小化したあとの在庫で必要数を数える", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const upper = addRow(store, "min-upper");
+      const lower = addRow(store, "min-lower-stock");
+      const fullNeed = calcExpAndCandy({ srcLevel: 10, dstLevel: 40, expType: 600, nature: "normal", boost: "full" }).candy;
+      store.updateSpeciesCandy(upper.pokedexId!, fullNeed * 2);
+      store.setRowSleepTarget(lower.id, "stock");
+      // 再割当前: 上の行は全部アメブ（アメ消費が少ない）なので、下の行には在庫が残って見える
+      store.onRowBoostCandy(upper.id, String(fullNeed));
+      expect(store.rowStockCandyAvailableFor(lower.id)).toBeGreaterThan(50);
+      // 下の行が枠不足（アメブ境界）になる上限にする
+      store.onBoostCandyRemainingInput("50");
+      store.setMinimizeBoost(true);
+
+      store.resetAllBoostCandy();
+
+      // 上の行は最小化で在庫をほぼ使い切る。下の行へ確定する個数は、確定後の在庫を超えない
+      const lowerRow = store.rows.value.find((row) => row.id === lower.id)!;
+      const available = store.rowStockCandyAvailableFor(lower.id)!;
+      if (lowerRow.boostOrExpAdjustment !== undefined) {
+        expect(lowerRow.boostOrExpAdjustment).toBeLessThanOrEqual(available);
+      }
+      expect(store.rowsView.value.find((row) => row.id === lower.id)!.ui.boostCandyInput).toBeLessThanOrEqual(available);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("在庫・睡眠時間・あとEXP・目標Lvの変更に導出値が追従する", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const row = addRow(store, "min-reactive");
+      const fullNeed = calcExpAndCandy({ srcLevel: 10, dstLevel: 40, expType: 600, nature: "normal", boost: "full" }).candy;
+      store.updateSpeciesCandy(row.pokedexId!, fullNeed);
+      store.setMinimizeBoost(true);
+      const check = () => {
+        const current = store.rows.value[0]!;
+        expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(expectedMinimum(store, current));
+        expect(current.boostOrExpAdjustment).toBeUndefined();
+      };
+      check();
+
+      store.updateSpeciesCandy(row.pokedexId!, fullNeed * 2);
+      check();
+      store.setRowSleepTarget(row.id, 500);
+      check();
+      store.onRowExpRemaining(row.id, "500");
+      check();
+      store.setDstLevel(row.id, 35);
+      check();
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("ピッカー・明示個数・個数指定・stock/all・種族不明は最小化しない", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const picked = addRow(store, "min-picked", 25);
+      const explicit = addRow(store, "min-explicit", 133);
+      const countTarget = addRow(store, "min-count-target", 152);
+      const stock = addRow(store, "min-stock", 1);
+      const all = addRow(store, "min-all", 4);
+      const unknown = addRow(store, "min-unknown", 7);
+      for (const id of [25, 133, 152, 1, 4, 7]) store.updateSpeciesCandy(id, 100_000);
+      store.setBoostLevel(picked.id, 20);
+      store.onRowBoostCandy(explicit.id, "7");
+      store.onRowCandyTarget(countTarget.id, "200");
+      store.setRowSleepTarget(stock.id, "stock");
+      store.setRowSleepTarget(all.id, "all");
+      Object.assign(store.rows.value.find((row) => row.id === unknown.id)!, { pokedexId: undefined, boxId: undefined });
+      const before = new Map(store.rows.value.map((row) => [row.id, store.rowsView.value.find((view) => view.id === row.id)!.ui.boostCandyInput]));
+
+      store.setMinimizeBoost(true);
+
+      for (const row of store.rows.value) {
+        expect(store.rowsView.value.find((view) => view.id === row.id)!.ui.boostCandyInput).toBe(before.get(row.id));
+        expect(store.rowsView.value.find((view) => view.id === row.id)!.ui.boostMinimizeFallback).toBe(false);
+      }
+      expect(store.rows.value.find((row) => row.id === picked.id)!.boostReachAuto).toBe(false);
+      expect(store.rows.value.find((row) => row.id === picked.id)!.boostOrExpAdjustment).toBeUndefined();
+      expect(store.rows.value.find((row) => row.id === explicit.id)!.boostOrExpAdjustment).toBe(7);
+
+      const noBoostStore = newBoostStore();
+      const noBoostRow = addRow(noBoostStore, "min-none");
+      noBoostStore.setSlotBoostKind("none");
+      noBoostStore.setMinimizeBoost(true);
+      expect(noBoostStore.rowsView.value.find((view) => view.id === noBoostRow.id)!.ui.boostCandyInput).toBe(0);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("設定OFFでも行スイッチで最小値を導出し、undo 1回で戻る", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const row = addRow(store, "row-minimize-undo");
+      store.updateSpeciesCandy(row.pokedexId!, 5_000);
+      const before = { ...store.rows.value[0]! };
+      const normalValue = store.rowsView.value[0]!.ui.boostCandyInput;
+      const minimum = expectedMinimum(store, before);
+
+      expect(store.minimizeBoost.value).toBe(false);
+      expect(store.canSetRowMinimizeBoost(row.id)).toBe(true);
+      expect(store.setRowMinimizeBoost(row.id, true)).toBe("applied");
+      expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(minimum);
+      expect(store.rows.value[0]!.boostOrExpAdjustment).toBeUndefined();
+      expect(store.rows.value[0]!.boostMinimizeRow).toBe(true);
+
+      store.undo();
+
+      expect(store.rows.value[0]).toEqual(before);
+      expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(normalValue);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("行スイッチは現在Lv・目標Lv・在庫の変更を追いかける", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const row = addRow(store, "row-minimize-live");
+      store.updateSpeciesCandy(row.pokedexId!, 5_000);
+      expect(store.setRowMinimizeBoost(row.id, true)).toBe("applied");
+
+      const expectCurrentMinimum = () => {
+        const current = store.rows.value[0]!;
+        expect(current.boostMinimizeRow).toBe(true);
+        expect(current.boostOrExpAdjustment).toBeUndefined();
+        expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(expectedMinimum(store, current));
+      };
+      expectCurrentMinimum();
+
+      store.setSrcLevel(row.id, row.srcLevel + 1);
+      // 現在Lv変更の resetReachLevel:false 再割当ではフラグを維持する。
+      expectCurrentMinimum();
+      store.setDstLevel(row.id, row.dstLevel + 1);
+      expectCurrentMinimum();
+
+      store.updateSpeciesCandy(row.pokedexId!, 1);
+      expect(expectedMinimum(store, store.rows.value[0]!)).toBeUndefined();
+      expect(store.rowsView.value[0]!.ui.boostMinimizeFallback).toBe(true);
+
+      store.updateSpeciesCandy(row.pokedexId!, 5_000);
+      expectCurrentMinimum();
+      expect(store.rowsView.value[0]!.ui.boostMinimizeFallback).toBe(false);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("行スイッチはON/OFFを切り替え、OFFで保存済み目標Lvからの導出へ戻る", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const row = addRow(store, "row-minimize-toggle");
+      store.updateSpeciesCandy(row.pokedexId!, 5_000);
+      const normalValue = store.rowsView.value[0]!.ui.boostCandyInput;
+
+      expect(store.setRowMinimizeBoost(row.id, true)).toBe("applied");
+      expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(expectedMinimum(store, store.rows.value[0]!));
+      expect(store.setRowMinimizeBoost(row.id, false)).toBe("applied");
+
+      expect(store.rows.value[0]!.boostMinimizeRow).toBeUndefined();
+      expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(normalValue);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("行スイッチはグローバル設定と併用できる", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const flagged = addRow(store, "row-minimize-global-flagged", 25);
+      const globalOnly = addRow(store, "row-minimize-global-only", 133);
+      store.updateSpeciesCandy(flagged.pokedexId!, 5_000);
+      store.updateSpeciesCandy(globalOnly.pokedexId!, 5_000);
+      const globalOnlyNormal = store.rowsView.value.find((row) => row.id === globalOnly.id)!.ui.boostCandyInput;
+
+      expect(store.setRowMinimizeBoost(flagged.id, true)).toBe("applied");
+      store.setMinimizeBoost(true);
+      expect(store.rowsView.value.find((row) => row.id === flagged.id)!.ui.boostCandyInput)
+        .toBe(expectedMinimum(store, store.rows.value.find((row) => row.id === flagged.id)!));
+      expect(store.rowsView.value.find((row) => row.id === globalOnly.id)!.ui.boostCandyInput)
+        .toBe(expectedMinimum(store, store.rows.value.find((row) => row.id === globalOnly.id)!));
+
+      store.setMinimizeBoost(false);
+      expect(store.rows.value.find((row) => row.id === flagged.id)!.boostMinimizeRow).toBe(true);
+      expect(store.rowsView.value.find((row) => row.id === flagged.id)!.ui.boostCandyInput)
+        .toBe(expectedMinimum(store, store.rows.value.find((row) => row.id === flagged.id)!));
+      expect(store.rowsView.value.find((row) => row.id === globalOnly.id)!.ui.boostCandyInput).toBe(globalOnlyNormal);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("行スイッチの有効条件を検査する", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const row = addRow(store, "row-minimize-guards");
+      expect(store.canSetRowMinimizeBoost("missing-row")).toBe(false);
+      expect(store.canSetRowMinimizeBoost(row.id)).toBe(true);
+
+      store.setMinimizeBoost(true);
+      expect(store.canSetRowMinimizeBoost(row.id)).toBe(false);
+      store.setMinimizeBoost(false);
+
+      store.onRowCandyTarget(row.id, "100");
+      expect(store.canSetRowMinimizeBoost(row.id)).toBe(false);
+      store.onRowCandyTarget(row.id, "");
+      expect(store.canSetRowMinimizeBoost(row.id)).toBe(true);
+
+      store.setRowSleepTarget(row.id, "all");
+      expect(store.canSetRowMinimizeBoost(row.id)).toBe(false);
+      store.setRowSleepTarget(row.id, undefined);
+      expect(store.canSetRowMinimizeBoost(row.id)).toBe(true);
+
+      store.setRowSleepTargetHours(row.id, 2_000);
+      expect(store.rowsView.value.find((view) => view.id === row.id)!.ui.boostInputDisabled).toBe(true);
+      expect(store.canSetRowMinimizeBoost(row.id)).toBe(false);
+      store.setRowSleepTargetHours(row.id, undefined);
+
+      const unresolved = addRow(store, "row-minimize-unresolved", 133);
+      Object.assign(store.rows.value.find((candidate) => candidate.id === unresolved.id)!, { pokedexId: undefined, boxId: undefined });
+      expect(store.canSetRowMinimizeBoost(unresolved.id)).toBe(false);
+
+      const noBoostStore = newBoostStore();
+      const noBoost = addRow(noBoostStore, "row-minimize-no-boost");
+      noBoostStore.setSlotBoostKind("none");
+      expect(noBoostStore.canSetRowMinimizeBoost(noBoost.id)).toBe(false);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+  it("在庫の歩きは同系統で上の行の使用分を引き、別種族では独立する", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const upper = addRow(store, "min-family-upper", 25);
+      const lower = addRow(store, "min-family-lower", 26);
+      const independent = addRow(store, "min-family-independent", 133);
+      store.updateSpeciesCandy(25, 5_000);
+      store.updateSpeciesCandy(133, 5_000);
+      store.setMinimizeBoost(true);
+
+      const upperNeed = calcExpAndCandy({
+        srcLevel: upper.srcLevel, dstLevel: upper.dstLevel, expType: upper.expType,
+        nature: upper.nature, boost: "none",
+      }).candy;
+      expect(store.rowStockCandyTargetFor(upper.id)).toBeUndefined();
+      expect(store.rowStockCandyAvailableFor(upper.id)).toBe(5_000);
+      expect(store.rowStockCandyAvailableFor(lower.id)).toBe(5_000 - upperNeed);
+      expect(store.rowStockCandyAvailableFor(independent.id)).toBe(5_000);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("すべて睡眠の行は同じファミリーの下位行へ在庫と再割当枠を渡す", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const upper = addRow(store, "all-sleep-family-upper", 25);
+      const lower = addRow(store, "all-sleep-family-lower", 26);
+      store.setRowSleepTarget(upper.id, "all");
+      store.updateSpeciesCandy(25, 100_000);
+      store.setMinimizeBoost(true);
+
+      const lowerViewWithPlenty = store.rowsView.value.find((row) => row.id === lower.id)!;
+      const lowerBoostWithPlenty = lowerViewWithPlenty.ui.boostCandyInput;
+      const lowerCandyNeed = minCandyForTarget({
+        srcLevel: lower.srcLevel,
+        targetLevel: lower.dstLevel,
+        targetExpInLevel: lower.dstExpInLevel ?? 0,
+        expType: lower.expType,
+        nature: lower.nature,
+        boostKind: "full",
+        boostCandy: lowerBoostWithPlenty,
+      });
+      expect(lowerCandyNeed).toBeGreaterThan(0);
+
+      // この在庫は下位行の最小化需要を満たすちょうどの量。
+      // 上位の「すべて睡眠」行がアメを取らなければ、全量が下位へ回る。
+      store.updateSpeciesCandy(25, lowerCandyNeed);
+      store.onBoostCandyRemainingInput("1");
+      store.resetAllBoostCandy();
+
+      const lowerView = store.rowsView.value.find((row) => row.id === lower.id)!;
+      expect({
+        available: store.rowStockCandyAvailableFor(lower.id),
+        fallback: lowerView.ui.boostMinimizeFallback,
+        boostCandy: lowerView.ui.boostCandyInput,
+        explicitBoost: store.rows.value.find((row) => row.id === lower.id)!.boostOrExpAdjustment,
+      }).toEqual({
+        available: lowerCandyNeed,
+        fallback: false,
+        boostCandy: lowerBoostWithPlenty,
+        explicitBoost: undefined,
+      });
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("ファミリー在庫が上の行に使われた後の最小化失敗も示す", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const upper = addRow(store, "min-consumed-upper", 25);
+      const lower = addRow(store, "min-consumed-lower", 26);
+      const fullNeed = calcExpAndCandy({
+        srcLevel: upper.srcLevel, dstLevel: upper.dstLevel, expType: upper.expType,
+        nature: upper.nature, boost: "full",
+      }).candy;
+      const minimumBoost = minBoostForTarget({
+        srcLevel: upper.srcLevel,
+        targetLevel: upper.dstLevel,
+        targetExpInLevel: upper.dstExpInLevel ?? 0,
+        expType: upper.expType,
+        nature: upper.nature,
+        boostKind: "full",
+        maxBoost: fullNeed,
+      });
+      const minimumTotalNeed = minCandyForTarget({
+        srcLevel: upper.srcLevel,
+        targetLevel: upper.dstLevel,
+        targetExpInLevel: upper.dstExpInLevel ?? 0,
+        expType: upper.expType,
+        nature: upper.nature,
+        boostKind: "full",
+        boostCandy: minimumBoost,
+      });
+      store.updateSpeciesCandy(upper.pokedexId!, minimumTotalNeed);
+      store.setMinimizeBoost(true);
+
+      expect(store.rowStockCandyAvailableFor(upper.id)).toBe(minimumTotalNeed);
+      expect(store.rowsView.value.find((row) => row.id === upper.id)!.ui.boostCandyInput).toBe(minimumBoost);
+      expect(store.rowsView.value.find((row) => row.id === upper.id)!.ui.boostMinimizeFallback).toBe(false);
+      expect(store.rowStockCandyAvailableFor(lower.id)).toBe(0);
+      expect(store.rowsView.value.find((row) => row.id === lower.id)!.ui.boostMinimizeFallback).toBe(true);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("行フラグは在庫0でもフォールバック警告を出し、在庫変化で再計算する", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const row = addRow(store, "row-minimize-zero-stock");
+      expect(store.canSetRowMinimizeBoost(row.id)).toBe(true);
+
+      expect(store.setRowMinimizeBoost(row.id, true)).toBe("applied");
+      expect(store.rowsView.value[0]!.ui.boostMinimizeFallback).toBe(true);
+      expect(store.rowsView.value[0]!.ui.boostMinimizeFallbackSharedStock).toBe(false);
+
+      store.updateSpeciesCandy(row.pokedexId!, 5_000);
+      expect(store.rowsView.value[0]!.ui.boostMinimizeFallback).toBe(false);
+      expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(expectedMinimum(store, store.rows.value[0]!));
+
+      store.updateSpeciesCandy(row.pokedexId!, 0);
+      expect(store.rowsView.value[0]!.ui.boostMinimizeFallback).toBe(true);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("行フラグのフォールバックは同じファミリーの上位行を共有在庫として示す", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const upper = addRow(store, "row-minimize-shared-upper", 25);
+      const lower = addRow(store, "row-minimize-shared-lower", 26);
+      store.updateSpeciesCandy(upper.pokedexId!, 1);
+
+      expect(store.setRowMinimizeBoost(lower.id, true)).toBe("applied");
+
+      const lowerUi = store.rowsView.value.find((row) => row.id === lower.id)!.ui;
+      expect(store.rowStockCandyAvailableFor(lower.id)).toBe(0);
+      expect(lowerUi.boostMinimizeFallback).toBe(true);
+      expect(lowerUi.boostMinimizeFallbackSharedStock).toBe(true);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("行フラグは手入力・目標Lv選択・行リセット・全体再割当・種別変更で解除される", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const manual = addRow(store, "row-minimize-clear-manual", 25);
+      const picker = addRow(store, "row-minimize-clear-picker", 133);
+      const reset = addRow(store, "row-minimize-clear-reset", 152);
+      const kind = addRow(store, "row-minimize-clear-kind", 1);
+      for (const row of [manual, picker, reset, kind]) {
+        store.updateSpeciesCandy(row.pokedexId!, 5_000);
+        expect(store.setRowMinimizeBoost(row.id, true)).toBe("applied");
+      }
+
+      store.onRowBoostCandy(manual.id, "1");
+      expect(store.rows.value.find((row) => row.id === manual.id)!.boostMinimizeRow).toBeUndefined();
+
+      store.setBoostLevel(picker.id, store.rows.value.find((row) => row.id === picker.id)!.boostReachLevel);
+      expect(store.rows.value.find((row) => row.id === picker.id)!.boostMinimizeRow).toBeUndefined();
+
+      store.resetRowBoostCandy(reset.id);
+      expect(store.rows.value.find((row) => row.id === reset.id)!.boostMinimizeRow).toBeUndefined();
+
+      store.setSlotBoostKind("mini");
+      expect(store.rows.value.find((row) => row.id === kind.id)!.boostMinimizeRow).toBeUndefined();
+
+      const reassign = addRow(store, "row-minimize-clear-reassign", 4);
+      store.updateSpeciesCandy(reassign.pokedexId!, 5_000);
+      expect(store.setRowMinimizeBoost(reassign.id, true)).toBe("applied");
+      store.resetAllBoostCandy();
+      expect(store.rows.value.find((row) => row.id === reassign.id)!.boostMinimizeRow).toBeUndefined();
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("行フラグは個数指定と睡眠目標で休眠し、解除後に最小化を再開する", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const row = addRow(store, "row-minimize-dormant");
+      store.updateSpeciesCandy(row.pokedexId!, 5_000);
+      expect(store.setRowMinimizeBoost(row.id, true)).toBe("applied");
+
+      store.onRowCandyTarget(row.id, "200");
+      expect(store.rows.value[0]!.boostMinimizeRow).toBe(true);
+      store.onRowCandyTarget(row.id, "");
+      expect(store.rows.value[0]!.boostMinimizeRow).toBe(true);
+      expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(expectedMinimum(store, store.rows.value[0]!));
+
+      store.setRowSleepTarget(row.id, "all");
+      expect(store.rows.value[0]!.boostMinimizeRow).toBe(true);
+      store.setRowSleepTarget(row.id, undefined);
+      expect(store.rows.value[0]!.boostMinimizeRow).toBe(true);
+      expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(expectedMinimum(store, store.rows.value[0]!));
+
+      store.setRowSleepTarget(row.id, "all");
+      expect(store.canSetRowMinimizeBoost(row.id)).toBe(false);
+      expect(store.setRowMinimizeBoost(row.id, false)).toBe("applied");
+      expect(store.rows.value[0]!.boostMinimizeRow).toBeUndefined();
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+  it("アメブ再割当では最小値を枠へ配り、不足した最後の行だけ境界数を保存する", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const rows = [25, 133, 152].map((id, index) => addRow(store, `min-quota-${index}`, id));
+      const needs = rows.map((row) => calcExpAndCandy({
+        srcLevel: row.srcLevel, dstLevel: row.dstLevel, expType: row.expType,
+        nature: row.nature, boost: "full",
+      }).candy);
+      rows.forEach((row, index) => store.updateSpeciesCandy(row.pokedexId!, needs[index]!));
+      store.setMinimizeBoost(true);
+      const minima = rows.map((row) => store.rowsView.value.find((view) => view.id === row.id)!.ui.boostCandyInput);
+      expect(minima.every((value) => value > 0)).toBe(true);
+      store.onBoostCandyRemainingInput(String(minima.reduce((sum, value) => sum + value, 0) - 1));
+
+      store.resetAllBoostCandy();
+
+      expect(store.rows.value.slice(0, 2).map((row) => row.boostOrExpAdjustment)).toEqual([undefined, undefined]);
+      expect(store.rows.value[2]!.boostOrExpAdjustment).toBe(minima[2]! - 1);
+      expect(store.rowsView.value.map((row) => row.ui.boostCandyInput)).toEqual([minima[0], minima[1], minima[2]! - 1]);
+      expect(store.rows.value.map((row) => row.boostReachAuto)).toEqual([true, true, true]);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("現在Lv変更の残枠再割当で境界個数が確定すると行フラグを解除する", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const row = addRow(store, "row-minimize-boundary", 25, 70);
+      const fullNeed = calcExpAndCandy({
+        srcLevel: row.srcLevel, dstLevel: row.dstLevel, expType: row.expType,
+        nature: row.nature, boost: "full",
+      }).candy;
+      store.updateSpeciesCandy(row.pokedexId!, fullNeed);
+      expect(store.setRowMinimizeBoost(row.id, true)).toBe("applied");
+      expect(store.rows.value[0]!.boostMinimizeRow).toBe(true);
+      expect(expectedMinimum(store, store.rows.value[0]!)).toBeGreaterThan(1);
+
+      store.onBoostCandyRemainingInput("1");
+      store.setSrcLevel(row.id, row.srcLevel + 1);
+
+      expect(store.rows.value[0]!.boostOrExpAdjustment).toBe(1);
+      expect(store.rows.value[0]!.boostMinimizeRow).toBeUndefined();
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("行フラグはピッカーでfalse、再割当・種別変更・行追加でtrueになる", () => {
+    const store = newBoostStore();
+    const first = addRow(store, "min-flag-first");
+    expect(first.boostReachAuto).toBe(true);
+
+    store.setBoostLevel(first.id, first.boostReachLevel);
+    expect(store.rows.value[0]!.boostReachAuto).toBe(false);
+    store.resetRowBoostCandy(first.id);
+    expect(store.rows.value[0]!.boostReachAuto).toBe(true);
+
+    store.setBoostLevel(first.id, store.rows.value[0]!.boostReachLevel);
+    store.setSlotBoostKind("mini");
+    expect(store.rows.value[0]!.boostReachAuto).toBe(true);
+    const second = addRow(store, "min-flag-second", 133);
+    expect(second.boostReachAuto).toBe(true);
+    store.setBoostLevel(second.id, second.boostReachLevel);
+    store.resetAllBoostCandy();
+    expect(store.rows.value.map((row) => row.boostReachAuto)).toEqual([true, true]);
+  });
+
+  it("設定リセットでOFFへ戻り、設定値はundo/redoできる", () => {
+    const store = newBoostStore();
+    store.setMinimizeBoost(true);
+    expect(store.minimizeBoost.value).toBe(true);
+    store.undo();
+    expect(store.minimizeBoost.value).toBe(false);
+    store.redo();
+    expect(store.minimizeBoost.value).toBe(true);
+
+    store.resetSettings();
+    expect(store.minimizeBoost.value).toBe(false);
+    expect(store.isSettingsDefault.value).toBe(true);
+    store.undo();
+    expect(store.minimizeBoost.value).toBe(true);
+  });
 });

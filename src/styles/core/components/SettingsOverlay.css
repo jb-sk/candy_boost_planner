@@ -111,6 +111,16 @@
   gap: 6px;
 }
 
+/* 直前の入力の補足設定（例: 既定のアメブ目標Lv の下のアメブ最小化。配置は .inlineCheck）。
+   ラベル列を空けて入力列の左端へ寄せ、どの設定に属するかを位置で示す。
+   文字の大きさは親に置く（チェックボックスの位置を em で計算するため）。 */
+.settingsSubOption {
+  margin-left: calc(var(--settings-label-width, 120px) + 8px);
+  margin-top: -4px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
 .settingsField__label {
   font-size: 14px;
   font-weight: 600;

@@ -39,6 +39,10 @@ export type CalcRowV1 = {
   boostReachLevel: number;
   /** 明示入力されたアメブ個数。undefined は boostReachLevel からの導出を表す。 */
   boostOrExpAdjustment?: number;
+  /** このポケモンだけアメブ最小化をONにした印（設定のアメブ最小化がOFFでも最小化する）。 */
+  boostMinimizeRow?: true;
+  /** アメブ目標Lvが自動かどうか。未設定は自動として読む。 */
+  boostReachAuto?: boolean;
   /**
    * アメ個数指定（総アメ数）。
    * undefined = 個数指定なし（目標Lvが anchor）、値あり = 個数指定が anchor（設計書§4.3）。
@@ -86,6 +90,7 @@ export const ACTIVE_SLOT_STORAGE_KEY = "candy-boost-planner:calc:activeSlot";
 export const BOOST_CANDY_REMAINING_KEY = "candy-boost-planner:calc:boostCandyRemaining";
 export const SLEEP_SETTINGS_KEY = "candy-boost-planner:calc:sleepSettings";
 export const DEFAULT_BOOST_REACH_LEVEL_KEY = "candy-boost-planner:calc:defaultBoostReachLevel";
+export const MINIMIZE_BOOST_KEY = "candy-boost-planner:calc:minimizeBoost";
 
 export function loadCalcSlots(): Array<CalcSaveSlotV1 | null> {
   try {
@@ -216,6 +221,23 @@ export function saveDefaultBoostReachLevel(v: number | null): void {
   }
 }
 
+/** アメ在庫内で目標Lvに届く最小のアメブを使う設定。 */
+export function loadMinimizeBoost(): boolean {
+  try {
+    return localStorage.getItem(MINIMIZE_BOOST_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function saveMinimizeBoost(v: boolean): void {
+  try {
+    localStorage.setItem(MINIMIZE_BOOST_KEY, String(v));
+  } catch {
+    // localStorage can throw (quota exceeded / blocked). Persistence must not break UI.
+  }
+}
+
 /** デフォルトの睡眠設定 */
 export const DEFAULT_SLEEP_SETTINGS: SleepSettings = {
   dailySleepHours: 8.5,
@@ -325,6 +347,7 @@ function toRows(v: unknown, sourceSchemaVersion: 1 | 2): CalcRowV1[] {
     const expRemaining = clampInt(o.expRemaining, 0, 999999, 0);
     const nature = toExpGainNature(o.nature, "normal");
     const boostReachLevel = clampInt(o.boostReachLevel, srcLevel, MAX_LEVEL, dstLevel);
+    const boostReachAuto = typeof o.boostReachAuto === "boolean" ? o.boostReachAuto : true;
     const boxId = typeof o.boxId === "string" && o.boxId.trim() ? o.boxId : undefined;
     const dstLevelText = typeof o.dstLevelText === "string" ? o.dstLevelText : undefined;
     const pokedexId = typeof o.pokedexId === "number" && o.pokedexId > 0 ? o.pokedexId : undefined;
@@ -347,6 +370,7 @@ function toRows(v: unknown, sourceSchemaVersion: 1 | 2): CalcRowV1[] {
       : candyTarget === undefined
         ? storedBoostOrExpAdjustment
         : Math.min(storedBoostOrExpAdjustment, candyTarget);
+    const boostMinimizeRow = boostOrExpAdjustment === undefined && o.boostMinimizeRow === true ? true : undefined;
     // sleepHours: 累計睡眠時間（後方互換: 未設定 = undefined = 0h扱い）
     const sleepHours =
       typeof o.sleepHours === "number" && Number.isFinite(o.sleepHours)
@@ -380,6 +404,8 @@ function toRows(v: unknown, sourceSchemaVersion: 1 | 2): CalcRowV1[] {
       nature,
       boostReachLevel,
       boostOrExpAdjustment,
+      boostMinimizeRow,
+      boostReachAuto,
       candyTarget,
       sleepHours,
       sleepTargetHours,

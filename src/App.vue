@@ -281,8 +281,9 @@ function saveScrollPositionWhenHidden(): void {
   if (document.visibilityState === "hidden") saveScrollPosition();
 }
 
-// provide onboarding state for CalcPanel's dummy result row
-provide('onboardingActive', onboarding.isActive);
+// CalcPanel のダミー結果行。初回訪問ではツアー開始（600ms 後）を待たず最初の描画から出す。
+// ツアー開始時に差し込むと、操作起点でないレイアウトシフトとして CLS に数えられるため。
+provide('onboardingDemoVisible', computed(() => onboarding.isActive.value || !onboarding.isDone.value));
 function openSettings() {
   showSettings.value = true;
 }
@@ -432,6 +433,32 @@ function lockDocumentScroll(): () => void {
 }
 
 /**
+ * オンボーディング用の背景固定。初回表示で操作なしに始まるため、
+ * body を position: fixed にすると document のスクロール位置が 0 へ戻り、
+ * 見た目は同じでも Chrome がページ全体のレイアウトシフト（CLS）として数える。
+ * ここではスクロール位置を変えずに html の overflow だけを止める。
+ * overflow を無視する古い iOS のタッチ操作は OnboardingTour の背景で止める。
+ */
+function lockDocumentScrollInPlace(): () => void {
+  const root = document.documentElement;
+  const body = document.body;
+  const rootOverflow = snapshotInlineProperty(root, "overflow");
+  const bodyPaddingRightSnapshot = snapshotInlineProperty(body, "padding-right");
+  const scrollbarWidth = Math.max(0, window.innerWidth - root.clientWidth);
+  const bodyPaddingRight = Number.parseFloat(getComputedStyle(body).paddingRight) || 0;
+
+  root.style.setProperty("overflow", "hidden");
+  if (scrollbarWidth > 0) {
+    body.style.setProperty("padding-right", `${bodyPaddingRight + scrollbarWidth}px`);
+  }
+
+  return () => {
+    restoreInlineProperty(root, "overflow", rootOverflow);
+    restoreInlineProperty(body, "padding-right", bodyPaddingRightSnapshot);
+  };
+}
+
+/**
  * オンボーディングでは上下にある操作と結果例を同時に見せるため、
  * 背景を固定する直前にスロットタブを画面中央へ置く。
  */
@@ -447,8 +474,13 @@ function centerOnboardingSlotTabs(): void {
 
 watch(overlayOpen, (locked) => {
   if (locked) {
-    if (onboarding.isActive.value) centerOnboardingSlotTabs();
-    if (!releaseDocumentScrollLock) releaseDocumentScrollLock = lockDocumentScroll();
+    if (releaseDocumentScrollLock) return;
+    if (onboarding.isActive.value) {
+      centerOnboardingSlotTabs();
+      releaseDocumentScrollLock = lockDocumentScrollInPlace();
+      return;
+    }
+    releaseDocumentScrollLock = lockDocumentScroll();
     return;
   }
   releaseDocumentScrollLock?.();

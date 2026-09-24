@@ -323,7 +323,7 @@
 
 .statCard__label {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--export-card-label, var(--muted));
   font-weight: var(--export-font-weight-strong);
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -336,12 +336,12 @@
   font-size: 29px;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
-  color: var(--ink);
+  color: var(--export-card-ink, var(--ink));
 }
 
 .statCard__value--danger,
 .statCard--danger .statCard__value {
-  color: var(--export-danger);
+  color: var(--export-card-danger-ink, var(--export-danger));
 }
 
 /* ===== Progress bars ===== */
@@ -380,7 +380,8 @@
   position: relative;
   height: 14px;
   border-radius: 999px;
-  background: rgba(var(--bar-fill-rgb), 0.22);
+  /* テーマが --export-bar-track を指定しなければ、塗りの色を薄く重ねる */
+  background: var(--export-bar-track, rgba(var(--bar-fill-rgb), 0.22));
   overflow: hidden;
 }
 
@@ -396,7 +397,7 @@
 }
 
 .exportBar--shards .exportBar__track {
-  background: rgba(var(--bar-shards-fill-rgb), 0.22);
+  background: var(--export-shards-bar-track, rgba(var(--bar-shards-fill-rgb), 0.22));
 }
 
 .exportBar--shards .exportBar__fill {
@@ -846,7 +847,6 @@
     margin: 0 auto;
     min-height: auto;
     padding: 28px 32px;
-    border-radius: 14px;
     overflow: hidden;
   }
 
@@ -857,6 +857,8 @@
     gap: 24px;
     margin: -28px -32px 20px;
     padding: 18px 32px 16px;
+    /* 上端の線はスマホだけ（iPhone の URL まわりの色になる）。PC は保存画像と同じく線なし */
+    border-top: 0;
   }
 
   .exportHead__top {

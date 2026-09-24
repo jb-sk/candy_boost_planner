@@ -11,8 +11,12 @@ export type ExportImageStyle = {
   ink: string;
   muted: string;
   accent: string;
+  /** 線・淡い下地に使うアクセント（--accent-rgb）。文字用の --accent と分けるテーマがある。 */
+  accentTint: string;
   /** テーマ固有の補助アクセント。未指定テーマでは accent と同色。 */
   highlight: string;
+  /** highlight の淡い下地用（--export-highlight-rgb）。文字用の highlight と分けるテーマがある。 */
+  highlightTint: string;
   danger: string;
   natureUp: string;
   natureDown: string;
@@ -21,9 +25,15 @@ export type ExportImageStyle = {
   statCardPlain: string;
   statCardPrimary: string;
   statCardDanger: string;
+  /** 合計カードの文字色。未指定テーマは muted / ink / danger と同じ。 */
+  statCardLabel: string;
+  statCardInk: string;
+  statCardDangerInk: string;
   barFill: string;
   shardsBarFill: string;
-  barTrack: string;
+  /** 横棒の背景。未指定（null）なら塗りの色を薄く重ねる。 */
+  barTrack: string | null;
+  shardsBarTrack: string | null;
   barFillAlpha: number;
   pie: [string, string, string, string, string, string, string, string];
   bodyFontFamily: string;
@@ -39,7 +49,9 @@ export const FALLBACK_STYLE: ExportImageStyle = {
   ink: "#1e293b",
   muted: "#64748b",
   accent: "#10b981",
+  accentTint: "rgb(16, 185, 129)",
   highlight: "#10b981",
+  highlightTint: "rgb(16, 185, 129)",
   danger: "#ef4444",
   natureUp: "#dc2626",
   natureDown: "#2563eb",
@@ -48,9 +60,13 @@ export const FALLBACK_STYLE: ExportImageStyle = {
   statCardPlain: "rgba(99, 102, 241, 0.075)",
   statCardPrimary: "rgba(99, 102, 241, 0.075)",
   statCardDanger: "rgba(239, 68, 68, 0.1)",
+  statCardLabel: "#64748b",
+  statCardInk: "#1e293b",
+  statCardDangerInk: "#ef4444",
   barFill: "#ec4899",
   shardsBarFill: "#ec4899",
-  barTrack: "#e2e8f0",
+  barTrack: null,
+  shardsBarTrack: null,
   barFillAlpha: 0.62,
   pie: ["#10b981", "#6366f1", "#f59e0b", "#ec4899", "#06b6d4", "#8b5cf6", "#f97316", "#64748b"],
   bodyFontFamily: EXPORT_IMAGE_FONT_FAMILY,
@@ -107,12 +123,16 @@ export function readExportImageStyle(el: Element): ExportImageStyle {
   const cs = getComputedStyle(el);
   const prop = (name: string) => cs.getPropertyValue(name).trim();
   const color = (name: string, fallback: string) => normalizeColor(prop(name), fallback);
+  const optionalColor = (name: string) => normalizeColor(prop(name), "") || null;
 
   const pie = Array.from({ length: 8 }, (_, i) =>
     color(`--pie-${i}`, FALLBACK_STYLE.pie[i]),
   ) as ExportImageStyle["pie"];
 
+  const ink = color("--ink", FALLBACK_STYLE.ink);
+  const muted = color("--muted", FALLBACK_STYLE.muted);
   const accent = color("--accent", FALLBACK_STYLE.accent);
+  const highlight = color("--export-highlight", accent);
   const danger = color("--danger", FALLBACK_STYLE.danger);
   const barFill = color("--bar-fill", FALLBACK_STYLE.barFill);
   const accentCardFallback = rgbaFromTriple(prop("--accent-rgb"), 0.075, FALLBACK_STYLE.statCardAccent);
@@ -120,10 +140,12 @@ export function readExportImageStyle(el: Element): ExportImageStyle {
 
   return {
     paper: color("--paper", FALLBACK_STYLE.paper),
-    ink: color("--ink", FALLBACK_STYLE.ink),
-    muted: color("--muted", FALLBACK_STYLE.muted),
+    ink,
+    muted,
     accent,
-    highlight: color("--export-highlight", accent),
+    accentTint: rgbaFromTriple(prop("--accent-rgb"), 1, accent),
+    highlight,
+    highlightTint: rgbaFromTriple(prop("--export-highlight-rgb"), 1, highlight),
     danger,
     natureUp: color("--nature-up", FALLBACK_STYLE.natureUp),
     natureDown: color("--nature-down", FALLBACK_STYLE.natureDown),
@@ -132,9 +154,13 @@ export function readExportImageStyle(el: Element): ExportImageStyle {
     statCardPlain: color("--export-card-plain-bg", accentCardFallback),
     statCardPrimary: color("--export-card-primary-bg", accentCardFallback),
     statCardDanger: color("--export-card-danger-bg", dangerCardFallback),
+    statCardLabel: color("--export-card-label", muted),
+    statCardInk: color("--export-card-ink", ink),
+    statCardDangerInk: color("--export-card-danger-ink", color("--export-danger", danger)),
     barFill,
     shardsBarFill: color("--bar-shards-fill", barFill),
-    barTrack: color("--bar-track", FALLBACK_STYLE.barTrack),
+    barTrack: optionalColor("--export-bar-track"),
+    shardsBarTrack: optionalColor("--export-shards-bar-track"),
     barFillAlpha: normalizeUnitInterval(
       prop("--export-bar-fill-opacity"),
       FALLBACK_STYLE.barFillAlpha,

@@ -1272,6 +1272,8 @@ test.describe('03-settings デスクトップ', () => {
       ...expected.data.globalSettings,
       // 旧形式には無い項目。未設定（＝目標Lvと同じ）として補われる
       defaultBoostReachLevel: null,
+      // 旧形式には無い項目。OFF として補われる
+      minimizeBoost: false,
       sleepSettings: {
         ...expected.data.globalSettings.sleepSettings,
         timeZone: restored.data.globalSettings.sleepSettings.timeZone,
@@ -1308,7 +1310,12 @@ test.describe('03-settings デスクトップ', () => {
         return copy;
       }),
     }));
-    expect(normalizeSlots(restored.data.calculator.slots)).toEqual(normalizeSlots(expected.data.calculator.slots as never[]));
+    // 旧形式の行には自動の目印が無い。自動（true）として補われる
+    const expectedSlots = normalizeSlots(expected.data.calculator.slots as never[]).map(slot => ({
+      ...slot,
+      rows: slot.rows?.map(row => ({ ...row, boostReachAuto: true })),
+    }));
+    expect(normalizeSlots(restored.data.calculator.slots)).toEqual(expectedSlots);
     for (const slot of restored.data.calculator.slots as Array<Record<string, unknown>>) {
       for (const row of (slot?.rows ?? []) as Array<Record<string, unknown>>) {
         for (const key of LEGACY_ROW_FIELDS) expect(row).not.toHaveProperty(key);

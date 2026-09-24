@@ -1,2 +1,14 @@
+# ワークスペースはルートだけ。明記しないと `pnpm run` / `pnpm exec` の依存チェックが
+# video/ や _local/ 配下の package.json もプロジェクトとして数え、毎回「構成が変わった」と
+# 判定して自動 install を走らせる（install 側はルートだけを記録するので一致しない）。
+packages:
+  - "."
+
 allowBuilds:
   esbuild: true
+
+# `pnpm run` / `pnpm exec` の前に依存を自動で install し直さない（警告だけ出す）。
+# 自動 install は node_modules を消して作り直すことがあり、dev サーバーや VS Code の
+# Playwright がファイルを掴んでいると EPERM で止まって node_modules が空になる。
+# 依存を更新したいときは明示的に `pnpm install` を実行する。
+verifyDepsBeforeRun: warn

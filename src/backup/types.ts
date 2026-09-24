@@ -44,6 +44,7 @@ export type CandyBoostPlannerBackupV2 = {
  * 2. アメブ個数の `undefined` を「導出」、値ありを「明示入力」として区別する（設計書 §10.18）
  * 3. `globalSettings.defaultBoostReachLevel` の追加
  * 4. `CalcRowV1.sleepTargetMode` の追加（`"all"` ／ `"stock"`）
+ * 5. `CalcRowV1.boostMinimizeRow` の追加（行ごとのアメブ最小化設定）
  *
  * V3公開後に追加した`SleepSettings`の項目は、同じ版番号の古いバックアップでは欠落する。
  * そのため、復元時は欠落だけを各項目の既定値で補う。
@@ -59,6 +60,8 @@ export type CandyBoostPlannerBackupV3 = {
   data: CandyBoostPlannerBackupData<CandyInventoryV2, {
     /** 既定のアメブ目標Lv。`null` は未設定（＝目標Lvと同じ）。旧形式にはこの項目が無い。 */
     defaultBoostReachLevel: number | null;
+    /** アメ在庫の範囲内で目標に届く最小アメブを使う。旧バックアップでは false。 */
+    minimizeBoost: boolean;
   }>;
 };
 

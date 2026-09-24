@@ -1,56 +1,57 @@
-/* Green Theme — Fresh Garden */
+/* Green Theme — Forest Shade
+   木陰の落ち着いた緑。ページはくすんだセージ、紙は真っ白でなく緑がかった白にして
+   まぶしさを抑える（ベージュには寄せない）。アクセントは深い葉の緑。
+   ボタンの白文字は 4.75、アクセントの文字は紙の上で 4.8 以上の対比を確保している。 */
 @import "./core/reset.css";
 @import "./core/components.css";
 
 /* ===== Variables ===== */
 :root {
   /* Core Palette */
-  --bg-decor: #dcebcf;
-  --forest-page-bg: #eef6e5;
-  --paper: #ffffff;
-  --ink: #344326;
-  --ink-rgb: 52, 67, 38;
-  --muted: #708168;
-  --accent: #6bab43;
-  --accent-rgb: 107, 171, 67;
-  --accent-strong: #4f8d2f;
-  --danger: #e53935;
-  --danger-rgb: 229, 57, 53;
-  --paper-rgb: 255, 255, 255;
-  --muted-rgb: 112, 129, 104;
+  --bg-decor: #cbd8bc;
+  --forest-page-bg: #dfe7d3;
+  --paper: #f8faf2;
+  --ink: #2d3a26;
+  --ink-rgb: 45, 58, 38;
+  --muted: #58644f;
+  --accent: #4f7f35;
+  --accent-rgb: 79, 127, 53;
+  --accent-strong: #3b6526;
+  --danger: #c8412d;
+  --danger-rgb: 200, 65, 45;
+  --paper-rgb: 248, 250, 242;
+  --muted-rgb: 88, 100, 79;
 
   /* Surfaces */
-  --surface: #f6f9ef;
-  --surface-alt: #e3efd4;
-  --border: #a9bf94;
-  --border-rgb: 169, 191, 148;
+  --surface: #eff3e6;
+  --surface-alt: #dfe8d1;
+  --border: #b3c1a0;
+  --border-rgb: 179, 193, 160;
 
   /* Overlay */
-  --overlay-bg: rgba(43, 58, 32, 0.76);
+  --overlay-bg: rgba(33, 46, 27, 0.78);
   /* Interactive */
-  --btn-bg: #69a941;
+  --btn-bg: #4f7f35;
   --btn-ink: #ffffff;
-  --input-bg: #ffffff;
-  --input-border: #a8bd96;
-  --ring: #8bc76a;
-  --ring-rgb: 139, 199, 106;
+  --input-bg: #fdfefa;
+  --input-border: #aebd9a;
+  --ring: #7fa862;
+  --ring-rgb: 127, 168, 98;
 
   /* Data Visualization */
-  --bar-fill: #8bd36a;
-  --bar-fill-rgb: 139, 211, 106;
-  --bar-track: #e3efd7;
-  --bar-track-rgb: 227, 239, 215;
+  --bar-fill: #86ad66;
+  --bar-fill-rgb: 134, 173, 102;
+  --bar-track: #e2e9d6;
   --bar-over: #d96d49;
   --bar-over-rgb: 217, 109, 73;
-  --export-divider: #a7ca8d;
 
   /* Pie Chart Palette */
-  --pie-0: #6aa944;
+  --pie-0: #4f7f35;
   --pie-1: #f2a35a;
   --pie-2: #ae8a65;
   --pie-3: #7bcdb9;
   --pie-4: #d8b35e;
-  --pie-5: #8fb76e;
+  --pie-5: #93b273;
   --pie-6: #e99477;
   --pie-7: #9eaaa0;
 
@@ -67,8 +68,8 @@
   --radius-pill: 99px;
 
   /* Shadows */
-  --shadow-sm: 0 2px 5px rgba(65, 91, 48, 0.12);
-  --shadow-md: 0 5px 14px rgba(65, 91, 48, 0.15);
+  --shadow-sm: 0 2px 5px rgba(45, 70, 31, 0.12);
+  --shadow-md: 0 5px 14px rgba(45, 70, 31, 0.16);
   --shadow-lg: 0 14px 36px rgba(45, 70, 31, 0.24);
 
 }
@@ -79,21 +80,44 @@ body {
   background-image: none;
 }
 
-/* 育成プランは若草色を主役に、ミントと黄桃色で資源の種類を分ける。 */
+/* 育成プランは「地球を感じるクリーンカラー」。白い紙に、ランド・グリーン #b0d371・ライトサン・イエロー #ffe675・
+   アース・ブルー #6cc6db の3色。アメブは緑（未使用は同じ緑の淡い色に赤い数字）、通常アメは黄、かけらは青にして、
+   カードと横棒の色をそろえる。文字は濃いオリーブ（--ink）、見出しの印・合計の文字は濃い緑（白地で 4.8）。 */
 .exportSheet {
-  --export-highlight: #5fa33b;
-  --export-highlight-rgb: 95, 163, 59;
-  --export-card-accent-bg: #e1eecf;
-  --export-card-plain-bg: #d8efe6;
-  --export-card-primary-bg: #ffedc1;
-  --export-card-danger-bg: #fce0d4;
-  --bar-fill: #84ca64;
-  --bar-fill-rgb: 132, 202, 100;
-  --bar-track: #deecd1;
-  --bar-track-rgb: 222, 236, 209;
-  --bar-shards-fill: #ffad66;
-  --bar-shards-fill-rgb: 255, 173, 102;
-  --export-bar-fill-opacity: 0.76;
+  --paper: #ffffff;
+  --ink: #3f4a2b;
+  --ink-rgb: 63, 74, 43;
+  --accent: #3a8121;
+  --accent-rgb: 124, 196, 79;
+  --danger: #c93a22;
+  --surface-alt: #dff3cc;
+  --export-highlight: #3a8121;
+  --export-highlight-rgb: 124, 196, 79;
+
+  /* 合計カード。黄と青は面が大きいと重いので基本の色より明るくする（黄 +2・青 +13。HSL の明度）。
+     文字はすべて --ink で 5.5 以上。ラベルも既定の --muted では青（4.1）と緑（3.7）の上で足りないので --ink にする。
+     未使用の赤い大きな数字は淡い緑の上で 4.3。 */
+  --export-card-accent-bg: #b0d371;
+  --export-card-plain-bg: #ffe87f;
+  --export-card-primary-bg: #a1dbe8;
+  --export-card-danger-bg: #e4f0c8;
+  --export-card-label: var(--ink);
+
+  /* 横棒は白地でも見えるよう、緑は少し濃く、青は基本の色のまま */
+  --bar-fill: #9ccb52;
+  --bar-fill-rgb: 156, 203, 82;
+  --bar-shards-fill: #6cc6db;
+  --bar-shards-fill-rgb: 108, 198, 219;
+  --export-bar-fill-opacity: 1;
+
+  --pie-0: #9ccb52;
+  --pie-1: #6cc6db;
+  --pie-2: #ffd84a;
+  --pie-3: #d6e9a8;
+  --pie-4: #b4e2ed;
+  --pie-5: #fff0a8;
+  --pie-6: #5f9a3a;
+  --pie-7: #a8b3a0;
 }
 
 /* ===== Hero ===== */
@@ -102,7 +126,7 @@ body {
 }
 
 .hero .lang__btn:not(.lang__btn--on):not(.lang__btn--help) {
-  background: #ffffff;
+  background: var(--input-bg);
   color: var(--ink);
   border-color: rgba(var(--ink-rgb), 0.45);
 }
@@ -112,7 +136,7 @@ body {
 }
 
 .hero .support__link {
-  background: #ffffff;
+  background: var(--input-bg);
 }
 
 .hero .support__link:hover {
@@ -201,7 +225,7 @@ body {
 .btn--primary {
   background: var(--btn-bg);
   border-radius: 20px 4px 20px 4px; /* Leaf shape */
-  border-bottom: 4px solid #4b862d;
+  border-bottom: 4px solid #365e22;
   transition: transform 0.1s, border-bottom-width 0.1s;
   box-shadow: 0 4px 8px rgba(var(--accent-rgb), 0.24);
 }
@@ -220,7 +244,7 @@ body {
 
 .field__input:focus {
   border-color: var(--accent);
-  background-color: #ffffff;
+  background-color: var(--input-bg);
 }
 
 /* ===== Calc — Sleep Chips ===== */
@@ -268,7 +292,7 @@ body {
 
 /* ===== Mobile Nav ===== */
 .mobileNav {
-  background: #fff;
+  background: var(--paper);
 }
 
 /* ===== PC Desktop (≥ 1400px) ===== */

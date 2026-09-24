@@ -45,10 +45,8 @@
   --bar-fill: #ec4899;
   --bar-fill-rgb: 236, 72, 153;
   --bar-track: #e2e8f0;
-  --bar-track-rgb: 226, 232, 240;
   --bar-over: var(--danger);
   --bar-over-rgb: 239, 68, 68;
-  --export-divider: #a7f3d0;
 
   /* Pie Chart Palette */
   --pie-0: #10b981;

@@ -3,6 +3,15 @@ import { defineConfig, devices } from '@playwright/test';
 import { isCI } from './tests/helpers/isCI';
 
 /**
+ * E2E が使う dev サーバーのポート。既定は 5173（起動中の dev サーバーをそのまま再利用する）。
+ * 並列作業の worktree など、5173 の dev サーバーと分けたいときだけ `E2E_PORT=5199` のように指定する。
+ * 一時的な playwright 設定ファイルを作ったり、node_modules をリンクで共有したりしないこと。
+ */
+const envPort = Number(process.env.E2E_PORT);
+const port = Number.isInteger(envPort) && envPort >= 1 && envPort <= 65535 ? envPort : 5173;
+const baseURL = `http://localhost:${port}`;
+
+/**
  * Read environment variables from file.
  * https://github.com/motdotla/dotenv
  */
@@ -29,7 +38,7 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: 'http://localhost:5173',
+    baseURL,
 
     /* Force Japanese locale so E2E assertions match Japanese UI text */
     locale: 'ja-JP',
@@ -44,7 +53,7 @@ export default defineConfig({
       cookies: [],
       origins: [
         {
-          origin: 'http://localhost:5173',
+          origin: baseURL,
           localStorage: [
             { name: 'candy-boost-planner:onboarding-done', value: '1' },
             { name: 'candy-boost-planner:lang', value: 'ja' },
@@ -79,8 +88,8 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: 'pnpm run dev',
-    url: 'http://localhost:5173',
+    command: `pnpm run dev --port ${port}`,
+    url: baseURL,
     reuseExistingServer: !isCI(),
   },
 });
