@@ -30,7 +30,9 @@ export type ApplyBackupOptions = {
   reload?: () => void;
 };
 
-export class BackupRollbackError extends AggregateError {
+// AggregateError（iOS 14・Chrome 85 から）は古い端末に無く、継承すると読み込んだ時点で起動が止まるため Error を継承する。
+export class BackupRollbackError extends Error {
+  readonly errors: unknown[];
   readonly originalCause: unknown;
   readonly failedRollbackKeys: string[];
   readonly mixedKeys: string[];
@@ -41,11 +43,11 @@ export class BackupRollbackError extends AggregateError {
     mixedKeys: string[],
   ) {
     super(
-      [originalCause, ...rollbackFailures.map((failure) => failure.cause)],
       `Backup restore failed and rollback left mixed keys: ${mixedKeys.join(", ") || "(unknown)"}`,
       { cause: originalCause },
     );
     this.name = "BackupRollbackError";
+    this.errors = [originalCause, ...rollbackFailures.map((failure) => failure.cause)];
     this.originalCause = originalCause;
     this.failedRollbackKeys = rollbackFailures.map((failure) => failure.key);
     this.mixedKeys = mixedKeys;

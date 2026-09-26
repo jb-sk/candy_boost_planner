@@ -167,6 +167,30 @@ test.describe('検索・フィルタ', () => {
     await expect(boxPanel.detailPanel).toBeVisible();
   });
 
+  test('Pointer Events が無いブラウザ（古い Safari）でも、マウスの長押しで計算機への追加・削除を切り替える', async ({ page }) => {
+    await page.evaluate(() => {
+      delete (window as { PointerEvent?: unknown }).PointerEvent;
+    });
+    const tile = boxPanel.boxTiles.first();
+    const mark = tile.locator('.boxTile__calcMark');
+    // pointer のイベントを出さず、mouse だけを送る
+    const press = async () => {
+      await tile.dispatchEvent('mousedown', { button: 0 });
+      await page.waitForTimeout(350);
+      // 本物と同じく、mouseup の直後（同じ処理の流れ）に click が来る
+      await tile.evaluate((element) => {
+        element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
+        element.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+      });
+    };
+    await press();
+    await expect(mark).toBeVisible();
+    await expect(boxPanel.detailPanel).toHaveCount(0);
+    await press();
+    await expect(mark).toHaveCount(0);
+    await expect(boxPanel.detailPanel).toHaveCount(0);
+  });
+
   test('とくいフィルタ: きのみ、食材、スキル、オールが動作する', async () => {
     // きのみ
     await boxPanel.toggleBerryFilter();

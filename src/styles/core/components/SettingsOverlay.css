@@ -152,17 +152,10 @@
   white-space: normal;
 }
 
-/* ヒントを開いている間の重なり順は 受け口 < ? < チップ の3段にする。
-   ? を受け口より下に埋めると、隣の説明へ移るのに2回押すことになる（3つ隣り合っている）。
-   逆にチップより上へ出すと、他の ? がチップの文字を突き抜けて見える。
-   .hintOverlay(999) と .hintPopover(1000) の間に整数が無いので、受け口を下げて隙間を作る。 */
-.settings-overlay .hintOverlay {
-  z-index: 990;
-}
-
-.settingsField__labelWithHint .hintIcon {
+/* ヒントチップ（.hintPopover--anchored）の基準。チップはスクロールする中身の中に、中身の座標で置く
+   （SettingsOverlay.vue の showHint）。中身の外に置くと、iOS ではチップの上から指を動かしても中身がスクロールしない */
+.settingsBody {
   position: relative;
-  z-index: 995;
 }
 
 .settingsField__hint,
@@ -202,7 +195,8 @@
 }
 
 .settingsTimeZoneInput {
-  width: min(240px, 55vw);
+  width: 55vw;
+  max-width: 240px;
 }
 
 .settingsTimeZoneError {

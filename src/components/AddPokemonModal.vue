@@ -1,5 +1,5 @@
 <template>
-  <div class="modal-overlay" @click.self="$emit('close')">
+  <div class="modal-overlay addModal-overlay" @click.self="$emit('close')">
     <div class="modal addModal" role="dialog" :aria-label="t('addModal.title')" @keydown.esc="$emit('close')">
       <div class="addModal__head">
         <h2 class="addModal__title">{{ t("addModal.title") }}</h2>
@@ -69,7 +69,7 @@
         <div class="addModal__levelRow">
           <div class="field">
             <span class="field__label">{{ t("calc.row.srcLevel") }}</span>
-            <LevelPicker v-model="srcLevel" :label="`${t('calc.row.srcLevel')} Lv${srcLevel}`" :max="MAX_LEVEL" />
+            <LevelPicker v-model="srcLevel" keypad :label="`${t('calc.row.srcLevel')} Lv${srcLevel}`" :max="MAX_LEVEL" />
           </div>
           <label class="field">
             <span class="field__label">{{ t("calc.row.expRemaining") }}</span>
@@ -79,6 +79,7 @@
               min="1"
               class="field__input"
               data-testid="add-modal-exp-remaining"
+              v-keypad="t('calc.row.expRemaining')"
               :placeholder="t('calc.row.expRemainingPh')"
             />
           </label>
@@ -87,7 +88,7 @@
         <!-- 目標レベル -->
         <div class="field">
           <span class="field__label">{{ t("calc.row.dstLevel") }}</span>
-          <LevelPicker v-model="dstLevel" :min="srcLevel" :max="MAX_LEVEL" :label="`${t('calc.row.dstLevel')} Lv${dstLevel}`" />
+          <LevelPicker v-model="dstLevel" keypad :min="srcLevel" :max="MAX_LEVEL" :label="`${t('calc.row.dstLevel')} Lv${dstLevel}`" />
         </div>
 
         <!-- 性格 -->
@@ -111,6 +112,7 @@
             min="0"
             class="field__input"
             data-testid="add-modal-species-candy"
+            v-keypad="t('calc.row.speciesCandy')"
           />
         </label>
 
@@ -124,6 +126,7 @@
             step="1"
             class="field__input"
             data-testid="add-modal-sleep-hours"
+            v-keypad="t('box.detail.sleepHours')"
             placeholder=""
           />
         </label>
@@ -189,6 +192,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from "vue";
 import { useI18n } from "vue-i18n";
 import LevelPicker from "./LevelPicker.vue";
+import { vKeypad } from "../composables/useNumericKeypad";
 import NatureSelect from "./NatureSelect.vue";
 import { getPokemonNameLocalized } from "../domain/pokesleep/pokemon-name-localize";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";

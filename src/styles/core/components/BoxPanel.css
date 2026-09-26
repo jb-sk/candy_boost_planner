@@ -355,7 +355,8 @@
 .boxTagManager__add {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 52px;
-  width: min(100% - var(--box-tag-handle-width) - 6px, var(--box-tag-row-width));
+  width: calc(100% - var(--box-tag-handle-width) - 6px);
+  max-width: var(--box-tag-row-width);
   margin-left: calc(var(--box-tag-handle-width) + 6px);
   justify-content: start;
   align-items: stretch;
@@ -403,7 +404,8 @@
 .boxTagManager__item {
   display: grid;
   grid-template-columns: var(--box-tag-handle-width) minmax(0, 1fr) 52px;
-  width: min(100%, var(--box-tag-row-width) + var(--box-tag-handle-width) + 6px);
+  width: 100%;
+  max-width: calc(var(--box-tag-row-width) + var(--box-tag-handle-width) + 6px);
   align-items: stretch;
   gap: 6px;
 }
@@ -515,7 +517,8 @@
 
 .boxTagBulk {
   --box-tag-row-width: 338px;
-  width: min(100%, var(--box-tag-row-width));
+  width: 100%;
+  max-width: var(--box-tag-row-width);
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px dashed var(--border);
@@ -1610,11 +1613,5 @@
   .sleepTimeline__trackRow--ja {
     margin-left: 20px;
     margin-right: 40px;
-  }
-}
-
-@media (min-width: 1400px) {
-  .boxDetail__viewCalc {
-    display: none;
   }
 }

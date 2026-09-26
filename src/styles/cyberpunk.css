@@ -4,6 +4,14 @@
 
 /* ===== Variables ===== */
 :root {
+  /* テンキーのリセットキー（C と見分ける色。レモンに紺（育成プランの合計カード・かけらの横棒）。
+     マゼンタは紫に見えたので替えた。シアンは C・確定と同じなので使わない）。下地 bg・枠と厚み rgb・記号 ink */
+  --numKeypad-reset-bg: #fde250;
+  --numKeypad-reset-rgb: 253, 224, 71;
+  --numKeypad-reset-ink: #0f172a;
+  /* テンキーの角丸（外枠・キー）。既定は丸いので、角張ったテーマに合わせて小さくする */
+  --numKeypad-radius: 2px;
+  --numKeypad-key-radius: 2px;
   /* Core Palette */
   --bg-decor: #020617;
   --paper: #0f172a;

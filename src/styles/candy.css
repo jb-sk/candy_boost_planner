@@ -4,6 +4,12 @@
 
 /* ===== Variables ===== */
 :root {
+  /* テンキーのリセットキー（C と見分ける色。育成プランの合計カードのクリーム色 #fff1cc を元にした黄色。
+     色相 48°・明度 84%。明度 78% は山吹色寄り、色相を 57° に上げたレモン色は明るすぎ、81%・82.5% は少し濃かった）。
+     下地 bg・枠と厚み rgb・記号 ink */
+  --numKeypad-reset-bg: #ffefad;
+  --numKeypad-reset-rgb: 255, 216, 61;
+  --numKeypad-reset-ink: #55434f;
   /* Core Palette */
   --bg-decor: #ffe4eb;
   --paper: #ffffff;

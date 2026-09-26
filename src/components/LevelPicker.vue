@@ -16,6 +16,7 @@ let closeOpenPicker: (() => void) | null = null;
 import { computed, ref, watch, nextTick, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
+import { vKeypad } from "../composables/useNumericKeypad";
 
 const props = defineProps<{
   modelValue: number;
@@ -41,15 +42,23 @@ const props = defineProps<{
    * 出す条件を呼び出し側が持つため、ここでは出し分けない。
    */
   alert?: string;
+  /**
+   * タッチ端末で入力欄をテンキー入力にする（useNumericKeypad.ts）。
+   * 共用の部品なので、使う画面だけが指定する。
+   */
+  keypad?: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: "update:modelValue", value: number): void;
+  /** 開閉。親が開いている間だけ重なり順を上げるのに使う（CSS の :has() は iOS 15.4・Chrome 105 からなので使わない） */
+  (e: "update:open", open: boolean): void;
 }>();
 
 const { t } = useI18n();
 
 const isOpen = ref(false);
+watch(isOpen, (open) => emit("update:open", open));
 const root = ref<HTMLElement | null>(null);
 const popoverStyle = ref<Record<string, string>>({});
 const presets = [10, 25, 30, 40, 50, 55, 60, 65, MAX_LEVEL];
@@ -231,6 +240,8 @@ onUnmounted(() => {
   document.removeEventListener("click", onClickOutside);
   // 開いたまま行が消えると、次に開くピッカーが「前を閉じる」で存在しない関数を呼ぶ。
   if (closeOpenPicker === close) closeOpenPicker = null;
+  // 開いたまま消えたら、親の「開いている」印も外す
+  if (isOpen.value) emit("update:open", false);
 });
 </script>
 
@@ -247,6 +258,7 @@ onUnmounted(() => {
       data-testid="level-picker-trigger"
       :aria-label="label ?? 'Level'"
       :disabled="disabled"
+      v-keypad="keypad ? (label ?? '') : false"
       :value="inputValue"
       @focus="onInputFocus"
       @blur="onInputBlur"

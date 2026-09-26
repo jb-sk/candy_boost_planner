@@ -5,6 +5,7 @@ import type { EventOccurrence, ProjectedEventOccurrence } from "../domain/pokesl
 import type { SleepBonusContribution, SleepBonusKind, SleepNightContribution } from "../domain/pokesleep/sleep-growth";
 import { localizeEventName } from "../i18n/eventNames";
 import type { AppLocale } from "../i18n";
+import { flatMapOf } from "./flatMapOf";
 
 /** ボーナス内訳の1行ぶんの表示文。空文字はそのセルを出さないことを表す。 */
 export type BonusPanelRow = {
@@ -272,7 +273,7 @@ function buildChips(
   projected: boolean,
   context: ChipContext,
 ): EventChipView[] {
-  return occurrences.flatMap(event => {
+  return flatMapOf(occurrences, event => {
     const flower = hasFlower(event, projected, context);
     // **2週目だけが計画に掛かる場合も件を出す。** 花は1週目の終了後に生えるので、
     // 親の期間だけで絞ると「内訳に ×3 が出ているのに一覧が空」になる。

@@ -21,7 +21,11 @@
   padding-right: 22px;
 }
 
-.design-switch-select:hover {
-  background: var(--accent);
-  color: var(--paper);
+/* hover はホバーできる端末だけ。タッチ端末ではタップ後も hover が残り、色が反転したままになる。
+   background の一括指定は ▼ の画像まで消すので、色だけ変える */
+@media (hover: hover) {
+  .design-switch-select:hover {
+    background-color: var(--accent);
+    color: var(--paper);
+  }
 }

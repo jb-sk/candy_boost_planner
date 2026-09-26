@@ -57,7 +57,8 @@ export function useSleepSchedulePlanning(params: {
     const message = error instanceof Error ? error.message : String(error);
     // schedule 構築に失敗して同一性比較できない場合も、エラーを生んだ入力状態を識別する。
     const failedContext = `${params.currentGameDate.value}|${JSON.stringify(params.sleepSettings.value)}`;
-    queueMicrotask(() => {
+    // queueMicrotask（iOS 12.2・Chrome 71 から）は使わない
+    void Promise.resolve().then(() => {
       // 設定や日付が変わった後へ、古い schedule のエラーを持ち越さない。
       const currentContext = `${params.currentGameDate.value}|${JSON.stringify(params.sleepSettings.value)}`;
       if (currentContext !== failedContext) return;

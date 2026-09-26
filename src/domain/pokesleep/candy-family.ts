@@ -55,5 +55,6 @@ export function normalizeSpeciesCandyByFamily(
 }
 
 export function isKnownCandyFamilyPokedexId(pokedexId: number): boolean {
-  return Object.hasOwn(candyFamilyByPokedexId, String(pokedexId));
+  // Object.hasOwn（iOS 15.4・Chrome 93 から）は古い端末で使えないので使わない
+  return Object.prototype.hasOwnProperty.call(candyFamilyByPokedexId, String(pokedexId));
 }

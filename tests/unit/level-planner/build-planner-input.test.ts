@@ -93,6 +93,20 @@ describe('buildPlannerInput', () => {
     });
   });
 
+  it('アメブ個数が明示入力なら、押し上げた最終目標（Lv＋Lv内EXP）をそのまま渡す。未入力なら Lv ちょうど', () => {
+    const explicit = baseRow({ dstLevel: 22, dstExpInLevel: 137, boostOrExpAdjustment: 13, boostCandyInput: 13 });
+    expect(buildPlannerInput([explicit], baseSnapshot('full'))?.pokemonList[0]).toMatchObject({
+      targetLevel: 22,
+      targetExpInLevel: 137,
+    });
+
+    const derived = baseRow({ dstLevel: 22, dstExpInLevel: 137, boostOrExpAdjustment: undefined, boostCandyInput: 13 });
+    expect(buildPlannerInput([derived], baseSnapshot('full'))?.pokemonList[0]).toMatchObject({
+      targetLevel: 22,
+      targetExpInLevel: 0,
+    });
+  });
+
   it('個数指定ありなら保存された最終目標（Lv＋Lv内EXP）をそのまま渡す', () => {
     const row = baseRow({
       expRemaining: 40,

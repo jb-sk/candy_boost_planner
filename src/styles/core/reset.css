@@ -59,6 +59,11 @@ body {
   min-height: auto;
 }
 
+/* タッチ端末: iOS Safari はツールバーが縮んでいるとき、画面の下端近く（約 64px）のタップをボタンへ渡さず
+   ツールバーを出すのに使う。一番下までスクロールしたとき、最後のボタン（計算機の「ポケモンを追加」など）が
+   その帯に入らないよう、ページの下に余白を足す（anchoredPlacement.ts の BOTTOM_GAP と同じ理由）。
+   PC 2列（1400px 以上）の padding より後に効くよう、規則は下の @media の後に置く */
+
 /* ===== Dashboard (main content area) ===== */
 .dashboard {
   display: flex;
@@ -80,5 +85,12 @@ body {
     align-items: start;
     max-width: 1400px;
     margin: 0 auto;
+  }
+}
+
+/* ページの下の余白（説明は .shell__scroll の下） */
+@media (hover: none) and (pointer: coarse) {
+  .shell__scroll {
+    padding-bottom: 48px;
   }
 }

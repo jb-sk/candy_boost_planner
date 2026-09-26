@@ -8,7 +8,7 @@ export type DeriveTargetParams = {
   dstLevel: number;
   /**
    * 保存された最終目標のLv内EXP。
-   * 個数指定なしの行では常に 0（＝目標は Lv ちょうど。§4.5 / §3.8-d）。
+   * 個数指定・アメブ個数のどちらも未入力の行では読まない（＝目標は Lv ちょうど。§4.5 / §3.8-d）。
    */
   dstExpInLevel?: number;
   /** アメ個数指定（総アメ数）。undefined = 個数指定なし＝目標は Lv ちょうど。 */

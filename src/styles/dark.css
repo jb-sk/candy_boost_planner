@@ -7,6 +7,10 @@
 
 /* ===== Variables ===== */
 :root {
+  /* テンキーのリセットキー（C と見分ける色。夜空の紫にラベンダー（育成プランの合計カード・かけらの横棒））。下地 bg・枠と厚み rgb・記号 ink */
+  --numKeypad-reset-bg: #322a5c;
+  --numKeypad-reset-rgb: 179, 156, 245;
+  --numKeypad-reset-ink: #b39cf5;
   /* Core Palette */
   --bg-decor: #0e1324;
   --paper: #141a2e;

@@ -600,7 +600,7 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     }).candy;
     store.onRowCandyTarget(id, String(budget));
 
-    expect(store.applyMinBoostForCandyTarget(id, targetLevel)).toBe("applied");
+    expect(store.applyMinBoostForCandyTarget(id, targetLevel)).toEqual({ kind: "applied" });
 
     const applied = rowOf(store, id);
     const n = applied.boostOrExpAdjustment!;
@@ -648,7 +648,7 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     store.onRowCandyTarget(id, "1000");
     expect(rowOf(store, id).boostMinimizeRow).toBe(true);
 
-    expect(store.applyMinBoostForCandyTarget(id, 40)).toBe("applied");
+    expect(store.applyMinBoostForCandyTarget(id, 40)).toEqual({ kind: "applied" });
 
     expect(rowOf(store, id).boostOrExpAdjustment).toBeDefined();
     expect(rowOf(store, id).boostMinimizeRow).toBeUndefined();
@@ -659,7 +659,7 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     store.setSlotBoostKind("full");
     store.onRowCandyTarget(id, "100");
 
-    expect(store.applyMinBoostForCandyTarget(id, rowOf(store, id).srcLevel)).toBe("applied");
+    expect(store.applyMinBoostForCandyTarget(id, rowOf(store, id).srcLevel)).toEqual({ kind: "applied" });
     expect(rowOf(store, id).boostOrExpAdjustment).toBe(0);
     expect(rowOf(store, id).candyTarget).toBe(100);
   });
@@ -670,20 +670,95 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     store.onRowCandyTarget(id, "1");
     const before = { ...rowOf(store, id) };
 
-    expect(store.applyMinBoostForCandyTarget(id, MAX_LEVEL)).toBe("unreachable");
+    // 届くのに必要な数は、全部アメブで上げたときの総アメ数
+    const neededCandy = calcExpAndCandy({
+      srcLevel: before.srcLevel,
+      dstLevel: MAX_LEVEL,
+      expType: before.expType,
+      nature: before.nature,
+      boost: "full",
+    }).candy;
+    expect(neededCandy).toBeGreaterThan(1);
+    expect(store.applyMinBoostForCandyTarget(id, MAX_LEVEL)).toEqual({ kind: "unreachable", neededCandy });
     expect(rowOf(store, id)).toEqual(before);
+
+    // 必要な数ちょうどを指定すれば届く（1つ少ないと届かない）
+    store.onRowCandyTarget(id, String(neededCandy - 1));
+    expect(store.applyMinBoostForCandyTarget(id, MAX_LEVEL)).toEqual({ kind: "unreachable", neededCandy });
+    store.onRowCandyTarget(id, String(neededCandy));
+    expect(store.applyMinBoostForCandyTarget(id, MAX_LEVEL)).toEqual({ kind: "applied" });
+  });
+
+  describe("睡眠目標がある行では、指定Lvを睡眠込みの最終Lvとして扱う", () => {
+    // 睡眠目標を先に入れる（後から入れると個数指定がリセットされる）
+    function makeSleepStore(candyTarget: number) {
+      const { store, id } = makeStore();
+      store.setSlotBoostKind("full");
+      store.setRowSleepTargetHours(id, 1000);
+      store.onRowCandyTarget(id, String(candyTarget));
+      expect(store.rowSleepExpFor(id)).toBeGreaterThan(0);
+      return { store, id };
+    }
+
+    it("睡眠EXPで賄える分のアメブは使わない（最小のアメブで、最終Lvが指定Lvに届く）", () => {
+      const targetLevel = 60;
+      // 必要数を少しだけ超える個数にして、アメブが要る状態にする
+      const { store, id } = makeSleepStore(1);
+      const probe = store.applyMinBoostForCandyTarget(id, targetLevel);
+      if (probe.kind !== "unreachable") throw new Error(`unexpected: ${probe.kind}`);
+      store.onRowCandyTarget(id, String(probe.neededCandy + 20));
+
+      expect(store.applyMinBoostForCandyTarget(id, targetLevel)).toEqual({ kind: "applied" });
+      const n = rowOf(store, id).boostOrExpAdjustment!;
+      expect(n).toBeGreaterThan(0);
+      expect(rowOf(store, id).dstLevel).toBeGreaterThanOrEqual(targetLevel);
+
+      // 1個少ないと、睡眠込みでも届かない
+      store.onRowBoostCandy(id, String(n - 1));
+      expect(rowOf(store, id).dstLevel).toBeLessThan(targetLevel);
+    });
+
+    it("届かないときの必要数は睡眠EXPを引いた数で、その数ちょうどなら届く", () => {
+      const { store, id } = makeSleepStore(1);
+      const result = store.applyMinBoostForCandyTarget(id, MAX_LEVEL);
+      if (result.kind !== "unreachable") throw new Error(`unexpected: ${result.kind}`);
+      const r = rowOf(store, id);
+      const withoutSleep = calcExpAndCandy({
+        srcLevel: r.srcLevel,
+        dstLevel: MAX_LEVEL,
+        expType: r.expType,
+        nature: r.nature,
+        boost: "full",
+      }).candy;
+      expect(result.neededCandy).toBeLessThan(withoutSleep);
+
+      store.onRowCandyTarget(id, String(result.neededCandy - 1));
+      expect(store.applyMinBoostForCandyTarget(id, MAX_LEVEL)).toEqual(result);
+      store.onRowCandyTarget(id, String(result.neededCandy));
+      expect(store.applyMinBoostForCandyTarget(id, MAX_LEVEL)).toEqual({ kind: "applied" });
+      expect(rowOf(store, id).dstLevel).toBe(MAX_LEVEL);
+    });
+
+    it("睡眠だけで指定Lvに届くならアメブ0を適用する", () => {
+      // アメ1個では睡眠なしだと次のLvにも届かない
+      const { store, id } = makeSleepStore(1);
+      const r = rowOf(store, id);
+      expect(store.applyMinBoostForCandyTarget(id, r.srcLevel + 1)).toEqual({ kind: "applied" });
+      expect(rowOf(store, id).boostOrExpAdjustment).toBe(0);
+      expect(rowOf(store, id).candyTarget).toBe(1);
+    });
   });
 
   it("個数指定が空または0なら逆算ツールは変更しない", () => {
     const { store, id } = makeStore();
     store.setSlotBoostKind("full");
     const emptyBefore = { ...rowOf(store, id) };
-    expect(store.applyMinBoostForCandyTarget(id, 40)).toBe("disabled");
+    expect(store.applyMinBoostForCandyTarget(id, 40)).toEqual({ kind: "disabled" });
     expect(rowOf(store, id)).toEqual(emptyBefore);
 
     store.onRowCandyTarget(id, "0");
     const zeroBefore = { ...rowOf(store, id) };
-    expect(store.applyMinBoostForCandyTarget(id, 40)).toBe("disabled");
+    expect(store.applyMinBoostForCandyTarget(id, 40)).toEqual({ kind: "disabled" });
     expect(rowOf(store, id)).toEqual(zeroBefore);
   });
 
@@ -693,7 +768,7 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     store.onRowCandyTarget(id, "1000");
     const before = { ...rowOf(store, id) };
 
-    expect(store.applyMinBoostForCandyTarget(id, 40)).toBe("applied");
+    expect(store.applyMinBoostForCandyTarget(id, 40)).toEqual({ kind: "applied" });
     expect(rowOf(store, id)).not.toEqual(before);
     store.undo();
     expect(rowOf(store, id)).toEqual(before);
@@ -1719,11 +1794,11 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     expect(rowOf(store, id).boostOrExpAdjustment).toBeUndefined();
   });
 
-  it("アメブ個数を空白で確定すると明示0になり、undo 1回で未入力へ戻る（§9.3）", () => {
+  it("アメブ個数を空白で確定すると行のリセットと同じく自動計算へ戻り、undo 1回で入力値へ戻る（§9.3）", () => {
     const { store, id } = makeStore();
     store.setSlotBoostKind("full");
     const derived = store.rowsView.value.find((row) => row.id === id)!.ui.boostCandyInput;
-    expect(derived).toBeGreaterThan(0);
+    expect(derived).toBeGreaterThan(1);
     expect(rowOf(store, id).boostOrExpAdjustment).toBeUndefined();
 
     store.upsertFromBox({ boxId: "untouched-row", pokedexId: 26, srcLevel: 10, dstLevelDefault: 30, expType: 600, nature: "normal" });
@@ -1731,26 +1806,57 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     const untouchedInput = store.rowsView.value.find((row) => row.id === untouchedId)!.ui.boostCandyInput;
     expect(rowOf(store, untouchedId).boostOrExpAdjustment).toBeUndefined();
 
+    store.onRowBoostCandy(id, "1", { standaloneUndo: true });
+    expect(rowOf(store, id).boostOrExpAdjustment).toBe(1);
+
     store.onRowBoostCandy(id, "");
-    expect(rowOf(store, id).boostOrExpAdjustment).toBe(0);
-    expect(store.rowsView.value.find((row) => row.id === id)!.ui.boostCandyInput).toBe(0);
+    expect(rowOf(store, id).boostOrExpAdjustment).toBeUndefined();
+    expect(store.rowsView.value.find((row) => row.id === id)!.ui.boostCandyInput).toBe(derived);
     expect(rowOf(store, untouchedId).boostOrExpAdjustment).toBeUndefined();
     expect(store.rowsView.value.find((row) => row.id === untouchedId)!.ui.boostCandyInput).toBe(untouchedInput);
 
     store.undo();
-    expect(rowOf(store, id).boostOrExpAdjustment).toBeUndefined();
-    expect(store.rowsView.value.find((row) => row.id === id)!.ui.boostCandyInput).toBe(derived);
+    expect(rowOf(store, id).boostOrExpAdjustment).toBe(1);
   });
 
-  it("在庫0の stock 行は空白確定で明示0を保存できる（§9.3）", () => {
+  it("boostCandyAfterReset は空白確定（リセット）後の実効アメブ個数と一致する（枠に収まる行・足りない行）", () => {
     const { store, id } = makeStore();
     store.setSlotBoostKind("full");
-    store.updateSpeciesCandy(25, 0);
-    store.setRowSleepTarget(id, "stock");
-    expect(store.rowsView.value.find((row) => row.id === id)!.ui.boostCandyInputMax).toBe(0);
+    const view = () => store.rowsView.value.find((row) => row.id === id)!.ui.boostCandyInput;
+    const derived = view();
+    expect(derived).toBeGreaterThan(2);
 
+    // 枠に収まる: 自動計算の値
+    store.onRowBoostCandy(id, "1");
+    expect(store.boostCandyAfterReset(id)).toBe(derived);
     store.onRowBoostCandy(id, "");
-    expect(rowOf(store, id).boostOrExpAdjustment).toBe(0);
+    expect(view()).toBe(derived);
+
+    // 枠が足りない: 残枠が確定する
+    store.boostCandyRemaining.value = derived - 2;
+    store.onRowBoostCandy(id, "1");
+    expect(store.boostCandyAfterReset(id)).toBe(derived - 2);
+    store.onRowBoostCandy(id, "");
+    expect(rowOf(store, id).boostOrExpAdjustment).toBe(derived - 2);
+    expect(view()).toBe(derived - 2);
+  });
+
+  it("在庫0の stock 行も空白確定は行のリセットと同じ（§9.3）", () => {
+    const make = () => {
+      const { store, id } = makeStore();
+      store.setSlotBoostKind("full");
+      store.updateSpeciesCandy(25, 0);
+      store.setRowSleepTarget(id, "stock");
+      store.onRowBoostCandy(id, "0");
+      expect(rowOf(store, id).boostOrExpAdjustment).toBe(0);
+      return { store, id };
+    };
+    const blank = make();
+    blank.store.onRowBoostCandy(blank.id, "");
+    const reset = make();
+    reset.store.resetRowBoostCandy(reset.id);
+    expect({ ...rowOf(blank.store, blank.id), id: "" }).toEqual({ ...rowOf(reset.store, reset.id), id: "" });
+    expect(rowOf(blank.store, blank.id).boostOrExpAdjustment).not.toBe(0);
   });
 
   it("上限が1以上ならアメブ個数を保存し、超過分は上限へクランプする", () => {
@@ -1927,7 +2033,7 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     expect(ui.boostCapActive).toBe(true);
   });
 
-  it("睡眠目標がある行もアメブは Lv ちょうどまで、端数は通常アメが賄う（2026-08-15）", async () => {
+  it("睡眠目標がある行は、アメブ目標Lvが目標Lvのままなら T' の端数までアメブが賄う（2026-09-26。勝手に通常アメを増やさない）", async () => {
     const previousWorker = globalThis.Worker;
     const requests: Array<Record<string, unknown>> = [];
     class FakeWorker {
@@ -1944,28 +2050,27 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
       store.setRowSleepTargetHours(id, 2000);
       await new Promise((resolve) => setTimeout(resolve, 30));
 
-      // アメが担当する終端 T' は Lv の途中（端数EXP付き）。**アメブが賄うのは Lv ちょうどまで**で、
-      // 端数は通常アメの担当（2026-08-15 に端数賄いを廃止）。入力欄の上限は端数込みのままなので、
-      // 導出値はそれより小さくなる。**睡眠がある行では「アメブ1個 → 通常アメ1個」置換はしない**
-      // （2026-07-30）ので、導出値は Lv ちょうどまでの必要数ぴったりになる。
+      // アメが担当する終端 T' は Lv の途中（端数EXP付き）。アメブ目標Lv（意図）は目標Lvのままで T' を超えるので、
+      // 端数までアメブが賄う（「目標までアメブ」が「T' までアメブ」になるだけ）。導出値は入力欄の上限（端数込み）と同じ。
+      // **睡眠がある行では「アメブ1個 → 通常アメ1個」置換はしない**（2026-07-30）
       const ui = store.rowsView.value[0]!.ui;
       expect(ui.boostReachLevelMax).toBeLessThan(MAX_LEVEL);
-      expect(ui.boostCandyInput).toBe(
+      expect(ui.boostCandyInput).toBeGreaterThan(
         calcExpAndCandy({
           srcLevel: 50, dstLevel: ui.boostReachLevelMax, dstExpInLevel: 0,
           expType: 1080, nature: "normal", boost: "full", expGot: 0,
         }).candy,
       );
-      expect(ui.boostCandyInputMax).toBeGreaterThan(ui.boostCandyInput);
+      expect(ui.boostCandyInput).toBe(ui.boostCandyInputMax);
 
       const request = requests[requests.length - 1]!;
       const outcome = solveLevelPlanWithBudget(request.input as LevelPlannerInput, { deadlineMs: 60_000 });
       expect(outcome.kind).toBe("result");
       if (outcome.kind !== "result") return;
-      // 実配分の内訳は UI の導出値と一致する。端数ぶんだけ通常アメが乗る
+      // 実配分の内訳は UI の導出値と一致する。通常アメは混ざらない
       const line = outcome.result.pokemonResults[0]!.targetLine;
       expect(line.boostedCandyUnits).toBe(ui.boostCandyInput);
-      expect(line.nonBoostCandyUnits).toBeGreaterThan(0);
+      expect(line.nonBoostCandyUnits).toBe(0);
     } finally {
       Object.defineProperty(globalThis, "Worker", { value: previousWorker, configurable: true, writable: true });
     }
@@ -1992,13 +2097,245 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     expect(ui.boostCandyInput).toBeLessThan(ui.boostCandyInputMax);
   });
 
+  describe("勝手に通常アメを増やさない・減らすときは通常アメから（2026-09-26 ユーザー規則）", () => {
+    /** アメが担当する終端 T'（目標から睡眠EXPを戻した点）。 */
+    const candyEnd = (store: ReturnType<typeof useCalcStore>, row: CalcRow) => {
+      const sleepExp = row.sleepTargetHours === undefined ? 0 : store.rowSleepExpFor(row.id);
+      let level = row.srcLevel;
+      let carry = Math.max(0, calcExp(row.srcLevel, row.dstLevel, row.expType) - sleepExp);
+      while (level < MAX_LEVEL) {
+        const toNext = calcExp(level, level + 1, row.expType);
+        if (carry < toNext) break;
+        carry -= toNext;
+        level++;
+      }
+      return { level, expInLevel: level >= MAX_LEVEL ? 0 : carry };
+    };
+    /** アメブ n 個のとき T' へ届く総アメ数（通常アメ = 総数 - n）。 */
+    const totalCandy = (store: ReturnType<typeof useCalcStore>, n: number) => {
+      const row = store.rows.value[0]!;
+      const end = candyEnd(store, row);
+      return minCandyForTarget({
+        srcLevel: row.srcLevel, targetLevel: end.level, targetExpInLevel: end.expInLevel,
+        expType: row.expType, nature: row.nature, boostKind: "full", boostCandy: n, expGot: 0,
+      });
+    };
+    const makeRow = () => {
+      const store = useCalcStore({ locale: ref("ja"), t });
+      store.setSlotBoostKind("full");
+      store.onBoostCandyRemainingInput("9999");
+      store.upsertFromBox({ boxId: "no-auto-normal", pokedexId: 381, srcLevel: 50, dstLevelDefault: 70, expType: 1080, nature: "normal" });
+      return { store, id: store.rows.value[0]!.id };
+    };
+
+    it("睡眠目標のある行でリセットしても、アメブ目標Lvを T' へ切り下げない（睡眠を外しても通常アメが出ない）", () => {
+      const { store, id } = makeRow();
+      const withoutSleep = store.rowsView.value[0]!.ui.boostCandyInput;
+
+      store.setRowSleepTargetHours(id, 2000);
+      store.resetRowBoostCandy(id);
+      expect(store.rows.value[0]!.boostReachLevel).toBe(70);
+      const n = store.rowsView.value[0]!.ui.boostCandyInput;
+      expect(totalCandy(store, n)).toBe(n);
+
+      store.setRowSleepTarget(id, undefined);
+      expect(store.rows.value[0]!.boostReachLevel).toBe(70);
+      expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(withoutSleep);
+    });
+
+    it("睡眠EXPが増えて必要なアメが減るときは、通常アメから減らす（アメブ目標Lvを下げた行）", () => {
+      const { store, id } = makeRow();
+      store.setRowSleepTargetHours(id, 2000);
+      const capLevel = store.rowsView.value[0]!.ui.boostReachLevelMax;
+      // T' より下を選んだ行（ユーザーが通常アメを混ぜると決めた行）
+      store.setBoostLevel(id, capLevel - 3);
+
+      store.setRowSleepTargetHours(id, 1000);
+      const n1000 = store.rowsView.value[0]!.ui.boostCandyInput;
+      const total1000 = totalCandy(store, n1000);
+      store.setRowSleepTargetHours(id, 2000);
+      const n2000 = store.rowsView.value[0]!.ui.boostCandyInput;
+      const total2000 = totalCandy(store, n2000);
+
+      expect(total2000).toBeLessThan(total1000);
+      expect(n2000).toBe(n1000);
+      expect(total2000 - n2000).toBeGreaterThan(0);
+    });
+
+    it("アメブ目標Lvを目標Lvより下げた行は、置換で通常アメを増やさない（そのLvちょうどまで全部アメブ）", () => {
+      const store = useCalcStore({ locale: ref("ja"), t });
+      store.setSlotBoostKind("full");
+      store.onBoostCandyRemainingInput("9999");
+      store.upsertFromBox({ boxId: "no-swap-below", pokedexId: 381, srcLevel: 30, dstLevelDefault: 70, expType: 1080, nature: "normal" });
+      const id = store.rows.value[0]!.id;
+      let swapWouldApply = 0;
+      for (let level = 35; level <= 65; level++) {
+        store.setBoostLevel(id, level);
+        const exact = calcExpAndCandy({ srcLevel: 30, dstLevel: level, expType: 1080, nature: "normal", boost: "full" }).candy;
+        const swapped = minBoostForTarget({ srcLevel: 30, targetLevel: level, expType: 1080, nature: "normal", boostKind: "full", maxBoost: Number.MAX_SAFE_INTEGER });
+        if (swapped < exact) swapWouldApply++;
+        expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(exact);
+      }
+      // 置換が効くLvを含んでいること（含まないとこのテストは何も確かめていない）
+      expect(swapWouldApply).toBeGreaterThan(0);
+    });
+
+    it("個数指定のある行でも、アメブ目標Lvを下げたときは置換しない。Lv70 へ届くときだけ置換する", () => {
+      const store = useCalcStore({ locale: ref("ja"), t });
+      store.setSlotBoostKind("full");
+      store.onBoostCandyRemainingInput("9999");
+      store.upsertFromBox({ boxId: "no-swap-candy-target", pokedexId: 381, srcLevel: 30, dstLevelDefault: 70, expType: 1080, nature: "normal" });
+      const id = store.rows.value[0]!.id;
+      store.onRowCandyTarget(id, "20000");
+      let swapWouldApply = 0;
+      for (let level = 35; level <= 65; level++) {
+        store.setBoostLevel(id, level);
+        const exact = calcExpAndCandy({ srcLevel: 30, dstLevel: level, expType: 1080, nature: "normal", boost: "full" }).candy;
+        const swapped = minBoostForTarget({ srcLevel: 30, targetLevel: level, expType: 1080, nature: "normal", boostKind: "full", maxBoost: Number.MAX_SAFE_INTEGER });
+        if (swapped < exact) swapWouldApply++;
+        // その先を通常アメで続けるので、最後のアメブのはみ出しEXPは捨てられない
+        expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(exact);
+      }
+      expect(swapWouldApply).toBeGreaterThan(0);
+
+      // Lv70 ではみ出しEXPが捨てられるので置換が成り立つ（睡眠なし）
+      store.setBoostLevel(id, MAX_LEVEL);
+      expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(
+        minBoostForTarget({ srcLevel: 30, targetLevel: MAX_LEVEL, expType: 1080, nature: "normal", boostKind: "full", maxBoost: Number.MAX_SAFE_INTEGER }),
+      );
+    });
+
+    it("個数指定のある行は、アメがアメブ目標Lvでちょうど尽きても置換しない（ゴールが動くので）", () => {
+      let swapWouldApply = 0;
+      for (let level = 35; level <= 65; level++) {
+        const exact = calcExpAndCandy({ srcLevel: 30, dstLevel: level, expType: 1080, nature: "normal", boost: "full" }).candy;
+        const swapped = minBoostForTarget({ srcLevel: 30, targetLevel: level, expType: 1080, nature: "normal", boostKind: "full", maxBoost: Number.MAX_SAFE_INTEGER });
+        if (swapped >= exact) continue;
+        swapWouldApply++;
+        for (const candyTarget of [exact, exact + 1]) {
+          const store = useCalcStore({ locale: ref("ja"), t });
+          store.setSlotBoostKind("full");
+          store.onBoostCandyRemainingInput("9999");
+          store.upsertFromBox({ boxId: "no-swap-exact-candy", pokedexId: 381, srcLevel: 30, dstLevelDefault: 70, expType: 1080, nature: "normal" });
+          const id = store.rows.value[0]!.id;
+          store.onRowCandyTarget(id, String(candyTarget));
+          store.setBoostLevel(id, level);
+          expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(exact);
+        }
+      }
+      expect(swapWouldApply).toBeGreaterThan(0);
+    });
+
+    it("明示アメブで押し上げた行に睡眠目標を入れると Lv内EXP が 0 になり、睡眠の間は保存したアメブ個数で押し上げ直さない（spec §4.7）", () => {
+      const store = useCalcStore({ locale: ref("ja"), t });
+      store.setSlotBoostKind("full");
+      store.onBoostCandyRemainingInput("9999");
+      store.upsertFromBox({ boxId: "explicit-boost-sleep", pokedexId: 381, srcLevel: 30, dstLevelDefault: 36, expType: 1080, nature: "normal" });
+      const id = store.rows.value[0]!.id;
+      store.onRowBoostCandy(id, "200");
+      const pushed = { dstLevel: store.rows.value[0]!.dstLevel, dstExpInLevel: store.rows.value[0]!.dstExpInLevel };
+      expect(pushed.dstExpInLevel).toBeGreaterThan(0);
+
+      store.updateSleepSettings({ dailySleepHours: 8.5 });
+      store.setRowSleepTargetHours(id, 200);
+      expect(store.rowSleepExpFor(id)).toBeGreaterThan(0);
+      expect(store.rows.value[0]!.boostOrExpAdjustment).toBe(200);
+      expect(store.rows.value[0]!).toMatchObject({ dstLevel: pushed.dstLevel, dstExpInLevel: 0 });
+
+      // 睡眠の条件を変えても押し上げ直さない
+      store.updateSleepSettings({ sleepExpBonusCount: 5 });
+      store.setNature(id, "up");
+      expect(store.rows.value[0]!.dstExpInLevel ?? 0).toBe(0);
+
+      // 睡眠目標を外すと、残したアメブ個数で押し上げる（spec §4.5）
+      store.setNature(id, "normal");
+      store.setRowSleepTarget(id, undefined);
+      expect(store.rows.value[0]!).toMatchObject(pushed);
+    });
+
+    it("明示アメブで押し上げた目標をソルバーも使う。アメブを減らすと目標は据え置きで通常アメが補う（spec §4.5）", () => {
+      const store = useCalcStore({ locale: ref("ja"), t });
+      store.setSlotBoostKind("full");
+      store.onBoostCandyRemainingInput("9999");
+      store.upsertFromBox({ boxId: "explicit-boost-planner", pokedexId: 381, srcLevel: 30, dstLevelDefault: 36, expType: 1080, nature: "normal" });
+      const id = store.rows.value[0]!.id;
+      const solve = () => {
+        const input = buildLevelPlannerInput(store.rowsView.value.map((row) => ({
+          id: row.id,
+          pokedexId: row.pokedexId,
+          title: row.title,
+          pokemonType: row.pokemonType,
+          srcLevel: row.srcLevel,
+          dstLevel: row.dstLevel,
+          dstExpInLevel: row.dstExpInLevel,
+          expRemaining: row.expRemaining,
+          expType: row.expType,
+          nature: row.nature,
+          boostReachLevel: row.boostReachLevel,
+          candyTarget: row.candyTarget,
+          boostOrExpAdjustment: row.boostOrExpAdjustment,
+          boostCandyInput: row.ui.boostCandyInput,
+          sleepExp: store.rowSleepExpFor(row.id),
+          sleepTargetMode: row.sleepTargetMode,
+        })), {
+          candyInventory: { species: {}, typeCandy: {}, universal: { s: 0, m: 0, l: 0 } },
+          dreamShards: 0,
+          boost: { kind: "full", limit: 9999 },
+          itemCompareMode: "surplusFirst",
+        })!;
+        const outcome = solveLevelPlanWithBudget(input, { deadlineMs: 60_000 });
+        if (outcome.kind !== "result") throw new Error("planner did not return a result");
+        return outcome.result.pokemonResults[0]!.targetLine;
+      };
+      const calcTotal = () => {
+        const row = store.rows.value[0]!;
+        return minCandyForTarget({
+          srcLevel: 30, targetLevel: row.dstLevel, targetExpInLevel: row.dstExpInLevel,
+          expType: 1080, nature: "normal", boostKind: "full",
+          boostCandy: store.rowsView.value[0]!.ui.boostCandyInput, expGot: 0,
+        });
+      };
+
+      store.onRowBoostCandy(id, "200");
+      const pushed = { level: store.rows.value[0]!.dstLevel, exp: store.rows.value[0]!.dstExpInLevel ?? 0 };
+      expect(pushed.exp).toBeGreaterThan(0);
+      // 押し上げた目標は 200 個ちょうどの到達点なので、ソルバーも 200 個を削らない
+      expect(solve()).toMatchObject({ boostedCandyUnits: 200, nonBoostCandyUnits: 0 });
+
+      for (const n of [150, 0]) {
+        store.onRowBoostCandy(id, String(n));
+        expect(store.rows.value[0]!).toMatchObject({ dstLevel: pushed.level, dstExpInLevel: pushed.exp });
+        expect(solve()).toMatchObject({ boostedCandyUnits: n, nonBoostCandyUnits: calcTotal() - n });
+      }
+
+      // 明示アメブのあとに睡眠目標を付けても、計算機の実効アメブ（T' で頭打ち）とソルバーが一致する
+      store.onRowBoostCandy(id, "200");
+      store.updateSleepSettings({ dailySleepHours: 8.5 });
+      store.setRowSleepTargetHours(id, 200);
+      const capped = store.rowsView.value[0]!.ui.boostCandyInput;
+      expect(capped).toBeGreaterThan(0);
+      expect(capped).toBeLessThan(200);
+      expect(solve()).toMatchObject({ boostedCandyUnits: capped });
+    });
+
+    it("アメブ目標Lvが目標Lvのままの行は、睡眠EXPが増えても通常アメを混ぜない", () => {
+      const { store, id } = makeRow();
+      for (const hours of [500, 1000, 2000]) {
+        store.setRowSleepTargetHours(id, hours);
+        const n = store.rowsView.value[0]!.ui.boostCandyInput;
+        expect(n).toBeGreaterThan(0);
+        expect(totalCandy(store, n)).toBe(n);
+      }
+    });
+  });
+
   /**
    * §15.7 の「個数指定があるとき」。睡眠目標があると、必要数をそのまま個数指定へ入れたときに
    * 同じアメ数なのに内訳と到達点が変わっていた。
    *
-   * 端数賄い（旧 `coverTargetExp`）は廃止したので、**アメブ／通常アメの内訳は導出モードでも
-   * 個数指定モードでも同じ規則で決まる**（アメブは Lv ちょうどまで）。ここで見るのはその一致性で、
-   * 「通常アメが 0 個か」ではない。
+   * **アメブ／通常アメの内訳は導出モードでも個数指定モードでも同じ規則で決まる**
+   * （アメブ目標Lvが頭打ちの点以上なら、その点の端数までアメブ。2026-09-26）。
+   * 個数指定モードの頭打ちの点（`T'max`）は `T` に依らないので、両モードで一致する。
    */
   it("睡眠目標があるとき、必要数をそのまま個数指定へ入れても内訳と到達点が一致する（2026-07-30）", async () => {
     const previousWorker = globalThis.Worker;
@@ -2041,8 +2378,8 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
       };
 
       const auto = await measure();
-      // 端数は通常アメの担当（2026-08-15）。0 個ではなく、目標到達は変わらないことを見る
-      expect(auto.normal).toBeGreaterThan(0);
+      // アメブ目標Lvは目標Lvのままなので、T' の端数までアメブ。通常アメは混ざらない
+      expect(auto.normal).toBe(0);
       expect(auto.targetLevel).toBe(MAX_LEVEL);
       // 同じ需要を個数指定で表現しただけなので、内訳・かけら・到達点まで完全に一致する
       expect(await measure(auto.boost + auto.normal)).toEqual(auto);
@@ -2659,6 +2996,7 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
       nature: row.nature,
       boostReachLevel: row.boostReachLevel,
       candyTarget: row.candyTarget,
+      boostOrExpAdjustment: row.boostOrExpAdjustment,
       boostCandyInput: row.ui.boostCandyInput,
       sleepExp: store.rowSleepExpFor(row.id),
       sleepTargetMode: row.sleepTargetMode,
@@ -3221,7 +3559,7 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
       || (after.dstLevel === before.dstLevel && (after.dstExpInLevel ?? 0) > (before.dstExpInLevel ?? 0))).toBe(true);
   });
 
-  it("個数指定なし→必要数→空欄で目標Lv・あとEXP・アメ合計が変わらない（§10.1）", () => {
+  it("個数指定なし→必要数→空欄: 目標Lvとアメ合計は変わらず、個数指定の間は全部アメブ（Lv70 に届かないので置換しない）", () => {
     const { store, id } = makeStore();
     const beforeRow = { ...rowOf(store, id) };
     const beforeView = store.rowsView.value.find((row) => row.id === id)!;
@@ -3254,9 +3592,19 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
       };
     };
     const baseline = snap();
+    // 個数指定なしの行はアメブ100%で目標Lvへ届くので、最後の1個を通常アメへ置換している（前提）
+    expect(beforeView.ui.boostCandyInput).toBe(needed - 1);
 
+    // 個数指定のある行はアメ数で目標が動くので置換しない（Lv70 へ届くときだけ。2026-09-26 ユーザー規則）。
+    // 全部アメブになり、同じアメ数・同じLvのまま到達点がLv内で少し先へ進む
     store.onRowCandyTarget(id, String(needed));
-    expect(snap()).toEqual(baseline);
+    const withCandyTarget = snap();
+    expect(store.rowsView.value.find((row) => row.id === id)!.ui.boostCandyInput).toBe(needed);
+    expect(withCandyTarget.dstLevel).toBe(baseline.dstLevel);
+    expect(withCandyTarget.totalCandy).toBe(baseline.totalCandy);
+    expect(withCandyTarget.targetExpToNextLevel).toBeLessThan(baseline.targetExpToNextLevel);
+
+    // 空欄に戻すと Lv内EXP は 0 に戻り、元の内訳・目標に戻る
     store.onRowCandyTarget(id, "");
     expect(snap()).toEqual(baseline);
   });
@@ -3306,6 +3654,7 @@ describe("useCalcStore: すべて睡眠", () => {
       nature: row.nature,
       boostReachLevel: row.boostReachLevel,
       candyTarget: row.candyTarget,
+      boostOrExpAdjustment: row.boostOrExpAdjustment,
       boostCandyInput: row.ui.boostCandyInput,
       sleepExp: 0,
       sleepTargetMode: row.sleepTargetMode,
@@ -3592,7 +3941,7 @@ describe("useCalcStore: すべて睡眠", () => {
    * 以前は MAX_LEVEL 基準の上限しか見ていなかったため、在庫256の行に400と入力でき、
    * 欄は400のまま結果だけ256になった（`resolveEffectiveBoostCandy` が実効値だけを絞るため）。
    */
-  it("アメ在庫＋睡眠: 在庫減少は保存値を変えず、実効値・max・警告だけを半ロックする", () => {
+  it("アメ在庫＋睡眠: 在庫減少は保存値を変えず、実効値・max だけを半ロックする（案内も破線も出さない）", () => {
     const candyStore = useCandyStore();
     const original = candyStore.getInventory();
     candyStore.resetInventory();
@@ -3613,8 +3962,9 @@ describe("useCalcStore: すべて睡眠", () => {
       expect(store.rows.value[0]!.boostOrExpAdjustment).toBe(300);
       expect(ui().boostCandyInput).toBe(250);
       expect(ui().boostCandyInputMax).toBe(250);
-      expect(ui().boostCapActive).toBe(true);
-      expect(ui().boostCapKind).toBe("stock");
+      // 在庫で止まっても案内は出さない（アメを在庫の分だけ使い、残りは睡眠）。在庫をアメブにするか
+      // 通常アメにするかはユーザーが決めるので、アメブ2欄に破線も出さない（2026-09-26）
+      expect(ui().boostCapActive).toBe(false);
       expect(ui().boostSleepCapped).toBe(false);
       expect(ui().boostInputDisabled).toBe(false);
 
@@ -3650,11 +4000,35 @@ describe("useCalcStore: すべて睡眠", () => {
       expect(store.rowStockCandyAvailableFor(id)).toBe(100_000);
       expect(store.rowsView.value[0]!.ui.boostReachLevelMax).toBe(MAX_LEVEL);
       expect(store.rowsView.value[0]!.ui.boostCapActive).toBe(false);
-      expect(store.rowsView.value[0]!.ui.boostCapKind).toBeNull();
 
       store.setBoostLevel(id, 45);
       expect(store.rows.value[0]!.boostReachLevel).toBe(45);
       expect(store.rows.value[0]!.dstLevel).toBe(45);
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("アメ在庫＋睡眠: アメブのリセットで通常アメを混ぜない（在庫を全部アメブで使う。2026-09-26）", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = useCalcStore({ locale: ref("ja"), t });
+      store.setSlotBoostKind("full");
+      store.onBoostCandyRemainingInput("9999");
+      store.upsertFromBox({ boxId: "stock-reset", pokedexId: 25, srcLevel: 10, dstLevelDefault: 70, expType: 600, nature: "normal" });
+      const id = store.rows.value[0]!.id;
+      // 目標に届かない在庫。在庫で届くのは Lv の途中
+      store.updateSpeciesCandy(25, 257);
+      store.setRowSleepTarget(id, "stock");
+      const used = store.rowStockCandyTargetFor(id)!;
+      expect(used).toBe(257);
+
+      store.resetRowBoostCandy(id);
+      // 在庫で届くLvへ切り下げて保存しない（切り下げると、その先の端数が通常アメになる）
+      expect(store.rows.value[0]!.boostReachLevel).toBe(70);
+      expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(used);
     } finally {
       candyStore.restoreInventory(original);
     }
@@ -3677,8 +4051,8 @@ describe("useCalcStore: すべて睡眠", () => {
       store.updateSpeciesCandy(25, exactNeed);
       const ui = store.rowsView.value[0]!.ui;
       expect(store.rowStockCandyAvailableFor(id)).toBe(exactNeed);
-      expect(ui.boostCapActive).toBe(true);
-      expect(ui.boostCapKind).toBe("stock");
+      // 在庫ちょうどで上限に達しても案内は出さない（2026-09-26）
+      expect(ui.boostCapActive).toBe(false);
       const before = { ...store.rows.value[0]! };
       store.setBoostLevel(id, ui.boostReachLevelMax + 1);
       expect(store.rows.value[0]!.boostReachLevel).toBe(before.boostReachLevel);
@@ -3731,7 +4105,6 @@ describe("useCalcStore: すべて睡眠", () => {
       expect(store.rowsView.value[0]!.ui.boostCandyInputMax).toBeGreaterThan(0);
       expect(store.rowsView.value[0]!.ui.boostInputDisabled).toBe(false);
       expect(store.rowsView.value[0]!.ui.boostCapActive).toBe(false);
-      expect(store.rowsView.value[0]!.ui.boostCapKind).toBeNull();
     } finally {
       candyStore.restoreInventory(original);
     }
@@ -4058,6 +4431,13 @@ describe("useCalcStore: アメブ最小化", () => {
       expect(expectedMinimum(store, store.rows.value[0]!)).toBeUndefined();
       expect(store.rowsView.value[0]!.ui.boostCandyInput).toBe(fallback);
       expect(store.rowsView.value[0]!.ui.boostMinimizeFallback).toBe(true);
+      // 警告文の「{n}個以上のアメが必要です」: 目標まで全部アメブで上げたときの総アメ数（逆算ツールと同じ数え方）
+      const r = store.rows.value[0]!;
+      const toNext = calcExp(r.srcLevel, r.srcLevel + 1, r.expType);
+      const expGot = r.expRemaining ? toNext - r.expRemaining : 0;
+      expect(store.rowsView.value[0]!.ui.boostMinimizeFallbackNeededCandy).toBe(calcExpAndCandy({
+        srcLevel: r.srcLevel, dstLevel: r.dstLevel, expType: r.expType, nature: r.nature, boost: "full", expGot,
+      }).candy);
       expect(store.rows.value[0]!.boostReachLevel).toBe(25);
       expect(store.rows.value[0]!.boostOrExpAdjustment).toBeUndefined();
     } finally {
@@ -4607,7 +4987,7 @@ describe("useCalcStore: アメブ最小化", () => {
     }
   });
 
-  it("行フラグは手入力・目標Lv選択・行リセット・全体再割当・種別変更で解除される", () => {
+  it("行フラグは手入力・目標Lv選択で解除される", () => {
     const candyStore = useCandyStore();
     const original = candyStore.getInventory();
     candyStore.resetInventory();
@@ -4615,9 +4995,7 @@ describe("useCalcStore: アメブ最小化", () => {
       const store = newBoostStore();
       const manual = addRow(store, "row-minimize-clear-manual", 25);
       const picker = addRow(store, "row-minimize-clear-picker", 133);
-      const reset = addRow(store, "row-minimize-clear-reset", 152);
-      const kind = addRow(store, "row-minimize-clear-kind", 1);
-      for (const row of [manual, picker, reset, kind]) {
+      for (const row of [manual, picker]) {
         store.updateSpeciesCandy(row.pokedexId!, 5_000);
         expect(store.setRowMinimizeBoost(row.id, true)).toBe("applied");
       }
@@ -4627,18 +5005,43 @@ describe("useCalcStore: アメブ最小化", () => {
 
       store.setBoostLevel(picker.id, store.rows.value.find((row) => row.id === picker.id)!.boostReachLevel);
       expect(store.rows.value.find((row) => row.id === picker.id)!.boostMinimizeRow).toBeUndefined();
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
+  it("行フラグは行リセット・空白確定・全体再割当・種別変更では残り、戻った自動の値が最小化になる", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const reset = addRow(store, "row-minimize-keep-reset", 152);
+      const blank = addRow(store, "row-minimize-keep-blank", 7);
+      const kind = addRow(store, "row-minimize-keep-kind", 1);
+      const reassign = addRow(store, "row-minimize-keep-reassign", 4);
+      for (const row of [reset, blank, kind, reassign]) {
+        store.updateSpeciesCandy(row.pokedexId!, 5_000);
+        expect(store.setRowMinimizeBoost(row.id, true)).toBe("applied");
+      }
+      const rowById = (id: string) => store.rows.value.find((row) => row.id === id)!;
+      const expectMinimized = (id: string) => {
+        expect(rowById(id).boostMinimizeRow).toBe(true);
+        expect(rowById(id).boostOrExpAdjustment).toBeUndefined();
+        expect(store.rowsView.value.find((row) => row.id === id)!.ui.boostCandyInput).toBe(expectedMinimum(store, rowById(id)));
+      };
 
       store.resetRowBoostCandy(reset.id);
-      expect(store.rows.value.find((row) => row.id === reset.id)!.boostMinimizeRow).toBeUndefined();
+      expectMinimized(reset.id);
+
+      store.onRowBoostCandy(blank.id, "");
+      expectMinimized(blank.id);
 
       store.setSlotBoostKind("mini");
-      expect(store.rows.value.find((row) => row.id === kind.id)!.boostMinimizeRow).toBeUndefined();
+      expectMinimized(kind.id);
 
-      const reassign = addRow(store, "row-minimize-clear-reassign", 4);
-      store.updateSpeciesCandy(reassign.pokedexId!, 5_000);
-      expect(store.setRowMinimizeBoost(reassign.id, true)).toBe("applied");
       store.resetAllBoostCandy();
-      expect(store.rows.value.find((row) => row.id === reassign.id)!.boostMinimizeRow).toBeUndefined();
+      for (const row of [reset, blank, kind, reassign]) expectMinimized(row.id);
     } finally {
       candyStore.restoreInventory(original);
     }

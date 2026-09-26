@@ -41,7 +41,8 @@
   /* Horizontal position is set by JS (adjustPopoverPosition) to prevent
      both left and right viewport overflow. Falls back to left:0. */
   left: 0;
-  width: min(320px, 85vw);
+  width: 85vw;
+  max-width: 320px;
   border: 1px solid var(--border);
   background: var(--paper);
   border-radius: var(--radius-lg);

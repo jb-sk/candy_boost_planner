@@ -333,7 +333,8 @@
 /* ===== Responsive: 680px+ — AddPokemonModal as popover card ===== */
 @media (min-width: 680px) {
   /* Overlay becomes a flex centering container */
-  .modal-overlay:has(.addModal) {
+  /* :has() は iOS 15.4・Chrome 105 からなので使わず、器のクラスで選ぶ */
+  .modal-overlay.addModal-overlay {
     display: flex;
     align-items: center;
     justify-content: center;

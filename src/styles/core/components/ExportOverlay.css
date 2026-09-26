@@ -21,7 +21,10 @@
 /* ===== 長押し保存ビューア（共有が使えない端末向けフォールバック）===== */
 .exportSaveViewer {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 1200;
   display: flex;
   align-items: center;
@@ -40,7 +43,8 @@
   align-items: center;
   gap: 14px;
   max-width: 100%;
-  margin-block: auto;
+  margin-top: auto;
+  margin-bottom: auto;
 }
 
 .exportSaveViewer__hint {

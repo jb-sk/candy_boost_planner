@@ -256,10 +256,9 @@
             class="slotTab slotTab--active"
             :class="tabDragClass(i - 1)"
             data-testid="calc-slot-tab-active"
-            @pointerdown="onTabPointerDown(i - 1, $event)"
-            @pointermove="onTabPointerMove($event)"
-            @pointerup="onTabPointerUp($event)"
-            @pointercancel="onTabPointerCancel($event)"
+            @pointerdown="onTabPress(i - 1, $event)"
+            @touchstart.passive="onTabPress(i - 1, $event)"
+            @mousedown="onTabPress(i - 1, $event)"
           >
             <select
               class="slotTab__select"
@@ -279,10 +278,9 @@
             :class="tabDragClass(i - 1)"
             data-testid="calc-slot-tab"
             @click="!tabDragging && calc.switchToSlot(i - 1)"
-            @pointerdown="onTabPointerDown(i - 1, $event)"
-            @pointermove="onTabPointerMove($event)"
-            @pointerup="onTabPointerUp($event)"
-            @pointercancel="onTabPointerCancel($event)"
+            @pointerdown="onTabPress(i - 1, $event)"
+            @touchstart.passive="onTabPress(i - 1, $event)"
+            @mousedown="onTabPress(i - 1, $event)"
           >
             {{ getSlotBoostKindLabel(i - 1) }}
           </button>
@@ -291,7 +289,7 @@
     </div>
 
     <!-- コンテンツエリアのラッパー -->
-    <div class="calcSlotContainer">
+    <div class="calcSlotContainer" :class="{ 'calcSlotContainer--pickerOpen': rowLevelPickerOpen }">
       <div class="calcRows" data-testid="calc-rows" v-if="calc.rowsView.value.length">
       <div
         v-for="(r, rowIdx) in calc.rowsView.value"
@@ -314,9 +312,9 @@
               type="button"
               :title="t('calc.row.dragReorder')"
               :aria-label="t('calc.row.dragReorder')"
-              @pointerdown="onRowPointerDown(r.id, $event)"
-              @touchstart="onRowTouchStart(r.id, $event)"
-              @mousedown="onRowMouseDown(r.id, $event)"
+              @pointerdown="onRowHandlePress(r.id, $event)"
+              @touchstart="onRowHandlePress(r.id, $event)"
+              @mousedown="onRowHandlePress(r.id, $event)"
               @click.stop
             >
               <svg class="calcRow__dragIcon" aria-hidden="true" viewBox="0 0 16 17" width="14" height="15"><path d="M4.5 5.5L8 2 11.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 11.5L8 15 11.5 11.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -358,6 +356,8 @@
             <span class="field__label">{{ t("calc.row.srcLevel") }}</span>
             <LevelPicker
               data-testid="srcLevel"
+              @update:open="rowLevelPickerOpen = $event"
+              keypad
               :model-value="r.srcLevel"
               @update:model-value="calc.setSrcLevel(r.id, $event)"
               :label="`${t('calc.row.srcLevel')}: Lv${r.srcLevel}`"
@@ -369,6 +369,7 @@
             <span class="field__label">{{ t("calc.row.expRemaining") }}</span>
             <input
               data-testid="expRemaining"
+              v-keypad="t('calc.row.expRemaining')"
               :value="expRemainingInputValue(r)"
               type="number"
               min="1"
@@ -391,6 +392,8 @@
             </span>
             <LevelPicker
               data-testid="dstLevel"
+              @update:open="rowLevelPickerOpen = $event"
+              keypad
               :model-value="r.dstLevel"
               @update:model-value="calc.setDstLevel(r.id, $event)"
               :label="`${t('calc.row.dstLevel')}: Lv${r.dstLevel}`"
@@ -408,6 +411,7 @@
             <span class="field__label">{{ t("calc.row.speciesCandy") }}</span>
             <input
               data-testid="speciesCandy"
+              v-keypad="t('calc.row.speciesCandy')"
               type="number"
               min="0"
               class="field__input"
@@ -423,6 +427,8 @@
             <span class="field__label">{{ t("calc.row.boostReachLevel") }}</span>
             <LevelPicker
               data-testid="boostReachLevel"
+              @update:open="rowLevelPickerOpen = $event"
+              keypad
               :model-value="r.ui.boostReachLevel"
               @update:model-value="calc.setBoostLevel(r.id, $event)"
               :label="`${t('calc.row.boostReachLevel')}: Lv${r.ui.boostReachLevel}`"
@@ -458,12 +464,12 @@
           <div class="field field--sm" v-if="calc.boostKind.value !== 'none'">
             <div class="field__labelRow">
               <span class="field__label">{{ t("calc.row.boostCandyCount") }}</span>
-              <!-- 中の案内に警告があるときは赤枠にして、開く前に気づけるようにする。 -->
+              <!-- 中の案内に警告があるときは赤枠にして、開く前に気づけるようにする（睡眠の頭打ちは除く）。 -->
               <button
                 data-testid="hintBtn"
                 type="button"
                 class="hintIcon"
-                :class="{ 'hintIcon--warn': boostCandyHintWarningRowIds.has(r.id) }"
+                :class="{ 'hintIcon--warn': boostCandyHintRedRowIds.has(r.id) }"
                 :aria-label="t(boostCandyHintWarningRowIds.has(r.id) ? 'calc.row.boostCandyHintWarnLabel' : 'calc.row.boostCandyHintLabel')"
                 @click.stop.prevent="showHint($event, r)"
               >?</button>
@@ -490,8 +496,13 @@
             -->
             <input
               data-testid="boostCandyCount"
+              v-keypad="{
+                label: t('calc.row.boostCandyCount'),
+                reset: { label: t('calc.row.boostCandyCountReset'), action: () => onBoostCandyKeypadReset(r) },
+                placeholder: boostCandyPlaceholder(r),
+              }"
               :value="boostCandyInputValue(r)"
-              :placeholder="String(r.ui.boostCandyInput)"
+              :placeholder="boostCandyPlaceholder(r)"
               type="number"
               min="0"
               :max="r.ui.boostCandyInputMax"
@@ -526,6 +537,7 @@
             </div>
             <input
               data-testid="candyTarget"
+              v-keypad="t('calc.row.candyTarget')"
               type="number"
               min="0"
               class="field__input"
@@ -590,7 +602,7 @@
               </span>{{ ' ' }}<span class="calcRow__res" data-testid="result-required-shards">
                 <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
                 <span class="calcRow__num" data-testid="result-required-shards-value" :class="{ 'calcRow__num--danger': isDanger(r, 'shards') }">{{ calc.fmtNum(rowP(r)?.targetLine.dreamShardsUsed ?? 0) }}</span>
-              </span>{{ ' ' }}<span class="calcRow__res" data-testid="result-required-items" v-if="(rowItemUsageMaps.target.get(r.id) ?? []).length > 0">
+              </span>{{ ' ' }}<span class="calcRow__res calcRow__res--text" data-testid="result-required-items" v-if="(rowItemUsageMaps.target.get(r.id) ?? []).length > 0">
                 <span class="calcRow__k">{{ t("calc.row.itemRequired") }}</span>
                 <span class="calcRow__num calcRow__num--text" data-testid="result-required-items-value">
                   <template v-for="(item, idx) in (rowItemUsageMaps.target.get(r.id) ?? [])" :key="idx">
@@ -638,7 +650,7 @@
               </span>{{ ' ' }}<span class="calcRow__res" data-testid="result-reachable-shards">
                 <span class="calcRow__k">{{ t("calc.row.shards") }}</span>
                 <span class="calcRow__num" data-testid="result-reachable-shards-value" :class="{ 'calcRow__num--danger': isDanger(r, 'shards') }">{{ fmtOrDash(rowP(r)?.reachableLine.dreamShardsUsed) }}</span>
-              </span>{{ ' ' }}<span class="calcRow__res" data-testid="result-reachable-items" v-if="rowP(r) && (rowItemUsageMaps.reachable.get(r.id) ?? []).length > 0">
+              </span>{{ ' ' }}<span class="calcRow__res calcRow__res--text" data-testid="result-reachable-items" v-if="rowP(r) && (rowItemUsageMaps.reachable.get(r.id) ?? []).length > 0">
                 <span class="calcRow__k">{{ t("calc.row.itemUsage") }}</span>
                 <span class="calcRow__num calcRow__num--text" data-testid="result-reachable-items-value">
                   <template v-for="(item, idx) in (rowItemUsageMaps.reachable.get(r.id) ?? [])" :key="idx">
@@ -685,7 +697,7 @@
                 ボーナス内訳の展開リンク（結果の最後・睡眠時間の右側）。
                 中身は最大5行になり得るので**行の下へ縦に**開く（横へ流すと結果行と混ざる）。
               -->
-              {{ ' ' }}<span class="calcRow__res" v-if="rowP(r) && rowBonusPanelMap.get(r.id)">
+              {{ ' ' }}<span class="calcRow__res calcRow__res--last" v-if="rowP(r) && rowBonusPanelMap.get(r.id)">
                 <button
                   type="button"
                   class="linkBtn calcRow__bonusToggle"
@@ -847,7 +859,7 @@
       <div
         v-if="hintState.visible"
         ref="hintPopoverRef"
-        class="hintPopover"
+        class="hintPopover hintPopover--anchored"
         data-testid="calc-hint-popover"
         :style="{ left: hintState.left + 'px', top: hintState.top + 'px' }"
         @click.stop
@@ -859,7 +871,8 @@
         どの案内を出すかは各 computed が kind で判断する。ここで枝を分けないこと
         （分けると入れ子が深くなり、案内の追加ごとに置き場所を選び直すことになる）。
       --><p v-if="hintBoostCandyWarnings.quota" class="hintPopover__warn hintPopover__warn--alert" data-testid="calc-hint-quota-warn"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintBoostCandyWarnings.quota }}</span></p>
-        <p v-if="hintBoostCandyWarnings.cap" class="hintPopover__warn"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintBoostCandyWarnings.cap }}</span></p>
+        <p v-if="hintBoostCandyWarnings.cap" class="hintPopover__warn" data-testid="calc-hint-cap-warn"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintBoostCandyWarnings.cap }}</span></p>
+        <p v-if="hintBoostCapNote" class="hintPopover__note" data-testid="calc-hint-cap-note">{{ hintBoostCapNote }}</p>
         <p v-if="hintBoostCandyWarnings.minimizeFallback" class="hintPopover__warn" data-testid="calc-hint-minimize-fallback-note"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintBoostCandyWarnings.minimizeFallback }}</span></p>
         <p v-if="hintBoostCandyWarnings.minimizeSharedStock" class="hintPopover__warn" data-testid="calc-hint-minimize-shared-stock-note"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintBoostCandyWarnings.minimizeSharedStock }}</span></p>
         <p v-if="hintAllSleepNote" class="hintPopover__warn" data-testid="calc-hint-all-sleep-note"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintAllSleepNote }}</span></p>
@@ -867,29 +880,37 @@
         <template v-if="hintState.kind === 'candyTarget'"
           ><p class="hintPopover__note">{{ t('calc.row.candyTargetHintNote') }}</p>
           <div class="hintPopover__field" data-testid="candy-target-min-boost-tool">
-            <p class="hintPopover__heading">{{ t('calc.row.candyTargetMinBoostTitle') }}</p>
-            <label class="field__label" for="calc-candy-target-min-boost-level">{{ t('calc.row.candyTargetMinBoostLevel') }}</label>
+            <!-- 睡眠目標がある行では、目標Lvは睡眠込みの最終Lv（アメは睡眠EXPを戻した点まで。useCalcStore の applyMinBoostForCandyTarget） -->
+            <p class="hintPopover__note" data-testid="candy-target-min-boost-note">{{ t(hintRow?.sleepTargetHours !== undefined ? 'calc.row.candyTargetMinBoostNoteWithSleep' : 'calc.row.candyTargetMinBoostNote') }}</p>
+            <span class="field__label">{{ t('calc.row.candyTargetMinBoostLevel') }}</span>
+            <!-- 計算行の目標Lvと同じレベルピッカー。タッチ端末では欄を押すとテンキー、▼でスライダーとチップ。
+                 押せないときは▼も閉じる（ピッカーの disabled は▼を開けたままにする作りなので、ここで止める）。 -->
             <div class="hintPopover__inputRow">
-              <select
-                id="calc-candy-target-min-boost-level"
+              <LevelPicker
                 data-testid="candy-target-min-boost-level"
-                v-model.number="minBoostCandyTargetLevel"
-                class="field__input hintPopover__input"
+                class="hintPopover__levelPick"
+                :class="{ 'hintPopover__levelPick--disabled': !canRunMinBoostForCandyTarget }"
+                keypad
+                :model-value="minBoostCandyTargetLevel"
+                :label="t('calc.row.candyTargetMinBoostLevel')"
+                :min="minBoostCandyTargetMin"
+                :max="MAX_LEVEL"
                 :disabled="!canRunMinBoostForCandyTarget"
-                @change="minBoostCandyTargetResult = null"
+                @update:model-value="onMinBoostCandyTargetLevelChange"
               >
-                <option v-for="level in minBoostCandyTargetLevelOptions" :key="level" :value="level">Lv{{ level }}</option>
-              </select>
+                <!-- 行の目標Lvのピッカーと同じく、選んでいるLvを見出しに出す（スライダーで動かすと元の欄が隠れていても読める） -->
+                <template #title>{{ t('calc.row.candyTargetMinBoostLevel') }}: Lv{{ hintRow?.srcLevel }} → Lv{{ minBoostCandyTargetLevel }}</template>
+              </LevelPicker>
+              <button
+                type="button"
+                class="btn btn--primary btn--xs"
+                data-testid="candy-target-min-boost-run"
+                :disabled="!canRunMinBoostForCandyTarget"
+                @click="runMinBoostForCandyTarget"
+              >{{ t('calc.row.candyTargetMinBoostRun') }}</button>
             </div>
-            <button
-              type="button"
-              class="btn btn--primary btn--xs"
-              data-testid="candy-target-min-boost-run"
-              :disabled="!canRunMinBoostForCandyTarget"
-              @click="runMinBoostForCandyTarget"
-            >{{ t('calc.row.candyTargetMinBoostRun') }}</button>
-            <p v-if="minBoostCandyTargetResult === 'unreachable'" class="hintPopover__note" role="status" data-testid="candy-target-min-boost-unreachable">
-              {{ t('calc.row.candyTargetMinBoostUnreachable') }}
+            <p v-if="minBoostNeededCandy !== null" class="hintPopover__note" role="status" data-testid="candy-target-min-boost-unreachable">
+              {{ t('calc.row.candyTargetMinBoostUnreachable', { count: calc.fmtNum(minBoostNeededCandy) }) }}
             </p>
           </div>
         </template
@@ -919,6 +940,7 @@
             <input
               id="calc-hint-boost-remaining"
               data-testid="calc-hint-boost-remaining-input"
+              v-keypad="{ label: t('calc.boostRemainingLabel'), placeholder: t('calc.boostRemainingPlaceholder', { cap: calc.fmtNum(calc.boostCandyDefaultCap.value) }), placeholderChip: t('common.default') }"
               :value="boostRemainingInputValue"
               type="text"
               inputmode="numeric"
@@ -942,7 +964,7 @@
       <div
         v-if="sleepHintState.visible"
         ref="sleepHintPopoverRef"
-        class="hintPopover sleepHintPopover"
+        class="hintPopover hintPopover--anchored sleepHintPopover"
         data-testid="sleep-hint-popover"
         :style="{ left: sleepHintState.left + 'px', top: sleepHintState.top + 'px' }"
         @click.stop
@@ -958,12 +980,14 @@
               type="number"
               min="0"
               step="1"
-              class="field__input hintPopover__input"
+              class="field__input hintPopover__input hintPopover__input--wide"
               data-testid="sleep-hint-hours-input"
+              v-keypad="t('calc.sleep.currentSleepHours')"
               :value="sleepHintHoursInputValue"
               @focus="onSleepHintHoursFocus"
-              @input="onSleepHintHoursInput"
-              @change="onSleepHintChange"
+              @input="onSleepHintHoursInput(($event.target as HTMLInputElement).value)"
+              @blur="onSleepHintHoursBlur"
+              @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
             />
             <span class="hintPopover__unit">h</span>
           </div>
@@ -977,6 +1001,9 @@
 import { computed, ref, reactive, nextTick, onUnmounted, inject, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import LevelPicker from "./LevelPicker.vue";
+import { vKeypad } from "../composables/useNumericKeypad";
+import { useDismissOnScroll } from "../composables/useDismissOnScroll";
+import { placeNearAnchor } from "../utils/anchoredPlacement";
 import NatureSelect from "./NatureSelect.vue";
 import type { CalcStore, CalcRowView } from "../composables/useCalcStore";
 import type { PokemonPlanLine, PokemonPlanResult, ShortageType } from "../domain/level-planner/types";
@@ -999,6 +1026,8 @@ import { sleepExpEventFlowers } from "../domain/pokesleep/_generated/sleep-exp-e
 import BonusDetails from "./BonusDetails.vue";
 import { buildBonusPanelView, type BonusPanelView } from "../utils/bonusPanelView";
 import type { AppLocale } from "../i18n";
+import { suppressNextClick } from "../utils/suppressNextClick";
+import { trackPress, type Press } from "../utils/trackPress";
 
 import iconUndoSvg from "../assets/icons/undo.svg?raw";
 import iconRedoSvg from "../assets/icons/redo.svg?raw";
@@ -1189,7 +1218,7 @@ watch(
     const delta = afterTop - beforeTop;
     // Teleportされたポップオーバーはtransformへ追従しない。操作中の更新はアニメーションせず、
     // ポップオーバーと対象欄の位置関係を優先する。
-    if (document.querySelector('.levelPick__popover, [data-testid="calc-hint-popover"], [data-testid="sleep-hint-popover"]')) {
+    if (document.querySelector('.levelPick__popover, .numKeypad, [data-testid="calc-hint-popover"], [data-testid="sleep-hint-popover"]')) {
       return;
     }
 
@@ -1414,15 +1443,14 @@ const rowDragPreviewItems = computed(() => {
 
 let rowDragId: string | null = null;
 let rowDragStartY = 0;
-let rowDragPointerId: number | null = null;
-let rowDragTouchId: number | null = null;
-let rowDragInput: "pointer" | "touch" | "mouse" | null = null;
+/** つかんでいる指・ポインターの追跡（入力のまとめは trackPress.ts）。 */
+let rowPress: Press | null = null;
 
 function clampRowDragValue(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function beginRowDrag(rowId: string, clientY: number, handle: HTMLElement, input: "pointer" | "touch" | "mouse") {
+function beginRowDrag(rowId: string, clientY: number, handle: HTMLElement) {
   if (rowDragId) return;
   const items = calc.rowsView.value.map((row) => ({ id: row.id, title: row.title }));
   const startIndex = items.findIndex((item) => item.id === rowId);
@@ -1431,7 +1459,6 @@ function beginRowDrag(rowId: string, clientY: number, handle: HTMLElement, input
   rowDragId = rowId;
   rowDragIdState.value = rowId;
   rowDragStartY = clientY;
-  rowDragInput = input;
   rowDragItems.value = items;
   rowDragTargetIndex.value = startIndex;
   calc.dragRowId.value = rowId;
@@ -1489,83 +1516,21 @@ function updateRowDrag(clientY: number) {
   calc.dragOverRowId.value = rowDragItems.value[targetIndex]?.id ?? rowDragId;
 }
 
-function onRowPointerDown(rowId: string, ev: PointerEvent) {
-  if (typeof window.PointerEvent === "undefined") return;
+/** 取っ手を押したらドラッグを始める。指での並べ替え中はページをスクロールさせない。 */
+function onRowHandlePress(rowId: string, ev: Event) {
+  if (rowDragId) return;
+  const press = trackPress(ev, {
+    move: ({ y }) => {
+      updateRowDrag(y);
+      return true;
+    },
+    end: finishRowDrag,
+  });
+  if (!press) return;
   ev.preventDefault();
-  rowDragPointerId = ev.pointerId;
-  beginRowDrag(rowId, ev.clientY, ev.currentTarget as HTMLElement, "pointer");
-  document.addEventListener("pointermove", onRowDocPointerMove, { passive: false });
-  document.addEventListener("pointerup", onRowDocPointerUp);
-  document.addEventListener("pointercancel", onRowDocPointerCancel);
-}
-
-function onRowDocPointerMove(ev: PointerEvent) {
-  if (rowDragInput !== "pointer" || ev.pointerId !== rowDragPointerId) return;
-  ev.preventDefault();
-  updateRowDrag(ev.clientY);
-}
-
-function onRowDocPointerUp(ev: PointerEvent) {
-  if (rowDragInput !== "pointer" || ev.pointerId !== rowDragPointerId) return;
-  finishRowDrag(true);
-}
-
-function onRowDocPointerCancel(ev: PointerEvent) {
-  if (rowDragInput !== "pointer" || ev.pointerId !== rowDragPointerId) return;
-  finishRowDrag(false);
-}
-
-function onRowTouchStart(rowId: string, ev: TouchEvent) {
-  if (typeof window.PointerEvent !== "undefined" || ev.changedTouches.length === 0) return;
-  const touch = ev.changedTouches[0]!;
-  ev.preventDefault();
-  rowDragTouchId = touch.identifier;
-  beginRowDrag(rowId, touch.clientY, ev.currentTarget as HTMLElement, "touch");
-  document.addEventListener("touchmove", onRowDocTouchMove, { passive: false });
-  document.addEventListener("touchend", onRowDocTouchEnd);
-  document.addEventListener("touchcancel", onRowDocTouchCancel);
-}
-
-function trackedTouch(ev: TouchEvent): Touch | null {
-  for (let i = 0; i < ev.changedTouches.length; i += 1) {
-    const touch = ev.changedTouches[i];
-    if (touch?.identifier === rowDragTouchId) return touch;
-  }
-  return null;
-}
-
-function onRowDocTouchMove(ev: TouchEvent) {
-  if (rowDragInput !== "touch") return;
-  const touch = trackedTouch(ev);
-  if (!touch) return;
-  ev.preventDefault();
-  updateRowDrag(touch.clientY);
-}
-
-function onRowDocTouchEnd(ev: TouchEvent) {
-  if (rowDragInput === "touch" && trackedTouch(ev)) finishRowDrag(true);
-}
-
-function onRowDocTouchCancel(ev: TouchEvent) {
-  if (rowDragInput === "touch" && trackedTouch(ev)) finishRowDrag(false);
-}
-
-function onRowMouseDown(rowId: string, ev: MouseEvent) {
-  if (typeof window.PointerEvent !== "undefined" || ev.button !== 0) return;
-  ev.preventDefault();
-  beginRowDrag(rowId, ev.clientY, ev.currentTarget as HTMLElement, "mouse");
-  document.addEventListener("mousemove", onRowDocMouseMove);
-  document.addEventListener("mouseup", onRowDocMouseUp);
-}
-
-function onRowDocMouseMove(ev: MouseEvent) {
-  if (rowDragInput !== "mouse") return;
-  ev.preventDefault();
-  updateRowDrag(ev.clientY);
-}
-
-function onRowDocMouseUp() {
-  if (rowDragInput === "mouse") finishRowDrag(true);
+  rowPress = press;
+  beginRowDrag(rowId, press.y, ev.currentTarget as HTMLElement);
+  if (!rowDragId) finishRowDrag(false);
 }
 
 function finishRowDrag(commit: boolean) {
@@ -1574,26 +1539,18 @@ function finishRowDrag(commit: boolean) {
   if (commit && movingId) calc.moveRow(movingId, targetIndex);
   rowDragId = null;
   rowDragIdState.value = null;
-  rowDragPointerId = null;
-  rowDragTouchId = null;
-  rowDragInput = null;
+  rowPress?.stop();
+  rowPress = null;
   rowDragNavVisible.value = false;
   rowDragItems.value = [];
   calc.dragRowId.value = null;
   calc.dragOverRowId.value = null;
   document.body.classList.remove("calcRowReordering");
-  document.removeEventListener("pointermove", onRowDocPointerMove);
-  document.removeEventListener("pointerup", onRowDocPointerUp);
-  document.removeEventListener("pointercancel", onRowDocPointerCancel);
-  document.removeEventListener("touchmove", onRowDocTouchMove);
-  document.removeEventListener("touchend", onRowDocTouchEnd);
-  document.removeEventListener("touchcancel", onRowDocTouchCancel);
-  document.removeEventListener("mousemove", onRowDocMouseMove);
-  document.removeEventListener("mouseup", onRowDocMouseUp);
 }
 
 onUnmounted(() => {
   if (rowDragId) finishRowDrag(false);
+  if (tabPress) endTabDrag(false);
   if (debugExportStatusTimer) clearTimeout(debugExportStatusTimer);
   clearSummaryFlip();
   if (typeof window !== "undefined") {
@@ -1616,92 +1573,77 @@ const tabDragFrom = ref<number | null>(null);
 const tabDragOver = ref<number | null>(null);
 const tabDragging = ref(false);
 
-// pointer座標（タッチ / マウス共通）
-let tabDragStartX = 0;
-let tabDragStartY = 0;
 const TAB_DRAG_THRESHOLD = 8; // px: これ以上動いたらドラッグ開始
 
+/** 押している指・ポインターの追跡（入力のまとめは trackPress.ts）。 */
+let tabPress: Press | null = null;
+let tabDragTabsEl: Element | null = null;
 // ドラッグ開始元の <select> 要素を記憶（ドラッグ確定時に操作を抑止するため）
 let tabDragSelectEl: HTMLSelectElement | null = null;
 
-function onTabPointerDown(slotIndex: number, ev: PointerEvent) {
+function onTabPress(slotIndex: number, ev: Event) {
+  if (tabPress) return;
+  const press = trackPress(ev, {
+    move: ({ x, y }) => moveTabDrag(x, y),
+    end: endTabDrag,
+  });
+  if (!press) return;
+  tabPress = press;
   tabDragFrom.value = slotIndex;
   tabDragging.value = false;
-  tabDragStartX = ev.clientX;
-  tabDragStartY = ev.clientY;
-
+  tabDragTabsEl = (ev.currentTarget as HTMLElement).closest(".slotTabs");
   // <select> 上で始まった場合を記憶
-  const target = ev.target as HTMLElement;
-  tabDragSelectEl = target.tagName === "SELECT" ? target as HTMLSelectElement
-    : target.closest("select") as HTMLSelectElement | null;
-
-  // ポインターキャプチャーでタッチ中も追跡
-  (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
+  const target = ev.target instanceof Element ? ev.target : null;
+  tabDragSelectEl = target?.closest("select") ?? null;
 }
 
-function onTabPointerMove(ev: PointerEvent) {
-  if (tabDragFrom.value === null) return;
-
-  // 閾値チェック
+/** 動かした。ドラッグが始まっていれば true（指ではページのスクロールを止める）。 */
+function moveTabDrag(x: number, y: number): boolean {
+  if (!tabPress) return false;
   if (!tabDragging.value) {
-    const dx = Math.abs(ev.clientX - tabDragStartX);
-    const dy = Math.abs(ev.clientY - tabDragStartY);
-    if (dx < TAB_DRAG_THRESHOLD && dy < TAB_DRAG_THRESHOLD) return;
+    const dx = Math.abs(x - tabPress.x);
+    const dy = Math.abs(y - tabPress.y);
+    if (dx < TAB_DRAG_THRESHOLD && dy < TAB_DRAG_THRESHOLD) return false;
     // 縦方向のほうが大きければスクロール意図なのでキャンセル
     if (dy > dx) {
-      tabDragFrom.value = null;
-      tabDragSelectEl = null;
-      return;
+      endTabDrag(false);
+      return false;
     }
     tabDragging.value = true;
     // ドラッグ確定: <select> のネイティブ操作を抑止
-    if (tabDragSelectEl) {
-      tabDragSelectEl.style.pointerEvents = "none";
-    }
+    if (tabDragSelectEl) tabDragSelectEl.style.pointerEvents = "none";
   }
-
-  // ポインター位置からどのタブの上にいるか判定
-  const tabsEl = (ev.currentTarget as HTMLElement).closest(".slotTabs");
-  if (!tabsEl) return;
-  const tabs = tabsEl.querySelectorAll<HTMLElement>(".slotTab");
+  // 指・マウスの位置からどのタブの上にいるか判定
+  const tabs = tabDragTabsEl?.querySelectorAll<HTMLElement>(".slotTab") ?? [];
   for (let i = 0; i < tabs.length; i++) {
     const rect = tabs[i].getBoundingClientRect();
-    if (ev.clientX >= rect.left && ev.clientX <= rect.right) {
+    if (x >= rect.left && x <= rect.right) {
       tabDragOver.value = i;
-      return;
+      break;
     }
   }
+  return true;
 }
 
-function releaseTabDrag(ev: PointerEvent) {
-  // <select> の pointer-events を復元
+/** 離した（commit）・取り消された。 */
+function endTabDrag(commit: boolean) {
+  const from = tabDragFrom.value;
+  const to = tabDragOver.value;
+  if (commit && tabDragging.value && from !== null && to !== null && from !== to) {
+    calc.swapSlots(from, to);
+  }
+  // ドラッグした後の click は1回だけ捨てる（離した位置のタブへ切り替わらないように）。次の操作の始まりで解除する
+  if (tabDragging.value) suppressNextClick(tabPress?.touch ? "touchstart" : "mousedown");
   if (tabDragSelectEl) {
     tabDragSelectEl.style.pointerEvents = "";
     tabDragSelectEl = null;
   }
+  tabPress?.stop();
+  tabPress = null;
+  tabDragTabsEl = null;
   tabDragFrom.value = null;
   tabDragOver.value = null;
   tabDragging.value = false;
-  try {
-    (ev.currentTarget as HTMLElement).releasePointerCapture(ev.pointerId);
-  } catch {
-    // ignore
-  }
-}
-
-function onTabPointerUp(ev: PointerEvent) {
-  const from = tabDragFrom.value;
-  const to = tabDragOver.value;
-
-  if (tabDragging.value && from !== null && to !== null && from !== to) {
-    calc.swapSlots(from, to);
-  }
-
-  releaseTabDrag(ev);
-}
-
-function onTabPointerCancel(ev: PointerEvent) {
-  releaseTabDrag(ev);
 }
 
 function tabDragClass(slotIndex: number): Record<string, boolean> {
@@ -1721,6 +1663,8 @@ function tabDragClass(slotIndex: number): Record<string, boolean> {
 const candyTargetDraftByRowId = reactive<Record<string, string>>({});
 
 /** アメブ個数も個数指定と同じく、フォーカスアウト／Enterで確定する。 */
+/** 行のレベルピッカーが開いているか（一度に開けるのは1つ）。開いている間だけスロットの箱をサマリーより上に出す */
+const rowLevelPickerOpen = ref(false);
 const boostCandyDraftByRowId = reactive<Record<string, string>>({});
 
 function displayBoostCandy(r: CalcRowView): string {
@@ -1730,6 +1674,26 @@ function displayBoostCandy(r: CalcRowView): string {
 function boostCandyInputValue(r: CalcRowView): string {
   return boostCandyDraftByRowId[r.id] ?? displayBoostCandy(r);
 }
+
+/**
+ * アメブ個数のプレースホルダ（入力欄とテンキーで共通）。
+ * 空欄で確定すると行のリセットと同じ結果になるので、明示個数のある行を編集している間は
+ * リセット後の値を出す（`ui.boostCandyInput` はその明示個数なので、消しても同じ数が薄く出てしまう）。
+ */
+function boostCandyPlaceholder(r: CalcRowView): string {
+  const afterReset = r.boostOrExpAdjustment !== undefined ? boostCandyAfterResetByRowId.value[r.id] : undefined;
+  return String(afterReset ?? r.ui.boostCandyInput);
+}
+
+/**
+ * 編集中の欄だけ、リセット後の値を求めておく。リセットの割り当ては全行を歩くので、描画のたびに求めない。
+ * キーの増減（フォーカス・確定）だけを追い、打鍵（ドラフトの値の変化）では計算し直さない。
+ */
+const boostCandyAfterResetByRowId = computed(() => {
+  const out: Record<string, number | undefined> = {};
+  for (const id of Object.keys(boostCandyDraftByRowId)) out[id] = calc.boostCandyAfterReset(id);
+  return out;
+});
 
 function onBoostCandyFocus(r: CalcRowView) {
   boostCandyDraftByRowId[r.id] = displayBoostCandy(r);
@@ -1765,6 +1729,15 @@ function onBoostCandyBlur(r: CalcRowView) {
     delete boostCandyDraftByRowId[r.id];
     if (draft !== displayBoostCandy(r)) calc.onRowBoostCandy(r.id, draft);
   }
+}
+
+/**
+ * テンキーのリセットキー。テンキーは開いたままなので blur が起きない。打ちかけの値を捨ててから
+ * リセットする（残すと入力欄にドラフトが出続け、閉じたときの blur でリセット後の状態へ確定される）。
+ */
+function onBoostCandyKeypadReset(r: CalcRowView) {
+  delete boostCandyDraftByRowId[r.id];
+  calc.resetRowBoostCandy(r.id);
 }
 
 function displayCandyTarget(r: CalcRowView): string {
@@ -2163,15 +2136,24 @@ const BOOST_QUOTA_HINT_KEYS = {
   reach: 'calc.row.boostReachOverQuota',
 } as const;
 
-const BOOST_CAP_HINT_KEYS = {
-  sleep: 'calc.row.boostSleepCapHint',
-  stock: 'calc.row.boostStockCapHint',
-} as const;
-
-/** 睡眠EXPと stock 在庫で異なる打ち手を案内する。 */
+/** 睡眠EXPによる頭打ちの案内（アメ在庫＋睡眠の在庫の頭打ちは出さない。isBoostCapActive）。 */
 function boostCapHint(r: CalcRowView): string | undefined {
-  const kind = r.ui.boostCapKind;
-  return kind ? t(BOOST_CAP_HINT_KEYS[kind], { level: r.ui.boostReachLevelMax }) : undefined;
+  return r.ui.boostCapActive ? t('calc.row.boostSleepCapHint', { level: r.ui.boostReachLevelMax }) : undefined;
+}
+
+/**
+ * 睡眠の頭打ちを警告にせず、注記として出す行。アメブ目標Lvが自動（ピッカーで選んでおらず、アメブ個数も未入力）の行。
+ *
+ * 既定のアメブ目標Lvが目標Lvと同じだと、睡眠目標のある行では必ず T' を超えて頭打ちになる。
+ * 「目標までアメブ」が「T' までアメブ」になるだけで意図どおりなので、赤枠・⚠️ にはしない
+ * （2026-09-26 ユーザー決定。睡眠EXPだけで目標へ届く行も同じ）。破線（boostSleepCapped）は
+ * 「それ以上上げられない」ことを表すので、こちらでも出す。
+ * ピッカーで選んだ行・アメブ個数を手入力した行は、自分で選んだ値が頭打ちになっているので警告のまま（従来どおり）。
+ */
+function isBoostCapNoteOnly(r: CalcRowView): boolean {
+  return r.ui.boostCapActive
+    && r.boostReachAuto !== false
+    && r.boostOrExpAdjustment === undefined;
 }
 
 /**
@@ -2193,7 +2175,7 @@ function boostReachWarnings(r: CalcRowView): string[] {
   const warnings: string[] = [];
   if (r.ui.boostQuotaViolation === 'reach') warnings.push(t('calc.row.boostReachOverQuota'));
   const capHint = boostCapHint(r);
-  if (r.ui.boostCapActive && capHint) warnings.push(capHint);
+  if (capHint && !isBoostCapNoteOnly(r)) warnings.push(capHint);
   return warnings;
 }
 
@@ -2209,7 +2191,8 @@ type BoostCandyHintWarnings = {
  * 別々の式にすると、警告を足したときに片方だけ更新して食い違う。
  *
  * - quota: アメブ枠の超過。このヒントの中から上限そのものを変えられるので、打ち手の1つとして併記する
- * - cap: 睡眠・在庫の頭打ち（アメブ側の話なので、アメ個数指定のヒントには出さない）
+ * - cap: 睡眠の頭打ち（アメブ側の話なので、アメ個数指定のヒントには出さない）。
+ *   アメブ目標Lvが自動の行では警告にしない（isBoostCapNoteOnly。注記は hintBoostCapNote）
  * - minimizeFallback: アメブ最小化（設定、またはこのポケモンだけ）が ON なのに、この行に回るアメ在庫で目標Lvに届かず既定のアメブ目標Lvへ戻った
  * - minimizeSharedStock: 上に同じアメを使う行があり、在庫をそちらが先に使った（minimizeFallback の補足。単独では出ない）
  *
@@ -2219,16 +2202,32 @@ type BoostCandyHintWarnings = {
 function boostCandyHintWarnings(r: CalcRowView): BoostCandyHintWarnings {
   return {
     quota: boostQuotaHint(r),
-    cap: r.ui.boostCapActive ? boostCapHint(r) : undefined,
-    minimizeFallback: r.ui.boostMinimizeFallback ? t('calc.row.boostMinimizeFallbackHint') : undefined,
+    cap: isBoostCapNoteOnly(r) ? undefined : boostCapHint(r),
+    minimizeFallback: r.ui.boostMinimizeFallback
+      ? t('calc.row.boostMinimizeFallbackHint', { count: calc.fmtNum(r.ui.boostMinimizeFallbackNeededCandy ?? 0) })
+      : undefined,
     minimizeSharedStock: r.ui.boostMinimizeFallbackSharedStock ? t('calc.row.boostMinimizeSharedStockHint') : undefined,
   };
 }
 
-/** ? を赤枠にする行。行ごとにテンプレートから2回引くので、まとめて1回だけ求める。 */
+/** ? の中に警告がある行（読み上げのラベル用）。行ごとにテンプレートから引くので、まとめて1回だけ求める。 */
 const boostCandyHintWarningRowIds = computed(() => new Set(
   calc.rowsView.value
     .filter((r) => Object.values(boostCandyHintWarnings(r)).some((w) => w !== undefined))
+    .map((r) => r.id),
+));
+
+/**
+ * ? を赤枠にする行。睡眠の頭打ち（cap）だけでは赤くしない（2026-09-26 ユーザー決定）。
+ * 睡眠目標を入れると頭打ちになるのは設定どおりの結果で、直すべき入力の誤りではないため。
+ * 警告文（ポップオーバーの ⚠️）は残す。
+ */
+const boostCandyHintRedRowIds = computed(() => new Set(
+  calc.rowsView.value
+    .filter((r) => {
+      const { cap: _cap, ...others } = boostCandyHintWarnings(r);
+      return Object.values(others).some((w) => w !== undefined);
+    })
     .map((r) => r.id),
 ));
 
@@ -2254,12 +2253,10 @@ const hintRow = computed(() =>
 );
 
 const minBoostCandyTargetLevel = ref<number>(MAX_LEVEL);
-const minBoostCandyTargetResult = ref<"unreachable" | null>(null);
-const minBoostCandyTargetLevelOptions = computed(() => {
-  const row = hintRow.value;
-  if (!row || row.srcLevel >= MAX_LEVEL) return [];
-  return Array.from({ length: MAX_LEVEL - row.srcLevel }, (_, index) => row.srcLevel + index + 1);
-});
+/** 個数指定では目標Lvに届かなかったときの、届くのに必要なアメ数。届いた・未計算なら null。 */
+const minBoostNeededCandy = ref<number | null>(null);
+/** 目標Lvの下限。現在Lvちょうどでは上げる余地がないので、その1つ上から。 */
+const minBoostCandyTargetMin = computed(() => Math.min(MAX_LEVEL, (hintRow.value?.srcLevel ?? 0) + 1));
 const canRunMinBoostForCandyTarget = computed(() => {
   const row = hintRow.value;
   return hintState.value.kind === "candyTarget"
@@ -2268,8 +2265,13 @@ const canRunMinBoostForCandyTarget = computed(() => {
     && row.sleepTargetMode !== "all"
     && row.sleepTargetMode !== "stock"
     && calc.boostKind.value !== "none"
-    && minBoostCandyTargetLevelOptions.value.length > 0;
+    && row.srcLevel < MAX_LEVEL;
 });
+
+function onMinBoostCandyTargetLevelChange(level: number): void {
+  minBoostCandyTargetLevel.value = level;
+  minBoostNeededCandy.value = null;
+}
 
 // このポケモンだけのアメブ最小化。値は保存せず、設定 ON と同じく毎回導出する。
 const showRowMinimizeBoost = computed(() => {
@@ -2288,10 +2290,16 @@ function runMinBoostForCandyTarget(): void {
   const row = hintRow.value;
   if (!row || !canRunMinBoostForCandyTarget.value) return;
   const result = calc.applyMinBoostForCandyTarget(row.id, minBoostCandyTargetLevel.value);
-  minBoostCandyTargetResult.value = result === "unreachable" ? result : null;
+  minBoostNeededCandy.value = result.kind === "unreachable" ? result.neededCandy : null;
 }
 
 // アメブ個数のヒントの警告。中身と出す条件は `boostCandyHintWarnings` が持つ。
+/** 警告にしない睡眠の頭打ちの注記（isBoostCapNoteOnly）。アメブ個数のヒントにだけ出す。 */
+const hintBoostCapNote = computed(() => {
+  const row = hintRow.value;
+  return hintState.value.kind === 'boostCandy' && row && isBoostCapNoteOnly(row) ? boostCapHint(row) : undefined;
+});
+
 const hintBoostCandyWarnings = computed<BoostCandyHintWarnings>(() => {
   const row = hintRow.value;
   return hintState.value.kind === 'boostCandy' && row ? boostCandyHintWarnings(row) : {};
@@ -2335,47 +2343,40 @@ const {
   blur: onBoostRemainingBlur,
 } = useDraftField(() => calc.boostCandyRemainingText.value, (v) => calc.onBoostCandyRemainingInput(v));
 
-async function showHint(ev: MouseEvent, row?: CalcRowView, kind: HintKind = 'boostCandy') {
-  const target = ev.target as HTMLElement;
-  const rect = target.getBoundingClientRect();
-  const gap = 4;
+/**
+ * ヒント（「？」と累計睡眠時間）を開いた後に大きさを測り、対象の近くへ置く（anchoredPlacement.ts）。
+ * 位置はページ座標なので、ページがスクロールしても対象の行に付いて動く（.hintPopover--anchored）。
+ */
+async function placeHint(anchor: Element, popover: () => HTMLElement | null, state: { left: number; top: number }): Promise<void> {
+  await nextTick();
+  const el = popover();
+  if (el) Object.assign(state, placeNearAnchor(anchor, el));
+}
 
-  minBoostCandyTargetResult.value = null;
+async function showHint(ev: MouseEvent, row?: CalcRowView, kind: HintKind = 'boostCandy') {
+  const anchor = (ev.currentTarget ?? ev.target) as Element;
+  minBoostNeededCandy.value = null;
   if (kind === "candyTarget" && row) {
     minBoostCandyTargetLevel.value = Math.min(MAX_LEVEL, Math.max(row.srcLevel + 1, row.dstLevel));
   }
+  hintState.value = { visible: true, left: 0, top: 0, kind, rowId: row?.id };
+  await placeHint(anchor, () => hintPopoverRef.value, hintState.value);
+}
 
-  // 画面端の考慮（水平）
-  const viewportWidth = window.innerWidth;
-  const popoverWidth = 220; // CSS max-width(200) + padding/border margin
-
-  let left = rect.left;
-  if (left + popoverWidth > viewportWidth) {
-    left = viewportWidth - popoverWidth - 8;
-  }
-  if (left < 8) left = 8;
-
-  // まず下に仮配置して描画
-  hintState.value = {
-    visible: true,
-    left,
-    top: rect.bottom + gap,
-    kind,
-    rowId: row?.id,
-  };
-
-  // 描画後に実測して、下に収まらなければ上にフリップ
-  await nextTick();
-  if (hintPopoverRef.value) {
-    const popH = hintPopoverRef.value.offsetHeight;
-    const viewportHeight = window.innerHeight;
-    if (rect.bottom + gap + popH > viewportHeight && rect.top - gap - popH > 0) {
-      hintState.value.top = rect.top - gap - popH;
-    }
-  }
+/**
+ * ポップオーバー内の入力欄にフォーカスがあれば外して、入力中の値を確定させる。
+ *
+ * フォーカスを残したまま v-if で閉じると、blur が起きずに入力欄ごと消え、打った値が保存されない。
+ * 起きるのは、iOS でフォーカスできない要素（外側の .hintOverlay）を押したときや、
+ * ホイールで閉じたとき（closeAllHints）。閉じる前に自分で blur して、通常の確定経路を通す。
+ */
+function commitFocusedInput(popover: HTMLElement | null): void {
+  const active = document.activeElement;
+  if (popover && active instanceof HTMLElement && popover.contains(active)) active.blur();
 }
 
 function closeHint() {
+  commitFocusedInput(hintPopoverRef.value);
   hintState.value.visible = false;
 }
 
@@ -2392,66 +2393,41 @@ const sleepHintRowSleepHours = computed(() => {
 });
 
 /**
- * 累計睡眠時間の入力中の値（仕様書 §8.1）。
- *
- * **`:value` へ保存値を直結してはいけない。** 確定は `@change` なので、入力中は保存値が
- * 変わらない。そこへ別の理由（planner の debounce 完了、他行の更新など）で再描画が走ると、
- * 打っている途中の値が保存値へ巻き戻る。他の数値欄と同じくドラフトで保持する。
+ * 累計睡眠時間の入力（仕様書 §8.1）。他の数値欄と同じくドラフトで持ち、blur で確定する。
+ * change では確定しないこと（テンキーで書き換えた値では change が出ない。useNumericKeypad.ts）。
  */
-const sleepHintHoursDraft = ref<string | null>(null);
-
-const sleepHintHoursInputValue = computed(() =>
-  sleepHintHoursDraft.value ?? String(sleepHintRowSleepHours.value)
+const {
+  text: sleepHintHoursInputValue,
+  focus: onSleepHintHoursFocus,
+  input: onSleepHintHoursInput,
+  blur: onSleepHintHoursBlur,
+} = useDraftField(
+  () => String(sleepHintRowSleepHours.value),
+  (v) => calc.setRowSleepHours(sleepHintState.value.rowId, normalizeSleepHoursInput(v)),
 );
 
-function onSleepHintHoursFocus() {
-  sleepHintHoursDraft.value = String(sleepHintRowSleepHours.value);
-}
-
-/** ドラフトを更新するだけ。計算へ反映するのは `@change`（確定時）のまま。 */
-function onSleepHintHoursInput(ev: Event) {
-  sleepHintHoursDraft.value = (ev.target as HTMLInputElement).value;
-}
-
 async function showSleepHint(ev: MouseEvent, rowId: string) {
-  const target = ev.target as HTMLElement;
-  const rect = target.getBoundingClientRect();
-  const gap = 4;
-  const viewportWidth = window.innerWidth;
-  const popoverWidth = 240;
-  let left = rect.left;
-  if (left + popoverWidth > viewportWidth) left = viewportWidth - popoverWidth - 8;
-  if (left < 8) left = 8;
-
-  sleepHintHoursDraft.value = null;
-  sleepHintState.value = { visible: true, rowId, left, top: rect.bottom + gap };
-
-  await nextTick();
-  if (sleepHintPopoverRef.value) {
-    const popH = sleepHintPopoverRef.value.offsetHeight;
-    const viewportHeight = window.innerHeight;
-    if (rect.bottom + gap + popH > viewportHeight && rect.top - gap - popH > 0) {
-      sleepHintState.value.top = rect.top - gap - popH;
-    }
-  }
+  const anchor = (ev.currentTarget ?? ev.target) as Element;
+  sleepHintState.value = { visible: true, rowId, left: 0, top: 0 };
+  await placeHint(anchor, () => sleepHintPopoverRef.value, sleepHintState.value);
 }
 
 function closeSleepHint() {
+  commitFocusedInput(sleepHintPopoverRef.value);
   sleepHintState.value.visible = false;
-  sleepHintHoursDraft.value = null;
 }
+
+function closeAllHints(): void {
+  if (hintState.value.visible) closeHint();
+  if (sleepHintState.value.visible) closeSleepHint();
+}
+
+// スクロールしようとしたらヒントを閉じる（仕組みは useDismissOnScroll.ts。設定のヒントと共用）
+useDismissOnScroll(() => hintState.value.visible || sleepHintState.value.visible, closeAllHints);
 
 function openSleepSettings() {
   closeSleepHint();
   emit('open-settings');
-}
-
-function onSleepHintChange(ev: Event) {
-  const val = (ev.target as HTMLInputElement).value;
-  // 確定したらドラフトを捨て、正規化後の保存値を表示させる。
-  sleepHintHoursDraft.value = null;
-  const sleepHours = normalizeSleepHoursInput(val);
-  calc.setRowSleepHours(sleepHintState.value.rowId, sleepHours);
 }
 
 </script>

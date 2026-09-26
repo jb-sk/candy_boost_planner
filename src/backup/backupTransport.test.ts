@@ -53,6 +53,26 @@ describe("backup transport", () => {
     expect(await readBackupFile({ size: 4, text: vi.fn().mockResolvedValue("file") })).toBe("file");
   });
 
+  it("reads the file with FileReader when Blob.text is unavailable (iOS 13 and older)", async () => {
+    class FakeFileReader {
+      result: string | null = null;
+      error: Error | null = null;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      readAsText(blob: { content: string }) {
+        this.result = blob.content;
+        this.onload?.();
+      }
+    }
+    vi.stubGlobal("FileReader", FakeFileReader);
+    try {
+      const file = { size: 4, content: "file" } as unknown as Blob;
+      expect(await readBackupFile(file)).toBe("file");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("rejects oversized clipboard and file text before it reaches the UI state", async () => {
     const oversized = "x".repeat(BACKUP_MAX_BYTES + 1);
     await expect(readBackupClipboard({ readText: vi.fn().mockResolvedValue(oversized) })).rejects.toThrow("maximum size");

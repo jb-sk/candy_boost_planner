@@ -4,6 +4,14 @@
 
 /* ===== Variables ===== */
 :root {
+  /* テンキーのリセットキー（C と見分ける色。黄色（育成プランの合計カード・かけらの横棒））。下地 bg・枠と厚み rgb・記号 ink */
+  /* 育成プランのカード #fff0c9 のままでは薄かったので、色相はそのまま明度を 89% → 82% に下げた */
+  --numKeypad-reset-bg: #ffe6a5;
+  --numKeypad-reset-rgb: 242, 169, 34;
+  --numKeypad-reset-ink: #352f2b;
+  /* テンキーの角丸（外枠・キー）。既定は丸いので、角張ったテーマに合わせて小さくする */
+  --numKeypad-radius: 10px;
+  --numKeypad-key-radius: 8px;
   /* Core Palette */
   --bg-decor: #ece8e4;
   --paper: #ffffff;

@@ -776,6 +776,8 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     if (_boxListRO) { _boxListRO.disconnect(); _boxListRO = null; }
     if (!el) return;
     boxListWidth.value = el.clientWidth;
+    // ResizeObserver（iOS 13.4・Chrome 64 から）が無い端末では、初回の幅のまま（画面回転などには追従しない）
+    if (typeof ResizeObserver === "undefined") return;
     _boxListRO = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect.width ?? 0;
       if (w > 0) boxListWidth.value = w;
