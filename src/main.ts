@@ -6,7 +6,12 @@ import App from "./App.vue";
 
 import { createAppI18n, ensureLocaleMessagesLoaded, normalizeLocale } from "./i18n";
 import { installPersistFlushHandlers } from "./persistence/deferredPersist";
+import { installFlexGapPolyfill } from "./utils/flexGapPolyfill";
 import { isPerfEnabled } from "./utils/perf";
+import { preventIosInputZoom } from "./utils/preventIosInputZoom";
+
+// iOS が小さい文字の入力欄・選択欄のフォーカスで画面を拡大しないようにする（ピンチでの拡大はできる）
+preventIosInputZoom();
 
 // The app restores reload positions after async panels and planner results have
 // settled. Disable the browser's competing reload restoration to avoid a
@@ -57,6 +62,8 @@ async function boot() {
     }
   }
   // In production, theme CSS is already loaded by the inline script in <head>
+  // flex の gap が効かない古い端末だけ、描画の前から margin で補う。
+  installFlexGapPolyfill();
   createApp(App).use(i18n).mount("#app");
 }
 

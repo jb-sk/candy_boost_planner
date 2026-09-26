@@ -33,8 +33,13 @@ import { buildPlannerInputSignature, buildPlannerProbeSignature, buildPlannerStr
 import type { DeadlineExceededMeta, PlannerTuning } from "../domain/level-planner/types";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { isPerfEnabled } from "../utils/perf";
+import { lastOf } from "../utils/lastOf";
 export type CalcRow = CalcRowV1;
-export type ApplyMinBoostForCandyTargetResult = "applied" | "unreachable" | "disabled";
+/** unreachable の neededCandy は、指定Lvへ届く最小の総アメ数（全部アメブで上げたとき）。 */
+export type ApplyMinBoostForCandyTargetResult =
+  | { kind: "applied" }
+  | { kind: "disabled" }
+  | { kind: "unreachable"; neededCandy: number };
 
 /** 目標計算へ触れず、睡眠目標の排他だけを回復する。 */
 export function normalizeCalcRowStructure(row: CalcRow): CalcRow {
@@ -114,17 +119,21 @@ export type CalcRowView = CalcRow & {
      * 種族の登録在庫が0なら立てない（在庫未入力で全行が警告になるため）。
      */
     boostMinimizeFallback: boolean;
+    /**
+     * `boostMinimizeFallback` のとき、目標（睡眠目標があれば `T'`）へ届く最小の総アメ数（全部アメブで上げたとき）。
+     * それ以外は undefined。逆算ツールの「{n}個以上のアメが必要です」と同じ数え方。
+     */
+    boostMinimizeFallbackNeededCandy?: number;
     /** 最小化フォールバック行より上に、同じ種族アメを使う行がある状態。 */
     boostMinimizeFallbackSharedStock: boolean;
     boostReachLevelMax: number;
     boostCandyInputMax: number;
     /**
-     * 睡眠EXPまたは stock 在庫による上限が効いている（案内文を用意する条件）。
+     * 睡眠EXPによる上限が効いている（案内文を用意する条件）。
      * 上限ちょうどの行でも「これ以上上げられない」理由は要るので、押し下げの有無は問わない。
+     * アメ在庫＋睡眠の在庫による上限は含めない（isBoostCapActive）。
      */
     boostCapActive: boolean;
-    /** 案内文を切り替えるための上限の由来。上限が効いていなければ null。 */
-    boostCapKind: 'sleep' | 'stock' | null;
     /**
      * 睡眠EXPでアメブの担当範囲が押し下げられている状態（破線を出す条件）。
      * 動かせないのは押し下げられた範囲だけで、`boostReachLevelMax` 以下は操作できる。
@@ -437,6 +446,7 @@ export type CalcStore = {
   canSetRowMinimizeBoost: (id: string) => boolean;
   setRowMinimizeBoost: (id: string, on: boolean) => "applied" | "disabled";
   resetRowBoostCandy: (id: string) => void;
+  boostCandyAfterReset: (id: string) => number | undefined;
 
   moveRow: (fromId: string, toIndex: number) => void;
   moveRowUp: (id: string) => void;
@@ -741,8 +751,12 @@ export function useCalcStore(opts: {
   /**
    * 行の初期アメブ目標Lv。既定値（設定）を、その行で意味を持つ範囲へ収める。
    *
-   * 目標Lvを超えても意味がなく、睡眠EXPが賄う範囲（T'）も超えられない。
-   * 元Lvを下回る既定値はアメブ0本を意味する。
+   * 目標Lvを超えても意味がない。元Lvを下回る既定値はアメブ0本を意味する。
+   *
+   * **睡眠EXPの頭打ち（T'）・アメ在庫＋睡眠の在庫で届くLvでは切り下げない**
+   * （2026-09-26 ユーザー規則「勝手に通常アメを増やさない」）。Lv ちょうどへ切り下げて保存すると、
+   * その Lv から先（T' の端数・在庫の端数）が通常アメになり、睡眠目標を外したときも通常アメが残る。
+   * 上限を超える分は表示・計算で抑える（resolveEffectiveBoostCandy。在庫は使うアメ数で抑える）。
    *
    * **⚠ 個数指定があるときは収めない**（§15.9）。目標Lvも `T'` も `(m, n)` の出力で、
    * アメブ種別を変えると動く（`none` では全部通常アメ、`mini` では枠不足で確定した個数）。
@@ -754,7 +768,7 @@ export function useCalcStore(opts: {
   function initialBoostReachLevelFor(r: CalcRow): number {
     const cap = r.candyTarget !== undefined
       ? MAX_LEVEL
-      : Math.min(r.dstLevel, boostReachLevelCapFor(r));
+      : r.dstLevel;
     const preferred = defaultBoostReachLevel.value ?? cap;
     return clampInt(Math.min(preferred, cap), r.srcLevel, MAX_LEVEL, r.srcLevel);
   }
@@ -782,7 +796,7 @@ export function useCalcStore(opts: {
     budget: number,
   ):
     | { status: "minimized"; boostCandy: number; target: { level: number; expInLevel: number } }
-    | { status: "unreachable" }
+    | { status: "unreachable"; neededCandy: number }
     | undefined {
     const kind = canMinimizeBoostRow(row);
     if (
@@ -798,19 +812,10 @@ export function useCalcStore(opts: {
         const derived = deriveTarget(row);
         return { level: derived.targetLevel, expInLevel: derived.targetExpInLevel };
       })();
-    const boostCandy = minBoostWithinBudget({
-      srcLevel: row.srcLevel,
-      targetLevel: target.level,
-      targetExpInLevel: target.expInLevel,
-      expType: row.expType,
-      nature: row.nature,
-      boostKind: kind,
-      budget,
-      expGot: rowExpGot(row),
-    });
-    return boostCandy === undefined
-      ? { status: "unreachable" }
-      : { status: "minimized", boostCandy, target };
+    const result = minBoostWithinCandyBudget(row, target, kind, budget);
+    return result.kind === "unreachable"
+      ? { status: "unreachable", neededCandy: result.neededCandy }
+      : { status: "minimized", boostCandy: result.boostCandy, target };
   }
 
   function candyNeedForRow(
@@ -870,11 +875,13 @@ export function useCalcStore(opts: {
     const stockLeft = normalizeSpeciesCandyByFamily(candyStore.inventorySnapshot.value.species);
     return source.map((row) => {
       const isReset = rowId === undefined || row.id === rowId;
+      // 行単位の最小化（boostMinimizeRow）はリセットでも残す。ユーザーがチェックで選んだ設定で、
+      // リセットは入力値を自動へ戻す操作なので、戻った自動の値が最小化になる（2026-09-26 ユーザー決定）。
+      // 枠が足りず個数が確定した行は、明示個数の行として normalizeRowState が外す。
       const reset: CalcRow = isReset
         ? {
           ...row,
           boostOrExpAdjustment: undefined,
-          boostMinimizeRow: resetReachLevel ? undefined : row.boostMinimizeRow,
           boostReachLevel: resetReachLevel ? initialBoostReachLevelFor(row) : row.boostReachLevel,
           boostReachAuto: resetReachLevel ? true : row.boostReachAuto,
         }
@@ -890,7 +897,7 @@ export function useCalcStore(opts: {
       // ここの `stockAvailable` で掛け直す（`stockCandyAllocationByRowId` と同じ式）。
       const unclampedNeed = minimized?.status === "minimized"
         ? minimized.boostCandy
-        : resolveEffectiveBoostCandy(reset, false, true, true);
+        : resolveEffectiveBoostCandy(reset, true, true);
       const currentNeed = !isReset
         ? resolveEffectiveBoostCandy(row)
         : reset.sleepTargetMode === "stock" && stockAvailable !== undefined
@@ -915,7 +922,7 @@ export function useCalcStore(opts: {
       }
 
       if (family !== undefined && stockAvailable !== undefined) {
-        const allocatedBoost = resolveEffectiveBoostCandy(allocated, false, true, true);
+        const allocatedBoost = resolveEffectiveBoostCandy(allocated, true, true);
         const allocatedMinimized = allocated === reset && minimized?.status === "minimized"
           ? minimized
           : undefined;
@@ -1363,7 +1370,7 @@ export function useCalcStore(opts: {
     options: { coalesceKey?: string; coalesceWindowMs?: number } = {},
   ) {
     const now = Date.now();
-    const last = undoStack.value.at(-1);
+    const last = lastOf(undoStack.value);
     if (
       options.coalesceKey !== undefined
       && last?.coalesceKey === options.coalesceKey
@@ -1751,17 +1758,14 @@ export function useCalcStore(opts: {
     });
   }
 
-  /** Lv70 から睡眠EXP分を戻した地点。睡眠EXPだけで Lv70 に届くなら null。 */
-  function locateExpTargetFromSrc(
+  /** 現在地点（srcLevel + expGot）から exp だけ進んだ地点。 */
+  function pointAfterExp(
     r: Pick<CalcRow, 'srcLevel' | 'expType'>,
     expGot: number,
-    sleepExp: number,
-  ): { level: number; expInLevel: number } | null {
-    const expToMax = Math.max(0, calcExp(r.srcLevel, MAX_LEVEL, r.expType) - expGot);
-    const expForCandy = expToMax - sleepExp;
-    if (expForCandy <= 0) return null;
+    exp: number,
+  ): { level: number; expInLevel: number } {
     let level = r.srcLevel;
-    let expInLevel = expGot + expForCandy;
+    let expInLevel = expGot + exp;
     while (level < MAX_LEVEL) {
       const needed = calcExp(level, level + 1, r.expType);
       if (expInLevel < needed) break;
@@ -1771,27 +1775,36 @@ export function useCalcStore(opts: {
     return { level, expInLevel: level >= MAX_LEVEL ? 0 : expInLevel };
   }
 
+  /** Lv70 から睡眠EXP分を戻した地点。睡眠EXPだけで Lv70 に届くなら null。 */
+  function locateExpTargetFromSrc(
+    r: Pick<CalcRow, 'srcLevel' | 'expType'>,
+    expGot: number,
+    sleepExp: number,
+  ): { level: number; expInLevel: number } | null {
+    const expForCandy = Math.max(0, calcExp(r.srcLevel, MAX_LEVEL, r.expType) - expGot) - sleepExp;
+    return expForCandy > 0 ? pointAfterExp(r, expGot, expForCandy) : null;
+  }
+
   /**
    * 保存された最終目標 T から睡眠EXP Sを戻し、アメが担当する終端 T' を返す。
    * 睡眠だけで目標へ届く場合は、現在地点（srcLevel + expGot）を返す。
    */
   function rowCandyTargetBeforeSleep(r: CalcRow): { level: number; expInLevel: number } {
     const target = deriveTarget(r);
+    return candyEndBeforeSleep(r, target.targetLevel, target.targetExpInLevel);
+  }
+
+  /**
+   * 睡眠込みの到達点（targetLevel ＋ targetExpInLevel）から睡眠EXP Sを戻し、アメが担当する終端を返す。
+   * 睡眠だけで届く場合は、現在地点（srcLevel + expGot）を返す。
+   */
+  function candyEndBeforeSleep(r: CalcRow, targetLevel: number, targetExpInLevel: number): { level: number; expInLevel: number } {
     const expGot = rowExpGot(r);
     const expToTarget = Math.max(
       0,
-      calcExp(r.srcLevel, target.targetLevel, r.expType) + target.targetExpInLevel - expGot,
+      calcExp(r.srcLevel, targetLevel, r.expType) + targetExpInLevel - expGot,
     );
-    const expForCandy = Math.max(0, expToTarget - rowSleepExp(r));
-    let level = r.srcLevel;
-    let expInLevel = expGot + expForCandy;
-    while (level < MAX_LEVEL) {
-      const needed = calcExp(level, level + 1, r.expType);
-      if (expInLevel < needed) break;
-      expInLevel -= needed;
-      level++;
-    }
-    return { level, expInLevel: level >= MAX_LEVEL ? 0 : expInLevel };
+    return pointAfterExp(r, expGot, Math.max(0, expToTarget - rowSleepExp(r)));
   }
 
   /**
@@ -1811,22 +1824,32 @@ export function useCalcStore(opts: {
    * 切っても値は変わらない: 在庫が需要に届く行では抑制が働かず、届かない行では
    * アメブが減っても必要アメ数は増えるだけで、`min(残り在庫, 需要)` は残り在庫のまま。
    */
-  const stockCandyAllocationByRowId = computed<{
+  type StockCandyAllocation = {
     target: Record<string, number>;
     available: Record<string, number>;
     minimizedBoost: Record<string, number>;
     minimizeFallback: Record<string, true>;
+    /** `minimizeFallback` の行が目標へ届くのに要る最小の総アメ数。 */
+    minimizeFallbackNeededCandy: Record<string, number>;
     minimizeFallbackSharedStock: Record<string, true>;
-  }>(() => {
+  };
+  const stockCandyAllocationByRowId = computed<StockCandyAllocation>(() => walkStockCandyAllocation(rows.value));
+
+  /**
+   * `stockCandyAllocationByRowId` の本体。保存前の仮の行一覧（リセット後の見込みなど）にも使えるよう、
+   * 行一覧を引数で受ける。
+   */
+  function walkStockCandyAllocation(source: readonly CalcRow[]): StockCandyAllocation {
     const registeredStock = normalizeSpeciesCandyByFamily(candyStore.inventorySnapshot.value.species);
     const left: Record<string, number> = { ...registeredStock };
     const resolved: Record<string, number> = {};
     const available: Record<string, number> = {};
     const minimizedBoost: Record<string, number> = {};
     const minimizeFallback: Record<string, true> = {};
+    const minimizeFallbackNeededCandy: Record<string, number> = {};
     const minimizeFallbackSharedStock: Record<string, true> = {};
     const seenFamilyKeys = new Set<string>();
-    for (const row of rows.value) {
+    for (const row of source) {
       const key = getRowCandyFamilyKey(row);
       if (key === undefined) continue;
       const rowAvailable = Math.max(0, left[key] ?? 0);
@@ -1837,10 +1860,11 @@ export function useCalcStore(opts: {
       if (minimized?.status === "unreachable"
         && (row.boostMinimizeRow === true || (registeredStock[key] ?? 0) > 0)) {
         minimizeFallback[row.id] = true;
+        minimizeFallbackNeededCandy[row.id] = minimized.neededCandy;
       }
       const boostCandy = minimized?.status === "minimized"
         ? minimized.boostCandy
-        : resolveEffectiveBoostCandy(row, false, true, true);
+        : resolveEffectiveBoostCandy(row, true, true);
       const target = minimized?.status === "minimized"
         ? { targetLevel: minimized.target.level, targetExpInLevel: minimized.target.expInLevel }
         : deriveTarget(row);
@@ -1853,8 +1877,8 @@ export function useCalcStore(opts: {
       left[key] = Math.max(0, rowAvailable - claim);
       seenFamilyKeys.add(key);
     }
-    return { target: resolved, available, minimizedBoost, minimizeFallback, minimizeFallbackSharedStock };
-  });
+    return { target: resolved, available, minimizedBoost, minimizeFallback, minimizeFallbackNeededCandy, minimizeFallbackSharedStock };
+  }
 
   /** 「アメ在庫＋睡眠」の行が使うアメ数。それ以外の行では undefined。 */
   function rowStockCandyTargetFor(rowId: string): number | undefined {
@@ -1880,16 +1904,17 @@ export function useCalcStore(opts: {
    */
   function resolveEffectiveBoostCandy(
     r: CalcRow,
-    forCandyTargetNormalization = false,
     /** 使うアメ数を数えている最中だけ true。`stockCandyAllocationByRowId` の説明を参照。 */
     ignoreStockBudget = false,
     /** 在庫歩き・仮想行の計算中は computed への循環参照を避ける。 */
     ignoreMinimizedBoost = false,
+    /** 保存前の仮の行一覧で求めるときの在庫の割り当て（`boostCandyAfterReset`）。省略時は現在の行一覧。 */
+    stockAllocation?: StockCandyAllocation,
   ): number {
     if (r.sleepTargetMode === "all" || boostKind.value === "none" || r.srcLevel >= MAX_LEVEL) return 0;
 
     if (!ignoreMinimizedBoost && r.boostOrExpAdjustment === undefined) {
-      const minimized = stockCandyAllocationByRowId.value.minimizedBoost[r.id];
+      const minimized = (stockAllocation ?? stockCandyAllocationByRowId.value).minimizedBoost[r.id];
       if (minimized !== undefined) return minimized;
     }
 
@@ -1902,37 +1927,45 @@ export function useCalcStore(opts: {
     // 導出経路（`T` を作る側）と表示・ソルバー経路とで `n` が食い違い、保存した `T` に `m` 個で
     // 届かなくなる。**`T` が出力になる行では、両経路とも入力（`boostReachLevel` と `m`）だけで
     // `n` を決める。** 個数 anchor の無い行だけ `T` が入力なので、担当終端 `T'` と目標Lvで抑える。
-    // **どちらの経路でもアメブは Lv ちょうどまでしか賄わない**（端数賄いは廃止。§15.7 撤回）。
+    //
+    // **アメブの担当範囲はユーザーの意図（アメブ目標Lv）で決め、勝手に通常アメを増やさない**
+    // （2026-09-26 ユーザー規則）。意図が頭打ちの点（`T'`、`T` が出力の行は `T'max`）のLv以上なら、
+    // 頭打ちの点の端数までアメブで賄う（「目標までアメブ」が睡眠で「`T'` までアメブ」になるだけ）。
+    // 意図が頭打ちより下なら、そのLvちょうどまでアメブで、その先が通常アメ（ユーザーが選んだ内訳）。
+    // どちらも入力（保存された `boostReachLevel` と、`T` に依らない `T'max` / 入力の `T` から作る `T'`）
+    // だけで決まるので、`T → n → T` の循環は起きない。
     //
     // 睡眠の頭打ちだけは `T` が出力の行でも要る（保存された `boostReachLevel` は入力時にしか
     // cap されないので、睡眠時間を後から変えると `T'` を超えたままになる）。そこでは `T` から
     // 引いた `T'` ではなく、**`Lv70` から睡眠EXPを戻した `T'max`** を使う。こちらは `T` に依らない。
-    const derivingTarget = forCandyTargetNormalization || r.candyTarget !== undefined;
+    const derivingTarget = r.candyTarget !== undefined;
     const sleepCap = derivingTarget
       ? locateExpTargetFromSrc(r, rowExpGot(r), rowSleepExp(r))
       : null;
-    const reachLevel = clampInt(
-      derivingTarget
-        ? Math.min(r.boostReachLevel ?? r.dstLevel, sleepCap?.level ?? r.srcLevel)
-        : Math.min(r.boostReachLevel ?? r.dstLevel, r.dstLevel, candyTarget.level),
-      r.srcLevel,
-      MAX_LEVEL,
-      r.srcLevel,
-    );
-    // アメブが賄うのはどちらの経路でも「アメブ目標Lv ちょうどまで」。
-    // `T` が出力になる行では担当範囲の全体を賄う形になるので、導出モードの置換（§10.5）もここで効く。
-    const derived = boostCandyForReachLevel(
-      r,
-      reachLevel,
-      derivingTarget ? reachLevel : candyTarget.level,
-      derivingTarget ? 0 : candyTarget.expInLevel,
-    );
+    // 頭打ちの点。睡眠だけで Lv70 に届く行（sleepCap が null）はアメの担当が無い。
+    const capPoint = derivingTarget
+      ? sleepCap ?? { level: r.srcLevel, expInLevel: 0 }
+      : candyTarget;
+    const intentLevel = derivingTarget
+      ? r.boostReachLevel ?? r.dstLevel
+      : Math.min(r.boostReachLevel ?? r.dstLevel, r.dstLevel);
+    // 意図が頭打ちの点のLv以上なら、頭打ちの点（端数込み）まで＝アメ担当の範囲の全体（アメブ100%）。
+    // 下なら意図のLvちょうどまでで、その先は通常アメ。
+    const reachesCap = intentLevel >= capPoint.level;
+    const end = reachesCap
+      ? capPoint
+      : { level: clampInt(intentLevel, r.srcLevel, MAX_LEVEL, r.srcLevel), expInLevel: 0 };
+    // 「アメブ1個 → 通常アメ1個」置換はアメブ100%で目標へ届くときだけ（ユーザー規則）。
+    // 個数指定のある行はアメ数が目標を動かすので、成立するのは頭打ちの点が Lv70 のとき（睡眠なし）だけ。
+    const derived = boostCandyForEnd(r, end, reachesCap);
     const requested = Math.max(0, Math.floor(r.boostOrExpAdjustment ?? derived));
     // アメブは総アメ数の内数（不変条件 `n ≤ m`）。「アメ在庫＋睡眠」では在庫が `m` を決めるので、
     // 個数指定とまったく同じ枠で抑える。抑えないと、12個しか使えない行がアメブ枠を
     // 数百個ぶん予約して下の行を飢えさせる。**保存値は抑えない**（意図として残す）。
     const candyBudget = r.candyTarget
-      ?? (r.sleepTargetMode === "stock" && !ignoreStockBudget ? rowStockCandyTargetFor(r.id) : undefined)
+      ?? (r.sleepTargetMode === "stock" && !ignoreStockBudget
+        ? (stockAllocation ? stockAllocation.target[r.id] : rowStockCandyTargetFor(r.id))
+        : undefined)
       ?? Number.POSITIVE_INFINITY;
     if (derivingTarget) {
       return Math.min(requested, candyBudget, boostCandyToMaxLevel(r));
@@ -1986,6 +2019,10 @@ export function useCalcStore(opts: {
       const n = next.boostOrExpAdjustment ?? 0;
       // 条件変更で保った明示個数は、上限へ収めても保存済みの目標を押し上げない。
       if (options.preserveTargetForExplicitBoost && next.boostOrExpAdjustment !== undefined) return next;
+      // 睡眠EXPが残る行では押し上げない。入力は `T'` へ届く数で抑えるので正しい入力では押し上がらず、
+      // 押し上がるのは睡眠目標を入れる前の保存値だけ（睡眠目標で Lv内EXP を 0 にした目標を戻してしまう。spec §4.7）。
+      // 目標を上げたいときは個数指定を入れ直す（`(m, n)` の到達点 ＋ `S`。spec §4.6）。
+      if (rowSleepExp(next) > 0) return next;
       const candidate = targetFromCandy({
         srcLevel: next.srcLevel,
         expGot: rowExpGot(next),
@@ -2014,7 +2051,7 @@ export function useCalcStore(opts: {
       srcLevel: next.srcLevel,
       expGot: rowExpGot(next),
       candyTarget: m,
-      boostCandy: resolveEffectiveBoostCandy(next, true),
+      boostCandy: resolveEffectiveBoostCandy(next),
       expType: next.expType,
       nature: next.nature,
       boostKind: boostKind.value,
@@ -2098,6 +2135,17 @@ export function useCalcStore(opts: {
    * アメブ目標Lvを既定値（設定）へ戻し、その行に回る残枠で個数を確定させる。
    * 残枠の計算がユーザーには面倒なので、このボタンが肩代わりする。
    */
+  /**
+   * 行のリセット（＝アメブ個数の空白確定）をしたら入る実効アメブ個数。保存はしない。
+   * アメブ個数を消している間の入力欄・テンキーに薄く出す値で、確定後の表示と一致させる。
+   * 明示個数のある行ではプレースホルダ（`ui.boostCandyInput`）がその個数なので、こちらで求める。
+   */
+  function boostCandyAfterReset(id: string): number | undefined {
+    const next = allocateBoostCandyFromQuota(rows.value, { rowId: id });
+    const row = next.find((x) => x.id === id);
+    if (!row) return undefined;
+    return resolveEffectiveBoostCandy(row, false, false, walkStockCandyAllocation(next));
+  }
   function resetRowBoostCandy(id: string) {
     activeRowId.value = id;
     const row = rows.value.find((x) => x.id === id);
@@ -2249,7 +2297,9 @@ export function useCalcStore(opts: {
     if (r.nature === nature) return;
 
     const patch: Partial<CalcRow> = { nature };
-    if (r.candyTarget === undefined && r.boostOrExpAdjustment !== undefined) {
+    // 睡眠EXPが残る行は引き直さない。アメだけの到達点で目標を作ると、睡眠目標で 0 にした Lv内EXP を戻してしまう
+    // （`normalizeRowState` の押し上げと同じ理由。spec §4.7）。
+    if (r.candyTarget === undefined && r.boostOrExpAdjustment !== undefined && rowSleepExp(r) === 0) {
       // 「賄っているか」は必ず変更前の性格・変更前の目標で判定する。
       // 変更後で判定すると up → down の復路で目標が高いまま固まる。
       const reachedBefore = targetFromCandy({
@@ -2398,7 +2448,8 @@ export function useCalcStore(opts: {
    *
    * アメブが駆動側なので、増やして総アメ数を超えたら個数指定の方を引き上げる。
    * （逆に個数指定を減らしたときは、そちらが駆動側なのでアメブを内数へクランプする）
-   * 空白確定は自動計算へ戻さず、明示0を保存する（§9.3）。
+   * 空白確定は行のリセットボタンと同じ（アメブ枠から配り直す。§9.3 を 2026-09-26 に改訂）。
+   * 空欄は自動計算の値を薄く出しているので、消したら自動計算へ戻る方が見た目と一致する。0 は 0 と打つ。
    *
    * **上限を超える入力は上限へクランプする（2026-08-25 ユーザー規則）。**
    *
@@ -2422,16 +2473,11 @@ export function useCalcStore(opts: {
 
     const inputMax = maxBoostCandyInputFor(r);
     const undoOptions = options.standaloneUndo ? {} : { coalesceKey: `rowBoostCandy:${id}` };
-    // 上限0の行は原則として「明示的に0個」を焼き付けない（§11.11）。空白確定も同じ。
+    // 上限0の行は原則として「明示的に0個」を焼き付けない（§11.11）。空白確定も受け取らない。
     if (inputMax === 0 && !canSaveExplicitZeroBoost(r)) return;
 
     if (v.trim() === "") {
-      commitRow(
-        id,
-        { boostOrExpAdjustment: 0 },
-        rowFieldUndoLabel(r, t("calc.row.boostCandyCount")),
-        undoOptions,
-      );
+      resetRowBoostCandy(id);
       return;
     }
 
@@ -2477,7 +2523,10 @@ export function useCalcStore(opts: {
     return "applied";
   }
 
-  /** 個数指定を保ったまま、指定Lvへ届く最小アメブを個数欄と同じ経路で適用する（§7）。 */
+  /**
+   * 個数指定を保ったまま、指定Lvへ届く最小アメブを個数欄と同じ経路で適用する（§7）。
+   * 指定Lvは睡眠込みの最終Lv。睡眠目標があれば睡眠EXPを戻した点（T' の側）へアメで届けばよい。
+   */
   function applyMinBoostForCandyTarget(id: string, level: number): ApplyMinBoostForCandyTargetResult {
     const row = rows.value.find((candidate) => candidate.id === id);
     const kind = boostKind.value;
@@ -2491,25 +2540,47 @@ export function useCalcStore(opts: {
       || kind === "none"
       // アメブ個数欄が入力を受け取らない行では、適用しても何も書かれない
       || (maxBoostCandyInputFor(row) === 0 && !canSaveExplicitZeroBoost(row))
-    ) return "disabled";
+    ) return { kind: "disabled" };
 
     const targetLevel = clampInt(level, row.srcLevel, MAX_LEVEL, row.srcLevel);
+    // 睡眠目標が無ければ S = 0 で、指定Lvちょうどがそのままアメの終端になる
+    const candyEnd = candyEndBeforeSleep(row, targetLevel, 0);
+    const result = minBoostWithinCandyBudget(row, candyEnd, kind, budget);
+    if (result.kind === "unreachable") return result;
+
+    onRowBoostCandy(id, String(result.boostCandy), { standaloneUndo: true });
+    return { kind: "applied" };
+  }
+
+  /**
+   * 総アメ数 `budget` 以内でアメの終端 `end` へ届く最小のアメブ個数。届かなければ届くのに要る最小の総アメ数。
+   * 逆算ツール（個数指定）とアメブ最小化（在庫）の共通部分。「{n}個以上のアメが必要です」の n はここで決まる。
+   */
+  function minBoostWithinCandyBudget(
+    row: CalcRow,
+    end: { level: number; expInLevel: number },
+    kind: Exclude<BoostEvent, "none">,
+    budget: number,
+  ): { kind: "within"; boostCandy: number } | { kind: "unreachable"; neededCandy: number } {
+    const shared = { srcLevel: row.srcLevel, expType: row.expType, nature: row.nature, expGot: rowExpGot(row) };
     const boostCandy = minBoostWithinBudget({
-      srcLevel: row.srcLevel,
-      targetLevel,
-      targetExpInLevel: 0,
-      expType: row.expType,
-      nature: row.nature,
+      ...shared,
+      targetLevel: end.level,
+      targetExpInLevel: end.expInLevel,
       boostKind: kind,
       budget,
-      expGot: rowExpGot(row),
     });
-    // minCandyForTarget の必要総数には使うアメブが含まれるため、予算内の解では n <= m。
-    // 念のため、将来ヘルパーの仕様が変わっても個数指定が増えないようにする。
-    if (boostCandy === undefined || boostCandy > budget) return "unreachable";
-
-    onRowBoostCandy(id, String(boostCandy), { standaloneUndo: true });
-    return "applied";
+    // minCandyForTarget の必要総数には使うアメブが含まれるため、予算内の解では n <= budget。
+    // 念のため、将来ヘルパーの仕様が変わっても予算を超えないようにする。
+    if (boostCandy !== undefined && boostCandy <= budget) return { kind: "within", boostCandy };
+    // アメブはふつうのアメより多くEXPが入るので、全部アメブで上げるときが最も少ない個数で届く。
+    const neededCandy = calcExpAndCandy({
+      ...shared,
+      dstLevel: end.level,
+      dstExpInLevel: end.expInLevel,
+      boost: kind,
+    }).candy;
+    return { kind: "unreachable", neededCandy };
   }
 
   /**
@@ -2531,7 +2602,10 @@ export function useCalcStore(opts: {
   }
 
   /**
-   * 睡眠EXPまたは stock 在庫による上限が効いている行。**案内文を用意する条件。**
+   * 睡眠EXPによる上限が効いている行。**案内文を用意する条件。**
+   *
+   * **アメ在庫＋睡眠の在庫による上限は含めない**（2026-09-26 ユーザー決定）。アメを在庫の分だけ使い、
+   * 残りを睡眠で上げるモードなので、在庫で頭打ちになるのは意図どおり（アメ不足ではない）。何も出さない。
    *
    * **判定はアメブ目標Lv1本。** 表示中のアメブ目標Lvが上限に達している
    * （＝それ以上上げられない）ときだけ true。アメブ個数欄の案内もこれに連動させる。
@@ -2547,22 +2621,15 @@ export function useCalcStore(opts: {
    * > アメブ種別を full → mini へ変えてアメブ目標Lvが元Lvまで下がった行で表面化した。
    */
   function isBoostCapActive(r: CalcRow, reachLevel: number, reachLevelMax: number): boolean {
-    if (r.sleepTargetMode === "all" || boostKind.value === "none") return false;
-    if (r.sleepTargetMode !== "stock" && r.sleepTargetHours === undefined) return false;
-    if (r.sleepTargetMode === "stock" && rowStockCandyAvailableFor(r.id) === undefined) return false;
+    if (r.sleepTargetMode !== undefined || r.sleepTargetHours === undefined || boostKind.value === "none") return false;
     if (reachLevelMax >= MAX_LEVEL) return false;
     return reachLevel >= reachLevelMax;
   }
 
-  /** 上限案内の文言を切り替えるための由来。 */
-  function boostCapKindFor(r: CalcRow, active: boolean): 'sleep' | 'stock' | null {
-    if (!active) return null;
-    return r.sleepTargetMode === "stock" ? 'stock' : 'sleep';
-  }
-
   /**
    * 睡眠EXPがアメブの担当範囲を押し下げている状態（§10.18）。破線を出す条件。
-   * stock の在庫上限は操作可能な半ロックなので、ここには含めない。
+   * アメ在庫＋睡眠の在庫上限は含めない。在庫をアメブにするか通常アメにするかはユーザーが決められるので、
+   * アメブ2欄は操作できる欄のまま（2026-09-26 ユーザー決定）。
    *
    * **これは「入力できない」ではない。** T' 以下の範囲は今までどおり上げ下げできる。
    * 動かせないのは押し下げられた範囲（T' 超）だけ。そこの扱いは欄で違う——
@@ -2662,46 +2729,32 @@ export function useCalcStore(opts: {
   }
 
   /**
-   * 「アメブ目標Lv = reachLevel」を賄うアメブ個数。
+   * 終点 `end` まで賄うアメブ個数。終点は呼び出し側（resolveEffectiveBoostCandy）がアメブ目標Lvの意図で決める
+   * （2026-09-26 ユーザー規則「勝手に通常アメを増やさない」）。
    *
-   * **アメブが賄うのは Lv ちょうどまでで、目標の Lv 内EXP（端数）は常に通常アメの担当。**
-   * 端数までアメブに賄わせる分岐（旧 `coverTargetExp`）は廃止した
-   * （2026-08-15 ユーザー規則。§15.7 / §15.8 の端数賄いを撤回）。
-   * あれは同じ `reachLevel` を「アメブ担当なし」とも「端数まで全部アメブ」とも解釈できてしまい、
-   * `T` を導出する経路（`derivingTarget`）と表示・ソルバーの経路とで導出値が食い違っていた。
-   * 個数指定 m だけを入れた行（アメブ未入力・アメブ目標Lv = 現在Lv）で、m から作った目標の端数を
-   * 賄うアメブが勝手に湧き、m 個の到達点が目標を超える不整合になっていた。
-   * 端数までアメブで賄いたい場合はユーザーがアメブ個数を明示入力する（入力上限
-   * `maxBoostCandyInputFor` は端数込みのままなので、今までどおり入力できる）。
+   * `coversWholeRange`: アメブ100%で目標へ届くか。このときだけ「アメブ1個 → 通常アメ1個」置換（§3.8-e）を当てる。
+   * 置換は、最後の1個のアメブを通常アメに替えても目標に届くとき（最後のはみ出しEXPが捨てられるとき）だけ成り立つ。
    *
-   * 「アメブ1個 → 通常アメ1個」置換（§3.8-e）は残す。当てる条件は2つある。
-   *
-   * 1. アメブが担当範囲全体を賄う。最後のはみ出しEXPが余剰になるので、1個を通常アメへ回せば
-   *    かけらを節約できる。アメブ目標Lvが担当範囲より下（その先を通常アメで続ける）ときに1個削ると、
-   *    アメブ分が実際に reachLevel へ届かず、不足を通常アメで補うぶん総アメ数も増えて損になる
-   * 2. **睡眠EXPが乗らない行である**（2026-07-30 ユーザー規則・§15.8）。睡眠がある行では
-   *    担当終端 `T'` を超えたEXPが捨てられず最終目標へ効くため、置換の前提が成立しない
+   * 1. アメブ目標Lvが担当範囲より下（その先を通常アメで続ける）ときは、はみ出しEXPが先で使われるので成り立たない。
+   *    個数指定のある行はアメ数で目標が動くので、成り立つのは Lv70 に届くときだけ
+   * 2. **睡眠EXPが乗る行では成り立たない**（2026-07-30 ユーザー規則・§15.8）。担当終端 `T'` を超えたEXPが
+   *    捨てられず最終目標へ効く
    */
-  function boostCandyForReachLevel(
+  function boostCandyForEnd(
     r: CalcRow,
-    reachLevel: number,
-    dstLevel: number,
-    dstExpInLevel: number,
+    end: { level: number; expInLevel: number },
+    coversWholeRange: boolean,
   ): number {
     const shared = { srcLevel: r.srcLevel, expType: r.expType, nature: r.nature, expGot: rowExpGot(r) };
-    // 目標がLvの途中（あとEXP付き）なら、同じLvへ届いてもアメブは目標全体を賄えない。
-    // 端数は通常アメの担当なので、置換の前提（最後のはみ出しEXPが捨てられる）も成立しない。
-    // `reachLevel` は呼び出し側で目標Lv以下へクランプ済みなので、ここで `>` は起こらない。
-    const coversWholeTarget = reachLevel === dstLevel && dstExpInLevel === 0;
-    return coversWholeTarget
+    return coversWholeRange
       ? minBoostForTarget({
         ...shared,
-        targetLevel: reachLevel,
-        targetExpInLevel: 0,
+        targetLevel: end.level,
+        targetExpInLevel: end.expInLevel,
         boostKind: boostKind.value, maxBoost: Number.MAX_SAFE_INTEGER,
         allowNormalSwap: rowSleepExp(r) === 0,
       })
-      : calcExpAndCandy({ ...shared, dstLevel: reachLevel, dstExpInLevel: 0, boost: boostKind.value }).candy;
+      : calcExpAndCandy({ ...shared, dstLevel: end.level, dstExpInLevel: end.expInLevel, boost: boostKind.value }).candy;
   }
 
   function indexOfRow(id: string): number {
@@ -2759,7 +2812,7 @@ export function useCalcStore(opts: {
     const nat = r.nature;
     const expInfo = calcRowExpGot({ ...r, srcLevel: src, dstLevel: dst, expType: expT, nature: nat });
     const expGot = expInfo.expGot;
-    // 最終目標のLv内EXP。個数指定なしの行は常に 0（目標は Lv ちょうど。§4.5）。
+    // 最終目標のLv内EXP。個数指定・アメブ個数のどちらも未入力の行は 0（目標は Lv ちょうど。§4.5）。
     const dstExpInLevel = rowTargetExpInLevel({ ...r, dstLevel: dst });
 
     // ─────────────────────────────────────────────────────────────
@@ -2840,7 +2893,6 @@ export function useCalcStore(opts: {
     // 案内（capActive）は**この画面に出ている値と上限**で判定する。ストア側で上限を計算し直すと、
     // 表示は上限未満なのに案内だけ出る、という食い違いが生まれる。
     const boostCapActive = isBoostCapActive(normalizedRow, uiBoostReachLevel, boostReachLevelMax);
-    const boostCapKind = boostCapKindFor(normalizedRow, boostCapActive);
     const boostSleepCapped = isBoostSleepCapped(normalizedRow);
     const boostInputDisabled = isBoostInputDisabledBySleep(normalizedRow);
 
@@ -2878,12 +2930,12 @@ export function useCalcStore(opts: {
       ui: {
         boostCandyInput: uiCandy,
         boostMinimizeFallback: stockCandyAllocationByRowId.value.minimizeFallback[r.id] === true,
+        boostMinimizeFallbackNeededCandy: stockCandyAllocationByRowId.value.minimizeFallbackNeededCandy[r.id],
         boostMinimizeFallbackSharedStock: stockCandyAllocationByRowId.value.minimizeFallbackSharedStock[r.id] === true,
         boostReachLevel: uiBoostReachLevel,
         boostReachLevelMax,
         boostCandyInputMax: maxBoostCandyInputFor(r),
         boostCapActive,
-        boostCapKind,
         boostSleepCapped,
         boostInputDisabled,
         boostQuotaViolation,
@@ -3348,6 +3400,7 @@ export function useCalcStore(opts: {
       nature: row.nature,
       boostReachLevel: row.boostReachLevel,
       candyTarget: row.candyTarget,
+      boostOrExpAdjustment: row.boostOrExpAdjustment,
       boostCandyInput: row.ui.boostCandyInput,
       sleepExp: rowSleepExp(row),
       sleepTargetMode: row.sleepTargetMode,
@@ -4052,6 +4105,7 @@ export function useCalcStore(opts: {
     setRowMinimizeBoost,
     applyMinBoostForCandyTarget,
     resetRowBoostCandy,
+    boostCandyAfterReset,
 
     moveRow,
     moveRowUp,

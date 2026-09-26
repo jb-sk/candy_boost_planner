@@ -179,7 +179,7 @@ export function toSubSkills(v: unknown): BoxSubSkillSlotV1[] | undefined {
 }
 
 export function cryptoRandomId(): string {
-  const c = globalThis.crypto;
+  const c = typeof crypto !== "undefined" ? crypto : undefined;
   if (c && typeof c.randomUUID === "function") return c.randomUUID();
   return `id_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`;
 }

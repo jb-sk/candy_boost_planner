@@ -236,11 +236,11 @@ test.describe('03-settings デスクトップ', () => {
     const settings = new SettingsModalPage(page);
 
     await settings.openSettingsFromDesktop();
-    await settings.setTotalShards('150000');
-
-    const value = await settings.getTotalShards();
-    // カンマ区切りで表示される可能性があるため、カンマを除去して比較
-    expect(value.replace(/,/g, '')).toBe('150000');
+    // 桁が大きいので、入力中もカンマ区切りで見せる
+    await settings.totalShardsInput.fill('150000');
+    await expect(settings.totalShardsInput).toHaveValue('150,000');
+    await settings.totalShardsInput.blur();
+    await expect(settings.totalShardsInput).toHaveValue('150,000');
   });
 
   test('9. かけらの上限が反映され、計算機パネルに反映される', async ({ page }) => {
@@ -515,6 +515,10 @@ test.describe('03-settings デスクトップ', () => {
     );
     await expect(settings.growthIncenseNormalHintButton)
       .toHaveAttribute('aria-label', '1週間の成長のお香の説明を開く');
+    // チップは真下の「?」（GSD）に重なるので、閉じてから押す（チップは中身と一緒に動くので、
+    // スクロールしても下から出てこない）
+    await settings.growthIncenseNormalHintButton.click();
+    await expect(settings.hintPopover).toBeHidden();
 
     await settings.growthIncenseGsdHintButton.click();
     expect(await settings.hintPopover.textContent()).toBe(
@@ -523,6 +527,8 @@ test.describe('03-settings デスクトップ', () => {
     );
     await expect(settings.growthIncenseGsdHintButton)
       .toHaveAttribute('aria-label', 'GSDの成長のお香の説明を開く');
+    await settings.growthIncenseGsdHintButton.click();
+    await expect(settings.hintPopover).toBeHidden();
 
     // 「?」は label の外。押しても入力欄が反応しない（在庫欄はフォーカスも移らない）。
     await settings.growthIncenseStockHintButton.click();

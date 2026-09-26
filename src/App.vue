@@ -75,7 +75,6 @@
         :inert="!isDesktopLayout && activePanel !== 'box'"
         @apply-to-calc="applyBoxToCalculator()"
         @toggle-calc="toggleBoxInCalculator($event)"
-        @view-calc="selectPanel('calc')"
         @open-settings="showSettings = true"
       />
       <div
@@ -97,6 +96,7 @@
     </div>
 
     <AppToast />
+    <NumericKeypad />
 
     <ExportOverlay
       v-if="calc.exportOpen.value"
@@ -144,12 +144,14 @@ import CalcPanel from "./components/CalcPanel.vue";
 import BoxPanel from "./components/BoxPanel.vue";
 import MobileNav from "./components/MobileNav.vue";
 import AppToast from "./components/AppToast.vue";
+import NumericKeypad from "./components/NumericKeypad.vue";
 import SettingsOverlay from "./components/SettingsOverlay.vue";
 import { useBoxStore } from "./composables/useBoxStore";
 import { useCalcStore } from "./composables/useCalcStore";
 import { useCandyStore } from "./composables/useCandyStore";
 import { useOnboarding } from "./composables/useOnboarding";
 import { buildThemeList, DEFAULT_THEME_ID, DESIGN_STORAGE_KEY } from "./config/themes";
+import { entriesToObject } from "./utils/entriesToObject";
 
 const i18n = useI18n();
 const { t, locale } = i18n;
@@ -783,10 +785,10 @@ function onDesktopLayoutChange(event: MediaQueryListEvent): void {
 const availableThemes = buildThemeList(
   import.meta.glob("./styles/*.css", { eager: true, query: "?url" }) as Record<string, () => Promise<unknown>>,
 );
-const themeStyleUrls = Object.fromEntries(
+const themeStyleUrls = entriesToObject(
   Object.entries(import.meta.glob("./styles/*.css", { eager: true, query: "?url", import: "default" }) as Record<string, string>)
     .map(([path, href]) => [path.match(/\/([^/]+)\.css$/)?.[1] ?? "", href])
-    .filter(([id]) => id && id !== "base"),
+    .filter(([id]) => id && id !== "base") as [string, string][],
 ) as Record<string, string>;
 const currentDesign = ref(localStorage.getItem(DESIGN_STORAGE_KEY) || DEFAULT_THEME_ID);
 async function onDesignChange(ev: Event) {

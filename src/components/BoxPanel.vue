@@ -63,7 +63,7 @@
             </label>
             <div class="field" data-testid="box-add-level-field">
               <span class="field__label">{{ t("box.detail.level") }}</span>
-              <LevelPicker v-model="addLevel" :label="`${t('box.add.level')}: Lv${addLevel}`" :max="MAX_LEVEL" />
+              <LevelPicker v-model="addLevel" keypad :label="`${t('box.add.level')}: Lv${addLevel}`" :max="MAX_LEVEL" />
             </div>
             <label class="field">
               <span class="field__label">{{ t("calc.row.expRemaining") }}</span>
@@ -73,6 +73,7 @@
                 min="0"
                 class="field__input"
                 data-testid="box-add-exp-remaining-input"
+                v-keypad="t('calc.row.expRemaining')"
                 :placeholder="t('calc.row.expRemainingPh')"
                 @blur="box.onAddExpRemainingCommit()"
                 @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
@@ -96,6 +97,7 @@
                 min="0"
                 class="field__input"
                 data-testid="box-add-species-candy"
+                v-keypad="t('calc.row.speciesCandy')"
               />
             </label>
             <label class="field">
@@ -151,6 +153,7 @@
                 step="1"
                 class="field__input"
                 data-testid="box-add-sleep-hours"
+                v-keypad="t('box.detail.sleepHours')"
                 placeholder=""
               />
             </label>
@@ -503,9 +506,9 @@
                 type="button"
                 :data-testid="`box-tag-handle-${tag.id}`"
                 :aria-label="t('box.tags.reorderAria', { name: tag.name })"
-                @pointerdown="onTagHandlePointerDown(tag.id, $event)"
-                @touchstart="onTagHandleTouchStart(tag.id, $event)"
-                @mousedown="onTagHandleMouseDown(tag.id, $event)"
+                @pointerdown="onTagHandlePress(tag.id, $event)"
+                @touchstart="onTagHandlePress(tag.id, $event)"
+                @mousedown="onTagHandlePress(tag.id, $event)"
                 @keydown.up.prevent="moveTagByKey(tag.id, -1)"
                 @keydown.down.prevent="moveTagByKey(tag.id, 1)"
               >
@@ -679,11 +682,9 @@
               :data-type="e.derived ? getPokemonType(e.derived.pokedexId, e.derived.form) : 'unknown'"
               @mouseenter="onTileMouseEnter(e.id)"
               @mouseleave="onTileMouseLeave"
-              @touchstart="onTileTouchStart"
-              @pointerdown="onTilePressStart($event, e.id)"
-              @pointermove="onTilePressMove"
-              @pointerup="onTilePressEnd"
-              @pointercancel="onTilePressCancel"
+              @pointerdown="onTilePress($event, e.id)"
+              @touchstart.passive="onTilePress($event, e.id)"
+              @mousedown="onTilePress($event, e.id)"
             >
               <button
                 type="button"
@@ -726,14 +727,6 @@
                     @click="onApplyToCalcWithFlash()"
                   >
                     {{ calcBtnFlash ? calcBtnLabel : t("box.add.toCalc") }}
-                  </button>
-                  <button
-                    class="btn boxDetail__viewCalc"
-                    type="button"
-                    data-testid="box-detail-view-calc"
-                    @click="$emit('view-calc')"
-                  >
-                    {{ t("box.add.viewCalc") }}
                   </button>
                   <button
                     class="btn btn--danger"
@@ -870,6 +863,7 @@
                       <LevelPicker
                         :model-value="selectedDetail?.level ?? 1"
                         @update:model-value="box.setBoxLevel($event)"
+                        keypad
                         :label="`${t('box.add.level')}: Lv${selectedDetail?.level ?? 1}`"
                         :max="MAX_LEVEL"
                       />
@@ -884,6 +878,7 @@
                         min="0"
                         class="field__input"
                         data-testid="box-detail-exp-remaining-input"
+                        v-keypad="t('calc.row.expRemaining')"
                         :value="boxExpRemainingInputValue"
                         @focus="onBoxExpRemainingFocus"
                         @input="boxExpRemainingDraft = ($event.target as HTMLInputElement).value"
@@ -1013,6 +1008,8 @@
                         step="1"
                         class="field__input"
                         :value="sleepHoursInput"
+                        data-testid="box-detail-sleep-hours-input"
+                        v-keypad="t('box.detail.sleepHours')"
                         placeholder=""
                         @input="onSleepHoursInput(($event.target as HTMLInputElement).value)"
                       />
@@ -1056,6 +1053,8 @@
                         max="13"
                         step="0.5"
                         class="field__input sleepCalcPanel__input"
+                        data-testid="box-sleep-daily-input"
+                        v-keypad="{ label: t('box.detail.sleepCalcDaily'), decimal: true }"
                         @blur="onDailySleepBlur"
                       />
                     </div>
@@ -1129,11 +1128,12 @@
 
     <!-- ツールチップ（ヒント） -->
     <Teleport to="body">
-      <div v-if="hintState.visible" class="hintOverlay" @click.stop="closeHint"></div>
+      <div v-if="hintState.visible" class="hintOverlay" data-testid="box-hint-overlay" @click.stop="closeHint"></div>
       <div
         v-if="hintState.visible"
         ref="hintPopoverRef"
-        class="hintPopover"
+        class="hintPopover hintPopover--anchored"
+        data-testid="box-hint-popover"
         :style="{ left: hintState.left + 'px', top: hintState.top + 'px' }"
         @click.stop
       >
@@ -1157,6 +1157,8 @@ import { IngredientTypes } from "../domain/box/nitoyon";
 import { getPokemonType } from "../domain/pokesleep/pokemon-names";
 import { getPokemonNameLocalized } from "../domain/pokesleep/pokemon-name-localize";
 import NatureSelect from "./NatureSelect.vue";
+import { useDismissOnScroll } from "../composables/useDismissOnScroll";
+import { placeNearAnchor } from "../utils/anchoredPlacement";
 import InlineConfirm from "./InlineConfirm.vue";
 
 import type { BoxStore } from "../composables/useBoxStore";
@@ -1187,7 +1189,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "apply-to-calc"): void;
   (e: "toggle-calc", boxId: string): void;
-  (e: "view-calc"): void;
   (e: "open-settings"): void;
 }>();
 
@@ -1383,8 +1384,6 @@ function confirmDeleteTag(id: string): void {
  */
 type TagDrag = {
   id: string;
-  /** どの入力で始めたか（"pointer:<id>" / "touch:<id>" / "mouse"）。別の指や入力の動きは無視する。 */
-  input: string;
   thresholds: number[];
   toIndex: number;
 };
@@ -1401,12 +1400,30 @@ const tagManagerTags = computed(() => {
   return rest;
 });
 
-/* 入力の種類によらないドラッグ本体。入口は Pointer Events、無い端末（iOS 13 未満など）だけ touch / mouse
-   （計算機の行の並べ替えと同じ）。イベントは document で受ける。並び替え表示で取っ手の要素が DOM 上を
-   移動すると、要素に付けたポインターキャプチャは外れてしまうため。 */
-function startTagDrag(id: string, clientY: number, input: string): boolean {
-  // ドラッグ中は新しく始めない（別の指やキャンセル漏れで document のリスナーが重ならないように）
-  if (tagDrag.value) return false;
+/** つかんでいる指・ポインターの追跡（入力のまとめは trackPress.ts）。 */
+let tagPress: Press | null = null;
+
+/** 取っ手を押したらドラッグを始める。指での並べ替え中はページをスクロールさせない。 */
+function onTagHandlePress(id: string, ev: Event): void {
+  // ドラッグ中は新しく始めない（別の指で重ならないように）
+  if (tagDrag.value) return;
+  const press = trackPress(ev, {
+    move: ({ y }) => {
+      moveTagDrag(y);
+      return true;
+    },
+    end: (commit) => (commit ? dropTagDrag() : endTagDrag()),
+  });
+  if (!press) return;
+  if (!startTagDrag(id, press.y)) {
+    press.stop();
+    return;
+  }
+  tagPress = press;
+  ev.preventDefault();
+}
+
+function startTagDrag(id: string, clientY: number): boolean {
   const items = [...(tagManagerRef.value?.querySelectorAll<HTMLElement>(".boxTagManager__item") ?? [])];
   const fromIndex = customTags.value.findIndex((tag) => tag.id === id);
   if (fromIndex < 0 || items.length !== customTags.value.length) return false;
@@ -1417,7 +1434,6 @@ function startTagDrag(id: string, clientY: number, input: string): boolean {
   const offset = own.top + own.height / 2 - clientY;
   tagDrag.value = {
     id,
-    input,
     thresholds: rects
       .filter((_, index) => index !== fromIndex)
       .map((rect, index) => (index < fromIndex ? rect.bottom : rect.top) - offset),
@@ -1426,82 +1442,24 @@ function startTagDrag(id: string, clientY: number, input: string): boolean {
   return true;
 }
 
-function moveTagDrag(input: string, clientY: number): void {
+function moveTagDrag(clientY: number): void {
   const drag = tagDrag.value;
-  if (!drag || drag.input !== input) return;
+  if (!drag) return;
   // 越えた境目の数＝入る位置
   const toIndex = drag.thresholds.filter((y) => y < clientY).length;
   if (toIndex !== drag.toIndex) tagDrag.value = { ...drag, toIndex };
 }
 
-function dropTagDrag(input: string): void {
+function dropTagDrag(): void {
   const drag = tagDrag.value;
-  if (!drag || drag.input !== input) return;
   endTagDrag();
-  box.moveCustomTag(drag.id, drag.toIndex);
+  if (drag) box.moveCustomTag(drag.id, drag.toIndex);
 }
 
 function endTagDrag(): void {
   tagDrag.value = null;
-  document.removeEventListener("pointermove", onTagPointerMove);
-  document.removeEventListener("pointerup", onTagPointerUp);
-  document.removeEventListener("pointercancel", endTagDrag);
-  document.removeEventListener("touchmove", onTagTouchMove);
-  document.removeEventListener("touchend", onTagTouchEnd);
-  document.removeEventListener("touchcancel", endTagDrag);
-  document.removeEventListener("mousemove", onTagMouseMove);
-  document.removeEventListener("mouseup", onTagMouseUp);
-}
-
-function onTagHandlePointerDown(id: string, ev: PointerEvent): void {
-  if (typeof window.PointerEvent === "undefined" || ev.button !== 0 || !startTagDrag(id, ev.clientY, `pointer:${ev.pointerId}`)) return;
-  ev.preventDefault();
-  document.addEventListener("pointermove", onTagPointerMove);
-  document.addEventListener("pointerup", onTagPointerUp);
-  document.addEventListener("pointercancel", endTagDrag);
-}
-
-function onTagPointerMove(ev: PointerEvent): void {
-  moveTagDrag(`pointer:${ev.pointerId}`, ev.clientY);
-}
-
-function onTagPointerUp(ev: PointerEvent): void {
-  dropTagDrag(`pointer:${ev.pointerId}`);
-}
-
-function onTagHandleTouchStart(id: string, ev: TouchEvent): void {
-  const touch = ev.changedTouches[0];
-  if (typeof window.PointerEvent !== "undefined" || !touch || !startTagDrag(id, touch.clientY, `touch:${touch.identifier}`)) return;
-  ev.preventDefault();
-  // passive: false でないと preventDefault できず、ドラッグがページのスクロールに取られる
-  document.addEventListener("touchmove", onTagTouchMove, { passive: false });
-  document.addEventListener("touchend", onTagTouchEnd);
-  document.addEventListener("touchcancel", endTagDrag);
-}
-
-function onTagTouchMove(ev: TouchEvent): void {
-  if (!tagDrag.value) return;
-  ev.preventDefault();
-  for (const touch of Array.from(ev.changedTouches)) moveTagDrag(`touch:${touch.identifier}`, touch.clientY);
-}
-
-function onTagTouchEnd(ev: TouchEvent): void {
-  for (const touch of Array.from(ev.changedTouches)) dropTagDrag(`touch:${touch.identifier}`);
-}
-
-function onTagHandleMouseDown(id: string, ev: MouseEvent): void {
-  if (typeof window.PointerEvent !== "undefined" || ev.button !== 0 || !startTagDrag(id, ev.clientY, "mouse")) return;
-  ev.preventDefault();
-  document.addEventListener("mousemove", onTagMouseMove);
-  document.addEventListener("mouseup", onTagMouseUp);
-}
-
-function onTagMouseMove(ev: MouseEvent): void {
-  moveTagDrag("mouse", ev.clientY);
-}
-
-function onTagMouseUp(): void {
-  dropTagDrag("mouse");
+  tagPress?.stop();
+  tagPress = null;
 }
 
 function moveTagByKey(id: string, delta: number): void {
@@ -1645,6 +1603,8 @@ function attachSleepTrackObserver(el: HTMLElement) {
   nextTick(() => {
     if (sleepTrackRowRef.value !== el) return;
     checkMilestoneCollision();
+    // ResizeObserver（iOS 13.4・Chrome 64 から）が無い端末では、初回の判定だけにする
+    if (typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => checkMilestoneCollision());
     ro.observe(el);
     _sleepTrackRO = ro;
@@ -1735,6 +1695,8 @@ const relinkName = box.relinkName;
 const relinkOpen = box.relinkOpen;
 const selectedNature = box.selectedNature;
 import LevelPicker from "./LevelPicker.vue";
+import { vKeypad } from "../composables/useNumericKeypad";
+import { trackPress, type Press } from "../utils/trackPress";
 const candyStore = useCandyStore();
 const addSpeciesCandy = ref<string>("");
 const addToCalcChecked = ref(true);
@@ -1792,10 +1754,8 @@ let isTouchDevice = false;
 const TILE_LONG_PRESS_MS = 300;
 const TILE_LONG_PRESS_MOVE_TOLERANCE = 12;
 let tilePressTimer: ReturnType<typeof setTimeout> | null = null;
-let tilePressPointerId: number | null = null;
-let tilePressPointerType = "";
-let tilePressStartX = 0;
-let tilePressStartY = 0;
+/** 押している間の追跡（入力のまとめは trackPress.ts）。 */
+let tilePress: Press | null = null;
 let tileLongPressTriggered = false;
 let suppressTileClick = false;
 let suppressTileClickTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1819,13 +1779,24 @@ function scheduleTileClickSuppressionClear(delay = 0): void {
   }, delay);
 }
 
-function onTilePressStart(event: PointerEvent, boxId: string): void {
-  if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
-  clearTilePressTimer();
-  tilePressPointerId = event.pointerId;
-  tilePressPointerType = event.pointerType;
-  tilePressStartX = event.clientX;
-  tilePressStartY = event.clientY;
+/** タイルの長押しで計算機へ追加・削除する。押している間に指やマウスが動いたら（スクロール）やめる。 */
+function onTilePress(event: Event, boxId: string): void {
+  if (event.type === "touchstart") {
+    // iOS はタッチの後に mouseenter を出すので、タッチを見たら hover を出さない
+    isTouchDevice = true;
+    hoveredTileId.value = null;
+  }
+  const press = trackPress(event, {
+    move: (point) => {
+      if (tilePressTimer && tilePress && Math.hypot(point.x - tilePress.x, point.y - tilePress.y) > TILE_LONG_PRESS_MOVE_TOLERANCE) {
+        cancelTilePress();
+      }
+    },
+    end: endTilePress,
+  });
+  if (!press) return;
+  cancelTilePress();
+  tilePress = press;
   tileLongPressTriggered = false;
   pressingTileId.value = boxId;
   tilePressTimer = setTimeout(() => {
@@ -1834,40 +1805,23 @@ function onTilePressStart(event: PointerEvent, boxId: string): void {
     suppressTileClick = true;
     pressingTileId.value = null;
     emit("toggle-calc", boxId);
-    // pointerupが来ない異常系でも抑止状態を残さない。
+    // 離したときの通知が来ない異常系でも抑止状態を残さない。
     scheduleTileClickSuppressionClear(1500);
   }, TILE_LONG_PRESS_MS);
 }
 
-function onTilePressMove(event: PointerEvent): void {
-  if (event.pointerId !== tilePressPointerId || !tilePressTimer) return;
-  const dx = event.clientX - tilePressStartX;
-  const dy = event.clientY - tilePressStartY;
-  if (Math.hypot(dx, dy) > TILE_LONG_PRESS_MOVE_TOLERANCE) {
-    clearTilePressTimer();
-    tilePressPointerId = null;
-  }
+function cancelTilePress(): void {
+  clearTilePressTimer();
+  tilePress?.stop();
+  tilePress = null;
 }
 
-function onTilePressEnd(event: PointerEvent): void {
-  if (event.pointerId !== tilePressPointerId) return;
+function endTilePress(): void {
+  const touch = tilePress?.touch ?? false;
   clearTilePressTimer();
-  tilePressPointerId = null;
-  if (tileLongPressTriggered) {
-    // iOSは指を離した後にclickを遅延合成するため、タッチだけ抑止を長めに保つ。
-    scheduleTileClickSuppressionClear(tilePressPointerType === "touch" ? 500 : 0);
-  }
-  tilePressPointerType = "";
-}
-
-function onTilePressCancel(event?: PointerEvent): void {
-  if (event && event.pointerId !== tilePressPointerId) return;
-  clearTilePressTimer();
-  tilePressPointerId = null;
-  if (tileLongPressTriggered) {
-    scheduleTileClickSuppressionClear(tilePressPointerType === "touch" ? 500 : 0);
-  }
-  tilePressPointerType = "";
+  tilePress = null;
+  // iOSは指を離した後にclickを遅延合成するため、タッチだけ抑止を長めに保つ。
+  if (tileLongPressTriggered) scheduleTileClickSuppressionClear(touch ? 500 : 0);
 }
 
 function consumeLongPressClick(event: MouseEvent): boolean {
@@ -1897,13 +1851,8 @@ function onTileMouseEnter(id: string) {
 function onTileMouseLeave() {
   if (!isTouchDevice) hoveredTileId.value = null;
 }
-function onTileTouchStart() {
-  isTouchDevice = true;
-  hoveredTileId.value = null;
-}
-
 onBeforeUnmount(() => {
-  clearTilePressTimer();
+  cancelTilePress();
   if (suppressTileClickTimer) clearTimeout(suppressTileClickTimer);
 });
 
@@ -2030,39 +1979,28 @@ const hintState = ref<{ visible: boolean; content: BoxHintContent; left: number;
 });
 const hintPopoverRef = ref<HTMLElement | null>(null);
 
+/**
+ * 計算機のヒントと同じく、開いた後に大きさを測って対象の近くへ置く（anchoredPlacement.ts）。
+ * 位置はページ座標なので、ページがスクロールしても対象に付いて動く（.hintPopover--anchored）。
+ */
 async function showHint(ev: MouseEvent, content: BoxHintContent | string) {
-  const target = ev.target as HTMLElement;
-  const rect = target.getBoundingClientRect();
-  const viewportWidth = window.innerWidth;
-  const popoverWidth = 220;
-  const gap = 4;
-
-  let left = rect.left;
-  if (left + popoverWidth > viewportWidth) left = viewportWidth - popoverWidth - 8;
-  if (left < 8) left = 8;
-
-  // まず下に仮配置して描画
+  const anchor = (ev.currentTarget ?? ev.target) as Element;
   hintState.value = {
     visible: true,
     content: typeof content === "string" ? { kind: "text", text: content } : content,
-    left,
-    top: rect.bottom + gap,
+    left: 0,
+    top: 0,
   };
-
-  // 描画後に実測して、下に収まらなければ上にフリップ
   await nextTick();
-  if (hintPopoverRef.value) {
-    const popH = hintPopoverRef.value.offsetHeight;
-    const viewportHeight = window.innerHeight;
-    if (rect.bottom + gap + popH > viewportHeight && rect.top - gap - popH > 0) {
-      hintState.value.top = rect.top - gap - popH;
-    }
-  }
+  if (hintPopoverRef.value) Object.assign(hintState.value, placeNearAnchor(anchor, hintPopoverRef.value));
 }
 
 function closeHint() {
   hintState.value.visible = false;
 }
+
+// スクロールしようとしたらヒントを閉じる（計算機・設定のヒントと同じ。useDismissOnScroll.ts）
+useDismissOnScroll(() => hintState.value.visible, closeHint);
 
 function openSettingsFromHint() {
   emit("open-settings");

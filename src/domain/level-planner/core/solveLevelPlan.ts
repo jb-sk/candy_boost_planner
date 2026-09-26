@@ -13,6 +13,8 @@ import { minBoostForTarget } from '../../pokesleep/minBoostForTarget';
 import { simulateCandyBudget, simulateCandyRun } from '../../pokesleep/simulateCandyBudget';
 import { maxLevel } from '../../pokesleep/tables';
 import { findBestItemAllocation } from './itemAllocation';
+import { lastOf } from '../../../utils/lastOf';
+import { flatMapOf } from '../../../utils/flatMapOf';
 import { addItemPriority, compareItemPriority, emptyItemPriority, itemPriorityOf } from './itemPriority';
 import type { ItemPriorityTuple } from './itemPriority';
 import { createIndependentBoundaryFeasibilitySession, createPrefixDecisionSession, fixedRowsFailFeasibilityRelaxation, hasSingleRowSupplyWithinSurplus, refineFeasibilityWitness, solveFeasibilityDecisionForFixedRows, solveFeasibilityForFixedRows } from './feasibilityWitness';
@@ -968,7 +970,7 @@ function generatePokemonCandidates(pokemon: NormalizedPokemon, input: Normalized
   // 0配分は非転落不変条件の前提でもあるため、資源が非競合でも必ず残す。
   const candidates = [
     { p: pokemon, line: zeroLine(pokemon), usage: emptyUsage(), stableIndex: -1 },
-    ...staticBoostValues(pokemon, input).flatMap(boost => candidateForBoost(pokemon, input, boost, Infinity, false, availableInventoryValue(input, pokemon))),
+    ...flatMapOf(staticBoostValues(pokemon, input), boost => candidateForBoost(pokemon, input, boost, Infinity, false, availableInventoryValue(input, pokemon))),
   ];
   if (hasUncappedSupplyCandidates()) return cacheCandidates(key, pruneExactSafeCandidates(candidates, input));
   return cacheCandidates(key, pruneCandidates(candidates, input));
@@ -1449,6 +1451,16 @@ function solveLowerContendedPrefix(
   return result.witness.rows.map((row, offset) => candidateFromFeasibleRow(row, lowerPokemon[offset], startIndex + offset));
 }
 
+
+/**
+ * 在庫の深いコピー。structuredClone（iOS 15.4・Chrome 98 から）は古い端末で使えないので使わない。
+ * 在庫は「種族→個数」「タイプ→{s, m}」「万能 {s, m, l}」の2段までの数値の入れ物。
+ */
+function cloneCandyInventory(inventory: CandyInventory): CandyInventory {
+  const typeCandy: Record<string, TypeCandyStock> = {};
+  for (const type of Object.keys(inventory.typeCandy)) typeCandy[type] = { ...inventory.typeCandy[type]! };
+  return { species: { ...inventory.species }, typeCandy, universal: { ...inventory.universal } };
+}
 /**
  * フェーズ3: 境界より下の行を残資源で処理する。
  *
@@ -1467,7 +1479,7 @@ function solveLowerContendedPrefix(
  */
 function allocateLowerRowsFromResidual(input: NormalizedInput, upperChoices: Candidate[], deadlineAt: number): Candidate[] {
   if (upperChoices.length >= input.pokemonList.length) return [];
-  const inventory = structuredClone(input.candyInventory);
+  const inventory = cloneCandyInventory(input.candyInventory);
   let usage = emptyUsage();
   for (const candidate of upperChoices) {
     consumeInventory(inventory, candidate.p, candidate.line);
@@ -1958,7 +1970,7 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
         boundaryRowForTotal,
       );
       const directGatedMax = result?.status === 'feasible'
-        ? result.witness.rows.at(-1)?.totalCandy
+        ? lastOf(result.witness.rows)?.totalCandy
         : undefined;
       if (result?.status === 'feasible' && directGatedMax !== undefined && directGatedMax >= 0) {
         checkedLowerTotals++;
@@ -1997,7 +2009,7 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
         boundaryRowForTotal,
       );
       const gatedUpper = gatedUpperResult?.status === 'feasible'
-        ? gatedUpperResult.witness.rows.at(-1)?.totalCandy ?? maximumBoundaryCandy
+        ? lastOf(gatedUpperResult.witness.rows)?.totalCandy ?? maximumBoundaryCandy
         : maximumBoundaryCandy;
       for (let total = gatedUpper; total >= 0; total--) {
         checkedLowerTotals++;
@@ -2350,7 +2362,7 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
             boundaryRowForTotal,
           );
           const directGatedMax = result?.status === 'feasible'
-            ? result.witness.rows.at(-1)?.totalCandy
+            ? lastOf(result.witness.rows)?.totalCandy
             : undefined;
           if (result && directGatedMax !== undefined && directGatedMax >= 0 && directGatedMax !== bestWitnessTotalCandy) {
             checkedLowerTotals++;
@@ -2857,7 +2869,7 @@ export function solveLevelPlan(rawInput: LevelPlannerInput): LevelPlannerResult 
   const choices = input.pokemonList.map((pokemon, index) => selectedPlan.choices[index] ?? { p: pokemon, line: zeroLine(pokemon), usage: emptyUsage(), stableIndex: 0 });
   const boundaryIndex = boundaryIndexForChoices(choices);
   markPhase('selectChoices');
-  const inventory = structuredClone(input.candyInventory); let snapshot = emptyUsage();
+  const inventory = cloneCandyInventory(input.candyInventory); let snapshot = emptyUsage();
   const pokemonResults: PokemonPlanResult[] = choices.map((candidate, index) => {
     const pokemon = candidate.p;
     const planned = plannedCandyForDisplay(pokemon, input);
@@ -2925,7 +2937,7 @@ function boundaryIndexForChoices(choices: Candidate[]): number | null {
 function renderMixedResult(input: NormalizedInput, choices: Candidate[], lossLedger: InternalPlannerLossLedger): LevelPlannerResult {
   const normalizedChoices = input.pokemonList.map((pokemon, index) => choices[index] ?? { p: pokemon, line: zeroLine(pokemon), usage: emptyUsage(), stableIndex: 0 });
   const boundaryIndex = boundaryIndexForChoices(normalizedChoices);
-  const inventory = structuredClone(input.candyInventory);
+  const inventory = cloneCandyInventory(input.candyInventory);
   let snapshot = emptyUsage();
   const pokemonResults: PokemonPlanResult[] = normalizedChoices.map((candidate, index) => {
     const pokemon = candidate.p;

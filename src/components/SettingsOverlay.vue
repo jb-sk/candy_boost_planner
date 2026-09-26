@@ -35,7 +35,7 @@
         <button ref="closeButtonRef" class="modal__close" data-testid="settings-modal-close" type="button" @click="requestClose" :aria-label="t('common.close')">×</button>
       </header>
 
-      <div class="modal__body">
+      <div ref="bodyRef" class="modal__body settingsBody">
 
         <div
           v-show="activeTab === 'inventory'"
@@ -52,6 +52,7 @@
                 <span class="settingsField__label">{{ t("calc.boostRemainingLabel") }}</span>
                 <input
                   data-testid="settings-boost-remaining-input"
+                  v-keypad="{ label: t('calc.boostRemainingLabel'), placeholder: t('calc.boostRemainingPlaceholder', { cap: calc.fmtNum(calc.boostCandyDefaultCap.value) }), placeholderChip: t('common.default') }"
                   :value="boostRemainingInputValue"
                   type="text"
                   inputmode="numeric"
@@ -78,6 +79,7 @@
                 <span class="settingsField__label">{{ t("settings.defaultBoostReachLevelLabel") }}</span>
                 <input
                   data-testid="settings-default-boost-reach-input"
+                  v-keypad="{ label: t('settings.defaultBoostReachLevelLabel'), placeholder: t('settings.defaultBoostReachLevelPlaceholder'), placeholderChip: t('common.default') }"
                   :value="defaultBoostReachInputValue"
                   type="text"
                   inputmode="numeric"
@@ -126,6 +128,7 @@
                 <span class="settingsField__label">{{ t("calc.maxShardsLabel") }}</span>
                 <input
                   data-testid="settings-total-shards-input"
+                  v-keypad="{ label: t('calc.maxShardsLabel'), grouping: true, maxLength: 9 }"
                   :value="totalShardsInputValue"
                   type="text"
                   inputmode="numeric"
@@ -146,6 +149,7 @@
                     <span class="candyInput__label">{{ t("calc.candy.universalS") }}</span>
                     <input
                       data-testid="settings-universal-candy-s-input"
+                      v-keypad="`${t('calc.candy.universalLabel')} ${t('calc.candy.universalS')}`"
                       type="number"
                       min="0"
                       class="field__input field__input--xs"
@@ -160,6 +164,7 @@
                     <span class="candyInput__label">{{ t("calc.candy.universalM") }}</span>
                     <input
                       data-testid="settings-universal-candy-m-input"
+                      v-keypad="`${t('calc.candy.universalLabel')} ${t('calc.candy.universalM')}`"
                       type="number"
                       min="0"
                       class="field__input field__input--xs"
@@ -174,6 +179,7 @@
                     <span class="candyInput__label">{{ t("calc.candy.universalL") }}</span>
                     <input
                       data-testid="settings-universal-candy-l-input"
+                      v-keypad="`${t('calc.candy.universalLabel')} ${t('calc.candy.universalL')}`"
                       type="number"
                       min="0"
                       class="field__input field__input--xs"
@@ -197,6 +203,7 @@
                 <span class="settingsField__label">{{ t("calc.sleep.dailySleepLabel") }}</span>
                 <input
                   data-testid="settings-daily-sleep-hours-input"
+                  v-keypad="{ label: t('calc.sleep.dailySleepLabel'), decimal: true }"
                   type="number"
                   min="1"
                   max="13"
@@ -348,6 +355,7 @@
                   autocomplete="off"
                   class="field__input field__input--xs"
                   data-testid="settings-growth-incense-stock-input"
+                  v-keypad="t('calc.sleep.growthIncenseStockLabel')"
                   aria-describedby="settings-growth-incense-stock-unit"
                   :placeholder="t('calc.sleep.growthIncenseStockPlaceholder')"
                   :value="growthIncenseStockValue"
@@ -406,6 +414,7 @@
                       :aria-invalid="manualEventDateHasError(row) || undefined"
                       :aria-label="t('calc.sleep.manualEventFromLabel')"
                       data-testid="settings-manual-event-from"
+                      v-keypad="{ label: t('calc.sleep.manualEventFromLabel'), maxLength: 8 }"
                       :value="row.from"
                       @input="onManualEventInput(index, 'from', ($event.target as HTMLInputElement).value)"
                       @blur="onManualEventBlur(index)"
@@ -422,6 +431,7 @@
                         :aria-invalid="row.error === 'days' || undefined"
                         :aria-label="t('calc.sleep.manualEventDaysLabel')"
                         data-testid="settings-manual-event-days"
+                        v-keypad="t('calc.sleep.manualEventDaysLabel')"
                         :value="row.days"
                         @input="onManualEventInput(index, 'days', ($event.target as HTMLInputElement).value)"
                         @blur="onManualEventBlur(index)"
@@ -442,6 +452,7 @@
                         :aria-invalid="row.error === 'multiplier' || undefined"
                         :aria-label="t('calc.sleep.manualEventMultiplierLabel')"
                         data-testid="settings-manual-event-multiplier"
+                        v-keypad="{ label: t('calc.sleep.manualEventMultiplierLabel'), decimal: true }"
                         :value="row.multiplier"
                         @input="onManualEventInput(index, 'multiplier', ($event.target as HTMLInputElement).value)"
                         @blur="onManualEventBlur(index)"
@@ -510,6 +521,7 @@
                   <span class="candyInput__label">{{ t("calc.candy.typeS") }}</span>
                   <input
                     :data-testid="'settings-type-candy-' + typeName + '-s-input'"
+                    v-keypad="`${getTypeName(typeName, locale.value)} ${t('calc.candy.typeS')}`"
                     type="number"
                     min="0"
                     class="field__input field__input--xs field__input--compact"
@@ -524,6 +536,7 @@
                   <span class="candyInput__label">{{ t("calc.candy.typeM") }}</span>
                   <input
                     :data-testid="'settings-type-candy-' + typeName + '-m-input'"
+                    v-keypad="`${getTypeName(typeName, locale.value)} ${t('calc.candy.typeM')}`"
                     type="number"
                     min="0"
                     class="field__input field__input--xs field__input--compact"
@@ -578,34 +591,36 @@
           <DataBackupSection :calc="calc" :box="box" />
         </div>
 
+        <!--
+          ヒントチップ。**スクロールする中身（.modal__body）の中に置き、中身の座標で置く。**
+          中身の外（モーダルの外側や body）に置くと、iOS ではチップの上から指を動かしても
+          中身へスクロールが伝わらない（ヒントが消えるだけになる）。中身と一緒に動くので位置もずれない。
+          計算機のような透明な受け口（.hintOverlay）も同じ理由で置かない。
+          外側を押したときの閉じ方は onPressWhileHintOpen。
+        -->
+        <div
+          v-if="hintState.visible"
+          ref="hintPopoverRef"
+          :id="HINT_POPOVER_ID"
+          class="hintPopover hintPopover--anchored"
+          role="tooltip"
+          data-testid="settings-hint-popover"
+          :style="{ left: hintState.left + 'px', top: hintState.top + 'px' }"
+          @click.stop
+        ><p class="hintPopover__note">{{ t(SETTINGS_HINTS[hintState.kind].text) }}</p></div>
       </div>
     </div>
 
-    <!--
-      ヒントチップ。`Teleport to body` にはしない ── モーダル（.modal-overlay）と
-      .hintPopover はどちらも z-index 1000 なので、body へ出すと DOM 順まかせの
-      綱引きになる。モーダルの中に置けば .modal の上に必ず来る。
-      透明な .hintOverlay は「どこかを押せば閉じる」受け口。.modal-overlay の
-      @click.self より内側なので、これを押しても設定は閉じない。
-    -->
-    <template v-if="hintState.visible">
-      <div class="hintOverlay" data-testid="settings-hint-overlay" @click.stop="closeHint"></div>
-      <div
-        ref="hintPopoverRef"
-        :id="HINT_POPOVER_ID"
-        class="hintPopover"
-        role="tooltip"
-        data-testid="settings-hint-popover"
-        :style="{ left: hintState.left + 'px', top: hintState.top + 'px' }"
-        @click.stop
-      ><p class="hintPopover__note">{{ t(SETTINGS_HINTS[hintState.kind].text) }}</p></div>
-    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { vKeypad } from "../composables/useNumericKeypad";
+import { useDismissOnScroll } from "../composables/useDismissOnScroll";
+import { suppressNextClick } from "../utils/suppressNextClick";
+import { listenDocumentPress } from "../utils/listenDocumentPress";
 import type { CalcStore } from "../composables/useCalcStore";
 import type { BoxStore } from "../composables/useBoxStore";
 import type { ItemCompareMode } from "../domain/level-planner/types";
@@ -645,9 +660,18 @@ const {
 const {
   text: totalShardsInputValue,
   focus: onTotalShardsFocus,
-  input: onTotalShardsDraftInput,
+  input: setTotalShardsDraft,
   blur: onTotalShardsBlur,
 } = useDraftField(() => calc.totalShardsText.value, (v) => calc.onTotalShardsInput(v));
+
+/**
+ * かけら在庫は桁が大きいので、入力中もカンマ区切りで見せる（保存値の表示 totalShardsText と同じ形）。
+ * 確定（onTotalShardsInput）は数字以外を取り除くので、区切りを含んだまま渡してよい。
+ */
+function onTotalShardsDraftInput(value: string): void {
+  const digits = value.replace(/\D/g, "");
+  setTotalShardsDraft(digits === "" ? "" : calc.fmtNum(Number(digits)));
+}
 
 // 既定のアメブ目標Lv。空欄は「目標Lvと同じ」（null）を意味する。
 const {
@@ -952,6 +976,8 @@ const hintState = ref<{ visible: boolean; left: number; top: number; kind: Setti
   kind: "projectedEvents",
 });
 const hintPopoverRef = ref<HTMLElement | null>(null);
+/** スクロールする中身。ヒントチップはこの中の座標で置く。 */
+const bodyRef = ref<HTMLElement | null>(null);
 
 /**
  * 「?」ボタンの属性一式。6つ並んでいるので、**種類だけを引数に取る1か所**から作る
@@ -982,29 +1008,60 @@ async function showHint(event: MouseEvent, kind: SettingsHintKind): Promise<void
     closeHint();
     return;
   }
+  const body = bodyRef.value;
+  if (!body) return;
   // クリック位置ではなくボタンの箱を基準にする（キーボード操作でも同じ位置に出る）。
+  // 座標はスクロールする中身（.modal__body）の中の位置。中身と一緒に動く。
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const bodyRect = body.getBoundingClientRect();
+  const toBodyX = (x: number) => x - bodyRect.left + body.scrollLeft;
+  const toBodyY = (y: number) => y - bodyRect.top + body.scrollTop;
   const gap = 4;
   const popoverWidth = 240; // CSS max-width(220) + 枠と余白
 
-  let left = rect.left;
-  if (left + popoverWidth > window.innerWidth) left = window.innerWidth - popoverWidth - 8;
+  let left = toBodyX(rect.left);
+  if (left + popoverWidth > body.clientWidth) left = body.clientWidth - popoverWidth - 8;
   if (left < 8) left = 8;
 
-  hintState.value = { visible: true, left, top: rect.bottom + gap, kind };
+  hintState.value = { visible: true, left, top: toBodyY(rect.bottom + gap), kind };
 
   await nextTick();
   const popover = hintPopoverRef.value;
   if (!popover) return;
+  // 下に収まらず上に収まるなら上へ出す（見えている中身の範囲で判定）
   const popoverHeight = popover.offsetHeight;
-  if (rect.bottom + gap + popoverHeight > window.innerHeight && rect.top - gap - popoverHeight > 0) {
-    hintState.value.top = rect.top - gap - popoverHeight;
+  if (rect.bottom + gap + popoverHeight > bodyRect.bottom && rect.top - gap - popoverHeight > bodyRect.top) {
+    hintState.value.top = toBodyY(rect.top - gap - popoverHeight);
   }
 }
 
 function closeHint(): void {
   hintState.value.visible = false;
 }
+
+// スクロールしようとしたらヒントを閉じる（計算機のヒントと同じ。useDismissOnScroll.ts）。
+// 指の操作は下の onPressWhileHintOpen（touchstart）で先に閉じるので、ここで効くのは主にホイールと、チップの上からのスワイプ
+useDismissOnScroll(() => hintState.value.visible, closeHint);
+
+/**
+ * ヒントの外に触れたら閉じる（受け口の面を置かない代わり）。触れた指はそのままモーダルの中身を
+ * スクロールできる。タップなら後ろのボタンや背景（設定を閉じる）へ届かないよう、その click は捨てる。
+ * ほかの「?」は捨てずに通し、1回でそのヒントを開く。開いている「?」自身は捨てる（押すと閉じるトグルなので、
+ * 通すと閉じた直後に開き直す）。
+ * 押したことは listenDocumentPress で受ける。
+ */
+function onPressWhileHintOpen(ev: Event): void {
+  const target = ev.target;
+  if (!(target instanceof Element)) return;
+  if (target.closest(`#${HINT_POPOVER_ID}`)) return;
+  const otherHintButton = target.closest(".hintIcon") !== null
+    && target.closest(`[aria-controls="${HINT_POPOVER_ID}"]`) === null;
+  closeHint();
+  if (!otherHintButton) suppressNextClick(ev.type === "mousedown" ? "mousedown" : "touchstart");
+}
+
+watch(() => hintState.value.visible, (visible) => listenDocumentPress(onPressWhileHintOpen, visible));
+onUnmounted(() => listenDocumentPress(onPressWhileHintOpen, false));
 
 const BLUE_SEED_INCENSE_UNIT_ID = "settings-blue-seed-incense-days-unit";
 

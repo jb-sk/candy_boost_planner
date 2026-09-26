@@ -10,6 +10,7 @@ import type {
   ItemCompareMode,
   LevelPlannerInput,
 } from './types';
+import { entriesToObject } from '../../utils/entriesToObject';
 
 /** UI 行から planner 入力へ渡す値だけを平坦化した DTO。 */
 export type PlannerInputRowDto = {
@@ -20,13 +21,19 @@ export type PlannerInputRowDto = {
   readonly pokemonType?: string;
   readonly srcLevel: number;
   readonly dstLevel: number;
-  /** 最終目標のLv内EXP（睡眠後）。個数指定なしの行は 0（§10改訂A）。 */
+  /** 最終目標のLv内EXP（睡眠後）。個数指定・アメブ個数のどちらも未入力の行では読まない（Lv ちょうど）。 */
   readonly dstExpInLevel?: number;
   readonly expRemaining: number;
   readonly expType: ExpType;
   readonly nature: ExpGainNature;
   readonly boostReachLevel?: number;
   readonly candyTarget?: number;
+  /**
+   * 明示入力されたアメブ個数（保存値）。undefined = アメブ目標Lvから導出。
+   * 明示入力の行は目標を押し上げて Lv内EXP を持つので、目標の解決（`deriveTarget`）に要る。
+   * 実際に使うアメブ個数は `boostCandyInput`。
+   */
+  readonly boostOrExpAdjustment?: number;
   readonly boostCandyInput: number;
   readonly sleepExp: number;
   readonly sleepTargetMode?: "all" | "stock";
@@ -61,7 +68,7 @@ function cloneCandyInventory(inventory: PlannerCandyInventorySnapshotDto): Candy
   return {
     ...inventory,
     species: normalizeSpeciesCandyByFamily(inventory.species),
-    typeCandy: Object.fromEntries(
+    typeCandy: entriesToObject(
       Object.entries(inventory.typeCandy).map(([type, stock]) => [type, { ...stock }]),
     ),
     universal: { ...inventory.universal },
@@ -99,6 +106,7 @@ export function buildPlannerInput(
       dstLevel: row.dstLevel,
       dstExpInLevel: row.dstExpInLevel,
       candyTarget: row.candyTarget,
+      boostOrExpAdjustment: row.boostOrExpAdjustment,
       expType: row.expType,
     });
     const allSleep = row.sleepTargetMode === "all";

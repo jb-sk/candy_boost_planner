@@ -22,9 +22,20 @@ export async function readBackupClipboard(clipboard: Pick<Clipboard, "readText">
   return ensureBackupTextSize(await clipboard.readText());
 }
 
-export async function readBackupFile(file: Pick<File, "size" | "text">): Promise<string> {
+export async function readBackupFile(file: Pick<Blob, "size" | "text">): Promise<string> {
   if (file.size > BACKUP_MAX_BYTES) throw new BackupValidationError("$", `maximum size is ${BACKUP_MAX_BYTES} bytes`);
-  return ensureBackupTextSize(await file.text());
+  // Blob の text()（iOS 14・Chrome 76 から）が無い端末は FileReader で読む。
+  const text = typeof file.text === "function" ? await file.text() : await readBlobAsText(file as Blob);
+  return ensureBackupTextSize(text);
+}
+
+function readBlobAsText(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(blob);
+  });
 }
 
 export function ensureBackupTextSize(text: string): string {
@@ -37,7 +48,7 @@ export function ensureBackupTextSize(text: string): string {
 export function downloadBackupText(
   text: string,
   filename = backupFilename(),
-  env: Pick<typeof globalThis, "URL" | "Blob"> = globalThis,
+  env: { URL: typeof URL; Blob: typeof Blob } = { URL, Blob },
   documentObject: Document = document,
   scheduleRevoke: (callback: () => void, delayMs: number) => void = (callback, delayMs) => {
     setTimeout(callback, delayMs);

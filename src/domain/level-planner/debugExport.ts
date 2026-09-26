@@ -22,6 +22,7 @@ import type {
   PokemonPlanResult,
   StructuralProbeStatus,
 } from './types';
+import { entriesToObject } from '../../utils/entriesToObject';
 
 /**
  * 行ごとの睡眠EXP中間値（?perf=1 の検算用）。`needed` は画面に出る「あと何日寝るか」。
@@ -335,7 +336,7 @@ function subtractRemaining(
   options: FeasibilitySolverOptions,
 ): FeasibilityWitness['remaining'] {
   const species = { ...inventory.species };
-  const typeCandy = Object.fromEntries(
+  const typeCandy = entriesToObject(
     Object.entries(inventory.typeCandy).map(([type, stock]) => [type, { ...stock }]),
   );
   const universal = { ...inventory.universal };

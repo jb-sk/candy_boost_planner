@@ -50,7 +50,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue';
+import { ref, computed, nextTick, watch, onBeforeUnmount } from 'vue';
+import { useDismissOnScroll } from '../composables/useDismissOnScroll';
+import { listenDocumentPress } from '../utils/listenDocumentPress';
 
 const props = defineProps<{
   modelValue: 'normal' | 'up' | 'down';
@@ -147,11 +149,35 @@ async function toggle() {
   updateDropdownPos();
 }
 
+/**
+ * キーボードで移ったときに閉じる。Safari はボタンを押してもフォーカスを入れないので、
+ * 押して開いたときは blur が起きない。外側を押したとき・スクロールしようとしたときは下で閉じる。
+ */
 function handleBlur() {
   setTimeout(() => {
     isOpen.value = false;
   }, 200);
 }
+
+function close() {
+  isOpen.value = false;
+}
+
+/**
+ * 外側を押したら閉じる（テンキーと同じく listenDocumentPress で受ける）。トリガーは click で開閉するので除く。
+ */
+function onPressOutside(ev: Event) {
+  const target = ev.target;
+  if (!(target instanceof Node)) return;
+  if (triggerRef.value?.contains(target) || dropdownRef.value?.contains(target)) return;
+  close();
+}
+
+watch(isOpen, (open) => listenDocumentPress(onPressOutside, open));
+onBeforeUnmount(() => listenDocumentPress(onPressOutside, false));
+
+// 画面に固定して出すので、スクロールすると対象から離れて残る。スクロールしようとしたら閉じる（ヒントと同じ）
+useDismissOnScroll(() => isOpen.value, close);
 
 function select(value: 'normal' | 'up' | 'down') {
   emit('update:modelValue', value);

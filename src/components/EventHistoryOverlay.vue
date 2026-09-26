@@ -52,6 +52,9 @@
                 </td>
                 <td class="eventHistory__boost">
                   <span v-if="row.boost" class="eventHistory__chip" :class="`eventHistory__chip--${row.boost.kind}`">{{ row.boost.label }}</span>
+                  <!-- 列の幅合わせ（subgrid 非対応の狭い画面だけ使う。EventHistoryOverlay.css） -->
+                  <span class="eventHistory__chip eventHistory__chip--sizer" aria-hidden="true">{{ t("eventHistory.boostMini") }}</span>
+                  <span class="eventHistory__chip eventHistory__chip--sizer" aria-hidden="true">{{ t("eventHistory.boostFull") }}</span>
                 </td>
               </tr>
             </tbody>

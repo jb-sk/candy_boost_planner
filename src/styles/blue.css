@@ -4,6 +4,10 @@
 
 /* ===== Variables ===== */
 :root {
+  /* テンキーのリセットキー（C と見分ける色。太陽の黄色（育成プランの合計カード・かけらの横棒））。下地 bg・枠と厚み rgb・記号 ink */
+  --numKeypad-reset-bg: #ffe375;
+  --numKeypad-reset-rgb: 255, 198, 41;
+  --numKeypad-reset-ink: #01579B;
   /* Core Palette */
   --bg-decor: #E0F7FA;
   --blue-page-bg: #EAF4F8;

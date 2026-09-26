@@ -26,8 +26,8 @@ function cancelScheduledRun(): void {
   const handle = scheduledHandle;
   scheduledHandle = null;
   if (!handle) return;
-  if (handle.kind === "idle" && typeof globalThis.cancelIdleCallback === "function") {
-    globalThis.cancelIdleCallback(handle.id);
+  if (handle.kind === "idle" && typeof cancelIdleCallback === "function") {
+    cancelIdleCallback(handle.id);
     return;
   }
   if (handle.kind === "timeout") clearTimeout(handle.id);
@@ -57,10 +57,10 @@ function runPendingOnce(): void {
 function ensureScheduledRun(): void {
   if (scheduledHandle || pending.size === 0 || deferralCount > 0) return;
   if (
-    typeof globalThis.requestIdleCallback === "function"
-    && typeof globalThis.cancelIdleCallback === "function"
+    typeof requestIdleCallback === "function"
+    && typeof cancelIdleCallback === "function"
   ) {
-    const id = globalThis.requestIdleCallback(runPendingOnce, { timeout: IDLE_TIMEOUT_MS });
+    const id = requestIdleCallback(runPendingOnce, { timeout: IDLE_TIMEOUT_MS });
     scheduledHandle = { kind: "idle", id };
     return;
   }

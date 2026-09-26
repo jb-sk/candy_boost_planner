@@ -7,6 +7,11 @@
 
 /* ===== Variables ===== */
 :root {
+  /* テンキーのリセットキー（C と見分ける色。アース・ブルー（育成プランの合計カード・かけらの横棒））。下地 bg・枠と厚み rgb・記号 ink */
+  /* 育成プランのカード #a1dbe8 のままでは少し暗かったので、色相はそのまま明度を 5% 上げた */
+  --numKeypad-reset-bg: #b5e3ed;
+  --numKeypad-reset-rgb: 108, 198, 219;
+  --numKeypad-reset-ink: #2d3a26;
   /* Core Palette */
   --bg-decor: #cbd8bc;
   --forest-page-bg: #dfe7d3;

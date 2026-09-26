@@ -1,4 +1,5 @@
 import type { LevelPlannerInput } from './types';
+import { entriesToObject } from '../../utils/entriesToObject';
 
 /**
  * JSONのキー順に依存しない canonical JSON。
@@ -16,7 +17,7 @@ export function canonicalJson(value: unknown): string {
     if (Array.isArray(item)) return item.map(normalize);
     if (item && typeof item === 'object') {
       const object = item as Record<string, unknown>;
-      return Object.fromEntries(
+      return entriesToObject(
         Object.keys(object).sort().map(key => [key, normalize(object[key])]),
       );
     }

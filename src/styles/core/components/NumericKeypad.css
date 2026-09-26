@@ -1,0 +1,207 @@
+/* ===== Numeric Keypad（タッチ端末用テンキー。仕組みは useNumericKeypad.ts） ===== */
+
+/* 事務的にならないよう、ころんとしたキーにする（アクセントの淡い下地・下側の厚み・押すと沈む）。
+   角丸は既定で丸く、角張ったテーマ（booklet・cyberpunk）はテーマ側で --numKeypad-radius / --numKeypad-key-radius を上書きする。
+   ここ（.numKeypad）で変数を定義しないこと。テーマの :root の値より近い祖先の定義が勝ち、上書きが効かなくなる。
+   min() は使わない（Chrome 79 から）。古い端末でも同じ見た目になるよう、値を直接書く。
+   重なり順はモーダル（1000）とヒント（15）より上。モーダル内のレベルピッカーからも開くため。
+   キーボードを出さないのでページが勝手にスクロールすることはなく、サマリーに被るのは
+   開いたまま自分でスクロールしたときだけ（レベルピッカーのポップオーバーと同じ扱い）。 */
+.numKeypad {
+  position: absolute;
+  z-index: 1100;
+  width: 216px;
+  padding: 12px;
+  border: 1.5px solid rgba(var(--accent-rgb), 0.35);
+  border-radius: var(--numKeypad-radius, 22px);
+  background: var(--paper);
+  box-shadow: var(--shadow-lg);
+  animation: numKeypad-fade 0.14s ease-out;
+  /* 連打でダブルタップ拡大やテキスト選択が起きないようにする */
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 開くときはふわっと出す。拡大・移動はしない（開いた直後に押すと、動いているキーの隣に当たるため） */
+@keyframes numKeypad-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .numKeypad {
+    animation: none;
+  }
+}
+
+.numKeypad__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.numKeypad__top > .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.numKeypad__label {
+  min-width: 0;
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+/* 入力中の値。空でも高さを保つ（開閉のたびに段差を出さない） */
+.numKeypad__display {
+  display: block;
+  min-height: 38px;
+  margin-bottom: 10px;
+  padding: 5px 12px;
+  border: 1.5px solid rgba(var(--accent-rgb), 0.3);
+  border-radius: var(--numKeypad-key-radius, 16px);
+  background: var(--input-bg);
+  color: var(--ink);
+  font-family: var(--font-heading);
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 26px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 開いた直後は、次の数字で置き換わることを選択状態のように示す */
+.numKeypad__display--fresh {
+  background: rgba(var(--accent-rgb), 0.12);
+}
+
+.numKeypad__keys {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+  margin-bottom: 10px;
+}
+
+/* 下側の内側の影で厚みを出す（ゼリーのようなボタン）。押すと沈んで厚みが減る。
+   色は変数で持ち、キーの種類（--sub / --reset）は変数だけを差し替える。
+   プロパティを上書きし合う形にすると、クラスの並び順で勝ち負けが決まり保守しにくい */
+.numKeypad__key {
+  --key-rgb: var(--accent-rgb);
+  --key-bg: rgba(var(--key-rgb), 0.07);
+  --key-bg-active: rgba(var(--key-rgb), 0.18);
+  --key-edge: rgba(var(--key-rgb), 0.22);
+  --key-edge-active: rgba(var(--key-rgb), 0.5);
+  --key-depth: rgba(var(--key-rgb), 0.16);
+  --key-ink: var(--ink);
+  height: 44px;
+  border: 1px solid var(--key-edge);
+  border-radius: var(--numKeypad-key-radius, 16px);
+  background: var(--key-bg);
+  box-shadow: inset 0 -3px 0 var(--key-depth);
+  color: var(--key-ink);
+  font: inherit;
+  font-family: var(--font-heading);
+  font-size: 19px;
+  font-weight: 800;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.1s, border-color 0.1s, box-shadow 0.1s, transform 0.08s;
+}
+
+.numKeypad__key:active {
+  border-color: var(--key-edge-active);
+  background: var(--key-bg-active);
+  box-shadow: inset 0 -1px 0 var(--key-depth);
+  transform: translateY(1px) scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .numKeypad__key:active {
+    transform: none;
+  }
+}
+
+/* C・1文字消す。アクセントの下地を少し濃くして数字と見分ける。文字は濃いアクセント
+   （candy の --accent は淡い下地の上で 2.6 しかなく、大きな太字の目安 3 に届かない。--accent-strong で 3.75） */
+.numKeypad__key--sub {
+  --key-bg: rgba(var(--key-rgb), 0.14);
+  --key-ink: var(--accent-strong);
+}
+
+/* リセット（C と同じ位置に出る）。別の色で C と見分ける。
+   色はテーマごとに育成プランの合計カードから取る（各テーマの --numKeypad-reset-bg / -rgb / -ink）。
+   hue-rotate で回すと濁り、見た目で選んだ色もプランと合わなかったため */
+.numKeypad__key--reset {
+  --key-rgb: var(--numKeypad-reset-rgb, var(--accent-rgb));
+  --key-bg: var(--numKeypad-reset-bg, rgba(var(--key-rgb), 0.14));
+  --key-bg-active: var(--key-bg);
+  --key-edge: rgba(var(--key-rgb), 0.6);
+  --key-edge-active: rgba(var(--key-rgb), 0.9);
+  --key-depth: rgba(var(--key-rgb), 0.55);
+  --key-ink: var(--numKeypad-reset-ink, var(--accent-strong));
+}
+
+/* 空欄のときの自動の値（導出値・規定値）。入力欄のプレースホルダと同じく薄く出す。
+   札と並ぶ1行に収め、はみ出すときは省略する */
+.numKeypad__placeholder {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.7;
+}
+
+/* 規定値が文言のとき。数字の大きさでは英語（Same as Target Lv）が収まらない */
+.numKeypad__placeholder--text {
+  font-size: 12px;
+}
+
+/* 札と薄い値の組。文字の大きさが違っても（数字 20px・文言 12px）札と縦の中心をそろえる */
+.numKeypad__auto {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  max-width: 100%;
+  vertical-align: top;
+  line-height: 26px;
+}
+
+/* 自動の値の前に付ける札（「自動」「デフォルト」） */
+.numKeypad__autoChip {
+  flex-shrink: 0;
+  /* flex の gap（iOS 14.5・Chrome 84 から）は使わず、札の右の余白で値と離す */
+  margin-right: 6px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  /* 表示欄の下地（アクセントの薄塗り）の上に載るので、紙の色で浮かせる */
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+/* リセットキーの印（計算行のリセットボタンと同じ形） */
+.numKeypad__resetSvg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  margin: 0 auto;
+  pointer-events: none;
+}
+
+.numKeypad__confirm {
+  width: 100%;
+  border-radius: var(--numKeypad-key-radius, 16px);
+}

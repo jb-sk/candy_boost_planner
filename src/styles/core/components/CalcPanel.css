@@ -314,7 +314,8 @@
 /* 入力欄そのものは見せない。ボタン全面を覆い、タップの受け口とピッカーの表示位置を兼ねる。 */
 .calcActions__debugNowInput {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   margin: 0;
@@ -477,8 +478,9 @@
   border-bottom: none;
 }
 
-/* Only an open level popover may rise above the sticky summary. */
-.calcSlotContainer:has(.levelPick__popover) {
+/* Only an open level popover may rise above the sticky summary.
+   開いているかは CalcPanel.vue が付けるクラスで判定する（:has() は iOS 15.4・Chrome 105 からなので使わない） */
+.calcSlotContainer.calcSlotContainer--pickerOpen {
   z-index: 30;
 }
 
@@ -891,7 +893,8 @@ body.calcRowReordering * {
   text-indent: -1px;
   flex-shrink: 0;
   flex-grow: 0;
-  margin-block: -1px;
+  margin-top: -1px;
+  margin-bottom: -1px;
 }
 
 /* 中身が SVG のバリエーション。? 用の押し下げ・左寄せは打ち消す。 */
@@ -988,7 +991,7 @@ body.calcRowReordering * {
   margin-right: 4px;
 }
 
-.calcRow__resultItems .calcRow__res:has(.calcRow__num--text) {
+.calcRow__resultItems .calcRow__res.calcRow__res--text {
   white-space: normal;
   /* long English labels (e.g. "Items needed") can wrap */
 }
@@ -1066,7 +1069,11 @@ body.calcRowReordering * {
   top: -2px;
 }
 
-.calcRow__sleepTeamWarn:hover,
+/* :focus-visible（iOS 15.4 から）と同じ規則に並べると、効かない端末では :hover ごと無視されるので分ける */
+.calcRow__sleepTeamWarn:hover {
+  opacity: 0.75;
+}
+
 .calcRow__sleepTeamWarn:focus-visible {
   opacity: 0.75;
 }
@@ -1097,7 +1104,7 @@ body.calcRowReordering * {
  * このチップは結果行の最後尾。`.calcRow__res` の末尾 4px マージンを残すと、
  * 折返し判定にだけ効いて「畳んだときだけ次行へ落ちる」幅の窓ができる。
  */
-.calcRow__resultItems .calcRow__res:has(.calcRow__bonusToggle) {
+.calcRow__resultItems .calcRow__res.calcRow__res--last {
   margin-right: 0;
 }
 
@@ -1471,6 +1478,14 @@ body.calcRowReordering * {
   animation: fadeIn 0.15s ease-out;
 }
 
+/* 対象と一緒にスクロールさせるヒント。計算機はページ座標（anchoredPlacement.ts）、
+   設定はスクロールする中身（.settingsBody）の座標で置く。
+   重なり順は .hintPopover のまま（ナビとサマリーより上）。受け口もそれらを覆うので、
+   ヒントを開いている間にナビを押すと、切り替えずにヒントだけ閉じる。 */
+.hintPopover--anchored {
+  position: absolute;
+}
+
 /* i18n 文字列の改行を箇条書きとして表示する。テンプレート側は span を
    開始タグ直後から改行なしで書くこと（インデントが改行として出るため） */
 .hintPopover__note {
@@ -1535,6 +1550,7 @@ body.calcRowReordering * {
 
 .hintPopover .hintLink,
 .hintPopover .link-settings {
+  -webkit-appearance: none;
   appearance: none;
   padding: 0;
   border: 0;
@@ -1572,14 +1588,71 @@ body.calcRowReordering * {
   font-weight: 600;
 }
 
+/* ヒント内の入力行（入力欄・レベルピッカー・ボタン）。
+   高さは行の --hint-control-height、欄の幅は --hint-input-width で決める。
+   欄ごとの違いは変数を上書きする修飾クラスで表し、同じプロパティを後から書いて上書きしない。
+
+   .field__input（components.css）とテーマ側の .field__input が height / width / padding を持つ。
+   components.css の本体は @import した CalcPanel.css より後に来るので、ここは .hintPopover__inputRow を
+   前に付けて詳細度で勝つ（書く順番に頼らない）。 */
 .hintPopover__inputRow {
+  --hint-control-height: 28px;
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-.hintPopover__input {
-  width: 80px;
+/* font-size は 16px のまま（iOS のフォーカス時ズームを防ぐため） */
+.hintPopover__inputRow .field__input {
+  height: var(--hint-control-height);
+}
+
+.hintPopover__inputRow .hintPopover__input {
+  width: var(--hint-input-width, 80px);
+}
+
+/* 累計睡眠時間は4桁以上になる */
+.hintPopover__input--wide {
+  --hint-input-width: 112px;
+}
+
+/* ヒント内のレベルピッカー（最小アメブ計算の目標Lv）。右に▼（32px）が乗るので、
+   80px では Lv が見切れる。 */
+.hintPopover__levelPick {
+  flex-shrink: 0;
+  width: 96px;
+}
+
+.hintPopover__inputRow .levelPick__input {
+  padding-left: 8px;
+}
+
+/* 並ぶボタン。ポップアップ幅（max-width）で縮むと「計算」が1文字ずつ折り返すので縮ませない */
+.hintPopover__inputRow > .btn {
+  flex-shrink: 0;
+  height: var(--hint-control-height);
+  white-space: nowrap;
+}
+
+/* 押せない欄とボタンはグレーアウトする。ブラウザ既定だと文字が少し薄くなるだけで、
+   押せない理由が書かれていないこともあり、壊れて開かないように見える
+   （例: アメ個数指定が空のときの最小アメブ計算）。 */
+.hintPopover__inputRow > :disabled,
+.hintPopover__levelPick--disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* レベルピッカーの disabled は▼を開けたままにする作り（理由の note を読ませるため）。
+   ここでは理由を別に出していないので、▼も押せなくする。 */
+.hintPopover__levelPick--disabled > * {
+  pointer-events: none;
+}
+
+/* iOS Safari は disabled の文字色を独自に薄くするので、opacity と二重にならないよう文字色を戻す */
+.hintPopover__levelPick--disabled .field__input:disabled {
+  color: var(--ink);
+  -webkit-text-fill-color: var(--ink);
 }
 
 .hintPopover__unit {

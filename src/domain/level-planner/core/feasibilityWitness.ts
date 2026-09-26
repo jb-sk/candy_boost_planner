@@ -3,6 +3,8 @@ import { isCandyFamilyKey } from '../../pokesleep/candy-family';
 import { refineExactSupply } from './exactSupplyRefine';
 import { addItemPriority, compareItemPriority, emptyItemPriority, itemCountsFromPriority, itemPriorityOf } from './itemPriority';
 import type { ItemPriorityTuple } from './itemPriority';
+import { lastOf } from '../../../utils/lastOf';
+import { flatMapOf } from '../../../utils/flatMapOf';
 import type {
   CandyInventory,
   FeasiblePlanRow,
@@ -586,7 +588,7 @@ function pruneResourceStates<T extends ResourceState & { speciesUsed?: number }>
       if (group) group.push(state);
       else bySpeciesUsed.set(speciesUsed, [state]);
     }
-    return [...bySpeciesUsed.values()].flatMap(group => pruneSingleTypeResourceStates(group, type, context));
+    return flatMapOf([...bySpeciesUsed.values()], group => pruneSingleTypeResourceStates(group, type, context));
   }
 
   const exact = new Map<string, T>();
@@ -1211,7 +1213,7 @@ function buildExactJoinClass(entries: ExactJoinEntry[]): ExactJoinClass {
   )))) step = null;
   const rangeMinimum: ExactJoinEntry[][] = [entries];
   for (let width = 2; width <= entries.length; width *= 2) {
-    const previous = rangeMinimum.at(-1)!;
+    const previous = lastOf(rangeMinimum)!;
     const half = width / 2;
     const level: ExactJoinEntry[] = [];
     for (let index = 0; index + width <= entries.length; index++) {
@@ -1225,7 +1227,7 @@ function buildExactJoinClass(entries: ExactJoinEntry[]): ExactJoinClass {
     entries,
     byUniversalM: new Map(entries.map(entry => [entry.state.universalM, entry])),
     minUniversalM: entries[0].state.universalM,
-    maxUniversalM: entries.at(-1)!.state.universalM,
+    maxUniversalM: lastOf(entries)!.state.universalM,
     step,
     rangeMinimum,
   };

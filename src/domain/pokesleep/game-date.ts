@@ -209,7 +209,7 @@ export function findNextGameDateChange(now: Date, timeZone: string): Date {
 }
 
 export function formatGameDateForDisplay(value: GameDate): string {
-  return value.replaceAll("-", "/");
+  return value.replace(/-/g, "/"); // replaceAll は iOS 13.4・Chrome 85 から
 }
 
 /** 最大3晩の内訳で使う短い月日表記。「2026-09-29」→「9/29」。 */

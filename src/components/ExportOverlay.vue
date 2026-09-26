@@ -645,7 +645,8 @@ async function waitFontsReady(timeoutMs: number, sampleText: string): Promise<vo
         fontSet.load(`${weight} 16px "M PLUS 2 Variable"`, sampleText),
       );
       await Promise.race([
-        Promise.allSettled([...exportFontLoads, fontSet.ready]),
+        // Promise.allSettled（iOS 13・Chrome 76 から）は使わず、失敗を握りつぶしてから all で待つ
+        Promise.all([...exportFontLoads, fontSet.ready].map((load) => Promise.resolve(load).catch(() => undefined))),
         new Promise<void>((resolve) => window.setTimeout(resolve, timeoutMs)),
       ]);
     }

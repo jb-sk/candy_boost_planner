@@ -23,6 +23,7 @@
 @import "./components/HelpOverlay.css";
 @import "./components/EventHistoryOverlay.css";
 @import "./components/LevelPicker.css";
+@import "./components/NumericKeypad.css";
 @import "./components/NatureSelect.css";
 @import "./components/OnboardingTour.css";
 @import "../../components/DesignSwitcher.css";
@@ -180,8 +181,15 @@
 
 /* BoxPanel 遅延マウント時のプレースホルダー（CLS 抑制） */
 .boxPanelDefer {
-  min-height: min(60vh, 720px);
+  /* min(60vh, 720px) と同じ。CSS の min() は Chrome 79 からなので、60vh が 720px を超える高さ（1200px 以上）だけ上限にする */
+  min-height: 60vh;
   box-sizing: border-box;
+}
+
+@media (min-height: 1200px) {
+  .boxPanelDefer {
+    min-height: 720px;
+  }
 }
 .boxPanelDefer__body {
   min-height: 40vh;
@@ -372,7 +380,9 @@ select.field__input {
   font-family: var(--font-body);
   font-size: 12px;
   font-weight: 600;
-  text-decoration: underline dotted;
+  text-decoration: underline;
+  -webkit-text-decoration-style: dotted;
+  text-decoration-style: dotted;
   cursor: pointer;
   color: var(--muted);
   padding: 2px 4px;
@@ -411,7 +421,9 @@ select.field__input {
 }
 
 .linkBtn--basic {
-  text-decoration: underline dotted;
+  text-decoration: underline;
+  -webkit-text-decoration-style: dotted;
+  text-decoration-style: dotted;
   color: var(--ink);
   opacity: 0.7;
 }

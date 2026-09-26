@@ -5,7 +5,8 @@
    680px以上は**表の幅ぴったりのカード**にして中央へ置く。全画面のままだと表の右に大きな余白が残る
    （AddPokemonModal と同じ流儀。Modal.css のポップオーバー化を参照）。 */
 @media (min-width: 680px) {
-  .modal-overlay:has(.eventHistoryModal) {
+  /* :has() は iOS 15.4・Chrome 105 からなので使わず、器のクラスで選ぶ */
+  .modal-overlay.eventHistory-overlay {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -14,7 +15,10 @@
 
   .eventHistoryModal {
     position: relative;
-    inset: auto;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
     width: max-content;
     max-width: 100%;
     max-height: 100%;
@@ -113,7 +117,8 @@
 /* 年見出し行。帯は行の端まで通したいのでセル側へ塗る（`tr` の背景は border-collapse で消える） */
 .eventHistory__yearRow > *,
 .eventHistory__yearRow:hover > * {
-  padding-block: 5px;
+  padding-top: 5px;
+  padding-bottom: 5px;
   background: rgba(var(--accent-rgb), 0.1);
   border-top: 1px solid rgba(var(--accent-rgb), 0.25);
   border-bottom: 1px solid rgba(var(--accent-rgb), 0.25);
@@ -178,6 +183,11 @@
   color: var(--paper);
 }
 
+/* ブースト列の幅合わせ用（狭い画面の subgrid 非対応だけ使う。末尾のブロック） */
+.eventHistory__chip--sizer {
+  display: none;
+}
+
 /* 表は左寄せなので「チップ → 週の断り」。こうすると列見出しとチップの左端が揃う
    （DOMは断りが先。狭い画面は右寄せで逆順にしたいので、順序は CSS が決める） */
 .eventHistory__expLine {
@@ -229,8 +239,8 @@
   }
 
   /* 列トラックを全行で共有する。**行ごとの `grid` だけでは縦のラインが揃わない** ── チップ列の幅が
-     その行の中身で決まるため、ブーストが無い回だけ倍率チップが数px横へずれる。
-     非対応ブラウザは上の行ごと `grid` のまま（並びは崩れず、幅の揃いだけ諦める） */
+     その行の中身で決まるため、ブーストが無い回はブースト列の幅が 0 になり、倍率チップがブースト列の位置まで寄る。
+     subgrid（iOS 16・Chrome 117 から）の無い端末は、下の幅合わせ用のチップでブースト列の幅をそろえる */
   @supports (grid-template-columns: subgrid) {
     .eventHistory__table tbody {
       display: grid;
@@ -269,6 +279,25 @@
     align-self: end;
   }
 
+  /* subgrid の無い端末: ブースト欄に見えないチップ（ミニブ・アメブ）を重ねて置き、欄の幅を一番長いチップにそろえる。
+     幅は言語とテーマのフォントで変わるので、px で決め打ちしない */
+  @supports not (grid-template-columns: subgrid) {
+    .eventHistory__boost {
+      display: grid;
+      justify-items: end;
+      align-items: end;
+    }
+
+    .eventHistory__boost > .eventHistory__chip {
+      grid-area: 1 / 1;
+    }
+
+    .eventHistory__chip--sizer {
+      display: inline-block;
+      visibility: hidden;
+    }
+  }
+
   /* 右寄せなので「週の断り → チップ」。チップが右端に来て縦のラインが揃う */
   .eventHistory__expLine {
     justify-content: flex-end;
@@ -295,7 +324,8 @@
 
   .eventHistory__yearRow > *,
   .eventHistory__yearRow:hover > * {
-    padding-block: 0;
+    padding-top: 0;
+    padding-bottom: 0;
     background: none;
     border: 0;
   }
