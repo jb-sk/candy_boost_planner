@@ -6,15 +6,19 @@
  *   pnpm run generate:event-names-en -- --refresh
  *   pnpm run generate:event-names-en -- --force
  *
- * 名前同士は比較しない。Super Wiki はゲーム日 [from, to] の完全一致、Bulbapedia は
+ * 名前同士は比較しない。Super Wiki と公式ニュースはゲーム日 [from, to] の完全一致、Bulbapedia は
  * 終了日表記が一定しないため from の完全一致だけで採用する。
+ * 公式ニュースは、上の2つで解決しなかった開催回があるときだけ取りに行く。
  */
+import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import * as cheerio from "cheerio";
 import { readOverrides } from "./generate-events.mjs";
 
+const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, "..");
@@ -23,6 +27,12 @@ const SOURCE_ORIGIN = "https://wiki.pokesleep.com";
 const SOURCE_PATH = "/en/events";
 const SOURCE_URL = `${SOURCE_ORIGIN}${SOURCE_PATH}`;
 const ROBOTS_URL = `${SOURCE_ORIGIN}/robots.txt`;
+const OFFICIAL_ORIGIN = "https://www.pokemonsleep.net";
+const OFFICIAL_LIST_PATH = "/en/news/category/campaign/";
+const OFFICIAL_REQUEST_INTERVAL_MS = 2000;
+/** 告知は開催の数週間前に出る。未解決の最古の開始日からこの日数前までの記事だけ読む。 */
+const OFFICIAL_LOOKBACK_DAYS = 45;
+const OFFICIAL_MAX_LIST_PAGES = 10;
 const BULBAPEDIA_ORIGIN = "https://bulbapedia.bulbagarden.net";
 const BULBAPEDIA_PATH = "/wiki/List_of_events_in_Pok%C3%A9mon_Sleep";
 const BULBAPEDIA_URL = `${BULBAPEDIA_ORIGIN}${BULBAPEDIA_PATH}`;
@@ -52,10 +62,21 @@ function parseArgs(argv) {
   };
 }
 
+/**
+ * Node の fetch は Cloudflare にボット扱いされて 403（challenge）になる（Bulbapedia で確認。
+ * ヘッダーを足しても変わらず、同じUAの curl は通る）。TLS指紋で弾かれているため curl を使う。
+ */
 async function fetchText(url) {
-  const response = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
-  if (!response.ok) throw new Error(`Fetch failed: ${response.status} ${response.statusText} — ${url}`);
-  return response.text();
+  try {
+    const { stdout } = await execFileAsync(
+      "curl",
+      ["--silent", "--show-error", "--fail", "--location", "--max-time", "60", "--user-agent", USER_AGENT, url],
+      { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+    );
+    return stdout;
+  } catch (error) {
+    throw new Error(`Fetch failed: ${error.stderr?.trim() || error.message} — ${url}`, { cause: error });
+  }
 }
 
 /** 対象パスに最長一致する Allow/Disallow を使う、robots.txt の基本規則。 */
@@ -157,6 +178,37 @@ export function parseEnglishEventArchive(html) {
   return { events, warnings };
 }
 
+/** 公式ニュース一覧（新しい順）から `Event:` 見出しの記事を読む。 */
+export function parseOfficialNewsList(html) {
+  const $ = cheerio.load(html);
+  const items = [];
+  $("li > a.banner_2").each((_, element) => {
+    const card = $(element);
+    const title = card.find(".banner_2__title").first().text().replace(/\s+/g, " ").trim();
+    const date = (card.find(".banner_2__date time").first().attr("datetime") ?? "").trim().replace(/\//g, "-");
+    const href = card.attr("href") ?? "";
+    const enName = title.match(/^Event:\s*(.+)$/)?.[1];
+    if (!enName || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !href) return;
+    items.push({ enName, published: date, url: new URL(href, OFFICIAL_ORIGIN).href });
+  });
+  return items;
+}
+
+/**
+ * 公式ニュース記事の「Event Period」からゲーム日の区間を読む。
+ * `<time data-unixtime>` は表示どおりの時刻をそのまま UTC として持つ（4:00 → 04:00Z）ので、
+ * UTC の暦日をそのまま使う。開始は暦日、終了は 03:59 なので前日が inclusive な to。
+ */
+export function parseOfficialEventPeriod(html) {
+  const $ = cheerio.load(html);
+  const paragraph = $("p").filter((_, element) => /^\s*Event Period/i.test($(element).text())).first();
+  const times = paragraph.find("time[data-unixtime]").map((_, element) => Number($(element).attr("data-unixtime"))).get();
+  if (times.length < 2 || times.some(value => !Number.isFinite(value))) return null;
+  const from = formatDate(new Date(times[0] * 1000));
+  const to = formatDate(new Date(times[1] * 1000 - 86_400_000));
+  return from <= to ? { from, to } : null;
+}
+
 function parseBulbapediaStartDate(heading) {
   const normalized = heading.replace(/[–—−]/g, "-").replace(/\s+/g, " ").trim();
   const start = normalized.match(/^([A-Za-z]+)\s+(\d{1,2})(?:,\s*(\d{4}))?\s*-/);
@@ -208,11 +260,11 @@ function normalizeEnNameForCompare(enName) {
 }
 
 /** 開催期間で日英を結び、開催回辞書と「全開催回で一意な名前」辞書を作る。 */
-export function matchEventNames(japaneseEvents, englishEvents, nameOverrides = [], bulbapediaEvents = []) {
+export function matchEventNames(japaneseEvents, englishEvents, nameOverrides = [], bulbapediaEvents = [], officialEvents = []) {
   const warnings = [];
   const periodMapping = {};
   const resolved = new Map();
-  const sources = { override: 0, superWiki: 0, bulbapedia: 0 };
+  const sources = { override: 0, superWiki: 0, official: 0, bulbapedia: 0 };
   let unmatchedOccurrences = 0;
   let ambiguousOccurrences = 0;
   // 人が `nameEn` で裁定済みの開催回。ソース間の食い違いを警告しても、
@@ -225,6 +277,11 @@ export function matchEventNames(japaneseEvents, englishEvents, nameOverrides = [
   for (const event of japaneseEvents) {
     const superCandidates = englishEvents.filter(candidate => candidate.from === event.from && candidate.to === event.to);
     const bulbapediaCandidates = bulbapediaEvents.filter(candidate => candidate.from === event.from);
+    const officialCandidates = officialEvents.filter(candidate => candidate.from === event.from && candidate.to === event.to);
+    if (officialCandidates.length > 1) {
+      ambiguousOccurrences++;
+      warnings.push(`${event.name} ${event.from}..${event.to}: 公式ニュースに同期間の英語イベントが複数 (${officialCandidates.map(x => x.enName).join(" / ")})`);
+    }
     if (superCandidates.length > 1) {
       ambiguousOccurrences++;
       warnings.push(`${event.name} ${event.from}..${event.to}: Super Wiki に同期間の英語イベントが複数 (${superCandidates.map(x => x.enName).join(" / ")})`);
@@ -235,12 +292,14 @@ export function matchEventNames(japaneseEvents, englishEvents, nameOverrides = [
     }
     const superMatch = superCandidates.length === 1 ? superCandidates[0] : null;
     const bulbapediaMatch = bulbapediaCandidates.length === 1 ? bulbapediaCandidates[0] : null;
+    const officialMatch = officialCandidates.length === 1 ? officialCandidates[0] : null;
     if (superMatch && bulbapediaMatch
       && !adjudicatedKeys.has(`${event.name}@${event.from}`)
       && normalizeEnNameForCompare(superMatch.enName) !== normalizeEnNameForCompare(bulbapediaMatch.enName)) {
       warnings.push(`${event.name} ${event.from}: 英語名がソース間で不一致。Super Wiki "${superMatch.enName}" (${superMatch.source ?? SOURCE_URL}) を採用し、Bulbapedia "${bulbapediaMatch.enName}" (${bulbapediaMatch.source ?? BULBAPEDIA_URL}) は不採用`);
     }
     if (superMatch) resolved.set(`${event.name}@${event.from}`, { enName: superMatch.enName, source: "superWiki", sourceUrl: superMatch.source ?? SOURCE_URL });
+    else if (officialMatch) resolved.set(`${event.name}@${event.from}`, { enName: officialMatch.enName, source: "official", sourceUrl: officialMatch.source });
     else if (bulbapediaMatch) resolved.set(`${event.name}@${event.from}`, { enName: bulbapediaMatch.enName, source: "bulbapedia", sourceUrl: bulbapediaMatch.source ?? BULBAPEDIA_URL });
   }
 
@@ -281,7 +340,7 @@ export function matchEventNames(japaneseEvents, englishEvents, nameOverrides = [
       unmatchedOccurrences++;
       unresolvedJaNames.add(event.name);
       for (const alias of event.aliases ?? []) unresolvedJaNames.add(alias.name);
-      warnings.push(`${event.name} ${event.from}..${event.to}: Super Wiki の期間にも Bulbapedia の開始日にも一致しない`);
+      warnings.push(`${event.name} ${event.from}..${event.to}: Super Wiki・公式ニュースの期間にも Bulbapedia の開始日にも一致しない`);
       continue;
     }
     sources[match.source]++;
@@ -399,6 +458,38 @@ export function attachSleepExpSegmentAliases(eventHistory, sleepExpEventSegments
   }));
 }
 
+const shiftDate = (date, days) => formatDate(new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000));
+
+/** 未解決の開催回の期間に当たる公式ニュース記事だけを読み、英語名と期間を返す。 */
+async function loadOfficialEvents(unresolved) {
+  const robots = await fetchText(`${OFFICIAL_ORIGIN}/robots.txt`);
+  if (!isPathAllowedByRobots(robots, OFFICIAL_LIST_PATH)) {
+    throw new Error(`robots.txt が取得を許可していない: ${OFFICIAL_LIST_PATH}`);
+  }
+  console.log(`[generate-event-names-en] robots.txt: ${OFFICIAL_LIST_PATH} は取得可`);
+  const windowStart = shiftDate(unresolved.map(event => event.from).sort()[0], -OFFICIAL_LOOKBACK_DAYS);
+  const windowEnd = unresolved.map(event => event.to).sort().at(-1);
+
+  const candidates = [];
+  const listUrl = `${OFFICIAL_ORIGIN}${OFFICIAL_LIST_PATH}`;
+  for (let page = 1; page <= OFFICIAL_MAX_LIST_PAGES; page++) {
+    await sleep(OFFICIAL_REQUEST_INTERVAL_MS);
+    const items = parseOfficialNewsList(await fetchText(page === 1 ? listUrl : `${listUrl}page/${page}/`));
+    if (items.length === 0) break;
+    candidates.push(...items.filter(item => item.published >= windowStart && item.published <= windowEnd));
+    if (items.some(item => item.published < windowStart)) break; // 新しい順なので、これ以上古い記事は不要
+  }
+
+  const events = [];
+  for (const item of candidates) {
+    await sleep(OFFICIAL_REQUEST_INTERVAL_MS);
+    const period = parseOfficialEventPeriod(await fetchText(item.url));
+    if (period) events.push({ enName: item.enName, ...period, source: item.url });
+  }
+  console.log(`[generate-event-names-en] 公式ニュース: 未解決 ${unresolved.length} 件のため記事 ${candidates.length} 件を確認 / 期間を読めた ${events.length} 件`);
+  return events;
+}
+
 function renderRecord(mapping) {
   return Object.entries(mapping)
     .sort(([a], [b]) => a.localeCompare(b, "ja"))
@@ -422,6 +513,26 @@ export function renderOutput(periodMapping, nameMapping) {
     + `export const eventNameJaToEn: Record<string, string> = {\n${nameLines.join("\n")}\n};\n`;
 }
 
+/** 生成物の `export const <exportName> ... = { "k": "v", ... };` を Map に読む。 */
+export function readRecord(source, exportName) {
+  const body = source.match(new RegExp(`export const ${exportName}\\b[^=]*=\\s*\\{([\\s\\S]*?)\\}\\s*;`))?.[1] ?? "";
+  const linePattern = /^\s*("(?:\\.|[^"\\])*")\s*:\s*("(?:\\.|[^"\\])*")\s*,?\s*$/gm;
+  return new Map([...body.matchAll(linePattern)].map(match => [JSON.parse(match[1]), JSON.parse(match[2])]));
+}
+
+/** 前回の生成物との差（追加・変更・削除）を人が読める行にする。 */
+export function describeChanges(label, before, after) {
+  const lines = [];
+  for (const [key, value] of after) {
+    if (!before.has(key)) lines.push(`  + ${key} -> ${value}`);
+    else if (before.get(key) !== value) lines.push(`  ~ ${key}: ${before.get(key)} -> ${value}`);
+  }
+  for (const [key, value] of before) {
+    if (!after.has(key)) lines.push(`  - ${key} (${value})`);
+  }
+  return [`[generate-event-names-en] 更新内容 ${label}: ${lines.length} 件`, ...lines];
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   const overrides = readOverrides(OVERRIDES_PATH);
@@ -436,7 +547,12 @@ async function main() {
     japaneseData.eventHistory,
     japaneseData.sleepExpEventSegments,
   );
-  const result = matchEventNames(japaneseEvents, parsed.events, overrides.nameEn, bulbapediaParsed.events);
+  let result = matchEventNames(japaneseEvents, parsed.events, overrides.nameEn, bulbapediaParsed.events);
+  const unresolved = japaneseEvents.filter(event => !(`${event.name}@${event.from}` in result.periodMapping));
+  if (unresolved.length > 0) {
+    const officialEvents = await loadOfficialEvents(unresolved);
+    result = matchEventNames(japaneseEvents, parsed.events, overrides.nameEn, bulbapediaParsed.events, officialEvents);
+  }
   const warnings = [...parsed.warnings, ...bulbapediaParsed.warnings, ...result.warnings];
   const content = renderOutput(result.periodMapping, result.nameMapping);
   const oldContent = fs.existsSync(OUTPUT_PATH) ? fs.readFileSync(OUTPUT_PATH, "utf8") : "";
@@ -446,7 +562,7 @@ async function main() {
   else console.log("[generate-event-names-en] 生成物に変更なし（書き込みスキップ）");
 
   console.log(`[generate-event-names-en] 日本語開催回 ${japaneseEvents.length} 件 / Super Wiki ${parsed.events.length} 件 / Bulbapedia ${bulbapediaParsed.events.length} 件`);
-  console.log(`[generate-event-names-en] 解決 ${result.stats.matchedOccurrences} 件 (override ${result.stats.sources.override} / Super Wiki ${result.stats.sources.superWiki} / Bulbapedia ${result.stats.sources.bulbapedia}) / 期間辞書 ${Object.keys(result.periodMapping).length} 件 / 名前辞書 ${Object.keys(result.nameMapping).length} 件`);
+  console.log(`[generate-event-names-en] 解決 ${result.stats.matchedOccurrences} 件 (override ${result.stats.sources.override} / Super Wiki ${result.stats.sources.superWiki} / 公式 ${result.stats.sources.official} / Bulbapedia ${result.stats.sources.bulbapedia}) / 期間辞書 ${Object.keys(result.periodMapping).length} 件 / 名前辞書 ${Object.keys(result.nameMapping).length} 件`);
   for (const item of result.provenance) {
     console.log(`  [${item.source}] ${item.key} -> ${item.enName} (${item.sourceUrl})`);
   }
@@ -454,7 +570,10 @@ async function main() {
     console.warn(`[generate-event-names-en] 要確認 ${warnings.length} 件`);
     for (const warning of warnings) console.warn(`  ! ${warning}`);
   }
-  console.log(`[SUMMARY] japanese=${japaneseEvents.length} super_wiki=${parsed.events.length} bulbapedia=${bulbapediaParsed.events.length} matched=${result.stats.matchedOccurrences} override=${result.stats.sources.override} super_matched=${result.stats.sources.superWiki} bulbapedia_matched=${result.stats.sources.bulbapedia} period_mapped=${Object.keys(result.periodMapping).length} name_mapped=${Object.keys(result.nameMapping).length} warnings=${warnings.length} unmatched=${result.stats.unmatchedOccurrences} ambiguous=${result.stats.ambiguousOccurrences}`);
+  for (const [label, exportName] of [["開催回ごとの英語名", "eventNameJaToEnByPeriod"], ["イベント名だけの英語名", "eventNameJaToEn"]]) {
+    for (const line of describeChanges(label, readRecord(oldContent, exportName), readRecord(content, exportName))) console.log(line);
+  }
+  console.log(`[SUMMARY] japanese=${japaneseEvents.length} super_wiki=${parsed.events.length} bulbapedia=${bulbapediaParsed.events.length} matched=${result.stats.matchedOccurrences} override=${result.stats.sources.override} super_matched=${result.stats.sources.superWiki} official_matched=${result.stats.sources.official} bulbapedia_matched=${result.stats.sources.bulbapedia} period_mapped=${Object.keys(result.periodMapping).length} name_mapped=${Object.keys(result.nameMapping).length} warnings=${warnings.length} unmatched=${result.stats.unmatchedOccurrences} ambiguous=${result.stats.ambiguousOccurrences}`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {

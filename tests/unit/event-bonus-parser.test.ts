@@ -13,7 +13,7 @@ import {
   parseBoostKindsFromSummary,
   parseSleepExpFromSummary,
 } from '../../scripts/event-bonus-parser.mjs';
-import { deriveWikiKnownThrough, parseEventList } from '../../scripts/generate-events.mjs';
+import { canReuseGroup, deriveWikiKnownThrough, parseEventList, readExistingGenerated } from '../../scripts/generate-events.mjs';
 
 /** HTML断片は実際のWikiページから採ったもの */
 function loadTable(html: string) {
@@ -275,5 +275,45 @@ describe('parseHistoryTable', () => {
   it('開催期間の列がない表は対象外', () => {
     const { $, table } = loadTable(`<tr><th>名前</th><th>内容</th></tr><tr><td>a</td><td>b</td></tr>`);
     expect(parseHistoryTable($, table)).toBeNull();
+  });
+});
+
+describe('readExistingGenerated', () => {
+  it('生成物から到達日と区間（名前の引用符を含む）を読む', () => {
+    const source = [
+      'export const sleepExpEventSegments: readonly SleepExpEventSegment[] = [',
+      '  { name: "A\\"B", from: "2026-03-02", to: "2026-03-08", multiplier: 1.5, source: "wiki" },',
+      '] as const;',
+      'export const wikiKnownThrough: string = "2026-10-11";',
+    ].join('\n');
+    expect(readExistingGenerated(source)).toEqual({
+      knownThrough: '2026-10-11',
+      segments: [{ name: 'A"B', from: '2026-03-02', to: '2026-03-08', multiplier: 1.5, source: 'wiki' }],
+      history: [],
+    });
+  });
+
+  it('読めない生成物は null（全ページ取り直しになる）', () => {
+    expect(readExistingGenerated('')).toBeNull();
+  });
+});
+
+describe('canReuseGroup', () => {
+  const existing = { knownThrough: '2026-10-25', segments: [], history: [{ name: 'A', from: '2026-09-01', to: '2026-09-07' }] };
+  const known = { name: 'A', from: '2026-09-01', to: '2026-09-07' };
+
+  it('前回確認済みで到達日より前に終わった回だけ引き継ぐ', () => {
+    expect(canReuseGroup(existing, known, [known])).toBe(true);
+  });
+
+  it('到達日が先でも、履歴に無い新しい回は取りに行く', () => {
+    const added = { name: 'A', from: '2026-10-05', to: '2026-10-11' };
+    expect(canReuseGroup(existing, added, [added])).toBe(false);
+  });
+
+  it('到達日以降に終わる回・periodFixes の回・既存なしは取りに行く', () => {
+    expect(canReuseGroup(existing, { ...known, to: '2026-10-25' }, [known])).toBe(false);
+    expect(canReuseGroup(existing, known, [{ ...known, fixed: true }])).toBe(false);
+    expect(canReuseGroup(null, known, [known])).toBe(false);
   });
 });

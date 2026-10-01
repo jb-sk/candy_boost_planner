@@ -2,7 +2,8 @@
  * ポケモンスリープ攻略Wikiから「睡眠EXPボーナス」の期間と倍率を取り出し、
  * src/domain/pokesleep/_generated/sleep-exp-events.ts を生成する。
  *
- *   pnpm run generate:events            生成
+ *   pnpm run generate:events            生成（既知の過去イベントのページは取りに行かず、生成物から引き継ぐ）
+ *   pnpm run generate:events -- --full  全イベントページを取り直す
  *   pnpm run generate:events -- --verify  生成物が最新かを検査（CI用。差分があれば exit 1）
  *   pnpm run generate:events -- --dry-run 書き込まずに結果を表示
  *
@@ -56,6 +57,7 @@ function parseArgs(argv) {
     verify: false,
     dryRun: false,
     noCache: false,
+    full: false,
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
@@ -65,6 +67,7 @@ function parseArgs(argv) {
     else if (arg === "--verify") args.verify = true;
     else if (arg === "--dry-run") args.dryRun = true;
     else if (arg === "--no-cache") args.noCache = true;
+    else if (arg === "--full") args.full = true;
     else throw new Error(`Unknown argument: ${arg}`);
   }
   return args;
@@ -100,6 +103,41 @@ async function fetchHtml(url, { noCache }) {
     throw new Error(`Fetch failed: ${res.status} ${res.statusText} — ${url}`);
   }
   throw new Error(`Gave up after ${MAX_RETRY} attempts: ${url}`);
+}
+
+const SEGMENT_PATTERN = /\{\s*name:\s*("(?:\\.|[^"\\])*")\s*,\s*from:\s*("\d{4}-\d{2}-\d{2}")\s*,\s*to:\s*("\d{4}-\d{2}-\d{2}")\s*,\s*multiplier:\s*([\d.]+)\s*,\s*source:\s*"(wiki|wiki-list|override)"\s*\}/g;
+
+/**
+ * 既存の生成物から、前回までの到達日と睡眠EXP区間を読む。
+ * 読めなければ null（＝全ページ取り直し）。
+ */
+export function readExistingGenerated(source) {
+  const through = source.match(/export const wikiKnownThrough: string = "(\d{4}-\d{2}-\d{2})"/)?.[1];
+  const body = source.match(/export const sleepExpEventSegments[^=]*=\s*(\[[\s\S]*?\])\s+as const;/)?.[1];
+  if (!through || !body) return null;
+  const segments = [...body.matchAll(SEGMENT_PATTERN)].map((m) => ({
+    name: JSON.parse(m[1]),
+    from: JSON.parse(m[2]),
+    to: JSON.parse(m[3]),
+    multiplier: Number(m[4]),
+    source: m[5],
+  }));
+  const historyBody = source.match(/export const eventHistory[^=]*=\s*(\[[\s\S]*?\])\s+as const;/)?.[1];
+  const history = historyBody ? JSON.parse(historyBody) : [];
+  return { knownThrough: through, segments, history };
+}
+
+/**
+ * ページを取らず前回の生成物から引き継いでよい開催回か。
+ * 到達日は全イベントの最大終了日で「その回を確認済み」の証拠にならないため、
+ * 前回の履歴に同じ開催回があることも要る（新しく追加された回は必ず取りに行く）。
+ * 期間を訂正した回（periodFixes）は引き継ぎ元とずれうるので取り直す。
+ */
+export function canReuseGroup(existing, latest, group) {
+  return Boolean(existing)
+    && compareDates(latest.to, existing.knownThrough) < 0
+    && existing.history.some((entry) => entry.name === latest.name && entry.from === latest.from)
+    && !group.some((occurrence) => occurrence.fixed);
 }
 
 function toAbsoluteUrl(wikiPath) {
@@ -361,6 +399,9 @@ export const wikiKnownThrough: string = ${JSON.stringify(wikiKnownThrough)};
 async function main() {
   const args = parseArgs(process.argv);
   const overrides = readOverrides(args.overrides);
+  // --verify は「全部取り直しても同じか」を見るので、引き継ぎはしない
+  const previous = fs.existsSync(args.output) ? readExistingGenerated(fs.readFileSync(args.output, "utf8")) : null;
+  const existing = args.full || args.verify ? null : previous;
 
   const listUrl = toAbsoluteUrl(LIST_PATH);
   const listHtml = await fetchHtml(listUrl, args);
@@ -398,6 +439,7 @@ async function main() {
 
   const rows = [];
   const skipped = [];
+  let reusedPages = 0;
 
   for (const [wikiPath, group] of byPath) {
     const pageName = wikiPath.replace("/poke_sleep/イベント/", "");
@@ -415,35 +457,45 @@ async function main() {
       continue;
     }
 
-    const html = await fetchHtml(toAbsoluteUrl(wikiPath), args);
     // 新しい順に並ぶので先頭が最新回。ページの記述は最新回のもの。
     const latest = [...group].sort((a, b) => compareDates(b.from, a.from))[0];
-    let parsed;
-    try {
-      parsed = parseEventPage(html, latest);
-    } catch (error) {
-      warnings.push(`${pageName}: ${error.message}`);
-      continue;
-    }
-    for (const warning of parsed.warnings) warnings.push(`${pageName}: ${warning}`);
 
-    // 一覧の開催期間と、ページ内の開催履歴表を突き合わせる（Wikiの誤記を検出する）
-    for (const occurrence of group) {
-      if (occurrence.fixed) continue; // periodFixes で確定済み
-      const matched = parsed.historyPeriods.find((p) => p.from === occurrence.from);
-      if (matched && matched.to !== occurrence.to) {
-        warnings.push(
-          `${pageName}: 開催期間が一覧と履歴表で食い違う（${occurrence.from}.. 一覧=${occurrence.to} / 履歴表=${matched.to}）。`
-          + ` events-overrides.json で確定すること`,
-        );
+    // 前回確認済みで、到達日より前に終わった回は確定済みなので、ページは取らず生成物の区間を引き継ぐ。
+    let latestRows;
+    if (canReuseGroup(existing, latest, group)) {
+      latestRows = existing.segments.filter((segment) => (
+        segment.name === pageName && segment.from >= latest.from && segment.to <= latest.to
+      ));
+      reusedPages++;
+    } else {
+      const html = await fetchHtml(toAbsoluteUrl(wikiPath), args);
+      let parsed;
+      try {
+        parsed = parseEventPage(html, latest);
+      } catch (error) {
+        warnings.push(`${pageName}: ${error.message}`);
+        continue;
       }
+      for (const warning of parsed.warnings) warnings.push(`${pageName}: ${warning}`);
+
+      // 一覧の開催期間と、ページ内の開催履歴表を突き合わせる（Wikiの誤記を検出する）
+      for (const occurrence of group) {
+        if (occurrence.fixed) continue; // periodFixes で確定済み
+        const matched = parsed.historyPeriods.find((p) => p.from === occurrence.from);
+        if (matched && matched.to !== occurrence.to) {
+          warnings.push(
+            `${pageName}: 開催期間が一覧と履歴表で食い違う（${occurrence.from}.. 一覧=${occurrence.to} / 履歴表=${matched.to}）。`
+            + ` events-overrides.json で確定すること`,
+          );
+        }
+      }
+      latestRows = parsed.segments.map((segment) => ({
+        name: pageName, from: segment.from, to: segment.to, multiplier: segment.multiplier, source: "wiki",
+      }));
     }
 
-    if (parsed.segments.length === 0) continue;
-
-    for (const segment of parsed.segments) {
-      rows.push({ name: pageName, from: segment.from, to: segment.to, multiplier: segment.multiplier, source: "wiki" });
-    }
+    if (latestRows.length === 0) continue;
+    rows.push(...latestRows);
 
     // ページのボーナス記載は最新回のもの。過去回は一覧のボーナス列から補う
     for (const occurrence of group) {
@@ -452,7 +504,7 @@ async function main() {
       if (multiplier === null) {
         warnings.push(
           `${pageName}: 過去回 ${occurrence.from}..${occurrence.to} (${occurrence.name}) の睡眠EXP倍率が一覧に書かれていない。`
-          + ` 最新回は x${parsed.segments[0].multiplier}。events-overrides.json で確定すること`,
+          + ` 最新回は x${latestRows[0].multiplier}。events-overrides.json で確定すること`,
         );
         continue;
       }
@@ -518,8 +570,18 @@ async function main() {
     meta: { listUrl, anchors: overrides.anchors, flowers: overrides.flowers },
   });
 
-  console.log(`[generate-events] 開催回 ${occurrences.length} 件 / 睡眠EXP区間 ${rows.length} 件`);
+  console.log(`[generate-events] 開催回 ${occurrences.length} 件 / 睡眠EXP区間 ${rows.length} 件 / 引き継ぎ ${reusedPages} ページ`);
   for (const row of rows) console.log(`  ${row.from}..${row.to}  x${row.multiplier}  ${row.name} (${row.source})`);
+  if (previous) {
+    const key = (item) => `${item.name}@${item.from}..${item.to}`;
+    const knownSegments = new Set(previous.segments.map(key));
+    const knownHistory = new Set(previous.history.map(key));
+    const addedSegments = rows.filter((row) => !knownSegments.has(key(row)));
+    const addedHistory = historyWithIndex.filter((entry) => !knownHistory.has(key(entry)));
+    console.log(`[generate-events] 追加: 開催履歴 ${addedHistory.length} 件 / 睡眠EXP区間 ${addedSegments.length} 件`);
+    for (const entry of addedHistory) console.log(`  + 履歴 ${entry.from}..${entry.to}  ${entry.name}`);
+    for (const row of addedSegments) console.log(`  + 睡眠EXP ${row.from}..${row.to}  x${row.multiplier}  ${row.name}`);
+  }
   if (skipped.length > 0) {
     console.log(`[generate-events] 除外 ${skipped.length} 件`);
     for (const line of skipped) console.log(`  - ${line}`);

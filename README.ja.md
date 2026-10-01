@@ -37,7 +37,7 @@ MasterDB（統一入口・推奨）:
 pnpm run update:all
 ```
 
-`update:all` はローカルの `pokesleep-tool` クローンを `git pull --ff-only` で最新化し、MasterDBの対話更新、フォーム突合、正規化した対応表からのMasterDB・英名の再生成、食材ラベルの検査、ビルドまで順に実行します。最初の生成処理で入力を求める場合があるため、TTYで実行してください。クローンは既定で `../../External/pokesleep-tool` を参照し、別の場所にある場合は `--pokesleep-tool <path>` または `POKESLEEP_TOOL_PATH` で指定できます。イベントと満月の生成物は別系統で、イベントは `auto-update-events.yml`、満月は通常CIが検証します。
+`update:all` はローカルの `pokesleep-tool` クローンを `git pull --ff-only` で最新化し、MasterDBの対話更新、フォーム突合、正規化した対応表からのMasterDB・英名の再生成、食材ラベルの検査、ビルドまで順に実行します。最初の生成処理で入力を求める場合があるため、TTYで実行してください。クローンは既定で `../../External/pokesleep-tool` を参照し、別の場所にある場合は `--pokesleep-tool <path>` または `POKESLEEP_TOOL_PATH` で指定できます。イベントと満月の生成物は別系統で、イベントはローカル実行、満月は通常CIが検証します。
 
 その他:
 
@@ -61,7 +61,7 @@ npm run generate:events -- --dry-run  # 書き込まずに結果だけ見る
 npm run verify:events              # 生成物が最新かを検査
 ```
 
-- 毎日 GitHub Actions（`auto-update-events.yml`）が実行し、差分があればPRを作ります
+- 定期実行はしません。日英を同時に更新するためローカルで `generate:events` → `generate:event-names-en -- --refresh` の順に実行します（`auto-update-events.yml` は手動実行用に残しています。CIのIPは英語Wikiに弾かれ、英語名が取れません）
 - 機械的に読めなかったものは「要確認」として出るので、`scripts/events-overrides.json` に人手で確定値を書きます
 - グッドスリープデーは月齢から求まるため対象外です（`lunar-calendar.ts` が扱います）
 
