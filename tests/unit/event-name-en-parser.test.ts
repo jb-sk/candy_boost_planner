@@ -5,10 +5,14 @@ import { describe, expect, it, vi } from "vitest";
 
 import { readOverrides } from "../../scripts/generate-events.mjs";
 import {
+  describeChanges,
   listPendingEventNameKeys,
   matchEventNames,
   parseBulbapediaEventArchive,
   parseEnglishEventArchive,
+  parseOfficialEventPeriod,
+  parseOfficialNewsList,
+  readRecord,
   renderOutput,
 } from "../../scripts/generate-event-names-en.mjs";
 
@@ -289,5 +293,58 @@ describe("pending English event-name check", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("official news source", () => {
+  const listHtml = `<ul>
+    <li><a class="banner_2" href="https://www.pokemonsleep.net/en/news/1/"><div class="banner_2__1">
+      <p class="banner_2__date"><time datetime="2026/10/01">10/1/2026</time></p>
+      <p class="banner_2__title">Event: Pokémon Growth Week Vol. 6</p></div></a></li>
+    <li><a class="banner_2" href="https://www.pokemonsleep.net/en/news/2/"><div class="banner_2__1">
+      <p class="banner_2__date"><time datetime="2026/09/30">9/30/2026</time></p>
+      <p class="banner_2__title">Maintenance notice</p></div></a></li>
+  </ul>`;
+  const articleHtml = `<p>Event Period:<br />• <time data-unixtime='1791777600'>Oct. 12 (Mon) at 4:00 a.m.</time> to <time data-unixtime='1792382399'>Oct. 19 (Mon) at 3:59 a.m.</time></p>`;
+
+  it("reads only Event: headlines from the list", () => {
+    expect(parseOfficialNewsList(listHtml)).toEqual([
+      { enName: "Pokémon Growth Week Vol. 6", published: "2026-10-01", url: "https://www.pokemonsleep.net/en/news/1/" },
+    ]);
+  });
+
+  it("reads the game-day period from the Event Period times", () => {
+    expect(parseOfficialEventPeriod(articleHtml)).toEqual({ from: "2026-10-12", to: "2026-10-18" });
+    expect(parseOfficialEventPeriod("<p>No period</p>")).toBeNull();
+  });
+
+  it("resolves by exact game-day period only when the other sources miss", () => {
+    const official = [{ enName: "Pokémon Growth Week Vol. 6", from: "2026-10-12", to: "2026-10-18", source: "https://example.test/6" }];
+    const result = matchEventNames([
+      { name: "すくすく", from: "2026-10-12", to: "2026-10-18" },
+      { name: "ずれ", from: "2026-10-13", to: "2026-10-18" },
+    ], [], [], [], official);
+    expect(result.periodMapping).toEqual({ "すくすく@2026-10-12": "Pokémon Growth Week Vol. 6" });
+    expect(result.stats.sources.official).toBe(1);
+    expect(result.stats.unmatchedOccurrences).toBe(1);
+  });
+});
+
+describe("generated change summary", () => {
+  const source = renderOutput({ "あ@2026-01-01": "A", "い@2026-02-01": "B" }, { "あ": "A" });
+
+  it("reads each record separately even though one name is a prefix of the other", () => {
+    expect([...readRecord(source, "eventNameJaToEn")]).toEqual([["あ", "A"]]);
+    expect(readRecord(source, "eventNameJaToEnByPeriod").size).toBe(2);
+  });
+
+  it("lists added, changed and removed entries", () => {
+    const lines = describeChanges("開催回ごとの英語名", new Map([["a", "1"], ["b", "2"]]), new Map([["a", "9"], ["c", "3"]]));
+    expect(lines).toEqual([
+      "[generate-event-names-en] 更新内容 開催回ごとの英語名: 3 件",
+      "  ~ a: 1 -> 9",
+      "  + c -> 3",
+      "  - b (2)",
+    ]);
   });
 });

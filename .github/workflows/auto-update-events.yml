@@ -3,10 +3,8 @@
 name: Auto Update Event Bonuses
 
 on:
-  schedule:
-    # 毎日 UTC 02:00 (JST 11:00) に実行
-    # イベントの切り替わりは月曜 4:00 JST だが、Wikiの更新は有志なので当日午前に見る
-    - cron: '0 2 * * *'
+  # 定期実行はしない。CIのIPは英語Wikiの Cloudflare に弾かれて英語名が取れないため、
+  # 日英を同時に更新できるローカルで実行する（pnpm run generate:events / generate:event-names-en）
   workflow_dispatch:
 
 permissions:

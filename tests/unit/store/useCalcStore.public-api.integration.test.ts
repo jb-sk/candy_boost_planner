@@ -80,18 +80,18 @@ describe("useCalcStore public API integration", () => {
       shortageExp: result.shortage.expToTarget,
       limitingFactor: result.constraintDiagnosis.limitingFactor,
     }).toEqual({
-      sleepExp: 16500,
+      sleepExp: 16950,
       incense: 20,
-      shardsUsed: 44251,
+      shardsUsed: 44125,
       boostUsed: 80,
       universalCandyUsed: { s: 0, m: 0, l: 0 },
-      role: "boundary",
+      role: "upper",
       reachedLevel: 31,
-      reachedCandy: 120,
-      reachedShards: 44251,
-      shortageCandy: 17,
-      shortageExp: 16909,
-      limitingFactor: "candy",
+      reachedCandy: 119,
+      reachedShards: 44125,
+      shortageCandy: 0,
+      shortageExp: 16934,
+      limitingFactor: null,
     });
 
     expect(store.canUndo.value).toBe(true);

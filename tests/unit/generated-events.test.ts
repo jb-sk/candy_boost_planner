@@ -53,7 +53,15 @@ describe("generated Sleep EXP event consistency", () => {
   });
 
   it("localizes every generated Sleep EXP segment by its display name and start date", () => {
-    for (const segment of sleepExpEventSegments) {
+    // 英語Wikiが追いついていない開催回は未解決のまま日本語名で表示する（設計書 §21.7）。
+    // ここで見るのは「開催回は解決済みなのに、区間の表示名が引けない」取りこぼしだけ。
+    const isOwnerResolved = (segment: typeof sleepExpEventSegments[number]) => eventHistory.some(entry => (
+      entry.sleepExp?.from === segment.from
+      && entry.sleepExp.to === segment.to
+      && entry.sleepExp.multiplier === segment.multiplier
+      && `${entry.name}@${entry.from}` in eventNameJaToEnByPeriod
+    ));
+    for (const segment of sleepExpEventSegments.filter(isOwnerResolved)) {
       expect(localizeEventName(segment.name, "en", segment.from), `${segment.name}@${segment.from}`)
         .not.toBe(segment.name);
     }

@@ -37,7 +37,7 @@ Master DB (recommended entrypoint):
 pnpm run update:all
 ```
 
-`update:all` fast-forwards the local `pokesleep-tool` clone with `git pull --ff-only`, runs the interactive Master DB update, verifies form mappings, regenerates the Master DB and English names from the canonical mappings, checks ingredient labels, and builds the app. Run it in a TTY because the first generation step may prompt for input. It uses `../../External/pokesleep-tool` by default; use `--pokesleep-tool <path>` or `POKESLEEP_TOOL_PATH` for a different location. Event and full-moon outputs are maintained separately: `auto-update-events.yml` handles events, while regular CI verifies the full-moon table.
+`update:all` fast-forwards the local `pokesleep-tool` clone with `git pull --ff-only`, runs the interactive Master DB update, verifies form mappings, regenerates the Master DB and English names from the canonical mappings, checks ingredient labels, and builds the app. Run it in a TTY because the first generation step may prompt for input. It uses `../../External/pokesleep-tool` by default; use `--pokesleep-tool <path>` or `POKESLEEP_TOOL_PATH` for a different location. Event and full-moon outputs are maintained separately: events are generated locally (`generate:events`, `generate:event-names-en`; `auto-update-events.yml` is manual-only), while regular CI verifies the full-moon table.
 
 Other generators:
 
