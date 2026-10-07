@@ -3597,6 +3597,42 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%82%A4%E3%83%AF%E3%83%91%E3%83%AC%E3%82%B9"
   },
   {
+    "dexNo": 590,
+    "pokedexId": 590,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "タマゲタケ",
+    "baseNameJa": "タマゲタケ",
+    "specialty": "Ingredients",
+    "type": "Poison",
+    "typeJa": "どく",
+    "expType": 600,
+    "ingredients": {
+      "a": "mushroom",
+      "b": "egg",
+      "c": "tomato"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%BF%E3%83%9E%E3%82%B2%E3%82%BF%E3%82%B1"
+  },
+  {
+    "dexNo": 591,
+    "pokedexId": 591,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "モロバレル",
+    "baseNameJa": "モロバレル",
+    "specialty": "Ingredients",
+    "type": "Poison",
+    "typeJa": "どく",
+    "expType": 600,
+    "ingredients": {
+      "a": "mushroom",
+      "b": "egg",
+      "c": "tomato"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A2%E3%83%AD%E3%83%90%E3%83%AC%E3%83%AB"
+  },
+  {
     "dexNo": 627,
     "pokedexId": 627,
     "form": 0,

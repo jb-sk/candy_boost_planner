@@ -4374,6 +4374,50 @@ export const pokemonDb: PokemonDbEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%82%A4%E3%83%AF%E3%83%91%E3%83%AC%E3%82%B9"
   },
   {
+    "dexNo": 590,
+    "nameJa": "タマゲタケ",
+    "specialtyJa": "食材",
+    "sleepTypeJa": "うとうと",
+    "berryJa": [
+      "カゴのみ"
+    ],
+    "ingAJa": [
+      "あじわいキノコ"
+    ],
+    "ingBJa": [
+      "とくせんエッグ"
+    ],
+    "ingCJa": [
+      "あんみんトマト"
+    ],
+    "mainSkillJa": "エナジーチャージS",
+    "fp": 5,
+    "helpSeconds": 5700,
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%BF%E3%83%9E%E3%82%B2%E3%82%BF%E3%82%B1"
+  },
+  {
+    "dexNo": 591,
+    "nameJa": "モロバレル",
+    "specialtyJa": "食材",
+    "sleepTypeJa": "うとうと",
+    "berryJa": [
+      "カゴのみ"
+    ],
+    "ingAJa": [
+      "あじわいキノコ"
+    ],
+    "ingBJa": [
+      "とくせんエッグ"
+    ],
+    "ingCJa": [
+      "あんみんトマト"
+    ],
+    "mainSkillJa": "エナジーチャージS",
+    "fp": 12,
+    "helpSeconds": 3500,
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A2%E3%83%AD%E3%83%90%E3%83%AC%E3%83%AB"
+  },
+  {
     "dexNo": 627,
     "nameJa": "ワシボン",
     "specialtyJa": "スキル",

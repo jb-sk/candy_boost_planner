@@ -190,6 +190,8 @@ export const pokemonNameEnByDexNo: Record<number, string> = {
   518: "Musharna",
   557: "Dwebble",
   558: "Crustle",
+  590: "Foongus",
+  591: "Amoonguss",
   627: "Rufflet",
   628: "Braviary",
   696: "Tyrunt",

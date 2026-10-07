@@ -212,6 +212,8 @@ export const pokemonNameJaByIdForm = {
   "518": "ムシャーナ",
   "557": "イシズマイ",
   "558": "イワパレス",
+  "590": "タマゲタケ",
+  "591": "モロバレル",
   "627": "ワシボン",
   "628": "ウォーグル",
   "696": "チゴラス",
@@ -463,6 +465,8 @@ export const pokemonExpTypeByIdForm = {
   "518": 600,
   "557": 600,
   "558": 600,
+  "590": 600,
+  "591": 600,
   "627": 600,
   "628": 600,
   "696": 600,
@@ -714,6 +718,8 @@ export const pokemonSpecialtyByIdForm = {
   "518": "Berries",
   "557": "Skills",
   "558": "Skills",
+  "590": "Ingredients",
+  "591": "Ingredients",
   "627": "Skills",
   "628": "Skills",
   "696": "Berries",
@@ -965,6 +971,8 @@ export const pokemonTypeByIdForm = {
   "518": "Psychic",
   "557": "Bug",
   "558": "Bug",
+  "590": "Poison",
+  "591": "Poison",
   "627": "Flying",
   "628": "Flying",
   "696": "Rock",
@@ -1216,6 +1224,8 @@ export const pokemonTypeJaByIdForm = {
   "518": "エスパー",
   "557": "むし",
   "558": "むし",
+  "590": "どく",
+  "591": "どく",
   "627": "ひこう",
   "628": "ひこう",
   "696": "いわ",
@@ -2209,6 +2219,16 @@ export const pokemonIngredientsByIdForm = {
     "b": "potato",
     "c": "oil"
   },
+  "590": {
+    "a": "mushroom",
+    "b": "egg",
+    "c": "tomato"
+  },
+  "591": {
+    "a": "mushroom",
+    "b": "egg",
+    "c": "tomato"
+  },
   "627": {
     "a": "sausage",
     "b": "corn",
@@ -3102,6 +3122,12 @@ export const pokemonIdFormsByNameJa = {
   ],
   "イワパレス": [
     558
+  ],
+  "タマゲタケ": [
+    590
+  ],
+  "モロバレル": [
+    591
   ],
   "ワシボン": [
     627
