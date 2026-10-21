@@ -40,7 +40,7 @@ import type { DebugExportContext, DebugExportNapRow, DebugExportSleepRow } from 
 import { buildPlannerInput as buildLevelPlannerInput, type PlannerInputRowDto } from "../domain/level-planner/buildPlannerInput";
 import type { ItemCompareMode, LevelPlannerInput, LevelPlannerResult, PokemonPlanLine, PokemonPlanResult } from "../domain/level-planner/types";
 import { buildPlannerInputSignature } from "../domain/level-planner/signature";
-import type { PlannerWorkerRequest, PlannerWorkerResponse } from "../workers/levelPlanner.worker";
+import { createPlannerRunner, loadPlannerFallbackModule } from "../workers/plannerRunner";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { isPerfEnabled } from "../utils/perf";
 import { stepHistoryWithToast, useHistory, type CalcHistoryScope, type History } from "./useHistory";
@@ -123,13 +123,7 @@ function syncDebugNowQuery(text: string): void {
   window.history.replaceState(null, "", url);
 }
 
-let plannerFallbackModulePromise: Promise<typeof import("../domain/level-planner/core/solveLevelPlan")> | null = null;
 let debugExportModulePromise: Promise<typeof import("../domain/level-planner/debugExport")> | null = null;
-
-function loadPlannerFallbackModule() {
-  plannerFallbackModulePromise ??= import("../domain/level-planner/core/solveLevelPlan");
-  return plannerFallbackModulePromise;
-}
 
 function loadDebugExportModule() {
   debugExportModulePromise ??= import("../domain/level-planner/debugExport");
@@ -487,6 +481,13 @@ export type CalcStore = {
   withTargetLevel: (row: CalcRow, lv: unknown, rowList: readonly CalcRow[]) => CalcRow;
   /** 計算機の個数指定の欄に m を入れたときと同じ行を返す。睡眠目標モードの行は変えない。 */
   withCandyTarget: (row: CalcRow, m: number) => CalcRow;
+  /**
+   * 行一覧を丸ごと差し替える。今の rows.value が expectedBase と別物（参照が違う）なら何もせず false を返す。
+   * 行は正規化せずそのまま保存し、commitRows で1回だけ記録する。
+   */
+  replaceRows: (next: readonly CalcRow[], label: string, expectedBase: readonly CalcRow[]) => boolean;
+  /** ゲーム内の日付の更新だけを止める。戻り値の関数で再開する（2回呼んでも1回分）。 */
+  holdGameDate: () => () => void;
   setSrcLevel: (id: string, v: unknown) => void;
   setBoostLevel: (id: string, v: unknown) => void;
   fillBoostCandyToCap: (id: string) => void;
@@ -698,7 +699,14 @@ export function useCalcStore(opts: {
   let gameDateTimer: ReturnType<typeof setTimeout> | null = null;
   const lifecycleScope = getCurrentScope();
 
+  let gameDateHolds = 0;
+  let gameDateRefreshPending = false;
+
   function refreshGameDate(): void {
+    if (gameDateHolds > 0) {
+      gameDateRefreshPending = true;
+      return;
+    }
     const next = resolveCurrentGameDate();
     if (next === currentGameDate.value) return;
     currentGameDate.value = next;
@@ -707,6 +715,21 @@ export function useCalcStore(opts: {
     rows.value = rows.value.map(row =>
       row.candyTarget === undefined ? row : normalizeRowState(row)
     );
+  }
+
+  /** ゲーム内の日付の更新を止める。戻り値の関数で再開する（2回呼んでも1回分）。全部が再開したとき、止めている間に更新が来ていれば1回だけ更新する。 */
+  function holdGameDate(): () => void {
+    gameDateHolds++;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      gameDateHolds--;
+      if (gameDateHolds > 0 || !gameDateRefreshPending) return;
+      gameDateRefreshPending = false;
+      refreshGameDate();
+      armGameDateTimer();
+    };
   }
 
   function armGameDateTimer(): void {
@@ -1615,6 +1638,12 @@ export function useCalcStore(opts: {
     if (JSON.stringify(next) === JSON.stringify(rows.value)) return false;
     beginUndo(label, ["rows"], options);
     rows.value = next;
+    return true;
+  }
+
+  function replaceRows(next: readonly CalcRow[], label: string, expectedBase: readonly CalcRow[]): boolean {
+    if (toRaw(rows.value) !== toRaw(expectedBase)) return false;
+    commitRows(next as CalcRow[], label);
     return true;
   }
 
@@ -3938,24 +3967,18 @@ export function useCalcStore(opts: {
   const slotProfiles = new Map<string, CalculationPerformanceProfile>();
   const slotDisplayedResults = new Map<string, DisplayedPlanResult>();
   let planResultTimer: ReturnType<typeof setTimeout> | null = null;
-  let planResultWorker: Worker | null = null;
-  let planResultWorkerBusy = false;
+  const planResultRunner = createPlannerRunner();
   let releasePlanResultPersistDeferral: (() => void) | null = null;
-  let planResultRequestId = 0;
   let planResultHasDispatched = false;
   let displayGeneration = 0;
   let previousInputSignature: string | null = null;
   let previousSlotId: string | null = null;
-  let activeAutoContext: { slotId: string; inputSignature: string; input: LevelPlannerInput; generation: number } | null = null;
 
   function currentSlotId(): string {
     return slots.value[activeSlotTab.value]?.slotId ?? `empty-slot-${activeSlotTab.value}`;
   }
 
-  function disposePlanResultWorker(): void {
-    planResultWorker?.terminate();
-    planResultWorker = null;
-    planResultWorkerBusy = false;
+  function releasePlanResultPersist(): void {
     releasePlanResultPersistDeferral?.();
     releasePlanResultPersistDeferral = null;
   }
@@ -4037,60 +4060,26 @@ export function useCalcStore(opts: {
       && response.generation === displayGeneration;
   }
 
-  function handleAutoResponse(response: PlannerWorkerResponse, context: { slotId: string; inputSignature: string; input: LevelPlannerInput; generation: number }): void {
-    if (response.requestId !== planResultRequestId) return;
-    planResultWorkerBusy = false;
-    releasePlanResultPersistDeferral?.();
-    releasePlanResultPersistDeferral = null;
+  function handleAutoResult(output: { result: LevelPlannerResult; durationMs: number }, context: { slotId: string; inputSignature: string; generation: number }): void {
+    releasePlanResultPersist();
     planResultPending.value = false;
-    if (response.kind === 'error') {
-      console.error('[level-planner] worker failed:', response.error);
-      return;
-    }
-    if (!exactResultGate({ slotId: response.slotId, inputSignature: response.inputSignature, generation: context.generation })) return;
+    if (!exactResultGate(context)) return;
     updateProfile({ lastInputSignature: context.inputSignature }, context.slotId);
-    applyDisplayedResult(response.result, { slotId: context.slotId, inputSignature: context.inputSignature, durationMs: response.durationMs });
+    applyDisplayedResult(output.result, { slotId: context.slotId, inputSignature: context.inputSignature, durationMs: output.durationMs });
   }
 
-  function ensurePlanResultWorker(): Worker {
-    if (planResultWorker) return planResultWorker;
-    const worker = new Worker(new URL('../workers/levelPlanner.worker.ts', import.meta.url), { type: 'module' });
-    planResultWorker = worker;
-    worker.onmessage = (event: MessageEvent<PlannerWorkerResponse>) => {
-      if (!activeAutoContext) return;
-      handleAutoResponse(event.data, activeAutoContext);
-    };
-    worker.onerror = (event) => {
-      console.error('[level-planner] worker error:', event.message);
-      planResultPending.value = false;
-      disposePlanResultWorker();
-    };
-    return worker;
-  }
-
-  function runPlanResult(input: LevelPlannerInput, context: { slotId: string; inputSignature: string; input: LevelPlannerInput; generation: number }): void {
-    activeAutoContext = context;
-    if (typeof Worker === 'undefined') {
-      // Worker が使えない環境の代わりの経路。メインスレッドで同じ exact の計算を呼ぶ。
-      const requestId = planResultRequestId;
-      void loadPlannerFallbackModule()
-        .then(({ solveLevelPlan }) => {
-          const started = performance.now();
-          const result = solveLevelPlan(input);
-          handleAutoResponse({ kind: 'result', slotId: context.slotId, requestId, inputSignature: context.inputSignature, result, durationMs: Math.max(0, performance.now() - started) }, context);
-        })
-        .catch((error: unknown) => {
-          if (requestId !== planResultRequestId) return;
-          planResultPending.value = false;
-          console.error('[level-planner] fallback load failed:', error);
-        });
-      return;
-    }
-    const worker = ensurePlanResultWorker();
-    planResultWorkerBusy = true;
-    releasePlanResultPersistDeferral?.();
+  function runPlanResult(input: LevelPlannerInput, context: { slotId: string; inputSignature: string; generation: number }): void {
+    releasePlanResultPersist();
     releasePlanResultPersistDeferral = deferPersistUntilReleased();
-    worker.postMessage({ slotId: context.slotId, requestId: planResultRequestId, inputSignature: context.inputSignature, input, perfEnabled: PLAN_RESULT_PERF_ENABLED } satisfies PlannerWorkerRequest);
+    planResultRunner.run(
+      input,
+      (output) => handleAutoResult(output, context),
+      (error) => {
+        releasePlanResultPersist();
+        planResultPending.value = false;
+        console.error('[level-planner] calculation failed:', error);
+      },
+    );
   }
 
   watch(
@@ -4102,8 +4091,8 @@ export function useCalcStore(opts: {
         planResultTimer = null;
       }
       displayGeneration++;
-      planResultRequestId++;
-      if (planResultWorkerBusy) disposePlanResultWorker();
+      planResultRunner.cancel();
+      releasePlanResultPersist();
       if (rows.value.length === 0) {
         planResult.value = null;
         displayedPlanResult.value = null;
@@ -4146,7 +4135,7 @@ export function useCalcStore(opts: {
         previousInputSignature = inputSignature;
         previousSlotId = slotId;
         planResultHasDispatched = true;
-        runPlanResult(input, { slotId, inputSignature, input, generation });
+        runPlanResult(input, { slotId, inputSignature, generation });
         if (PLAN_RESULT_PERF_ENABLED) console.info('[perf] levelPlanner.schedule', { delayMs, waitedMs: Math.round((performance.now() - scheduledAt) * 100) / 100 });
         planResultTimer = null;
       }, delayMs);
@@ -4574,6 +4563,8 @@ export function useCalcStore(opts: {
     withExplicitBoost,
     withTargetLevel,
     withCandyTarget,
+    replaceRows,
+    holdGameDate,
     setSrcLevel,
     setBoostLevel,
     fillBoostCandyToCap,

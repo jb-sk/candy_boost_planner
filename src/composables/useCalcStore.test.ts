@@ -660,15 +660,13 @@ describe("useCalcStore", () => {
       expect(ownRequests).toHaveLength(1);
       const { message: request, worker } = ownRequests[0]!;
       // 締切・近似・計算方式の指定は要求に含まれない（計算は常に exact）。
-      expect(Object.keys(request).sort()).toEqual(["input", "inputSignature", "perfEnabled", "requestId", "slotId"]);
+      expect(Object.keys(request).sort()).toEqual(["input", "perfEnabled", "requestId"]);
       const result = solveLevelPlan(request.input as LevelPlannerInput);
       expect(result.performance).toBeDefined();
 
       worker.onmessage?.({ data: {
         kind: "result",
-        slotId: request.slotId,
         requestId: request.requestId,
-        inputSignature: request.inputSignature,
         result,
         durationMs: 1,
       } } as MessageEvent);

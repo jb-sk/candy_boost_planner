@@ -2873,6 +2873,7 @@ export const __levelPlannerTestHooks = {
     fbl01dRowFrontierCache.clear();
   },
   candidateCacheSize: () => candidateCache.size,
+  hasActiveLossLedger: () => activeLossLedger !== null,
   fbl01dFrontierCacheSize: () => fbl01dFrontierCache.size + fbl01dGlobalPrefixCache.size + fbl01dRowFrontierCache.size,
   compareSyntheticStatesForTest: (
     a: Array<Partial<PokemonPlanLine> & { candyDemandMet: boolean; effectiveTargetReached: boolean; level: number; expInLevel: number; species?: number; surplusCandyValue?: number }>,

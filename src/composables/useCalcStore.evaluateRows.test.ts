@@ -79,10 +79,10 @@ describe("useCalcStore: evaluateRows / with*（設計書 §8.2）", () => {
 
   it("evaluateRows(rows.value).plannerInput の署名が、ストアが計画に渡す入力の署名と一致し、行は書き換わらない", async () => {
     const previousWorker = globalThis.Worker;
-    const requests: Array<{ inputSignature: string; input: LevelPlannerInput }> = [];
+    const requests: Array<{ input: LevelPlannerInput }> = [];
     class FakeWorker {
       onmessage: ((event: MessageEvent) => void) | null = null;
-      postMessage(message: { inputSignature: string; input: LevelPlannerInput }) {
+      postMessage(message: { input: LevelPlannerInput }) {
         requests.push(message);
       }
       terminate() {}
@@ -103,7 +103,7 @@ describe("useCalcStore: evaluateRows / with*（設計書 §8.2）", () => {
       const evaluated = store.evaluateRows(store.rows.value);
       expect(snapshot(store.rows.value)).toBe(before);
       expect(evaluated.plannerInput).not.toBeNull();
-      expect(buildPlannerInputSignature(evaluated.plannerInput!)).toBe(sent.inputSignature);
+      expect(buildPlannerInputSignature(evaluated.plannerInput!)).toBe(buildPlannerInputSignature(sent.input));
     } finally {
       Object.defineProperty(globalThis, "Worker", { value: previousWorker, configurable: true, writable: true });
     }
