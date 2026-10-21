@@ -66,7 +66,7 @@ describe("useCalcStore: evaluateRows / with*（設計書 §8.2）", () => {
     store.onRowBoostCandy(a, "150");
     store.setDstLevel(a, 30);
     const d = add("d", 25, 50);
-    store.setRowSleepTarget(d, 30);
+    store.setRowSleepTarget(d, 200);
     const b = add("b", 26, 50);
     store.setRowSleepTarget(b, "stock");
     const c = add("c", 25, 40);

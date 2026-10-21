@@ -236,7 +236,8 @@ export function coalesceKeyOf(op: FineTuneOp): string | undefined {
   }
 }
 
-function clampToRange(value: number, range: OpRange): number {
+/** 値を `opRange` の範囲に収める（整数に切り捨てる）。reducer と、順位・おすすめ量の n' が同じ止め方をするための口。 */
+export function clampToRange(value: number, range: OpRange): number {
   return Math.min(range.max, Math.max(range.min, Math.floor(value)));
 }
 
