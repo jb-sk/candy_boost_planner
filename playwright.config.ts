@@ -72,7 +72,7 @@ export default defineConfig({
     },
     {
       name: 'chromium-mobile',
-      testMatch: '**/responsive-panels.spec.ts',
+      testMatch: ['**/responsive-panels.spec.ts', '**/11-focus-trap.spec.ts'],
       use: { ...devices['iPhone 13'], browserName: 'chromium' },
     },
     // Firefox と WebKit は必要に応じて有効化

@@ -13,6 +13,11 @@
   -webkit-overflow-scrolling: touch;
 }
 
+/* useFocusTrap が開いたときにフォーカスする器。枠線は出さない */
+.exportOverlay:focus {
+  outline: none;
+}
+
 /* ===== Sheet ===== */
 .exportSheetWrap {
   min-height: 100%;
