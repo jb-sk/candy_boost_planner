@@ -194,6 +194,18 @@
           >
             {{ t("calc.reassignBoost") }}
           </button>
+          <!-- 全体を見ながらアメブ・目標Lv・順番を試すモーダルの入口。対象にできる行が1行以上のときだけ出す。
+               アメブなしの種別でも出す（目標Lv・ゆずる・並べ替えは動かせる） -->
+          <button
+            v-if="canFineTune"
+            class="btn btn--soft"
+            data-testid="fine-tune-open-button"
+            type="button"
+            @click="$emit('open-fine-tune')"
+            :title="t('calc.fineTune.openTitle')"
+          >
+            {{ t("calc.fineTune.open") }}
+          </button>
         </div>
         <div class="calcActions__group">
           <button class="btn btn--soft" data-testid="calc-copy-slot-button" type="button" @click="calc.copySlot()" :disabled="!calc.canCopySlot.value" :title="t('calc.copySlotTitle')">
@@ -998,6 +1010,7 @@ import type { AppLocale } from "../i18n";
 import { suppressNextClick } from "../utils/suppressNextClick";
 import { trackPress, type Press } from "../utils/trackPress";
 import { useRowReorderDrag } from "../composables/useRowReorderDrag";
+import { hasFineTuneTarget } from "../domain/fine-tune/draft";
 import RowReorderNav from "./RowReorderNav.vue";
 
 
@@ -1005,6 +1018,7 @@ const emit = defineEmits<{
   (e: "open-help"): void;
   (e: "open-settings"): void;
   (e: "open-add-modal"): void;
+  (e: "open-fine-tune"): void;
 }>();
 
 const props = defineProps<{
@@ -1013,6 +1027,9 @@ const props = defineProps<{
 
 const calc = props.calc;
 const { t, locale } = useI18n();
+
+/** やりくりの入口を出すか（対象にできる行が1行以上、設計書 §4.1） */
+const canFineTune = computed(() => hasFineTuneTarget(calc.rows.value, calc.evaluateRows));
 
 /** 行ごとの計画結果（テンプレートで getPokemonResult を繰り返さず Map を O(1) 参照） */
 function rowP(r: CalcRowView): PokemonPlanResult | null {

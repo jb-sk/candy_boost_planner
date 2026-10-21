@@ -69,10 +69,6 @@ type SolverPlan = {
   plan: OraclePlan;
   result: LevelPlannerResult;
 };
-type OptimizationOraclePolicy = {
-  /** この集合に入った行だけ、将来のスライダーでアメブ・かけらを譲れる。 */
-  donorPokemonIds: Set<string>;
-};
 
 const modes: SolverItemCompareMode[] = ['surplusFirst', 'legacyImproved', 'surplusGateFirst'];
 const expTypes: ExpType[] = [600, 900];
@@ -713,93 +709,6 @@ function enumerateCandidates(
   return candidates;
 }
 
-function enumerateOptimizationPreviewCandidates(
-  pokemon: OracleCandidate['pokemon'],
-  input: LevelPlannerInput,
-  usage: OracleUsage,
-  policy: OptimizationOraclePolicy,
-): OracleCandidate[] {
-  const inventory = remainingInventory(input, usage);
-  const remainingBoost = Math.max(0, input.boost.limit - usage.boost);
-  const remainingShards = Math.max(0, input.dreamShards - usage.shards);
-  const maxBoost = maxBoostFor(pokemon, input, remainingBoost);
-  const boostValues = policy.donorPokemonIds.has(pokemon.pokemonId)
-    ? Array.from({ length: maxBoost + 1 }, (_, value) => value)
-    : [maxBoost];
-  const candidates: OracleCandidate[] = [];
-  for (const boostBudget of boostValues) {
-    const target = targetMixed(pokemon, input.boost.kind, boostBudget);
-    if (pokemon.candyTarget) {
-      const totalBudget = Math.min(pokemon.candyTarget.totalCandyUnits, Math.max(0, inventoryValueFor(pokemon, inventory)));
-      const reached = simulateCandyBudget(pokemon, Math.min(boostBudget, totalBudget), totalBudget, remainingShards, input.boost.kind);
-      const total = reached.boostUsed + reached.normalUsed;
-      for (const supply of enumerateSupplies(total, pokemon, inventory)) {
-        candidates.push({ pokemon, line: makeCandyTargetLine(pokemon, input, Math.min(boostBudget, totalBudget), totalBudget, remainingShards, supply) });
-      }
-      continue;
-    }
-    const targetTotal = target.boostCandy + target.normalCandy;
-    const maxCandyBudget = Math.min(
-      targetTotal,
-      Math.max(0, inventoryValueFor(pokemon, inventory)),
-    );
-    const byUse = new Map<string, { boostBudget: number; normalBudget: number; total: number }>();
-    for (let normalBudget = 0; normalBudget <= maxCandyBudget; normalBudget++) {
-      const reached = simulate(pokemon, boostBudget, normalBudget, remainingShards, pokemon.effectiveLevel, pokemon.effectiveExp, input.boost.kind);
-      const total = reached.boostUsed + reached.normalUsed;
-      const key = `${reached.level}/${reached.expInLevel}/${reached.boostUsed}/${reached.normalUsed}/${reached.shards}`;
-      if (!byUse.has(key)) byUse.set(key, { boostBudget, normalBudget, total });
-    }
-    for (const option of byUse.values()) {
-      for (const supply of enumerateSupplies(option.total, pokemon, inventory)) {
-        candidates.push({ pokemon, line: makeLine(pokemon, input, option.boostBudget, option.normalBudget, remainingShards, supply) });
-      }
-    }
-  }
-  return candidates;
-}
-
-function compareOptimizationPreviewPlan(a: OraclePlan, b: OraclePlan, mode: SolverItemCompareMode): number {
-  if (a.reachedPrefixCount !== b.reachedPrefixCount) return a.reachedPrefixCount > b.reachedPrefixCount ? 1 : -1;
-  if (a.boundary && b.boundary) {
-    const boundary = compareLevel(a.boundary.line, b.boundary.line);
-    if (boundary) return boundary;
-  }
-  return compareCoreAllocationPlan(a, b, mode);
-}
-
-function solveByCoreAllocationOracle(rawInput: LevelPlannerInput, mode: SolverItemCompareMode, label = ''): OracleResult {
-  const input = {
-    ...rawInput,
-    boost: { ...rawInput.boost, limit: rawInput.boost.kind === 'none' ? 0 : rawInput.boost.limit },
-    options: { ...(rawInput.options ?? {}), itemCompareMode: mode },
-  };
-  const pokemonList = normalizePokemon(input, mode);
-  const candidateCounts = Array.from({ length: pokemonList.length }, () => 0);
-  let best: OraclePlan | undefined;
-  let planCount = 0;
-  const visit = (index: number, choices: OracleCandidate[], usage: OracleUsage): void => {
-    if (index === pokemonList.length) {
-      const plan = buildPlan(choices, mode);
-      if (mode === 'surplusFirst' && !satisfiesSurplusFirstGate(plan)) return;
-      planCount++;
-      if (!best || compareCoreAllocationPlan(plan, best, mode) > 0) best = plan;
-      return;
-    }
-    const candidates = enumerateCandidates(pokemonList[index], input, usage);
-    candidateCounts[index] = Math.max(candidateCounts[index], candidates.length);
-    for (const candidate of candidates) {
-      const nextUsage = mergeUsage(usage, usageFrom(candidate.pokemon, candidate.line));
-      if (!canConsume(nextUsage, input)) continue;
-      if (planCount > MAX_ORACLE_PLANS) throw new Error(`full-plan oracle exploded: ${label}, ${planCount} plans, candidates=${candidateCounts.join(',')}`);
-      visit(index + 1, [...choices, candidate], nextUsage);
-    }
-  };
-  visit(0, [], emptyUsage());
-  if (!best) throw new Error(`full-plan oracle found no feasible plan: candidates=${candidateCounts.join(',')}`);
-  return { best, planCount, candidateCounts };
-}
-
 function solveByFeasibilityOracle(rawInput: LevelPlannerInput, mode: SolverItemCompareMode, label = ''): OracleResult {
   const input = {
     ...rawInput,
@@ -884,42 +793,6 @@ function solveByFixedDemandSupplyOracle(rawInput: LevelPlannerInput, mode: Solve
   };
   visit(0, [], emptyUsage());
   if (!best) throw new Error(`fixed-demand oracle found no feasible plan: candidates=${candidateCounts.join(',')}`);
-  return { best, planCount, candidateCounts };
-}
-
-function solveByOptimizationPreviewOracle(
-  rawInput: LevelPlannerInput,
-  mode: SolverItemCompareMode,
-  policy: OptimizationOraclePolicy,
-  label = '',
-): OracleResult {
-  const input = {
-    ...rawInput,
-    boost: { ...rawInput.boost, limit: rawInput.boost.kind === 'none' ? 0 : rawInput.boost.limit },
-    options: { ...(rawInput.options ?? {}), itemCompareMode: mode },
-  };
-  const pokemonList = normalizePokemon(input, mode);
-  const candidateCounts = Array.from({ length: pokemonList.length }, () => 0);
-  let best: OraclePlan | undefined;
-  let planCount = 0;
-  const visit = (index: number, choices: OracleCandidate[], usage: OracleUsage): void => {
-    if (index === pokemonList.length) {
-      const plan = buildPlan(choices, mode);
-      planCount++;
-      if (!best || compareOptimizationPreviewPlan(plan, best, mode) > 0) best = plan;
-      return;
-    }
-    const candidates = enumerateOptimizationPreviewCandidates(pokemonList[index], input, usage, policy);
-    candidateCounts[index] = Math.max(candidateCounts[index], candidates.length);
-    for (const candidate of candidates) {
-      const nextUsage = mergeUsage(usage, usageFrom(candidate.pokemon, candidate.line));
-      if (!canConsume(nextUsage, input)) continue;
-      if (planCount > MAX_ORACLE_PLANS) throw new Error(`optimization oracle exploded: ${label}, ${planCount} plans, candidates=${candidateCounts.join(',')}`);
-      visit(index + 1, [...choices, candidate], nextUsage);
-    }
-  };
-  visit(0, [], emptyUsage());
-  if (!best) throw new Error(`optimization oracle found no feasible plan: candidates=${candidateCounts.join(',')}`);
   return { best, planCount, candidateCounts };
 }
 
@@ -1345,7 +1218,6 @@ describe('level planner full-plan oracle', () => {
     expect(fed.usage.shards).toBeGreaterThan(starved.usage.shards);
     for (const mode of modes) {
       expect(compareCoreAllocationPlan(fed, starved, mode), `mode=${mode}`).toBe(0);
-      expect(compareOptimizationPreviewPlan(fed, starved, mode), `mode=${mode}`).toBe(0);
     }
   });
 
@@ -1460,34 +1332,5 @@ describe('level planner full-plan oracle', () => {
     const checked = checkedFeasibility + checkedRefined;
     expect(checked, `oracle random detection checked=${checked}, refined=${checkedRefined}, skippedTooLarge=${skipped}`).toBeGreaterThanOrEqual(seeds.length);
     expect(checkedRefined, `oracle random detection refined=${checkedRefined}, feasibilityOnly=${checkedFeasibility}, skippedTooLarge=${skipped}`).toBeGreaterThan(0);
-  });
-});
-
-describe.skip('level planner optimization preview oracle', () => {
-  it('譲る指定された上位だけをデブーストし、境界Lv+EXP最大化を検証する', () => {
-    const input = caseInput({
-      pokemonList: [
-        pokemon(0, { pokemonId: 'donor', pokedexId: 30, type: 'grass', requestedBoostCandy: 2 }),
-        pokemon(1, { pokemonId: 'locked', pokedexId: 31, type: 'water', requestedBoostCandy: 2 }),
-        pokemon(2, { pokemonId: 'boundary', pokedexId: 32, type: 'electric', requestedBoostCandy: 2 }),
-      ],
-      boost: { kind: 'full', limit: 4 },
-      candyInventory: {
-        species: { '30': 4, '31': 4, '32': 4 },
-        typeCandy: { grass: { s: 2, m: 0 }, water: { s: 2, m: 0 }, electric: { s: 2, m: 0 } },
-        universal: { s: 8, m: 1, l: 0 },
-      },
-    });
-
-    const core = solveByCoreAllocationOracle(input, 'surplusFirst', 'optimization baseline');
-    const preview = solveByOptimizationPreviewOracle(
-      input,
-      'surplusFirst',
-      { donorPokemonIds: new Set(['donor']) },
-      'optimization donor-only',
-    );
-
-    expect(preview.best.choices[1].line.boostedCandyUnits).toBe(core.best.choices[1].line.boostedCandyUnits);
-    expect(compareOptimizationPreviewPlan(preview.best, core.best, 'surplusFirst')).toBeGreaterThanOrEqual(0);
   });
 });

@@ -1,0 +1,753 @@
+/* FineTuneModal — やりくりモーダル（設計書 やりくりモーダル_設計書.md §4）。
+   スマホは全画面・行は2段。680px 以上は中央のカードで、行は見出しつきの表（grid）にする。
+   色は CSS 変数だけで書き、テーマの装飾は各テーマの CSS 側に置く。 */
+
+/* ===== 器 =====
+   680px 以上は中央のカード。:has() は使えないので、器のクラスで選ぶ（AddPokemonModal と同じ流儀）。 */
+@media (min-width: 680px) {
+  .modal-overlay.fineTune-overlay {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  /* components.css の `.modal`（max-width: 890px、top/left: 0）より後ろに読まれても勝てるよう、クラスを重ねる */
+  .modal.fineTuneModal {
+    position: relative;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    width: 100%;
+    max-width: 1040px;
+    max-height: 100%;
+    margin: 0;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+  }
+}
+
+/* ===== タブ・ヘッダ ===== */
+.fineTuneModal__tabsBar {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--paper);
+}
+
+.fineTuneModal__tabsBar .modalTab {
+  font-size: 15px;
+}
+
+.fineTuneModal__loading {
+  margin: 0;
+  padding: 24px 16px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* ===== 上部（サマリー・診断・受け取る側）。スクロールの外に固定する ===== */
+.fineTuneModal__top {
+  flex: 0 0 auto;
+  max-height: 45%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--paper);
+}
+
+.fineTuneSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 0;
+}
+
+.fineTuneSummary__item {
+  margin: 0;
+}
+
+.fineTuneSummary__item dt {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.fineTuneSummary__item dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent-strong);
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.fineTuneModal__warn {
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.fineTuneModal__stepLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 8px;
+}
+
+.fineTuneModal__stepLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.fineTuneModal__stepChoices {
+  display: flex;
+  gap: 4px;
+}
+
+.fineTuneModal__stepChoice {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 40px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.fineTuneModal__stepChoice--on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--btn-ink);
+}
+
+.fineTuneModal__calculating {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-strong);
+}
+
+.fineTuneModal__diagnosis {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.fineTuneModal__diagnosis p {
+  margin: 0;
+}
+
+.fineTuneModal__also {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.fineTuneReceiver {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+}
+
+.fineTuneReceiver__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+
+.fineTuneReceiver__name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.fineTuneReceiver__hint,
+.fineTuneReceiver__notice {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.fineTuneReceiver__notice {
+  margin-top: 4px;
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* ===== 一覧 ===== */
+.fineTuneModal__list {
+  padding: 8px 12px;
+}
+
+/* 計算中は変更後の値を薄くする（最新の結果が今の下書きの結果でない間） */
+.fineTuneModal--pending .fineTuneRow__value--changed,
+.fineTuneModal--pending .fineTuneRow__delta,
+.fineTuneModal--pending .fineTuneBar__fill,
+.fineTuneModal--pending .fineTuneSummary__item dd {
+  opacity: 0.55;
+}
+
+/* 列見出しは表のときだけ */
+.fineTuneHead {
+  display: none;
+}
+
+.fineTuneRow {
+  display: grid;
+  grid-template-columns: 44px repeat(3, minmax(0, 1fr));
+  grid-template-areas:
+    "move name name name"
+    "move exp exp exp"
+    "move boost boost boost"
+    "move target candy shards"
+    "move sub sub sub";
+  column-gap: 8px;
+  row-gap: 4px;
+  align-items: center;
+  padding: 10px 4px;
+  border-bottom: 1px solid rgba(var(--ink-rgb), 0.12);
+}
+
+.fineTuneRow--noBoost {
+  grid-template-areas:
+    "move name name name"
+    "move exp exp exp"
+    "move target candy shards"
+    "move sub sub sub";
+}
+
+.fineTuneRow--excluded .fineTuneRow__name,
+.fineTuneRow--excluded .fineTuneRow__cell {
+  opacity: 0.6;
+}
+
+.fineTuneRow--dragging {
+  opacity: 0.5;
+}
+
+.fineTuneRow--dragOver {
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
+.fineTuneRow__move {
+  grid-area: move;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  align-self: start;
+  gap: 4px;
+}
+
+.fineTuneRow__handle {
+  -webkit-appearance: none;
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: rgba(var(--ink-rgb), 0.72);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  line-height: 1;
+}
+
+.fineTuneRow__handle:active {
+  cursor: grabbing;
+  color: var(--accent);
+}
+
+.fineTuneRow__handleIcon {
+  display: block;
+  flex-shrink: 0;
+}
+
+.fineTuneRow__arrows {
+  display: flex;
+  gap: 2px;
+}
+
+.fineTuneRow__arrow,
+.fineTuneRow__step {
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: rgba(var(--accent-rgb), 0.1);
+  box-shadow: none;
+  color: var(--accent-strong);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.fineTuneRow__arrow {
+  min-width: 26px;
+  padding: 0 2px;
+}
+
+.fineTuneRow__arrow:hover:not(:disabled),
+.fineTuneRow__step:hover:not(:disabled) {
+  background: rgba(var(--accent-rgb), 0.2);
+}
+
+.fineTuneRow__arrow:disabled,
+.fineTuneRow__step:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.fineTuneRow__name {
+  grid-area: name;
+  min-width: 0;
+}
+
+.fineTuneRow__titleLine {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fineTuneRow__title {
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fineTuneRow__nature {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.fineTuneRow__nature--up {
+  color: var(--nature-up);
+}
+
+.fineTuneRow__nature--down {
+  color: var(--nature-down);
+}
+
+.fineTuneRow__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 3px;
+}
+
+.fineTuneRow__tag {
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: rgba(var(--ink-rgb), 0.08);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.fineTuneRow__tag--ok {
+  background: rgba(var(--bar-fill-rgb), 0.18);
+}
+
+.fineTuneRow__tag--ng,
+.fineTuneRow__tag--first {
+  background: rgba(var(--danger-rgb), 0.14);
+  color: var(--danger);
+}
+
+.fineTuneRow__tag--rank {
+  background: var(--accent);
+  color: var(--btn-ink);
+}
+
+.fineTuneRow__cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.fineTuneRow__cell--target {
+  grid-area: target;
+}
+
+.fineTuneRow__cell--exp {
+  grid-area: exp;
+  flex-direction: column;
+  align-items: stretch;
+  flex-wrap: nowrap;
+}
+
+.fineTuneRow__cell--boost {
+  grid-area: boost;
+  flex-direction: column;
+  align-items: flex-start;
+  flex-wrap: nowrap;
+}
+
+.fineTuneRow__cell--candy {
+  grid-area: candy;
+}
+
+.fineTuneRow__cell--shards {
+  grid-area: shards;
+}
+
+/* スマホは見出しが無いので、各欄に小さく項目名を添える */
+.fineTuneRow__label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.fineTuneRow__cell--boost .fineTuneRow__label {
+  display: none;
+}
+
+.fineTuneRow__stepper {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.fineTuneRow__value {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.fineTuneRow__cell--target .fineTuneRow__value {
+  min-width: 2.2em;
+  text-align: center;
+}
+
+/* アメ・かけらは桁が多いので、`基準 → 変更後` を空白で折り返せるようにする（数字の途中では折れない） */
+.fineTuneRow__cell--candy .fineTuneRow__value,
+.fineTuneRow__cell--candy .fineTuneRow__delta,
+.fineTuneRow__cell--shards .fineTuneRow__value,
+.fineTuneRow__cell--shards .fineTuneRow__delta {
+  white-space: normal;
+}
+
+.fineTuneRow__value--changed {
+  color: var(--accent-strong);
+}
+
+.fineTuneRow__delta {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.fineTuneRow__input {
+  width: 56px;
+  height: 32px;
+  padding: 0 4px;
+  text-align: center;
+  font-size: 16px;
+}
+
+.fineTuneRow__reach {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.fineTuneRow__reachLabel {
+  margin-right: 4px;
+  font-size: 11px;
+}
+
+.fineTuneRow__sub {
+  grid-area: sub;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fineTuneRow__sub:empty {
+  display: none;
+}
+
+.fineTuneRow__note,
+.fineTuneRow__advice {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.fineTuneRow__advice {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.fineTuneRow__perBoost {
+  margin-left: 8px;
+  color: var(--accent-strong);
+}
+
+.fineTuneRow__recommend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.fineTuneRow__give {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  width: 100%;
+}
+
+.fineTuneRow__giveLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.fineTuneRow__giveValue {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* ===== EXP の棒。幅の割合と transition: width で伸び縮み（transform: scaleX は角丸が崩れる） ===== */
+.fineTuneBar {
+  position: relative;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--bar-track);
+  overflow: hidden;
+}
+
+.fineTuneBar__fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--bar-fill);
+  transition: width 0.25s ease, opacity 0.15s;
+}
+
+/* 基準の位置（細い印）と、ゆずる側の下がった目標の位置 */
+.fineTuneBar__base,
+.fineTuneBar__target {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  margin-left: -1px;
+}
+
+.fineTuneBar__base {
+  background: rgba(var(--ink-rgb), 0.6);
+}
+
+.fineTuneBar__target {
+  background: var(--danger);
+}
+
+/* ===== スライダー。つまみは -webkit-appearance: none と ::-webkit-slider-thumb / ::-moz-range-thumb ===== */
+.fineTuneRow__slider {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1 1 120px;
+  min-width: 100px;
+  max-width: 480px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  /* テーマの input 全体の枠・影・太字（Blue・Vivid）を受けない */
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.fineTuneRow__slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--bar-track);
+}
+
+.fineTuneRow__slider::-moz-range-track {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--bar-track);
+}
+
+.fineTuneRow__slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  margin-top: -8px;
+  border: 2px solid var(--paper);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.fineTuneRow__slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--paper);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.fineTuneRow__slider:focus {
+  outline: none;
+  border: 0;
+  box-shadow: none;
+}
+
+.fineTuneRow__slider:focus::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(var(--ring-rgb), 0.35);
+}
+
+.fineTuneRow__slider:focus::-moz-range-thumb {
+  box-shadow: 0 0 0 3px rgba(var(--ring-rgb), 0.35);
+}
+
+/* ===== 破棄の確認・フッター ===== */
+.fineTuneModal__confirm {
+  flex-shrink: 0;
+  padding: 0 16px;
+}
+
+.fineTuneModal__confirm:not(:empty) {
+  padding-top: 8px;
+}
+
+.fineTuneModal__footer {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 16px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--border);
+  background: var(--paper);
+}
+
+.fineTuneModal__history,
+.fineTuneModal__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fineTuneModal__history .historyBtn {
+  height: 36px;
+  padding: 0 6px;
+}
+
+/* ===== 680px 以上は表 ===== */
+@media (min-width: 680px) {
+  .fineTuneHead,
+  .fineTuneRow {
+    grid-template-columns: 52px minmax(84px, 1.1fr) 100px minmax(96px, 1.4fr) 132px minmax(64px, 0.8fr) minmax(80px, 1fr);
+    column-gap: 6px;
+  }
+
+  .fineTuneRow {
+    grid-template-areas:
+      "move name target exp boost candy shards"
+      ". sub sub sub sub sub sub";
+  }
+
+  .fineTuneRow--noBoost {
+    grid-template-areas:
+      "move name target exp exp candy shards"
+      ". sub sub sub sub sub sub";
+  }
+
+  .fineTuneHead {
+    display: grid;
+    position: sticky;
+    top: -8px;
+    z-index: 1;
+    padding: 6px 4px;
+    border-bottom: 1px solid var(--border);
+    background: var(--paper);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+
+  .fineTuneHead__cell--move {
+    grid-column: 1;
+  }
+
+  /* アメブなしのスロットは、行の EXP 欄がアメブ欄まで広がる（上の .fineTuneRow--noBoost の areas と同じ） */
+  .fineTuneHead--noBoost .fineTuneHead__cell--exp {
+    grid-column: span 2;
+  }
+
+  .fineTuneRow__label {
+    display: none;
+  }
+
+  .fineTuneRow__cell {
+    flex-wrap: wrap;
+  }
+
+  .fineTuneRow__cell--target,
+  .fineTuneRow__cell--candy,
+  .fineTuneRow__cell--shards {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

@@ -68,6 +68,7 @@
         @open-help="showHelp = true"
         @open-settings="openSettings"
         @open-add-modal="showAddModal = true"
+        @open-fine-tune="showFineTune = true"
       />
 
       <BoxPanel
@@ -140,6 +141,8 @@
 
     <AddPokemonModal v-if="showAddModal" :box="box" :calc="calc" @close="showAddModal = false" @added="onAddModalAdded" />
 
+    <FineTuneModal v-if="showFineTune" :calc="calc" @close="showFineTune = false" />
+
     <OnboardingTour v-if="onboarding.isActive.value" :onboarding="onboarding" />
   </main>
 </template>
@@ -199,6 +202,7 @@ const loadHelpOverlay = () => import("./components/HelpOverlay.vue");
 const loadEventHistoryOverlay = () => import("./components/EventHistoryOverlay.vue");
 const loadAddPokemonModal = () => import("./components/AddPokemonModal.vue");
 const loadOnboardingTour = () => import("./components/OnboardingTour.vue");
+const loadFineTuneModal = () => import("./components/FineTuneModal.vue");
 
 function createAsyncOverlayComponent(loader: () => Promise<{ default: Component }>) {
   return defineAsyncComponent({
@@ -212,6 +216,7 @@ const HelpOverlay = createAsyncOverlayComponent(loadHelpOverlay);
 const EventHistoryOverlay = createAsyncOverlayComponent(loadEventHistoryOverlay);
 const AddPokemonModal = createAsyncOverlayComponent(loadAddPokemonModal);
 const OnboardingTour = createAsyncOverlayComponent(loadOnboardingTour);
+const FineTuneModal = createAsyncOverlayComponent(loadFineTuneModal);
 
 function preloadOverlayChunks() {
   return Promise.all([
@@ -220,6 +225,7 @@ function preloadOverlayChunks() {
     loadEventHistoryOverlay(),
     loadAddPokemonModal(),
     loadOnboardingTour(),
+    loadFineTuneModal(),
   ]);
 }
 
@@ -229,6 +235,7 @@ const showHelp = ref(false);
 const showEventHistory = ref(false);
 const showSettings = ref(false);
 const showAddModal = ref(false);
+const showFineTune = ref(false);
 /** 初回ペイント負荷分散: 計算機の直後に Box をマウントするとフレームが重いため、初回フレーム後にマウント */
 const mountBoxPanel = ref(false);
 const themeSwitching = ref(false);
@@ -371,6 +378,8 @@ const overlayOpen = computed(() => (
   || showEventHistory.value
   || showSettings.value
   || showAddModal.value
+  // 漏らすと Ctrl+Z が計算機の履歴と、モーダルの下書きの履歴の両方に効く
+  || showFineTune.value
   || onboarding.isActive.value
 ));
 

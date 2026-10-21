@@ -240,8 +240,9 @@ input:focus, select:focus, textarea:focus {
   transform: none;
 }
 
-/* 入力項目が多い追加フォームは、罫線と文字を水平に保つ。 */
-.modal.addModal {
+/* 入力項目が多い追加フォーム・やりくりは、罫線と文字を水平に保つ。 */
+.modal.addModal,
+.modal.fineTuneModal {
   transform: none;
 }
 

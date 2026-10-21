@@ -24,6 +24,7 @@
 @import "./components/SettingsOverlay.css";
 @import "./components/HelpOverlay.css";
 @import "./components/EventHistoryOverlay.css";
+@import "./components/FineTuneModal.css";
 @import "./components/LevelPicker.css";
 @import "./components/NumericKeypad.css";
 @import "./components/NatureSelect.css";

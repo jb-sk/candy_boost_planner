@@ -141,14 +141,35 @@ export function candyUnitsOf(row: CalcRow, evaluated: EvaluatedRows): number {
   return evaluated.byId.get(row.id)?.candyNeed ?? 0;
 }
 
-/** 対象外の行の理由（§7）。操作できる行は null。 */
-export function rowExclusion(row: CalcRow, evaluated: EvaluatedRows): RowExclusion | null {
+/**
+ * 対象外の行の理由（§7）。操作できる行は null。
+ * 評価が要るのは時間の睡眠目標の行（総アメ数が 0 か）だけなので、`evaluated` は関数でも渡せる（入口のボタンの判定で遅らせる）。
+ */
+export function rowExclusion(row: CalcRow, evaluated: EvaluatedRows | (() => EvaluatedRows)): RowExclusion | null {
   if (row.candyTarget !== undefined) return "candyTarget";
   if (sleepTargetTraits(row).candy === "none") return "noCandy";
-  if (row.sleepTargetHours !== undefined && candyUnitsOf(row, evaluated) === 0) return "sleepOnly";
+  if (row.sleepTargetHours !== undefined && candyUnitsOf(row, typeof evaluated === "function" ? evaluated() : evaluated) === 0) {
+    return "sleepOnly";
+  }
   if (row.srcLevel >= MAX_LEVEL) return "maxLevel";
   if (row.pokedexId === undefined || !isValidPokedexId(row.pokedexId)) return "unknownPokemon";
   return null;
+}
+
+/**
+ * 入口のボタンを出すか（§4.1）。操作の対象にできる行（ゆずる側にだけなれる個数指定の行を含む）が1行以上ある。
+ * 行一覧の評価は、時間の睡眠目標の行があって初めて必要になるときだけ、1回行う。
+ */
+export function hasFineTuneTarget(
+  rows: readonly CalcRow[],
+  evaluate: (rows: readonly CalcRow[]) => EvaluatedRows,
+): boolean {
+  let evaluated: EvaluatedRows | null = null;
+  const lazy = (): EvaluatedRows => (evaluated ??= evaluate(rows));
+  return rows.some((row) => {
+    const exclusion = rowExclusion(row, lazy);
+    return exclusion === null || exclusion === "candyTarget";
+  });
 }
 
 /** モード1（アメブ・目標Lv）の操作ができる行。対象外の行とゆずる側の行は不可（§7、D23）。 */
