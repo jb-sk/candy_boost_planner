@@ -64,7 +64,7 @@
       <div class="fineTuneBar" data-testid="fine-tune-row-bar" :data-percent="barPercent === null ? undefined : String(Math.round(barPercent))">
         <div class="fineTuneBar__fill" :style="{ width: `${barPercent ?? 0}%` }"></div>
         <div v-if="barBaseMark !== null" class="fineTuneBar__base" :style="{ left: `${barBaseMark}%` }"></div>
-        <div v-if="mode === 'yield' && row.bars.yieldTarget !== null" class="fineTuneBar__target" data-testid="fine-tune-row-bar-target" :style="{ left: `${row.bars.yieldTarget}%` }"></div>
+        <div v-if="mode === 'yield' && barTarget !== null" class="fineTuneBar__target" data-testid="fine-tune-row-bar-target" :style="{ left: `${barTarget}%` }"></div>
       </div>
       <span v-if="row.reachLevel.value !== null" class="fineTuneRow__reach">
         <span class="fineTuneRow__reachLabel">{{ t(row.candyReachLabel ? "calc.row.candyReachedLv" : "calc.row.reachedLv") }}</span>
@@ -174,7 +174,7 @@ import { computed, nextTick, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import type { NoEffectReason, RowAdvice } from "../domain/fine-tune/advice";
 import type { FineTuneOp, RowExclusion } from "../domain/fine-tune/draft";
-import type { Change, FineTuneRowView } from "../domain/fine-tune/rowView";
+import type { Change, FineTuneRowView, GiverPreview } from "../domain/fine-tune/rowView";
 import { vKeypad } from "../composables/useNumericKeypad";
 
 /**
@@ -195,6 +195,8 @@ const props = defineProps<{
   dragging: boolean;
   dragOver: boolean;
   fmt: (n: number) => string;
+  /** ゆずる側のスライダーを動かしている間の棒（この行のものだけ。無ければ null） */
+  live: GiverPreview | null;
   /** 行名を引く（効果の札の名前） */
   titleOf: (rowId: string) => string;
 }>();
@@ -202,8 +204,10 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "op", op: FineTuneOp): void;
   (e: "handle-press", rowId: string, event: Event): void;
-  /** スライダーを動かしている間 true（離すと計算する、の案内に使う） */
-  (e: "give-active", active: boolean): void;
+  /** スライダーを動かしている間の値（A の棒と案内に使う。op は投げない） */
+  (e: "give-input", rowId: string, candy: number): void;
+  /** スライダーを離した（op を投げたあとに上がる） */
+  (e: "give-release"): void;
 }>();
 
 const { t } = useI18n();
@@ -273,7 +277,11 @@ const reachLevelText = computed(() => {
 });
 
 // ===== EXP の棒（D30。モード1は到達Lvの次のLvまで、モード2は現在Lv→基準の目標） =====
-const barPercent = computed(() => (props.mode === "raise" ? props.row.bars.raise.value : props.row.bars.yield.value));
+const barPercent = computed(() => {
+  if (props.mode === "raise") return props.row.bars.raise.value;
+  return props.live !== null ? props.live.fill : props.row.bars.yield.value;
+});
+const barTarget = computed(() => (props.live !== null ? props.live.target : props.row.bars.yieldTarget));
 const barBaseMark = computed(() => {
   if (props.mode === "yield") return props.row.bars.yield.base;
   // モード1は到達Lvが基準と同じときだけ、基準の位置を重ねる（Lv が変わると棒は一周する）
@@ -350,12 +358,12 @@ const giveValue = computed(() => giveDraft.value ?? props.row.giver?.value ?? 0)
 
 function onGiveInput(raw: string): void {
   giveDraft.value = Number(raw);
-  emit("give-active", true);
+  emit("give-input", props.row.id, giveDraft.value);
 }
 
 function onGiveChange(raw: string): void {
   giveDraft.value = null;
-  emit("give-active", false);
   emit("op", { kind: "giverSet", rowId: props.row.id, candy: Number(raw) });
+  emit("give-release");
 }
 </script>

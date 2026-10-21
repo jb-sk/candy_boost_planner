@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { effectScope, ref, toRaw } from "vue";
+import { effectScope, nextTick, ref, toRaw } from "vue";
 import type { Composer } from "vue-i18n";
 import { addBoxRow, createCalcStore } from "../../tests/helpers/fakeIndividuals";
 import { cancelPersist } from "../persistence/deferredPersist";
@@ -67,9 +67,10 @@ describe("useFineTune（設計書 §10.4）", () => {
   });
 
   /** 2匹。計算機の計算が終わるまで待つ。 */
-  async function makeStore() {
+  async function makeStore(totalShards?: string) {
     const store = createCalcStore({ locale: ref("ja"), t });
     store.setSlotBoostKind("full");
+    if (totalShards !== undefined) store.onTotalShardsInput(totalShards);
     store.onBoostCandyRemainingInput("5000");
     store.updateSpeciesCandy(133, 100_000);
     const add = (boxId: string, pokedexId: number) => {
@@ -243,6 +244,65 @@ describe("useFineTune（設計書 §10.4）", () => {
     expect(hasFineTuneTarget(empty.rows.value, empty.evaluateRows)).toBe(false);
     const { store } = await makeStore();
     expect(hasFineTuneTarget(store.rows.value, store.evaluateRows)).toBe(true);
+  });
+
+  it("ゆずる側のスライダーを動かしている間は、ソルバーを呼ばずに A の棒の塗りと目標の印を出し、離したあとの印と一致する", async () => {
+    const { store } = await makeStore("1000000");
+    // 上の行 b がゆずる側、下の行 a が受け取る側
+    const [b, a] = store.rows.value.map((r) => r.id) as [string, string];
+    const { fineTune, runs } = open(store);
+    expect(fineTune.dispatch({ kind: "receiverSelect", rowId: a })).toHaveProperty("state");
+    expect(fineTune.state.value!.rows.map((r) => r.id)).toEqual([b, a]);
+    const view = () => fineTune.rowViews.value.find((r) => r.id === b)!;
+    const m0 = view().giver!.m0;
+    const fill0 = view().bars.yield.value!;
+    expect(view().giver!.usable).not.toBeNull();
+    const m = Math.floor(m0 / 2);
+    expect(m).toBeLessThan(view().giver!.usable!);
+
+    fineTune.setGivePreview(b, m);
+    expect(fineTune.giveDragging.value).toBe(true);
+    const live = fineTune.givePreview.value!;
+    expect(live.rowId).toBe(b);
+    // 塗りは m 個ぶんに縮み、目標の印は塗りより先（目標は m 個 + アメブ分の到達点）にある
+    expect(live.fill!).toBeLessThan(fill0);
+    expect(live.fill!).toBeGreaterThan(0);
+    expect(live.target).not.toBeNull();
+    // 動かしている間は op も実行役も動かない
+    expect(fineTune.state.value!.givers[b]).toBeUndefined();
+    expect(runs).toHaveLength(0);
+
+    // 離すと同じ値の op が通り、印は reducer が作った行から出した値と一致する
+    fineTune.dispatch({ kind: "giverSet", rowId: b, candy: m });
+    expect(view().bars.yieldTarget).toBe(live.target);
+    fineTune.releaseGivePreview();
+    // 結果が届くまで動かしている間の棒を保ち、届いたら止める
+    expect(fineTune.givePreview.value).not.toBeNull();
+    expect(fineTune.giveDragging.value).toBe(false);
+    await vi.waitFor(() => expect(runs).toHaveLength(1));
+    runs[0]!.onResult({ result: store.planResult.value!, durationMs: 1 });
+    await nextTick();
+    expect(fineTune.givePreview.value).toBeNull();
+  });
+
+  it("入口のボタン: 実ストアでも、個数指定の行はゆずる側になれるときだけ数える", () => {
+    const store = createCalcStore({ locale: ref("ja"), t });
+    store.setSlotBoostKind("full");
+    store.updateSpeciesCandy(133, 100_000);
+    // Lv上限の行は、個数指定を入れても使うアメが 0 個
+    addBoxRow(store, { boxId: "m", pokedexId: 133, srcLevel: 70, dstLevelDefault: 70, expType: 600, nature: "normal" });
+    const maxRowId = store.rows.value[0]!.id;
+    store.onRowCandyTarget(maxRowId, "5");
+    expect(hasFineTuneTarget(store.rows.value, store.evaluateRows)).toBe(false);
+    // 普通の個数指定の行があれば true
+    addBoxRow(store, { boxId: "n", pokedexId: 133, srcLevel: 10, dstLevelDefault: 50, expType: 600, nature: "normal" });
+    const normalRowId = store.rows.value[1]!.id;
+    store.onRowCandyTarget(normalRowId, "20");
+    expect(store.rows.value[1]!.candyTarget).toBe(20);
+    expect(hasFineTuneTarget(store.rows.value, store.evaluateRows)).toBe(true);
+    // 睡眠目標モードにすると個数指定は外れ、対象外
+    store.setRowSleepTarget(normalRowId, "all");
+    expect(hasFineTuneTarget(store.rows.value, store.evaluateRows)).toBe(false);
   });
 
   it("基準が今の計算機と別物なら、適用せず stale を返す（黙って当て直さない）", async () => {

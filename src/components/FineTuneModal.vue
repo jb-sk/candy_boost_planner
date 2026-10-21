@@ -87,7 +87,7 @@
             </div>
             <p v-else class="fineTuneReceiver__hint" data-testid="fine-tune-receiver-hint">{{ t("calc.fineTune.pickReceiver") }}</p>
             <p v-for="(notice, i) in noticeTexts" :key="i" class="fineTuneReceiver__notice" data-testid="fine-tune-notice" :data-kind="notice.kind">{{ notice.text }}</p>
-            <p v-if="giveActive" class="fineTuneReceiver__notice" data-testid="fine-tune-give-hint">{{ t("calc.fineTune.giveReleaseHint") }}</p>
+            <p v-if="fineTune.giveDragging.value" class="fineTuneReceiver__notice" data-testid="fine-tune-give-hint">{{ t("calc.fineTune.giveReleaseHint") }}</p>
           </div>
         </section>
 
@@ -117,7 +117,9 @@
             :title-of="fineTune.titleOf"
             @op="dispatch"
             @handle-press="rowDrag.onHandlePress"
-            @give-active="giveActive = $event"
+            :live="fineTune.givePreview.value?.rowId === row.id ? fineTune.givePreview.value : null"
+            @give-input="fineTune.setGivePreview"
+            @give-release="fineTune.releaseGivePreview"
           />
         </div>
       </template>
@@ -199,8 +201,6 @@ const TABS = [
 const mode = ref<"raise" | "yield">("raise");
 // 順位・効果・おすすめ量はモード1だけで使う。モード2の間は重い計算を求めない
 watch(mode, (value) => { fineTune.adviceActive.value = value === "raise"; }, { immediate: true });
-/** ゆずる側のスライダーを動かしている間 true（離すと計算する、の案内） */
-const giveActive = ref(false);
 
 const modalRef = ref<HTMLElement | null>(null);
 useFocusTrap(modalRef);

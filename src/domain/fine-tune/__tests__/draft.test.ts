@@ -7,6 +7,7 @@ import {
   canReceive,
   canStartGiving,
   coalesceKeyOf,
+  hasFineTuneTarget,
   initialFineTuneState,
   isDraftEmpty,
   isSameDraftContent,
@@ -185,6 +186,39 @@ describe("opRange / reduceFineTune: モード1のアメブ（D36、D37）", () =
     expect(rows.map((r) => rowExclusion(r, t.deps.evaluateRows(rows)))).toEqual(["candyTarget", "noCandy", "sleepOnly", "maxLevel"]);
     expect(rowExclusion(makeRow("u", { pokedexId: 0 }), t.deps.evaluateRows([makeRow("u")]))).toBe("unknownPokemon");
     expect(t.run(t.initial, { kind: "step", rowId: "nope", by: 1 })).toEqual({ rejected: "unknownRow" });
+  });
+});
+
+describe("hasFineTuneTarget: 入口のボタン（§4.1）", () => {
+  const info = { c: { full: 10, need: 10 }, n: { full: 0, need: 0 }, m: { full: 0, need: 0 }, ok: { full: 10, need: 10 } };
+  const has = (rows: CalcRow[]) => hasFineTuneTarget(rows, makeDeps(info).deps.evaluateRows);
+
+  it("睡眠目標モードの個数指定の行だけ・Lv上限の個数指定の行だけでは false", () => {
+    expect(has([makeRow("n", { candyTarget: 5, sleepTargetMode: "all" })])).toBe(false);
+    expect(has([makeRow("m", { candyTarget: 0, srcLevel: MAX_LEVEL, dstLevel: MAX_LEVEL })])).toBe(false);
+  });
+
+  it("普通の個数指定の行があれば true、個数指定の行だけでも true", () => {
+    expect(has([makeRow("c", { candyTarget: 5 })])).toBe(true);
+    expect(has([makeRow("n", { candyTarget: 5, sleepTargetMode: "all" }), makeRow("c", { candyTarget: 5 })])).toBe(true);
+  });
+
+  it("個数指定でない行は対象外でなければ true", () => {
+    expect(has([makeRow("ok")])).toBe(true);
+    expect(has([makeRow("m", { srcLevel: MAX_LEVEL, dstLevel: MAX_LEVEL })])).toBe(false);
+  });
+
+  it("評価は必要なときだけ、1回に限る", () => {
+    const { deps } = makeDeps(info);
+    let evaluations = 0;
+    const evaluate = (rows: readonly CalcRow[]) => {
+      evaluations += 1;
+      return deps.evaluateRows(rows);
+    };
+    hasFineTuneTarget([makeRow("ok")], evaluate);
+    expect(evaluations).toBe(0);
+    hasFineTuneTarget([makeRow("c", { candyTarget: 0 }), makeRow("m", { candyTarget: 0 })], evaluate);
+    expect(evaluations).toBe(1);
   });
 });
 

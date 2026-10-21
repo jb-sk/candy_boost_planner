@@ -31,7 +31,14 @@ import {
   undoDraft,
   type FineTuneHistory,
 } from "../domain/fine-tune/history";
-import { buildRowViews, buildSummary, type FineTuneRowView, type FineTuneSummary } from "../domain/fine-tune/rowView";
+import {
+  buildRowViews,
+  buildSummary,
+  previewGiver,
+  type FineTuneRowView,
+  type FineTuneSummary,
+  type GiverPreview,
+} from "../domain/fine-tune/rowView";
 import { createPlannerRunner, type PlannerRunner } from "../workers/plannerRunner";
 import type { CalcRow, CalcStore } from "./useCalcStore";
 import type { HistoryControls } from "./useHistory";
@@ -258,6 +265,41 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     });
   });
 
+  // ===== ゆずる側のスライダーを動かしている間の棒（§6.2、§13 Q12。ソルバーは呼ばない） =====
+  const givePreviewRequest = shallowRef<{ rowId: string; m: number } | null>(null);
+  /** 離したあと、その op の結果が届くまで動かしている間の棒を保つ（古い結果へ一度戻ってから動くのを避ける） */
+  const givePreviewReleased = ref(false);
+  /** スライダーを動かしている間 true（離すと計算する、の案内に使う） */
+  const giveDragging = computed(() => givePreviewRequest.value !== null && !givePreviewReleased.value);
+
+  function setGivePreview(rowId: string, m: number): void {
+    givePreviewRequest.value = { rowId, m };
+    givePreviewReleased.value = false;
+  }
+  /** 離した。op を投げたあとに呼ぶ。結果が今の版なら今すぐ、計算中なら届いたときに止める。 */
+  function releaseGivePreview(): void {
+    if (givePreviewRequest.value === null) return;
+    if (previewing.value) givePreviewReleased.value = true;
+    else givePreviewRequest.value = null;
+  }
+  watch(previewing, (value) => {
+    if (!value && givePreviewReleased.value) {
+      givePreviewRequest.value = null;
+      givePreviewReleased.value = false;
+    }
+  });
+
+  const givePreview = computed<GiverPreview | null>(() => {
+    const request = givePreviewRequest.value;
+    const b = base.value;
+    const s = state.value;
+    const ev = evaluated.value;
+    if (request === null || b === null || s === null || ev === null) return null;
+    const view = rowViews.value.find((r) => r.id === request.rowId);
+    if (view === undefined) return null;
+    return previewGiver({ base: b, state: s, evaluated: ev, deps, view, m: request.m });
+  });
+
   const summary = computed<FineTuneSummary | null>(() => {
     const b = base.value;
     const ev = evaluated.value;
@@ -326,6 +368,10 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     history: historyControls,
     diagnosis,
     rowViews,
+    giveDragging,
+    givePreview,
+    setGivePreview,
+    releaseGivePreview,
     summary,
     notices,
     receiver,

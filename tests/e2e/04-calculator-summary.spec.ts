@@ -328,10 +328,19 @@ test.describe('04-calculator A. 初期状態', () => {
     await page.mouse.up();
   });
 
-  test('4i. 全テーマで計算機の補助ボタンは枠なしの薄い塗りになる（テーマの .btn の装飾を受けない）', async ({ page }) => {
-    // Booklet の `.btn` が同じ詳細度で後から勝ち、塗りと墨の枠が付いていた
-    const clear = page.getByTestId('calc-clear-button');
-    const look = () => clear.evaluate((el) => {
+  test('4i. 全テーマで計算機の補助ボタン（クリア・やりくり）は枠なしの薄い塗りになる（テーマの .btn の装飾を受けない）', async ({ page }) => {
+    // Booklet の `.btn` が同じ詳細度で後から勝ち、塗りと墨の枠が付いていた。
+    // やりくりの入口は対象にできる行があるときだけ出るので、1匹を計算機に足してから巡回する
+    const box = new BoxPanelPage(page);
+    await box.openImportPanel();
+    await box.fillImportText(testConfig.importData.singlePokemon);
+    await box.clickImport();
+    await box.selectBoxTile(0);
+    await box.clickApplyToCalc();
+    await new CalcPanelPage(page).expectRowCount(1);
+
+    const buttons = [page.getByTestId('calc-clear-button'), page.getByTestId('fine-tune-open-button')];
+    const look = (button: Locator) => button.evaluate((el) => {
       const style = getComputedStyle(el);
       const alpha = /rgba\([^)]*,\s*([\d.]+)\)/.exec(style.backgroundColor);
       return { border: style.borderTopColor, backgroundAlpha: alpha ? Number(alpha[1]) : 1 };
@@ -343,9 +352,12 @@ test.describe('04-calculator A. 初期状態', () => {
       await page.evaluate((id) => localStorage.setItem('candy-boost-planner:design', id), theme);
       await page.reload();
       await themePicker.expectValue(theme);
-      const { border, backgroundAlpha } = await look();
-      expect({ theme, border }).toEqual({ theme, border: 'rgba(0, 0, 0, 0)' });
-      expect(backgroundAlpha, theme).toBeLessThan(0.5);
+      for (const button of buttons) {
+        await expect(button).toBeVisible();
+        const { border, backgroundAlpha } = await look(button);
+        expect({ theme, border }).toEqual({ theme, border: 'rgba(0, 0, 0, 0)' });
+        expect(backgroundAlpha, `${theme} ${await button.getAttribute('data-testid')}`).toBeLessThan(0.5);
+      }
     }
   });
 

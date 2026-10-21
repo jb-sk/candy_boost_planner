@@ -167,9 +167,22 @@ export function hasFineTuneTarget(
   let evaluated: EvaluatedRows | null = null;
   const lazy = (): EvaluatedRows => (evaluated ??= evaluate(rows));
   return rows.some((row) => {
-    const exclusion = rowExclusion(row, lazy);
-    return exclusion === null || exclusion === "candyTarget";
+    if (row.candyTarget === undefined) return rowExclusion(row, lazy) === null;
+    // 個数指定の行はゆずる側にだけなれる。なれるかは位置に関係しない条件で見る
+    return canGiveCandy(row, lazy);
   });
+}
+
+/**
+ * ゆずる側になれる行の、位置（受け取る側より上か）に関係しない条件（§6.1）。
+ * 睡眠目標モードでない・対象外でない（個数指定の行はなれる）・使うアメが1個以上。
+ * 評価が要るのは対象外の判定の一部と使うアメの数なので、`evaluated` は関数でも渡せる。
+ */
+function canGiveCandy(row: CalcRow, evaluated: EvaluatedRows | (() => EvaluatedRows)): boolean {
+  if (row.sleepTargetMode !== undefined) return false;
+  const exclusion = rowExclusion(row, evaluated);
+  if (exclusion !== null && exclusion !== "candyTarget") return false;
+  return candyUnitsOf(row, typeof evaluated === "function" ? evaluated() : evaluated) >= 1;
 }
 
 /** モード1（アメブ・目標Lv）の操作ができる行。対象外の行とゆずる側の行は不可（§7、D23）。 */
@@ -191,10 +204,7 @@ export function canStartGiving(state: FineTuneState, evaluated: EvaluatedRows, r
   const receiverIndex = rowIndexOf(state.rows, state.receiverId);
   const index = rowIndexOf(state.rows, row.id);
   if (receiverIndex < 0 || index < 0 || index >= receiverIndex) return false;
-  if (row.sleepTargetMode !== undefined) return false;
-  const exclusion = rowExclusion(row, evaluated);
-  if (exclusion !== null && exclusion !== "candyTarget") return false;
-  return candyUnitsOf(row, evaluated) >= 1;
+  return canGiveCandy(row, evaluated);
 }
 
 /** モード2でスライダーと ▲▼ を出す行 = 記録のある行 + 初めて減らせる行（D42）。 */

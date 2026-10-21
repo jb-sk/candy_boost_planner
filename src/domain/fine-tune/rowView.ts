@@ -7,6 +7,7 @@ import type { CalcRow, EvaluatedRows } from "../../composables/useCalcStore";
 import type { ExpGainNature } from "../types";
 import type { LevelPlannerResult, PokemonPlanLine, PokemonPlanResult } from "../level-planner/types";
 import { calcExp } from "../pokesleep/exp";
+import { simulateCandyBudget } from "../pokesleep/simulateCandyBudget";
 import { maxLevel as MAX_LEVEL } from "../pokesleep/tables";
 import { sleepTargetTraits } from "../sleep-target";
 import type { Diagnosis, RowAdviceEntry } from "./advice";
@@ -18,6 +19,7 @@ import {
   opRange,
   rowExclusion,
   type FineTuneBase,
+  type FineTuneDeps,
   type FineTuneLatest,
   type FineTuneState,
   type OpRange,
@@ -127,6 +129,91 @@ function expBetween(
   return calcExp(from.level, to.level, expType) + to.expInLevel - from.expInLevel;
 }
 
+/** モード2の棒の物差し。現在Lv・Lv内EXP から基準の目標までの EXP を 100% とする。 */
+interface YieldScale {
+  current: { level: number; expInLevel: number };
+  need: number;
+  expType: CalcRow["expType"];
+}
+
+function yieldScale(baseRow: CalcRow, baseRes: PokemonPlanResult | undefined): YieldScale {
+  const current = { level: baseRow.srcLevel, expInLevel: baseRes?.currentExpInLevel ?? 0 };
+  const baseTarget = { level: baseRow.dstLevel, expInLevel: baseRow.dstExpInLevel ?? 0 };
+  return { current, need: expBetween(current, baseTarget, baseRow.expType), expType: baseRow.expType };
+}
+
+/** 到達点 (level, expInLevel) の塗り（%）。要る EXP が 0 以下のときは 100%（0 で割らない）。 */
+function yieldPercentAt(scale: YieldScale, point: { level: number; expInLevel: number }): number {
+  if (scale.need <= 0) return 100;
+  return clampPercent((expBetween(scale.current, point, scale.expType) / scale.need) * 100);
+}
+
+/** ゆずる側の下がった目標の位置（%）。要る EXP が 0 以下のときは出さない。 */
+function yieldTargetPercent(scale: YieldScale, row: Pick<CalcRow, "dstLevel" | "dstExpInLevel">): number | null {
+  if (scale.need <= 0) return null;
+  return clampPercent((expBetween(scale.current, { level: row.dstLevel, expInLevel: row.dstExpInLevel ?? 0 }, scale.expType) / scale.need) * 100);
+}
+
+/** スライダーを動かしている間の A の棒（設計書 §6.2、§13 Q12）。 */
+export interface GiverPreview {
+  rowId: string;
+  /** 塗り（%）。結果が無いときは null */
+  fill: number | null;
+  /** 下がった目標の印（%）。m が m0 のとき（記録が消える）などは null */
+  target: number | null;
+}
+
+export interface GiverPreviewInput {
+  base: FineTuneBase;
+  state: FineTuneState;
+  /** `deps.evaluateRows(state.rows)` */
+  evaluated: EvaluatedRows;
+  deps: Pick<FineTuneDeps, "withExplicitBoost" | "withCandyTarget">;
+  /** その行の今の表示データ（`giver` を持つ行） */
+  view: FineTuneRowView;
+  /** 動かしている間の使うアメの数 */
+  m: number;
+}
+
+/**
+ * 動かしている間の値 m から、ゆずる側 A の棒を求める。ソルバーは呼ばない。
+ * - 印: 離したときに reducer が作る行（`withCandyTarget`）の目標。reducer と同じ関数を同じ引数で呼ぶので、離したあとと一致する。
+ * - 塗り: m が「今使えているアメの数」（最新の結果）より小さいとき、A はその m 個で足りるので、
+ *   ソルバーと共通の `simulateCandyBudget` で m 個（アメブは記録の実効アメブ、m を超えない）の到達点を塗る。
+ *   m が使えている数以上のときは、何個まで届くかはソルバーでないと分からない（§6.2「今使えている数」）ので、最新の結果の塗りのまま動かさない。
+ */
+export function previewGiver(input: GiverPreviewInput): GiverPreview | null {
+  const { base, state, evaluated, deps, view } = input;
+  if (view.giver === null) return null;
+  const rowId = view.id;
+  const row = state.rows.find((r) => r.id === rowId);
+  const baseRow = base.rows.find((r) => r.id === rowId);
+  if (row === undefined || baseRow === undefined) return null;
+  const record = state.givers[rowId];
+  const before = record?.before ?? row;
+  const boost = record?.boost ?? evaluated.byId.get(rowId)?.effectiveBoost ?? 0;
+  const m0 = view.giver.m0;
+  const m = Math.min(m0, Math.max(0, Math.floor(input.m)));
+
+  const baseRes = base.result.pokemonResults.find((p) => p.pokemonId === rowId);
+  const scale = yieldScale(baseRow, baseRes);
+
+  let target: number | null = null;
+  if (m < m0) {
+    const given = deps.withCandyTarget(deps.withExplicitBoost(before, boost, { preserveTargetForExplicitBoost: true }), m);
+    target = yieldTargetPercent(scale, given);
+  }
+
+  const usable = view.giver.usable;
+  if (usable === null || m >= usable) return { rowId, fill: view.bars.yield.value, target };
+  const kind = evaluated.plannerInput?.boost.kind ?? "none";
+  const reached = simulateCandyBudget(
+    { currentLevel: before.srcLevel, currentExpInLevel: scale.current.expInLevel, expType: before.expType, nature: before.nature },
+    Math.min(boost, m), m, Infinity, kind,
+  );
+  return { rowId, fill: yieldPercentAt(scale, reached), target };
+}
+
 export function buildRowViews(input: RowViewInput): FineTuneRowView[] {
   const { base, state, evaluated, latest, advice, diagnosis, hasBoost } = input;
   const baseIndexById = new Map<string, number>();
@@ -152,17 +239,11 @@ export function buildRowViews(input: RowViewInput): FineTuneRowView[] {
     const exclusion = record === undefined ? rowExclusion(row, evaluated) : null;
 
     // モード2の棒: 現在Lvから基準の目標までを 100% にする（0 以下のときは 100%）
-    const current = { level: baseRow.srcLevel, expInLevel: baseRes?.currentExpInLevel ?? 0 };
-    const baseTarget = { level: baseRow.dstLevel, expInLevel: baseRow.dstExpInLevel ?? 0 };
-    const need = expBetween(current, baseTarget, baseRow.expType);
-    const yieldPercent = (line: PokemonPlanLine | undefined): number | null => {
-      if (line === undefined) return null;
-      if (need <= 0) return 100;
-      return clampPercent((expBetween(current, { level: line.level, expInLevel: line.expInLevel }, baseRow.expType) / need) * 100);
-    };
-    const yieldTarget = record === undefined || need <= 0
-      ? null
-      : clampPercent((expBetween(current, { level: row.dstLevel, expInLevel: row.dstExpInLevel ?? 0 }, baseRow.expType) / need) * 100);
+    const scale = yieldScale(baseRow, baseRes);
+    const yieldPercent = (line: PokemonPlanLine | undefined): number | null => (
+      line === undefined ? null : yieldPercentAt(scale, line)
+    );
+    const yieldTarget = record === undefined ? null : yieldTargetPercent(scale, row);
 
     const range = (hasBoost && item !== undefined)
       ? opRange(base, state, evaluated, { kind: "boost", rowId: id })

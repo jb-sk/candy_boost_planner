@@ -8,10 +8,13 @@
  *   - 外へ出たフォーカスは器へ戻る
  *   - 閉じると開く前の要素へ戻る
  *   - 追加モーダルは今までどおり名前欄へフォーカスする
+ *   - やりくりモーダルにも同じ検査（開く・端から端へ回る・外へ出たら戻る・閉じたら戻る）
  */
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { SettingsModalPage } from './pages/SettingsModalPage';
 import { AddPokemonModalPage } from './pages/AddPokemonModalPage';
+import { BoxPanelPage } from './pages/BoxPanelPage';
+import { FineTuneModalPage } from './pages/FineTuneModalPage';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -92,5 +95,57 @@ test.describe('useFocusTrap', () => {
     await items.last().focus();
     await page.keyboard.press('Tab');
     await expect(items.first()).toBeFocused();
+  });
+});
+
+test.describe('useFocusTrap（やりくりモーダル）', () => {
+  /** 1匹を足して計算機から開く（スマホ幅では FineTuneModalPage.open が計算機のタブへ移る）。 */
+  async function openFineTune(page: Page) {
+    await page.goto('/');
+    const box = new BoxPanelPage(page);
+    await box.openAddNewPanel();
+    await box.fillPokemonName('ピカチュウ');
+    await box.confirmPokemonName();
+    await box.clickAddToBox();
+    const fineTune = new FineTuneModalPage(page);
+    await fineTune.open();
+    return fineTune;
+  }
+
+  test('開くと器にフォーカスし、入力欄にはフォーカスしない', async ({ page }) => {
+    const fineTune = await openFineTune(page);
+    await expect(fineTune.modal).toBeFocused();
+    expect(await page.evaluate(() => document.activeElement?.tagName)).toBe('DIV');
+  });
+
+  test('最後の要素で Tab を押すと最初へ、最初の要素で Shift+Tab を押すと最後へ回り、器から Shift+Tab しても外へ出ない', async ({ page }) => {
+    const fineTune = await openFineTune(page);
+    const items = fineTune.modal.locator(FOCUSABLE).locator('visible=true');
+    const first = items.first();
+    const last = items.last();
+
+    await last.focus();
+    await expect(last).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(first).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(last).toBeFocused();
+
+    await fineTune.modal.focus();
+    await page.keyboard.press('Shift+Tab');
+    await expect(last).toBeFocused();
+  });
+
+  test('外へ出たフォーカスは器へ戻る', async ({ page }) => {
+    const fineTune = await openFineTune(page);
+    await fineTune.openButton.focus();
+    await expect(fineTune.modal).toBeFocused();
+  });
+
+  test('閉じると開く前の要素（入口のボタン）へフォーカスが戻る', async ({ page }) => {
+    const fineTune = await openFineTune(page);
+    await fineTune.closeButton.click();
+    await expect(fineTune.overlay).toHaveCount(0);
+    await expect(fineTune.openButton).toBeFocused();
   });
 });
