@@ -5762,9 +5762,7 @@ describe("useCalcStore: アメブ最小化", () => {
           boostKind: store.boostKind.value,
         });
         expect(reach(cap).level).toBe(MAX_LEVEL);
-        // 保存前の導出値（298）と保存後の実効アメブ（299）は、アメブ1個→通常アメ1個の置換の扱いで1個ずれる。
-        // 上限が1個多いのは許容する（最小化の値 0 で出すと数百個多くなる）。
-        expect(reach(cap - 2).level).toBeLessThan(MAX_LEVEL);
+        expect(reach(cap - 1).level).toBeLessThan(MAX_LEVEL);
       } finally {
         candyStore.restoreInventory(original);
       }

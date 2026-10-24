@@ -1898,11 +1898,13 @@ export function useCalcStore(opts: {
     return minCandyForTarget({
       srcLevel: r.srcLevel, targetLevel: cap.level, targetExpInLevel: cap.expInLevel,
       expType: r.expType, nature: r.nature, boostKind: boostKind.value,
-      // 個数指定にすると最小化の対象外になるので、最小化の値ではなく保存後の実効アメブ（導出値）で上限を出す。
+      // 上限を入れて保存した行（個数指定あり）が使うアメブで出す。保存前の行（個数指定なし）の実効アメブを使うと、
+      // 最小化の値のほか、担当終端 `T'` とアメブ目標Lvの読み方・「アメブ1個 → 通常アメ1個」置換が保存後と違い、
+      // 保存後に Lv70 へ届く最小の個数からずれる。個数 m で抑える前の要求値（m は上限そのものなので内数に収まる）を使う。
       // **入力前の個数指定でアメブを抑えない。** 古い個数（例: 5）で抑えると、少ないアメブで Lv70 へ届く数
       // （通常アメが多い）が上限になり、1回目だけ本当の上限より大きい値が入る（2回目で下がる）。
-      // 個数指定のある行として数えるので、確定後の実効アメブと同じ値になる。
-      boostCandy: resolveEffectiveBoostCandy({ ...r, candyTarget: Number.POSITIVE_INFINITY }, false, true), expGot,
+      boostCandy: hasNoBoostCandy(r) ? 0 : Math.min(requestedBoostCandy(r, true).requested, boostCandyToMaxLevel(r)),
+      expGot,
     });
   }
 
@@ -2114,13 +2116,55 @@ export function useCalcStore(opts: {
     /** 保存前の仮の行一覧で求めるときの在庫の割り当て（`boostCandyAfterReset`）。省略時は現在の行一覧。 */
     stockAllocation?: StockCandyAllocation,
   ): number {
-    if (sleepTargetTraits(r).candy === "none" || boostKind.value === "none" || r.srcLevel >= MAX_LEVEL) return 0;
+    if (hasNoBoostCandy(r)) return 0;
 
     if (!ignoreMinimizedBoost && r.boostOrExpAdjustment === undefined) {
       const minimized = (stockAllocation ?? stockCandyAllocationByRowId.value).minimizedBoost[r.id];
       if (minimized !== undefined) return minimized;
     }
 
+    const derivingTarget = r.candyTarget !== undefined;
+    const { requested, candyTarget } = requestedBoostCandy(r, derivingTarget);
+    // アメブは総アメ数の内数（不変条件 `n ≤ m`）。「アメ在庫＋睡眠」では在庫が `m` を決めるので、
+    // 個数指定とまったく同じ枠で抑える。抑えないと、12個しか使えない行がアメブ枠を
+    // 数百個ぶん予約して下の行を飢えさせる。**保存値は抑えない**（意図として残す）。
+    // 個数指定は実効値で抑える。上限の計算（`maxCandyTargetFor`）はここを通らない（`requestedBoostCandy` を読む）ので循環しない。
+    const candyBudget = (r.candyTarget !== undefined ? effectiveCandyTargetOf(r) : undefined)
+      ?? (sleepTargetTraits(r).candy === "stockOnly" && !ignoreStockBudget
+        ? (stockAllocation ? stockAllocation.target[r.id] : rowStockCandyTargetFor(r.id))
+        : undefined)
+      ?? Number.POSITIVE_INFINITY;
+    if (derivingTarget) {
+      return Math.min(requested, candyBudget, boostCandyToMaxLevel(r));
+    }
+    const targetCandyCap = minCandyForTarget({
+      srcLevel: r.srcLevel,
+      targetLevel: candyTarget.level,
+      targetExpInLevel: candyTarget.expInLevel,
+      expType: r.expType,
+      nature: r.nature,
+      boostKind: boostKind.value,
+      boostCandy: requested,
+      expGot: rowExpGot(r),
+    });
+    const effective = Math.min(requested, candyBudget, targetCandyCap, boostCandyToMaxLevel(r));
+    return Math.max(0, Math.floor(effective));
+  }
+
+  /** アメブを使えない行（すべて睡眠・アメブなしの種別・Lv70）。実効アメブ個数は 0。 */
+  function hasNoBoostCandy(r: CalcRow): boolean {
+    return sleepTargetTraits(r).candy === "none" || boostKind.value === "none" || r.srcLevel >= MAX_LEVEL;
+  }
+
+  /**
+   * アメブ個数の要求値（明示値、なければアメブ目標Lvの意図からの導出）。個数指定の枠・在庫・目標の上限では抑えない。
+   * `derivingTarget` は行を個数指定ありで保存したときの読み方で、`resolveEffectiveBoostCandy` の説明にある。
+   * `candyTarget` は個数指定なしの行の担当終端 `T'`。
+   */
+  function requestedBoostCandy(
+    r: CalcRow,
+    derivingTarget: boolean,
+  ): { requested: number; candyTarget: { level: number; expInLevel: number } } {
     const candyTarget = rowCandyTargetBeforeSleep(r);
     // **`T` を導出している最中は `dstLevel` も `T'` もその計算の出力**なので、入力として参照できない
     // （§10.18 の例外）。参照すると `T → n → T'` の循環になり、§11.4 / §15.7 が再発する。
@@ -2141,7 +2185,6 @@ export function useCalcStore(opts: {
     // 睡眠の頭打ちだけは `T` が出力の行でも要る（保存された `boostReachLevel` は入力時にしか
     // cap されないので、睡眠時間を後から変えると `T'` を超えたままになる）。そこでは `T` から
     // 引いた `T'` ではなく、**`Lv70` から睡眠EXPを戻した `T'max`** を使う。こちらは `T` に依らない。
-    const derivingTarget = r.candyTarget !== undefined;
     const sleepCap = derivingTarget
       ? locateExpTargetFromSrc(r, rowExpGot(r), rowSleepExp(r))
       : null;
@@ -2173,32 +2216,7 @@ export function useCalcStore(opts: {
     // 「アメブ1個 → 通常アメ1個」置換はアメブ100%で目標へ届くときだけ（ユーザー規則）。
     // 個数指定のある行はアメ数が目標を動かすので、成立するのは頭打ちの点が Lv70 のとき（睡眠なし）だけ。
     const derived = boostCandyForEnd(r, end, reachesCap);
-    const requested = Math.max(0, Math.floor(r.boostOrExpAdjustment ?? derived));
-    // アメブは総アメ数の内数（不変条件 `n ≤ m`）。「アメ在庫＋睡眠」では在庫が `m` を決めるので、
-    // 個数指定とまったく同じ枠で抑える。抑えないと、12個しか使えない行がアメブ枠を
-    // 数百個ぶん予約して下の行を飢えさせる。**保存値は抑えない**（意図として残す）。
-    // 個数指定は実効値で抑える。上限の計算（`maxCandyTargetFor`）は個数指定を無限大にした行で
-    // ここを呼ぶので、無限大のときは保存値のまま使う（実効値を求めると循環する）。
-    const candyBudget = (r.candyTarget !== undefined && Number.isFinite(r.candyTarget) ? effectiveCandyTargetOf(r) : r.candyTarget)
-      ?? (sleepTargetTraits(r).candy === "stockOnly" && !ignoreStockBudget
-        ? (stockAllocation ? stockAllocation.target[r.id] : rowStockCandyTargetFor(r.id))
-        : undefined)
-      ?? Number.POSITIVE_INFINITY;
-    if (derivingTarget) {
-      return Math.min(requested, candyBudget, boostCandyToMaxLevel(r));
-    }
-    const targetCandyCap = minCandyForTarget({
-      srcLevel: r.srcLevel,
-      targetLevel: candyTarget.level,
-      targetExpInLevel: candyTarget.expInLevel,
-      expType: r.expType,
-      nature: r.nature,
-      boostKind: boostKind.value,
-      boostCandy: requested,
-      expGot: rowExpGot(r),
-    });
-    const effective = Math.min(requested, candyBudget, targetCandyCap, boostCandyToMaxLevel(r));
-    return Math.max(0, Math.floor(effective));
+    return { requested: Math.max(0, Math.floor(r.boostOrExpAdjustment ?? derived)), candyTarget };
   }
 
   /**
