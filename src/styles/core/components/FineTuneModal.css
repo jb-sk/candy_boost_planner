@@ -211,28 +211,105 @@
   display: none;
 }
 
+/* 行。スマホは 名前 / 棒 / アメブ / 目標Lv・アメ・かけら の段に分け、680px 以上は1行の表にする。
+   理由や基準の値は title（ホバー）に回し、行には値と操作だけを置く */
 .fineTuneRow {
   display: grid;
-  grid-template-columns: 44px repeat(3, minmax(0, 1fr));
+  grid-template-columns: 40px repeat(4, minmax(0, 1fr));
   grid-template-areas:
-    "move name name name"
-    "move exp exp exp"
-    "move boost boost boost"
-    "move target candy shards"
-    "move sub sub sub";
+    "move name name advice advice"
+    "move exp exp exp exp"
+    "move boost boost boost boost"
+    "move target target candy shards";
   column-gap: 8px;
   row-gap: 4px;
   align-items: center;
-  padding: 10px 4px;
+  padding: 8px 4px;
   border-bottom: 1px solid rgba(var(--ink-rgb), 0.12);
 }
 
 .fineTuneRow--noBoost {
   grid-template-areas:
-    "move name name name"
-    "move exp exp exp"
-    "move target candy shards"
-    "move sub sub sub";
+    "move name name name name"
+    "move exp exp exp exp"
+    "move target target candy shards";
+}
+
+/* ゆずる・受け取るは目標Lv・アメブが値だけになるので、値を1段に並べる。ゆずる側はアメの欄（スライダー）を1段に取る */
+.fineTuneRow--yield {
+  grid-template-areas:
+    "move name name name name"
+    "move exp exp exp exp"
+    "move target boost candy shards";
+}
+
+.fineTuneRow--yield.fineTuneRow--noBoost {
+  grid-template-areas:
+    "move name name name name"
+    "move exp exp exp exp"
+    "move target target candy shards";
+}
+
+.fineTuneRow--yield.fineTuneRow--give {
+  grid-template-areas:
+    "move name name name name"
+    "move exp exp exp exp"
+    "move target boost shards shards"
+    "move candy candy candy candy";
+}
+
+.fineTuneRow--yield.fineTuneRow--give.fineTuneRow--noBoost {
+  grid-template-areas:
+    "move name name name name"
+    "move exp exp exp exp"
+    "move target target shards shards"
+    "move candy candy candy candy";
+}
+
+/* 睡眠到達Lv の列があるときは、棒の段の右端に置く */
+.fineTuneModal__list--sleep .fineTuneRow {
+  grid-template-areas:
+    "move name name advice advice"
+    "move exp exp exp sleep"
+    "move boost boost boost boost"
+    "move target target candy shards";
+}
+
+.fineTuneModal__list--sleep .fineTuneRow--noBoost {
+  grid-template-areas:
+    "move name name name name"
+    "move exp exp exp sleep"
+    "move target target candy shards";
+}
+
+.fineTuneModal__list--sleep .fineTuneRow--yield {
+  grid-template-areas:
+    "move name name name name"
+    "move exp exp exp sleep"
+    "move target boost candy shards";
+}
+
+.fineTuneModal__list--sleep .fineTuneRow--yield.fineTuneRow--noBoost {
+  grid-template-areas:
+    "move name name name name"
+    "move exp exp exp sleep"
+    "move target target candy shards";
+}
+
+.fineTuneModal__list--sleep .fineTuneRow--yield.fineTuneRow--give {
+  grid-template-areas:
+    "move name name name name"
+    "move exp exp exp sleep"
+    "move target boost shards shards"
+    "move candy candy candy candy";
+}
+
+.fineTuneModal__list--sleep .fineTuneRow--yield.fineTuneRow--give.fineTuneRow--noBoost {
+  grid-template-areas:
+    "move name name name name"
+    "move exp exp exp sleep"
+    "move target target shards shards"
+    "move candy candy candy candy";
 }
 
 .fineTuneRow--excluded .fineTuneRow__name,
@@ -248,16 +325,9 @@
   background: rgba(var(--accent-rgb), 0.08);
 }
 
-.fineTuneRow__move {
-  grid-area: move;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  align-self: start;
-  gap: 4px;
-}
-
 .fineTuneRow__handle {
+  grid-area: move;
+  align-self: start;
   -webkit-appearance: none;
   appearance: none;
   display: flex;
@@ -286,16 +356,11 @@
   flex-shrink: 0;
 }
 
-.fineTuneRow__arrows {
-  display: flex;
-  gap: 2px;
-}
-
-.fineTuneRow__arrow,
 .fineTuneRow__step {
   -webkit-appearance: none;
   appearance: none;
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   min-width: 32px;
@@ -313,30 +378,20 @@
   cursor: pointer;
 }
 
-.fineTuneRow__arrow {
-  min-width: 26px;
-  padding: 0 2px;
-}
-
-.fineTuneRow__arrow:hover:not(:disabled),
 .fineTuneRow__step:hover:not(:disabled) {
   background: rgba(var(--accent-rgb), 0.2);
 }
 
-.fineTuneRow__arrow:disabled,
 .fineTuneRow__step:disabled {
   opacity: 0.35;
   cursor: default;
 }
 
+/* 名前・性格・おすすめ順・おすすめのボタンを1行に。名前だけが縮んで省略される */
 .fineTuneRow__name {
   grid-area: name;
-  min-width: 0;
-}
-
-.fineTuneRow__titleLine {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
   min-width: 0;
 }
@@ -365,65 +420,88 @@
   color: var(--nature-down);
 }
 
-.fineTuneRow__tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 3px;
-}
-
-.fineTuneRow__tag {
+.fineTuneRow__rank {
+  flex-shrink: 0;
   padding: 1px 8px;
   border-radius: var(--radius-pill);
-  background: rgba(var(--ink-rgb), 0.08);
-  color: var(--ink);
+  background: var(--accent);
+  color: var(--btn-ink);
   font-size: 11px;
   font-weight: 700;
   line-height: 1.5;
   white-space: nowrap;
 }
 
-.fineTuneRow__tag--ok {
-  background: rgba(var(--bar-fill-rgb), 0.18);
-}
-
-.fineTuneRow__tag--ng,
-.fineTuneRow__tag--first {
-  background: rgba(var(--danger-rgb), 0.14);
-  color: var(--danger);
-}
-
-.fineTuneRow__tag--rank {
-  background: var(--accent);
-  color: var(--btn-ink);
+.btn.btn--soft.fineTuneRow__chip {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .fineTuneRow__cell {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 2px 6px;
+  gap: 2px 4px;
   min-width: 0;
   font-size: 12px;
   color: var(--ink);
+}
+
+.fineTuneRow__cell--advice {
+  grid-area: advice;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .fineTuneRow__cell--target {
   grid-area: target;
 }
 
+/* スマホの値の欄は、項目名を上に積む（目標Lv の ▼▲ は項目名の下に並ぶ） */
+.fineTuneRow__cell--target,
+.fineTuneRow__cell--shards,
+.fineTuneRow--yield .fineTuneRow__cell--boost,
+.fineTuneRow__cell--candy {
+  flex-wrap: wrap;
+}
+
+.fineTuneRow__cell--target .fineTuneRow__label,
+.fineTuneRow__cell--shards .fineTuneRow__label,
+.fineTuneRow--yield .fineTuneRow__cell--boost .fineTuneRow__label,
+.fineTuneRow__cell--candy .fineTuneRow__label {
+  flex-basis: 100%;
+}
+
+/* 棒と「Lv66 あと1,234」を横に並べる */
 .fineTuneRow__cell--exp {
   grid-area: exp;
-  flex-direction: column;
-  align-items: stretch;
-  flex-wrap: nowrap;
+  gap: 8px;
+}
+
+.fineTuneRow__cell--exp .fineTuneBar {
+  flex: 1 1 auto;
+  min-width: 48px;
 }
 
 .fineTuneRow__cell--boost {
   grid-area: boost;
-  flex-direction: column;
-  align-items: flex-start;
-  flex-wrap: nowrap;
+}
+
+.fineTuneRow__cell--sleep {
+  grid-area: sleep;
+  flex-wrap: wrap;
+  justify-content: center;
+  text-align: center;
+}
+
+.fineTuneRow__cell--sleep .fineTuneRow__label {
+  flex-basis: 100%;
+}
+
+/* 睡眠のあとも目標に届かない（アメ・かけら・アメブ枠が足りない）。後ろの .fineTuneRow__value の色に負けないよう重ねる */
+.fineTuneRow__value.fineTuneRow__value--short {
+  color: var(--danger);
 }
 
 .fineTuneRow__cell--candy {
@@ -436,19 +514,11 @@
 
 /* スマホは見出しが無いので、各欄に小さく項目名を添える */
 .fineTuneRow__label {
+  margin-right: 2px;
   font-size: 11px;
   font-weight: 600;
   color: var(--muted);
-}
-
-.fineTuneRow__cell--boost .fineTuneRow__label {
-  display: none;
-}
-
-.fineTuneRow__stepper {
-  display: flex;
-  align-items: center;
-  gap: 2px;
+  white-space: nowrap;
 }
 
 .fineTuneRow__value {
@@ -459,16 +529,8 @@
 }
 
 .fineTuneRow__cell--target .fineTuneRow__value {
-  min-width: 2.2em;
+  min-width: 1.8em;
   text-align: center;
-}
-
-/* アメ・かけらは桁が多いので、`基準 → 変更後` を空白で折り返せるようにする（数字の途中では折れない） */
-.fineTuneRow__cell--candy .fineTuneRow__value,
-.fineTuneRow__cell--candy .fineTuneRow__delta,
-.fineTuneRow__cell--shards .fineTuneRow__value,
-.fineTuneRow__cell--shards .fineTuneRow__delta {
-  white-space: normal;
 }
 
 .fineTuneRow__value--changed {
@@ -476,9 +538,20 @@
 }
 
 .fineTuneRow__delta {
+  flex-shrink: 0;
   font-size: 11px;
-  color: var(--muted);
+  font-weight: 600;
+  color: var(--accent-strong);
   white-space: nowrap;
+}
+
+/* 増減は空でも幅を取っておき、出たときに ▼▲ と欄の位置を動かさない（−1,234 / −60 まで入る幅） */
+.fineTuneRow__delta--boost {
+  min-width: 3.8em;
+}
+
+.fineTuneRow__delta--target {
+  min-width: 2.4em;
 }
 
 .fineTuneRow__input {
@@ -490,72 +563,35 @@
 }
 
 .fineTuneRow__reach {
+  flex-shrink: 0;
   font-size: 12px;
-  color: var(--muted);
-}
-
-.fineTuneRow__reachLabel {
-  margin-right: 4px;
-  font-size: 11px;
-}
-
-.fineTuneRow__sub {
-  grid-area: sub;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  min-width: 0;
-}
-
-.fineTuneRow__sub:empty {
-  display: none;
-}
-
-.fineTuneRow__note,
-.fineTuneRow__advice {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--muted);
-}
-
-.fineTuneRow__advice {
+  font-weight: 700;
   color: var(--ink);
-  font-weight: 600;
+  white-space: nowrap;
 }
 
-.fineTuneRow__perBoost {
-  margin-left: 8px;
+.fineTuneRow__reach.fineTuneRow__value--changed {
   color: var(--accent-strong);
 }
 
-.fineTuneRow__recommend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 10px;
+/* 不足の行は、変わった色より赤を優先する（あとEXP の文字も赤） */
+.fineTuneRow__reach.fineTuneRow__value--short,
+.fineTuneRow__reach.fineTuneRow__value--short .fineTuneRow__expLeft {
+  color: var(--danger);
+}
+
+.fineTuneRow__expLeft {
+  margin-left: 4px;
+  font-weight: 600;
+  color: var(--muted);
 }
 
 .fineTuneRow__give {
   display: flex;
-  flex-wrap: wrap;
+  flex: 1 1 auto;
   align-items: center;
-  gap: 4px 6px;
-  width: 100%;
-}
-
-.fineTuneRow__giveLabel {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-}
-
-.fineTuneRow__giveValue {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--ink);
-  white-space: nowrap;
+  gap: 4px;
+  min-width: 0;
 }
 
 /* ===== EXP の棒。幅の割合と transition: width で伸び縮み（transform: scaleX は角丸が崩れる） ===== */
@@ -600,7 +636,7 @@
   -webkit-appearance: none;
   appearance: none;
   flex: 1 1 120px;
-  min-width: 100px;
+  min-width: 56px;
   max-width: 480px;
   height: 28px;
   margin: 0;
@@ -694,24 +730,76 @@
   padding: 0 6px;
 }
 
-/* ===== 680px 以上は表 ===== */
+/* ===== 680px 以上は1行の表 ===== */
 @media (min-width: 680px) {
+  /* 全体のLvを上げるは、名前の右に「おすすめの調整」（順位とおすすめのボタン）の列を置く */
   .fineTuneHead,
   .fineTuneRow {
-    grid-template-columns: 52px minmax(84px, 1.1fr) 100px minmax(96px, 1.4fr) 132px minmax(64px, 0.8fr) minmax(80px, 1fr);
-    column-gap: 6px;
+    grid-template-columns: 40px minmax(110px, 1.4fr) minmax(136px, 1fr) 132px minmax(130px, 1.5fr) 176px minmax(56px, 0.6fr) minmax(76px, 0.8fr);
+    column-gap: 8px;
+  }
+
+  /* ゆずる・受け取るは目標Lv・アメブが値だけになり、アメの欄にスライダーが入る */
+  .fineTuneHead--yield,
+  .fineTuneRow--yield {
+    grid-template-columns: 40px minmax(140px, 1.6fr) 72px minmax(130px, 1.4fr) 80px minmax(200px, 2fr) minmax(76px, 0.8fr);
+    column-gap: 12px;
   }
 
   .fineTuneRow {
-    grid-template-areas:
-      "move name target exp boost candy shards"
-      ". sub sub sub sub sub sub";
+    grid-template-areas: "move name advice target exp boost candy shards";
   }
 
+  /* アメブなしのスロットは順位もおすすめも無いので、名前がその列まで広がる */
   .fineTuneRow--noBoost {
-    grid-template-areas:
-      "move name target exp exp candy shards"
-      ". sub sub sub sub sub sub";
+    grid-template-areas: "move name name target exp exp candy shards";
+  }
+
+  .fineTuneRow--yield,
+  .fineTuneRow--yield.fineTuneRow--give {
+    grid-template-areas: "move name target exp boost candy shards";
+  }
+
+  .fineTuneRow--yield.fineTuneRow--noBoost,
+  .fineTuneRow--yield.fineTuneRow--give.fineTuneRow--noBoost {
+    grid-template-areas: "move name target exp exp candy shards";
+  }
+
+  .fineTuneRow__cell--advice {
+    justify-content: flex-start;
+  }
+
+  /* 睡眠到達Lv の列は あとEXP の右。アメブなしは あとEXP がアメブの列まで広がり、その右に来る */
+  .fineTuneModal__list--sleep .fineTuneHead,
+  .fineTuneModal__list--sleep .fineTuneRow {
+    grid-template-columns: 40px minmax(110px, 1.4fr) minmax(136px, 1fr) 132px minmax(130px, 1.5fr) 76px 176px minmax(56px, 0.6fr) minmax(76px, 0.8fr);
+  }
+
+  .fineTuneModal__list--sleep .fineTuneHead--yield,
+  .fineTuneModal__list--sleep .fineTuneRow--yield {
+    grid-template-columns: 40px minmax(140px, 1.6fr) 72px minmax(130px, 1.4fr) 76px 80px minmax(200px, 2fr) minmax(76px, 0.8fr);
+  }
+
+  .fineTuneModal__list--sleep .fineTuneRow {
+    grid-template-areas: "move name advice target exp sleep boost candy shards";
+  }
+
+  .fineTuneModal__list--sleep .fineTuneRow--noBoost {
+    grid-template-areas: "move name name target exp exp sleep candy shards";
+  }
+
+  .fineTuneModal__list--sleep .fineTuneRow--yield,
+  .fineTuneModal__list--sleep .fineTuneRow--yield.fineTuneRow--give {
+    grid-template-areas: "move name target exp sleep boost candy shards";
+  }
+
+  .fineTuneModal__list--sleep .fineTuneRow--yield.fineTuneRow--noBoost,
+  .fineTuneModal__list--sleep .fineTuneRow--yield.fineTuneRow--give.fineTuneRow--noBoost {
+    grid-template-areas: "move name target exp exp sleep candy shards";
+  }
+
+  .fineTuneRow__handle {
+    align-self: center;
   }
 
   .fineTuneHead {
@@ -731,8 +819,16 @@
     grid-column: 1;
   }
 
+  .fineTuneHead__cell--sleep {
+    text-align: center;
+  }
+
   /* アメブなしのスロットは、行の EXP 欄がアメブ欄まで広がる（上の .fineTuneRow--noBoost の areas と同じ） */
   .fineTuneHead--noBoost .fineTuneHead__cell--exp {
+    grid-column: span 2;
+  }
+
+  .fineTuneHead--noBoost:not(.fineTuneHead--yield) .fineTuneHead__cell--name {
     grid-column: span 2;
   }
 
@@ -740,14 +836,10 @@
     display: none;
   }
 
-  .fineTuneRow__cell {
-    flex-wrap: wrap;
-  }
-
   .fineTuneRow__cell--target,
-  .fineTuneRow__cell--candy,
-  .fineTuneRow__cell--shards {
-    flex-direction: column;
-    align-items: flex-start;
+  .fineTuneRow__cell--shards,
+  .fineTuneRow--yield .fineTuneRow__cell--boost,
+  .fineTuneRow__cell--candy {
+    flex-wrap: nowrap;
   }
 }

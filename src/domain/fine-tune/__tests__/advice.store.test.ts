@@ -342,33 +342,53 @@ describe("advice: 本物のストアとソルバー", () => {
   }
 
   describe("adviseRows: 順位と1回に動かす量（§5.2、§5.3）", () => {
-    it("増やす: 効果の kind が下へ回る・自分の不足・自分の不足、順位は c_i の小さい順", () => {
+    it("増やす: 効果の kind が下へ回る・自分の不足・自分の不足。順位はおすすめ量のある行だけに付く", () => {
       const { store, ids, boostLimit } = candyShortWorld();
       const [a, b, c] = ids as [string, string, string];
-      const { ctx, result, rows } = contextOf(store, boostLimit);
+      const { ctx, result } = contextOf(store, boostLimit);
       expect(result.pokemonResults.map((p) => p.reachableLine.effectiveTargetReached)).toEqual([true, false, false]);
       const entries = adviseRows(ctx, "increase", 10);
       expect(entries.get(a)!.advice).toEqual({ kind: "feedsBelow", beneficiaryIds: [b, c] });
       expect(entries.get(b)!.advice).toEqual({ kind: "selfShort" });
       expect(entries.get(c)!.advice).toEqual({ kind: "selfShort" });
+      // b は使えるアメが0（万能アメは上の a が取る）なので、自分のアメブを増やしても伸びない。
+      // c は先頭の未達行 b より下なので、伸びる見積もりでも出さない（浮いた分は先に b が受け取る）
+      expect(entries.get(b)!.recommendation).toBeNull();
+      expect(entries.get(c)!.recommendation).toBeNull();
+      expect([a, b, c].map((id) => entries.get(id)!.rank)).toEqual([1, null, null]);
+      // 順位を付けた量は、おすすめ量（押したときに入る量）
+      expect(entries.get(a)!.marginal).toMatchObject({ from: 0, to: entries.get(a)!.recommendation!.boost });
+    });
 
-      // 独立に求めた c_i = Δかけら ÷ 節約アメ（10 個動かしたとき）
-      const evaluated = store.evaluateRows(rows);
+    it("増やす: 順位はおすすめ量で入れたときの c_i（節約アメ1個あたりのかけら）の小さい順", () => {
+      // a・d はどちらも種族アメだけでは足りず万能アメを使って届く。b は残りの万能アメで止まる
+      const { store, ids, boostLimit } = build({
+        species: [[25, 150], [1, 150]],
+        universalS: 120,
+        rows: [
+          { boxId: "a", pokedexId: 25, src: 10, dst: 30, boost: 0 },
+          { boxId: "d", pokedexId: 1, src: 10, dst: 28, boost: 0 },
+          { boxId: "b", pokedexId: 133, src: 10, dst: 40, boost: 60 },
+        ],
+      });
+      const [a, d, b] = ids as [string, string, string];
+      const { ctx, result, rows } = contextOf(store, boostLimit);
+      expect(result.pokemonResults.map((p) => p.reachableLine.effectiveTargetReached)).toEqual([true, true, false]);
+      const entries = adviseRows(ctx, "increase", 10);
       const ci = (id: string) => {
         const row = rowOf(rows, id);
-        const n = evaluated.byId.get(id)!.effectiveBoost;
-        const x = direct(row, "full", n);
-        const y = direct(row, "full", n + 10);
+        const rec = entries.get(id)!.recommendation!;
+        const x = direct(row, "full", 0);
+        const y = direct(row, "full", rec.boost);
         return (y.shards - x.shards) / (x.total - y.total);
       };
-      const keys = [a, b, c].map((id) => ({ id, key: ci(id) }));
-      expect(new Set(keys.map((e) => e.key)).size).toBe(3);
-      const expected = keys.slice().sort((p, q) => p.key - q.key);
-      expected.forEach((e, i) => expect(entries.get(e.id)!.rank).toBe(i + 1));
-      for (const id of [a, b, c]) {
-        const from = evaluated.byId.get(id)!.effectiveBoost;
-        expect(entries.get(id)!.marginal).toMatchObject({ from, to: from + 10 });
+      for (const id of [a, d]) {
+        expect(entries.get(id)!.advice).toEqual({ kind: "feedsBelow", beneficiaryIds: [b] });
+        expect(entries.get(id)!.recommendation).not.toBeNull();
       }
+      const keys = [a, d].map((id) => ({ id, key: ci(id) }));
+      expect(keys[0]!.key).not.toBe(keys[1]!.key);
+      keys.slice().sort((p, q) => p.key - q.key).forEach((e, i) => expect(entries.get(e.id)!.rank).toBe(i + 1));
     });
 
     it("n' は opRange の値: 残り枠が1回に動かす量より小さければ残り枠まで。全アメブ点にいる行は ▲ が無効で順位が付かない", () => {
@@ -447,7 +467,7 @@ describe("advice: 本物のストアとソルバー", () => {
       expect(ids.map((id) => entries.get(id)!.rank).sort()).toEqual([1, 2]);
     });
 
-    it("減らす: かけらで止まる行が selfShort、上の行は feedsBelow。順位は1個あたり浮くかけらの大きい順、アメの負担も出る", () => {
+    it("減らす: かけらで止まる行が selfShort、上の行は feedsBelow。順位はおすすめ量で入れたときの1個あたり浮くかけらの大きい順", () => {
       const { store, ids, boostLimit } = shardShortWorld();
       const [a, b, c] = ids as [string, string, string];
       const { ctx, result, rows } = contextOf(store, boostLimit);
@@ -457,22 +477,16 @@ describe("advice: 本物のストアとソルバー", () => {
       expect(entries.get(b)!.advice).toEqual({ kind: "feedsBelow", beneficiaryIds: [c] });
       expect(entries.get(c)!.advice).toEqual({ kind: "selfShort" });
 
-      // 独立に求めた r_i = 浮くかけら ÷ 動かした個数（10 個減らしたとき）
+      // 独立に求めた r_i = 浮くかけら ÷ 動かした個数（おすすめ量まで減らしたとき）
       const evaluated = store.evaluateRows(rows);
       const ri = (id: string) => {
         const n = evaluated.byId.get(id)!.effectiveBoost;
-        return (direct(rowOf(rows, id), "full", n).shards - direct(rowOf(rows, id), "full", n - 10).shards) / 10;
+        const to = entries.get(id)!.recommendation!.boost;
+        return (direct(rowOf(rows, id), "full", n).shards - direct(rowOf(rows, id), "full", to).shards) / (n - to);
       };
       const keys = [a, b, c].map((id) => ({ id, key: ri(id) }));
       expect(new Set(keys.map((e) => e.key)).size).toBe(3);
       keys.slice().sort((p, q) => q.key - p.key).forEach((e, i) => expect(entries.get(e.id)!.rank).toBe(i + 1));
-
-      // アメの負担: 10 個減らすと総アメが増える。種族アメ在庫が余っていれば covered
-      const burden = entries.get(a)!.burden!;
-      expect(burden.extraCandy).toBe(direct(rowOf(rows, a), "full", 290).total - direct(rowOf(rows, a), "full", 300).total);
-      expect(burden.extraCandy).toBeGreaterThan(0);
-      expect(burden.speciesRemaining).toBe(result.summary.speciesCandyRemaining[ctx.planById.get(a)!.candyFamilyKey]);
-      expect(burden.covered).toBe(true);
       // アメブが0の行は noBoost で順位が付かない
       store.onRowBoostCandy(b, "0");
       const zero = contextOf(store, boostLimit);
@@ -480,22 +494,17 @@ describe("advice: 本物のストアとソルバー", () => {
       expect(zeroEntries.get(b)!.advice).toEqual({ kind: "noEffect", reason: "noBoost" });
       expect(zeroEntries.get(b)!.rank).toBeNull();
     });
-
-    it("増やす向きでは burden は出ない", () => {
-      const { store, boostLimit } = candyShortWorld();
-      const { ctx } = contextOf(store, boostLimit);
-      for (const entry of adviseRows(ctx, "increase", 10).values()) expect(entry.burden).toBeNull();
-    });
   });
 
   describe("recommendBoost: 「〇〇のLvを上げる」の量と名前（§5.5、D29）", () => {
-    it("上の行として下へ回す: 名前は beneficiaryIds の先頭1匹、2匹以上なら など。量は節約アメが s 以上になる最小の個数（絶対値）", () => {
+    it("上の行として下へ回す: 名前は beneficiaryIds の先頭1匹。かけらが十分なら、量は節約アメが s 以上になる最小の個数（絶対値）", () => {
       const { store, ids, boostLimit } = candyShortWorld();
       const [a, b] = ids as [string, string, string];
       const { ctx, result, rows } = contextOf(store, boostLimit);
       const advice = adviseRow(ctx, a, "increase")!;
       const rec = recommendBoost(ctx, a, "increase", advice)!;
-      expect(rec).toMatchObject({ rowId: a, targetRowId: b, andOthers: true, insufficient: false });
+      // a が浮かせる万能アメは b の不足より少ないので、b は届かず（これだけでは届きません）、下の c までは回らない（「など」にならない）
+      expect(rec).toMatchObject({ rowId: a, targetRowId: b, andOthers: false, insufficient: true });
 
       // s = min(a が使っているアメのうち下の行が使えるもの, 下の届かない行の不足アメ合計)。a の使うアメは種族アメと万能アメだけ
       const supply = result.pokemonResults[0]!.reachableLine.candySupply;
@@ -525,16 +534,29 @@ describe("advice: 本物のストアとソルバー", () => {
       if (rec2 !== null) expect(rec2.boost).toBeGreaterThan(rec1.boost);
     });
 
-    it("自分の不足が減る行: 名前は自分。解が範囲に無ければ全アメブ点（端）が入り「これだけでは届きません」", () => {
-      const { store, ids, boostLimit } = candyShortWorld();
-      const b = ids[1]!;
+    it("自分の不足が減る行: 名前は自分。かけらが十分で、使えるアメを全部アメブにしても届かなければ、その数が入り「これだけでは届きません」", () => {
+      // b は種族アメ100個。全部アメブにしても目標までのアメの半分ほどにしかならない
+      const { store, ids, boostLimit } = build({
+        species: [[133, 100]],
+        rows: [{ boxId: "b", pokedexId: 133, src: 10, dst: 40, boost: 0 }],
+      });
+      const b = ids[0]!;
       const { ctx, evaluated } = contextOf(store, boostLimit);
       const advice = adviseRow(ctx, b, "increase")!;
       expect(advice).toEqual({ kind: "selfShort" });
       const rec = recommendBoost(ctx, b, "increase", advice)!;
-      // b は使えるアメが0で、全部アメブにしても不足アメの半分ほどしか節約できない
       expect(rec).toMatchObject({ rowId: b, targetRowId: b, andOthers: false, insufficient: true });
-      expect(rec.boost).toBe(evaluated.byId.get(b)!.fullBoost);
+      // 全アメブ点まで増やしても、使えるアメ100個より多くはアメブにならず伸びない。同じ伸びの最小の個数で止める
+      expect(evaluated.byId.get(b)!.fullBoost).toBeGreaterThan(100);
+      expect(rec.boost).toBe(100);
+    });
+
+    it("使えるアメが0の自分の不足は、自分のアメブを増やしても伸びないので出さない", () => {
+      const { store, ids, boostLimit } = candyShortWorld();
+      const b = ids[1]!;
+      const { ctx, result } = contextOf(store, boostLimit);
+      expect(result.pokemonResults[1]!.reachableLine.totalCandyUnitsUsed).toBe(0);
+      expect(recommendBoost(ctx, b, "increase", adviseRow(ctx, b, "increase")!)).toBeNull();
     });
 
     it("範囲の中に解がある自分の不足: 不足アメ以上減る最小の個数", () => {
@@ -567,24 +589,81 @@ describe("advice: 本物のストアとソルバー", () => {
       expect(rec).toMatchObject({ boost: 40, insufficient: true });
     });
 
-    it("上限: 残りのかけらで増分が収まる最大の個数で止まる", () => {
-      const world = { species: [[133, 350]] as Array<[number, number]>, rows: [{ boxId: "b", pokedexId: 133, src: 10, dst: 40, boost: 0 }] };
-      // かけらが潤沢なときの、不足を埋める最小の個数 kNeed と、基準のかけらの使用量
-      const free = build(world);
-      const freeCtx = contextOf(free.store, free.boostLimit);
-      const bRow = rowOf(freeCtx.rows, free.ids[0]!);
-      const kNeed = recommendBoost(freeCtx.ctx, free.ids[0]!, "increase", adviseRow(freeCtx.ctx, free.ids[0]!, "increase")!)!.boost;
-      const used0 = freeCtx.result.pokemonResults[0]!.reachableLine.dreamShardsUsed;
-      const cost = (n: number) => direct(bRow, "full", n).shards - direct(bRow, "full", 0).shards;
-      // 残りのかけらを kNeed の費用の半分にする
-      const { store, ids, boostLimit } = build({ ...world, shards: used0 + Math.floor(cost(kNeed) / 2) });
-      const { ctx, result } = contextOf(store, boostLimit);
-      const rec = recommendBoost(ctx, ids[0]!, "increase", adviseRow(ctx, ids[0]!, "increase")!)!;
-      const left = result.summary.dreamShardsRemaining;
-      expect(left).toBeGreaterThan(0);
-      expect(rec.insufficient).toBe(true);
-      expect(cost(rec.boost)).toBeLessThanOrEqual(left);
-      expect(cost(rec.boost + 1)).toBeGreaterThan(left);
+    /**
+     * つり合う点（§5.5）: かけらが足りないとき、不足アメが埋まる量まで増やすと、伸びた先頭の未達行がかけらで止まり、
+     * 逆向き（減らす）のおすすめが出て往復した（ユーザー指摘、2026-10-22）。おすすめ量を入れてソルバーで計算し直しても、
+     * 先頭の未達行は伸び、どの行にも逆向きのおすすめが出ない。
+     */
+    describe("つり合う点: おすすめ量を入れて計算し直しても往復しない", () => {
+      /** 下書きの行に一度だけおすすめ量を入れ、ソルバーで計算し直した前後 */
+      function pressOnce(store: CalcStore, boostLimit: number, rowId: string) {
+        const before = contextOf(store, boostLimit);
+        const direction = before.result.pokemonResults.some((p) => p.constraintDiagnosis.limitingFactor === "shards" && !p.reachableLine.effectiveTargetReached)
+          ? "decrease" as const
+          : "increase" as const;
+        const rec = adviseRows(before.ctx, direction, 10).get(rowId)!.recommendation!;
+        expect(rec).not.toBeNull();
+        const from = before.evaluated.byId.get(rowId)!.effectiveBoost;
+        store.onRowBoostCandy(rowId, String(rec.boost));
+        const after = contextOf(store, boostLimit);
+        const reach = (r: LevelPlannerResult) => r.pokemonResults.find((p) => p.pokemonId === rec.targetRowId)!.reachableLine;
+        const d = diagnose(after.result, after.rows, "full", boostSlotRemaining(after.base, after.evaluated));
+        const nextDirection = d.kind === "shardsShort" ? "decrease" : d.kind === "candyShortRoom" ? "increase" : null;
+        const next = nextDirection === null ? new Map() : adviseRows(after.ctx, nextDirection, 10);
+        return { rec, from, before: reach(before.result), after: reach(after.result), next, nextDirection, direction };
+      }
+      const progressed = (a: { level: number; expInLevel: number }, b: { level: number; expInLevel: number }) =>
+        b.level > a.level || (b.level === a.level && b.expInLevel > a.expInLevel);
+
+      it.each([60_000, 100_000, 150_000])("自分の不足を増やす（総かけら %i）: 届かない量でも先頭の未達行が伸び、減らすおすすめが出ない", (shards) => {
+        const { store, ids, boostLimit } = build({ shards, species: [[133, 350]], rows: [{ boxId: "b", pokedexId: 133, src: 10, dst: 40, boost: 0 }] });
+        const out = pressOnce(store, boostLimit, ids[0]!);
+        expect(out.rec.boost).toBeGreaterThan(out.from);
+        expect(progressed(out.before, out.after)).toBe(true);
+        if (out.nextDirection === "decrease") {
+          for (const entry of out.next.values()) expect(entry.recommendation).toBeNull();
+        }
+        const again = out.next.get(ids[0]!)?.recommendation ?? null;
+        if (again !== null) expect(again.boost).toBeGreaterThan(out.rec.boost);
+      });
+
+      it("上の行から下へ回す（かけらが足りない）: 先頭の未達行が伸び、減らすおすすめが出ない", () => {
+        const { store, ids, boostLimit } = build({
+          shards: 40_000,
+          species: [[25, 200]],
+          universalS: 25,
+          rows: [
+            { boxId: "a", pokedexId: 25, src: 10, dst: 30, boost: 0 },
+            { boxId: "b", pokedexId: 133, src: 10, dst: 40, boost: 60 },
+          ],
+        });
+        const out = pressOnce(store, boostLimit, ids[0]!);
+        expect(out.rec).toMatchObject({ rowId: ids[0], targetRowId: ids[1] });
+        expect(progressed(out.before, out.after)).toBe(true);
+        for (const entry of out.next.values()) {
+          const rec = entry.recommendation;
+          if (rec === null || out.nextDirection === null) continue;
+          expect(out.nextDirection).toBe("increase");
+        }
+      });
+
+      it("減らす（上の行のかけらを浮かせる）: 先頭の未達行が伸び、増やすおすすめが出ない", () => {
+        const { store, ids, boostLimit } = build({
+          shards: 700_000,
+          species: [[25, 100_000], [133, 100_000], [7, 2_000]],
+          rows: [
+            { boxId: "a", pokedexId: 25, src: 10, dst: 60, boost: 300 },
+            { boxId: "b", pokedexId: 133, src: 10, dst: 60, boost: 250 },
+            { boxId: "c", pokedexId: 7, src: 10, dst: 60 },
+          ],
+        });
+        const [a, b] = ids as [string, string, string];
+        const out = pressOnce(store, boostLimit, a);
+        expect(out.direction).toBe("decrease");
+        expect(out.rec).toMatchObject({ rowId: a, targetRowId: b });
+        expect(progressed(out.before, out.after)).toBe(true);
+        expect(out.nextDirection).toBe("decrease");
+      });
     });
 
     it("減らす: 浮くかけらが不足かけら以上になる最小の個数（名前は下の届かない行の先頭）", () => {
@@ -645,11 +724,14 @@ describe("advice: 本物のストアとソルバー", () => {
       expect(recommendBoost(full.ctx, ids[1]!, "increase", { kind: "selfShort" })).toBeNull();
     });
 
-    it("adviseRows の recommendation: selfShort / feedsBelow の行だけに付く", () => {
+    it("adviseRows の recommendation: 先頭の未達行を伸ばす selfShort / feedsBelow の行だけに付く", () => {
       const { store, ids, boostLimit } = candyShortWorld();
+      const [a, b, c] = ids as [string, string, string];
       const { ctx } = contextOf(store, boostLimit);
       const entries = adviseRows(ctx, "increase", 10);
-      for (const id of ids) expect(entries.get(id)!.recommendation).not.toBeNull();
+      expect(entries.get(a)!.recommendation).toMatchObject({ targetRowId: b });
+      expect(entries.get(b)!.recommendation).toBeNull();
+      expect(entries.get(c)!.recommendation).toBeNull();
       const stock = build({ species: [[26, 200]], rows: [{ boxId: "z", pokedexId: 26, src: 10, dst: 30, boost: 0 }] });
       stock.store.setRowSleepTarget(stock.ids[0]!, "stock");
       const stockCtx = contextOf(stock.store, stock.boostLimit);
@@ -712,7 +794,7 @@ describe("advice: 本物のストアとソルバー", () => {
       const rows: CalcRow[] = ["row0", "row1"].map((id) => ({
         id, title: id, pokedexId: 25, srcLevel: 10, dstLevel: 40, expRemaining: 0, expType: 600, nature: "normal", boostReachLevel: 40,
       }));
-      expect(diagnose(result, rows, "full", 100)).toEqual({ kind: "boostCapShort", firstShortId: "row1", alsoShort: [] });
+      expect(diagnose(result, rows, "full", 100)).toEqual({ kind: "boostCapShort", firstShortId: "row1", moreShort: false, alsoShort: [] });
     });
 
     it("在庫のみの行で使える在庫が要る数より少ない行は、届く行として扱われ、先頭の未達行にならない", () => {
@@ -730,7 +812,8 @@ describe("advice: 本物のストアとソルバー", () => {
       const { store, ids, boostLimit } = candyShortWorld();
       const { result, rows, base, evaluated } = contextOf(store, boostLimit);
       const d = diagnose(result, rows, "full", boostSlotRemaining(base, evaluated));
-      expect(d).toEqual({ kind: "candyShortRoom", firstShortId: ids[1], alsoShort: [] });
+      // b の下の c もアメで止まっているので「〇〇以下は」
+      expect(d).toEqual({ kind: "candyShortRoom", firstShortId: ids[1], moreShort: true, alsoShort: [] });
       // かけらで止まる行が先頭、アメで止まる行が下にある
       const shards = shardShortWorld(0.5);
       const mixed = contextOf(shards.store, shards.boostLimit);

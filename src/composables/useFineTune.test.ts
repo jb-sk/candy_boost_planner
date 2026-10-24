@@ -3,6 +3,8 @@ import { effectScope, nextTick, ref, toRaw } from "vue";
 import type { Composer } from "vue-i18n";
 import { addBoxRow, createCalcStore } from "../../tests/helpers/fakeIndividuals";
 import { cancelPersist } from "../persistence/deferredPersist";
+import { calcExp } from "../domain/pokesleep/exp";
+import { calcSleepLandingLevel } from "../domain/level-planner/sleepReachLevel";
 import { hasFineTuneTarget } from "../domain/fine-tune/draft";
 import type { LevelPlannerInput, LevelPlannerResult } from "../domain/level-planner/types";
 import type { PlannerRunner } from "../workers/plannerRunner";
@@ -132,6 +134,16 @@ describe("useFineTune（設計書 §10.4）", () => {
     expect(fineTune.previewing.value).toBe(false);
     expect(fineTune.apply()).toBe("empty");
     expect(counts.replaced).toBe(0);
+  });
+
+  it("診断: モード1でどの行のアメブを動かしても先頭の未達行が伸びなければ boostCannotHelp、モード2では元の診断", async () => {
+    // b（ピカチュウ）はアメが1個も無く、a（イーブイ）の種族アメは使えない。どの行にもおすすめ量が出ない
+    const { store, b } = await makeStore("100000000");
+    const { fineTune } = open(store);
+    expect(fineTune.diagnosis.value).toMatchObject({ kind: "boostCannotHelp", firstShortId: b });
+    expect(fineTune.rowViews.value.every((row) => row.advice?.recommendation == null)).toBe(true);
+    fineTune.adviceActive.value = false;
+    expect(fineTune.diagnosis.value).toMatchObject({ kind: "candyShortRoom", firstShortId: b });
   });
 
   it("計算機の計算が終わっていなければ、終わるまで基準を作らない", async () => {
@@ -268,6 +280,41 @@ describe("useFineTune（設計書 §10.4）", () => {
     expect(fineTune.summary.value!.boostRemaining!.value).toBe(baseRemaining + baseBoost - 10);
   });
 
+  it("睡眠到達Lv: 睡眠の行だけに出し、計算機と同じ着地点。睡眠のあとも目標に届かない行は届かない行（D46、D47）", async () => {
+    for (const [shards, short] of [["100000000", false], ["1", true]] as const) {
+      const { store, a, b } = await makeStore(shards);
+      // a（イーブイ）は種族アメが十分。b（ピカチュウ）は睡眠目標なし
+      store.setRowSleepTargetHours(a, 200);
+      await vi.waitFor(() => {
+        expect(store.planResultPending.value).toBe(false);
+        expect(store.rowSleepExpFor(a)).toBeGreaterThan(0);
+      });
+      const { fineTune } = open(store);
+      const view = (id: string) => fineTune.rowViews.value.find((r) => r.id === id)!;
+      // 睡眠目標を入れた直後の計算機の計算が終わり、基準ができるまで待つ
+      await vi.waitFor(() => {
+        expect(fineTune.ready.value).toBe(true);
+        expect(view(a).sleepReach).not.toBeNull();
+      });
+      expect(view(b).sleepReach).toBeNull();
+      const reach = view(a).sleepReach!;
+      expect(reach.kind).toBe("sleep");
+      expect(view(a).reached.value).toBe(!short);
+      // 届く行は睡眠のあと最終目標以上、届かない行は下
+      const target = view(a).targetLevel.value;
+      if (short) expect(reach.level).toBeLessThanOrEqual(target);
+      else expect(reach.level).toBeGreaterThanOrEqual(target);
+      const plan = store.getPokemonResult(a)!;
+      const landing = calcSleepLandingLevel({
+        reachedLevel: plan.reachableLine.level,
+        reachedExpInLevel: plan.reachableLine.expInLevel,
+        sleepExp: store.rowSleepExpFor(a),
+        expType: store.rows.value.find((r) => r.id === a)!.expType,
+      });
+      expect(landing.shown && { level: landing.level, tenths: landing.tenths }).toEqual({ level: reach.level, tenths: reach.tenths });
+    }
+  });
+
   it("入口のボタンは、対象にできる行が1行以上あるときだけ出す", async () => {
     const empty = createCalcStore({ locale: ref("ja"), t });
     expect(hasFineTuneTarget(empty.rows.value, empty.evaluateRows)).toBe(false);
@@ -284,7 +331,8 @@ describe("useFineTune（設計書 §10.4）", () => {
     expect(fineTune.state.value!.rows.map((r) => r.id)).toEqual([b, a]);
     const view = () => fineTune.rowViews.value.find((r) => r.id === b)!;
     const m0 = view().giver!.m0;
-    const fill0 = view().bars.yield.value!;
+    const fill0 = view().bars.progress.value!;
+    const level0 = view().reachLevel.value!;
     expect(view().giver!.usable).not.toBeNull();
     const m = Math.floor(m0 / 2);
     expect(m).toBeLessThan(view().giver!.usable!);
@@ -293,17 +341,20 @@ describe("useFineTune（設計書 §10.4）", () => {
     expect(fineTune.giveDragging.value).toBe(true);
     const live = fineTune.givePreview.value!;
     expect(live.rowId).toBe(b);
-    // 塗りは m 個ぶんに縮み、目標の印は塗りより先（目標は m 個 + アメブ分の到達点）にある
-    expect(live.fill!).toBeLessThan(fill0);
-    expect(live.fill!).toBeGreaterThan(0);
+    // 到達点は m 個ぶんに下がる（棒は到達Lvの中の進みなので、Lv が下がれば Lv で比べる）。目標の印は到達Lvの中に出る
+    expect(live.level!).toBeLessThanOrEqual(level0);
+    if (live.level === level0) expect(live.fill!).toBeLessThan(fill0);
+    expect(live.expToNext!).toBeGreaterThan(0);
     expect(live.target).not.toBeNull();
     // 動かしている間は op も実行役も動かない
     expect(fineTune.state.value!.givers[b]).toBeUndefined();
     expect(runs).toHaveLength(0);
 
-    // 離すと同じ値の op が通り、印は reducer が作った行から出した値と一致する
+    // 離すと同じ値の op が通り、印は reducer が作った行の目標と一致する
     fineTune.dispatch({ kind: "giverSet", rowId: b, candy: m });
-    expect(view().bars.yieldTarget).toBe(live.target);
+    const given = fineTune.state.value!.rows.find((r) => r.id === b)!;
+    expect(given.dstLevel).toBe(live.level);
+    expect(live.target).toBeCloseTo(((given.dstExpInLevel ?? 0) / calcExp(given.dstLevel, given.dstLevel + 1, given.expType)) * 100, 6);
     fineTune.releaseGivePreview();
     // 結果が届くまで動かしている間の棒を保ち、届いたら止める
     expect(fineTune.givePreview.value).not.toBeNull();

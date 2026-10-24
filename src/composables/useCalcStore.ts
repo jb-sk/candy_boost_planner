@@ -541,8 +541,11 @@ export type CalcStore = {
   rowRestCapacityOverflow: (rowId: string) => RestResource | null;
   /** 残EXPを埋める時間（睡眠かおひるね島）。残EXPが無ければ null。 */
   rowRemainingTimeFor: (rowId: string, expToTarget: number) => RowRemainingTime | null;
-  /** 残EXPを埋めたあとの着地点を出すための値。計画が無ければ null。 */
-  rowReachAfterRemainingFor: (rowId: string) => RowReachAfterRemaining | null;
+  /**
+   * 残EXPを埋めたあとの着地点を出すための値。計画が無ければ null。
+   * `expToTarget` を渡すと、島のEXPを計算機の計画ではなくその残EXPで出す（やりくりの下書きの結果）。
+   */
+  rowReachAfterRemainingFor: (rowId: string, expToTarget?: number) => RowReachAfterRemaining | null;
 };
 
 export function useCalcStore(opts: {
@@ -1756,13 +1759,13 @@ export function useCalcStore(opts: {
     return { kind: "sleep", result: calcSleepTimeFor(row, expToTarget) };
   }
 
-  function rowReachAfterRemainingFor(rowId: string): RowReachAfterRemaining | null {
+  function rowReachAfterRemainingFor(rowId: string, expToTarget?: number): RowReachAfterRemaining | null {
     const row = rows.value.find((candidate) => candidate.id === rowId);
     if (!row) return null;
     if (sleepTargetTraits(row).rest === "napIsland") {
-      const plan = getPokemonResult(rowId);
-      if (!plan) return null;
-      return { kind: "napIsland", napGainedExp: calcNapIslandTimeFor(row, plan.shortage.expToTarget).napGainedExp };
+      const exp = expToTarget ?? getPokemonResult(rowId)?.shortage.expToTarget;
+      if (exp === undefined) return null;
+      return { kind: "napIsland", napGainedExp: calcNapIslandTimeFor(row, exp).napGainedExp };
     }
     return { kind: "sleep", sleepExp: rowSleepExp(row), hours: rowSleepRemainingHoursFor(rowId) };
   }

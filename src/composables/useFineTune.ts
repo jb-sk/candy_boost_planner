@@ -6,6 +6,7 @@ import {
   DIAGNOSIS_DIRECTION,
   diagnose,
   receiverNotices,
+  settleDiagnosis,
   type Diagnosis,
   type ReceiverNotice,
   type RowAdviceEntry,
@@ -226,7 +227,8 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     return createAdviceContext({ deps, base: b, state: s, evaluated: ev, result: l.result });
   });
 
-  const diagnosis = computed<Diagnosis | null>(() => {
+  /** 最新の結果から出した診断。向き（`DIAGNOSIS_DIRECTION`）はこれで決める。 */
+  const rawDiagnosis = computed<Diagnosis | null>(() => {
     const b = base.value;
     const s = state.value;
     const ev = evaluated.value;
@@ -246,11 +248,18 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     if (!adviceActive.value) return NO_ADVICE;
     if (stale.value) return settledAdvice;
     const ctx = adviceContext.value;
-    const d = diagnosis.value;
+    const d = rawDiagnosis.value;
     if (ctx === null || d === null) return NO_ADVICE;
     const direction = DIAGNOSIS_DIRECTION[d.kind];
     settledAdvice = direction === null ? NO_ADVICE : adviseRows(ctx, direction, step.value);
     return settledAdvice;
+  });
+
+  /** 表示する診断。モード1では、どの行のアメブを動かしても伸びないとき、そう出す（`settleDiagnosis`）。 */
+  const diagnosis = computed<Diagnosis | null>(() => {
+    const d = rawDiagnosis.value;
+    if (d === null || !adviceActive.value) return d;
+    return settleDiagnosis(d, advice.value);
   });
 
   const rowViews = computed<FineTuneRowView[]>(() => {
@@ -264,9 +273,8 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
       evaluated: ev,
       latest: latest.value,
       advice: advice.value,
-      diagnosis: diagnosis.value,
       hasBoost: hasBoost.value,
-      hasSleepExp: (rowId) => calc.rowSleepExpFor(rowId) > 0,
+      reachAfterRemaining: (rowId, expToTarget) => calc.rowReachAfterRemainingFor(rowId, expToTarget),
     });
   });
 

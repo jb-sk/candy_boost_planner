@@ -91,12 +91,14 @@
           </div>
         </section>
 
-        <div class="modal__body fineTuneModal__list" data-testid="fine-tune-list" :data-pending="fineTune.stale.value ? 'true' : undefined">
-          <div class="fineTuneHead" :class="{ 'fineTuneHead--noBoost': !fineTune.hasBoost.value }" aria-hidden="true">
+        <div class="modal__body fineTuneModal__list" :class="{ 'fineTuneModal__list--sleep': hasSleep }" data-testid="fine-tune-list" :data-pending="fineTune.stale.value ? 'true' : undefined">
+          <div class="fineTuneHead" :class="{ 'fineTuneHead--noBoost': !fineTune.hasBoost.value, 'fineTuneHead--yield': mode === 'yield' }" aria-hidden="true">
             <span class="fineTuneHead__cell fineTuneHead__cell--move"></span>
             <span class="fineTuneHead__cell fineTuneHead__cell--name">{{ t("calc.fineTune.colPokemon") }}</span>
+            <span v-if="mode === 'raise' && fineTune.hasBoost.value" class="fineTuneHead__cell fineTuneHead__cell--advice">{{ t("calc.fineTune.colAdvice") }}</span>
             <span class="fineTuneHead__cell fineTuneHead__cell--target">{{ t("calc.row.dstLevel") }}</span>
-            <span class="fineTuneHead__cell fineTuneHead__cell--exp">{{ t("calc.fineTune.colExp") }}</span>
+            <span class="fineTuneHead__cell fineTuneHead__cell--exp">{{ t("calc.fineTune.colExpLeft") }}</span>
+            <span v-if="hasSleep" class="fineTuneHead__cell fineTuneHead__cell--sleep">{{ t("calc.row.sleepReachedLv") }}</span>
             <span v-if="fineTune.hasBoost.value" class="fineTuneHead__cell fineTuneHead__cell--boost">{{ t("calc.row.breakdownBoost") }}</span>
             <span class="fineTuneHead__cell fineTuneHead__cell--candy">{{ t("calc.row.candy") }}</span>
             <span class="fineTuneHead__cell fineTuneHead__cell--shards">{{ t("calc.row.shards") }}</span>
@@ -107,6 +109,7 @@
             :row="row"
             :mode="mode"
             :has-boost="fineTune.hasBoost.value"
+            :has-sleep="hasSleep"
             :pending="fineTune.stale.value"
             :step="fineTune.step.value"
             :is-first="i === 0"
@@ -212,7 +215,7 @@ function dispatch(op: FineTuneOp): void {
   fineTune.dispatch(op);
 }
 
-// ===== 並べ替え（↑↓ は行、つかんで動かすのは useRowReorderDrag。確定は move の op、D33） =====
+// ===== 並べ替え（取っ手をつかんで動かすのは useRowReorderDrag、取っ手の ↑↓ キーは行。確定は move の op、D33） =====
 const rowDrag = useRowReorderDrag({
   items: () => fineTune.rowViews.value.map((row) => ({ id: row.id, title: row.title })),
   onCommit: (rowId, toIndex) => dispatch({ kind: "move", rowId, toIndex }),
@@ -266,6 +269,9 @@ function summaryChange(change: Change<number | null>, format: (n: number) => str
   return `${format(base)} → ${format(value)}`;
 }
 
+/** 睡眠到達Lv の列は、睡眠（島）のある行が1匹でもいるときだけ出す */
+const hasSleep = computed(() => fineTune.rowViews.value.some((row) => row.sleepReach !== null));
+
 const boostOver = computed(() => {
   const remaining = summary.value?.boostRemaining?.value;
   return remaining !== undefined && remaining < 0 ? -remaining : 0;
@@ -281,6 +287,7 @@ const DIAGNOSIS_TEXT: Readonly<Record<Diagnosis["kind"], string>> = {
   boostCapShort: "calc.fineTune.diagnosis.boostCapShort",
   noBoostAllReached: "calc.fineTune.diagnosis.noBoostAllReached",
   noBoostShort: "calc.fineTune.diagnosis.noBoostShort",
+  boostCannotHelp: "calc.fineTune.diagnosis.boostCannotHelp",
 };
 
 const FACTOR_TEXT = {
@@ -289,17 +296,28 @@ const FACTOR_TEXT = {
   boost: "calc.fineTune.factor.boost",
 } as const;
 
+/** 先頭の未達行より下にも同じもので止まっている行があるときの文言（「〇〇以下は」） */
+const DIAGNOSIS_TEXT_MANY: Readonly<Partial<Record<Diagnosis["kind"], string>>> = {
+  candyShortRoom: "calc.fineTune.diagnosis.candyShortRoomMany",
+  shardsShort: "calc.fineTune.diagnosis.shardsShortMany",
+  boostCapShort: "calc.fineTune.diagnosis.boostCapShortMany",
+  noBoostShort: "calc.fineTune.diagnosis.noBoostShortMany",
+  boostCannotHelp: "calc.fineTune.diagnosis.boostCannotHelpMany",
+};
+
 const diagnosisView = computed(() => {
   const diagnosis = fineTune.diagnosis.value;
   if (diagnosis === null) return null;
   const name = "firstShortId" in diagnosis ? fineTune.titleOf(diagnosis.firstShortId) : "";
+  const key = ("moreShort" in diagnosis && diagnosis.moreShort ? DIAGNOSIS_TEXT_MANY[diagnosis.kind] : undefined)
+    ?? DIAGNOSIS_TEXT[diagnosis.kind];
   const also = "alsoShort" in diagnosis
     ? diagnosis.alsoShort.map((item) => t("calc.fineTune.diagnosis.alsoShort", {
       name: fineTune.titleOf(item.rowId),
       factor: t(FACTOR_TEXT[item.factor]),
     }))
     : [];
-  return { kind: diagnosis.kind, text: t(DIAGNOSIS_TEXT[diagnosis.kind], { name }), also };
+  return { kind: diagnosis.kind, text: t(key, { name }), also };
 });
 
 const NOTICE_TEXT: Readonly<Record<ReceiverNotice["kind"], string>> = {

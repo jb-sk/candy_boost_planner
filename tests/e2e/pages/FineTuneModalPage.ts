@@ -144,17 +144,25 @@ export class FineTuneModalPage {
     return value === null ? null : Number(value);
   }
 
-  /** 到達Lvの表示（`Lv66 → Lv67` など）。 */
+  /** 到達Lvの表示（`Lv67` など。変更後だけ）。 */
   async reachLevelText(row: Locator): Promise<string> {
     return ((await row.getByTestId('fine-tune-row-reach-level').textContent()) ?? '').trim();
   }
 
-  /** 到達Lv（変更後。`Lv66 → Lv67` なら 67）。 */
+  /** 到達Lv（変更後）。 */
   async reachLevel(row: Locator): Promise<number> {
     const text = await this.reachLevelText(row);
     const last = text.match(/Lv(\d+)\s*$/);
     if (last === null) throw new Error(`到達Lvを読めません: ${text}`);
     return Number(last[1]);
+  }
+
+  /**
+   * 到達点（到達Lv + 棒の塗り/100）。棒は到達Lvの中の進みなので、Lv をまたぐ比較はこれで行う。
+   * 例: Lv26 で塗り 40% なら 26.4。
+   */
+  async reachPoint(row: Locator): Promise<number> {
+    return (await this.reachLevel(row)) + ((await this.barPercent(row)) ?? 0) / 100;
   }
 
   async targetLevel(row: Locator): Promise<number> {
@@ -167,14 +175,6 @@ export class FineTuneModalPage {
     return Number(await input.inputValue());
   }
 
-  /** 使うアメ（変更後）の表示（`1,482 → 1,276` など）。 */
-  async candyText(row: Locator): Promise<string> {
-    return ((await row.getByTestId('fine-tune-row-candy').textContent()) ?? '').trim();
-  }
-
-  async statusText(row: Locator): Promise<string> {
-    return ((await row.getByTestId('fine-tune-row-status').textContent()) ?? '').trim();
-  }
 
   // === 行の操作 ===
 
@@ -195,12 +195,14 @@ export class FineTuneModalPage {
     await row.getByTestId('fine-tune-row-target-down').click();
   }
 
+  /** 取っ手にフォーカスして ↑ キー（1つ上へ）。 */
   async moveUp(row: Locator): Promise<void> {
-    await row.getByTestId('fine-tune-row-up').click();
+    await this.getHandle(row).press('ArrowUp');
   }
 
+  /** 取っ手にフォーカスして ↓ キー（1つ下へ）。 */
   async moveDown(row: Locator): Promise<void> {
-    await row.getByTestId('fine-tune-row-down').click();
+    await this.getHandle(row).press('ArrowDown');
   }
 
   getHandle(row: Locator): Locator {

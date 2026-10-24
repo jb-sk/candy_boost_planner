@@ -15,9 +15,11 @@ import {
   createAdviceContext,
   diagnose,
   receiverNotices,
+  settleDiagnosis,
   type AdviceContext,
   type Diagnosis,
   type RankDirection,
+  type RowAdviceEntry,
 } from "../advice";
 import { initialFineTuneState, type FineTuneBase, type FineTuneState, type GiverRecord } from "../draft";
 
@@ -158,19 +160,22 @@ describe("diagnose（§5.1）", () => {
     expect(d).toEqual({
       kind: "candyShortRoom",
       firstShortId: "first",
+      // 同じアメで止まっている same があるので「〇〇以下は」
+      moreShort: true,
       alsoShort: [{ rowId: "other", factor: "shards" }, { rowId: "boostRow", factor: "boost" }],
     });
     // かけらで止まっている行が先頭なら、アメで止まっている行が添え書き
     expect(kindOf({ s: { reached: false, factor: "shards" }, c: { reached: false, factor: "candy" } })).toEqual({
       kind: "shardsShort",
       firstShortId: "s",
+      moreShort: false,
       alsoShort: [{ rowId: "c", factor: "candy" }],
     });
   });
 
   it("先頭の未達行より上の行は添え書きに出ない。届く行は律速が null でも数えない", () => {
     const d = kindOf({ upper: { reached: true }, first: { reached: false, factor: "shards" }, lower: { reached: true } });
-    expect(d).toEqual({ kind: "shardsShort", firstShortId: "first", alsoShort: [] });
+    expect(d).toEqual({ kind: "shardsShort", firstShortId: "first", moreShort: false, alsoShort: [] });
   });
 
   it("role と fullyReachedCount と boostRemaining は使わない。残り枠は引数で決まる", () => {
@@ -200,7 +205,37 @@ describe("diagnose（§5.1）", () => {
       boostCapShort: null,
       noBoostAllReached: null,
       noBoostShort: null,
+      boostCannotHelp: null,
     });
+  });
+});
+
+describe("settleDiagnosis: どの行にもおすすめ量が無いとき（頂上にいる）", () => {
+  const head = { firstShortId: "b", moreShort: true, alsoShort: [] };
+  const entry = (rowId: string, withRecommendation: boolean): [string, RowAdviceEntry] => [rowId, {
+    rowId,
+    advice: { kind: "selfShort" },
+    marginal: null,
+    rank: null,
+    recommendation: withRecommendation ? { rowId, targetRowId: rowId, andOthers: false, boost: 10, insufficient: false } : null,
+  }];
+
+  it("アメ不足で余りがある・かけら不足で、おすすめ量が1つも無ければ boostCannotHelp に置き換える（先頭の未達行と「以下は」は保つ）", () => {
+    const none = new Map([entry("a", false), entry("b", false)]);
+    for (const kind of ["candyShortRoom", "shardsShort"] as const) {
+      expect(settleDiagnosis({ kind, ...head }, none)).toEqual({ kind: "boostCannotHelp", ...head });
+      expect(settleDiagnosis({ kind, ...head }, new Map())).toEqual({ kind: "boostCannotHelp", ...head });
+    }
+  });
+
+  it("おすすめ量が1つでもあれば、そのまま", () => {
+    const some = new Map([entry("a", false), entry("b", true)]);
+    expect(settleDiagnosis({ kind: "candyShortRoom", ...head }, some)).toEqual({ kind: "candyShortRoom", ...head });
+  });
+
+  it("ほかの kind はおすすめ量が無くてもそのまま（全員届いているときの節約など、おすすめ量を出さない診断）", () => {
+    expect(settleDiagnosis({ kind: "allReachedRoom" }, new Map())).toEqual({ kind: "allReachedRoom" });
+    expect(settleDiagnosis({ kind: "candyShortNoSlot", ...head }, new Map())).toEqual({ kind: "candyShortNoSlot", ...head });
   });
 });
 
