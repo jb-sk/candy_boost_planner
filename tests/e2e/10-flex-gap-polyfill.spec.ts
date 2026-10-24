@@ -161,4 +161,89 @@ test.describe('flex の gap の補正（書き換えへの追従）', () => {
     expect(native[1][1]).toBeGreaterThan(native[0][1]);
     expect(await layout(true)).toEqual(native);
   });
+
+  // 親を付け直すと、親が margin を書いた子の inline style も戻る。子自身も並び（gap 付き）なら、その補正も書き直す。
+  // 子を戻すとさらにその子も戻るので、3段の入れ子（並び → 並び → 並び）で奥まで残ることを確かめる。
+  test('兄弟の書き換えで親を付け直しても、入れ子の奥の gap の補正まで残る', async ({ page }) => {
+    const layout = async (polyfill: boolean) => {
+      await page.goto(polyfill ? '/?flexGapPolyfill=1' : '/');
+      await expect(page.locator('#app > *').first()).toBeVisible();
+      return page.evaluate(async () => {
+        const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const box = document.createElement('div');
+        box.style.cssText = 'display:flex;gap:0 12px;position:absolute;left:0;top:0';
+        const items: HTMLElement[] = [];
+        for (let i = 0; i < 3; i++) {
+          const item = document.createElement('span');
+          item.style.cssText = 'display:inline-flex;gap:4px;font:16px monospace';
+          item.innerHTML = '<span>k</span><span style="display:inline-flex;gap:6px"><span>v</span><span>w</span></span>';
+          box.appendChild(item);
+          items.push(item);
+        }
+        document.body.appendChild(box);
+        await frame();
+        // 3つ目の class だけを変える。付け直しは親の並び（box）にも及ぶ
+        items[2].className = 'changed';
+        await frame();
+        return Array.from(box.getElementsByTagName('span'))
+          .filter((leaf) => leaf.children.length === 0)
+          .map((leaf) => Math.round(leaf.getBoundingClientRect().left * 10) / 10);
+      });
+    };
+    expect(await layout(true)).toEqual(await layout(false));
+  });
+
+  // 孫の class が変わると、付け直しは孫とその親（子）に及ぶ。子を戻すと、並び（box）が子に書いた gap の margin も消えるので、
+  // box も付け直す（2026-10-20 実例: ヘッダーのテーマ選択を開くと、サポートとの間隔が消えて左へずれた）。
+  test('孫の書き換えで子を付け直しても、子に付けた並びの間隔が残る', async ({ page }) => {
+    const layout = async (polyfill: boolean) => {
+      await page.goto(polyfill ? '/?flexGapPolyfill=1' : '/');
+      await expect(page.locator('#app > *').first()).toBeVisible();
+      return page.evaluate(async () => {
+        const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const box = document.createElement('div');
+        box.style.cssText = 'display:flex;gap:16px;position:absolute;left:0;top:0;font:16px monospace';
+        box.innerHTML = '<div>a</div><div><p style="margin:0">b</p><div class="grand">c</div></div>';
+        document.body.appendChild(box);
+        await frame();
+        box.querySelector('.grand')!.className = 'grand grand--open';
+        await frame();
+        return Array.from(box.children).map((child) => Math.round(child.getBoundingClientRect().left * 10) / 10);
+      });
+    };
+    const native = await layout(false);
+    expect(native[1]).toBeGreaterThan(16);
+    expect(await layout(true)).toEqual(native);
+  });
+
+  // FLIP などは transform を transition で動かす。描画だけの書き換えで付け直さず、付け直しても transform の transition は止めない。
+  test('transform のアニメーション中に付け直しても、アニメーションが打ち切られない', async ({ page }) => {
+    await page.goto('/?flexGapPolyfill=1');
+    await expect(page.locator('#app > *').first()).toBeVisible();
+    const translateDuringAnimation = await page.evaluate(async () => {
+      const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const box = document.createElement('div');
+      box.style.cssText = 'display:flex;gap:0 12px;position:absolute;left:0;top:0';
+      const label = document.createElement('span');
+      label.textContent = 'a';
+      const moving = document.createElement('span');
+      moving.textContent = 'b';
+      box.appendChild(label);
+      box.appendChild(moving);
+      document.body.appendChild(box);
+      await frame();
+      moving.style.transition = 'none';
+      moving.style.transform = 'translate(100px, 0px)';
+      void moving.offsetWidth;
+      moving.style.transition = 'transform 2s linear';
+      moving.style.transform = 'none';
+      await frame();
+      // 動いている途中に、付け直しが必要な書き換え（文字）を起こす
+      label.firstChild!.nodeValue = 'aaaa';
+      await frame();
+      const matrix = /^matrix\(([^)]+)\)$/.exec(getComputedStyle(moving).transform);
+      return matrix ? Number.parseFloat(matrix[1].split(',')[4] ?? '0') : 0;
+    });
+    expect(translateDuringAnimation).toBeGreaterThan(50);
+  });
 });

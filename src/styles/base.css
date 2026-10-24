@@ -22,6 +22,9 @@
   --accent-strong: #00a86e;
   --danger: #ef4444;
   --danger-rgb: 239, 68, 68;
+  /* リンク切れの行の強調色（文字にも使うので紙の上で読める濃さにする） */
+  --link-broken: #c62828;
+  --link-broken-rgb: 198, 40, 40;
   --paper-rgb: 255, 255, 255;
   --muted-rgb: 100, 116, 139;
 

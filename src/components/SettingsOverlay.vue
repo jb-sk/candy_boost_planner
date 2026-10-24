@@ -1,6 +1,6 @@
 <template>
   <div class="modal-overlay settings-overlay" data-testid="settings-overlay" @click.self="requestClose">
-    <div class="modal" role="dialog" aria-modal="true" :aria-label="t('common.settings')" data-testid="settings-modal">
+    <div ref="settingsModalRef" class="modal" role="dialog" aria-modal="true" :aria-label="t('common.settings')" data-testid="settings-modal">
       <header class="modal__header">
         <div class="modalTabs" role="tablist" :aria-label="t('common.settings')" data-testid="settings-tabs">
           <button
@@ -359,6 +359,7 @@
                   aria-describedby="settings-growth-incense-stock-unit"
                   :placeholder="t('calc.sleep.growthIncenseStockPlaceholder')"
                   :value="growthIncenseStockValue"
+                  @focus="onGrowthIncenseStockFocus"
                   @input="onGrowthIncenseStockInput(($event.target as HTMLInputElement).value)"
                   @blur="onGrowthIncenseStockBlur"
                 />
@@ -629,6 +630,7 @@ import { normalizeGrowthIncenseStock } from "../domain/pokesleep/growth-incense"
 import { addGameDays, normalizeGameDate, normalizeTimeZone, parseGameDate } from "../domain/pokesleep/game-date";
 import { useCandyStore } from "../composables/useCandyStore";
 import { useDraftField } from "../composables/useDraftField";
+import { commitFocusedInput } from "../utils/commitFocusedInput";
 import { PokemonTypes, getTypeName } from "../domain/pokesleep/pokemon-types";
 import DataBackupSection from "./DataBackupSection.vue";
 import InlineConfirm from "./InlineConfirm.vue";
@@ -643,6 +645,7 @@ const candyStore = useCandyStore();
 const pokemonTypes = PokemonTypes;
 const calc = props.calc;
 
+const settingsModalRef = ref<HTMLElement | null>(null);
 const activeTab = ref<"inventory" | "backup">("inventory");
 const inventoryTabRef = ref<HTMLButtonElement | null>(null);
 const backupTabRef = ref<HTMLButtonElement | null>(null);
@@ -766,14 +769,26 @@ const dailySleepHoursInputValue = computed(() => dailySleepHoursDraft.value ?? S
 const timeZoneDraft = ref<string | null>(null);
 const timeZoneError = ref(false);
 const timeZoneInputValue = computed(() => timeZoneDraft.value ?? calc.sleepSettings.value.timeZone);
-const growthIncenseStockDraft = ref<string | null>(null);
-// 無制限（null）は空欄。0 は「1個も使わない」なので必ず 0 と出す。
-const growthIncenseStockValue = computed(() => (
-  growthIncenseStockDraft.value
-  ?? (calc.sleepSettings.value.growthIncenseStock === null
-    ? ""
-    : String(calc.sleepSettings.value.growthIncenseStock))
-));
+/**
+ * 手持ちのお香。空欄は「無制限」（null）という有効な状態なので、blur で確定できたときだけ設定へ書く。
+ * 不正入力（"01" など）は blur で捨てて、確定した設定値の表示へ戻す。
+ * 無制限（null）は空欄。0 は「1個も使わない」なので必ず 0 と出す。
+ */
+const {
+  text: growthIncenseStockValue,
+  focus: onGrowthIncenseStockFocus,
+  input: onGrowthIncenseStockInput,
+  blur: onGrowthIncenseStockBlur,
+} = useDraftField(
+  () => (calc.sleepSettings.value.growthIncenseStock === null ? "" : String(calc.sleepSettings.value.growthIncenseStock)),
+  (raw) => {
+    const trimmed = raw.trim();
+    // 空欄は「無制限」。それ以外は保存の読み込みと同じ規則で受け付ける。
+    const stock = trimmed === "" ? null : normalizeGrowthIncenseStock(Number(trimmed));
+    if (stock === undefined) return;
+    calc.updateSleepSettings({ growthIncenseStock: stock });
+  },
+);
 type ManualEventError = "date" | "days" | "multiplier";
 type ManualEventDraft = {
   id: number;
@@ -1082,24 +1097,6 @@ function onBlueSeedIncenseDaysChange(event: Event): void {
   }
 }
 
-/**
- * 手持ちのお香。空欄は「無制限」という有効な状態なので、入力中の文字列は
- * ドラフトで持ち、確定できた時だけ設定へ書く（不正入力のまま設定を壊さない）。
- */
-function onGrowthIncenseStockInput(raw: string) {
-  growthIncenseStockDraft.value = raw;
-  const trimmed = raw.trim();
-  // 空欄は「無制限」。それ以外は保存の読み込みと同じ規則で受け付ける。
-  const stock = trimmed === "" ? null : normalizeGrowthIncenseStock(Number(trimmed));
-  if (stock === undefined) return;
-  calc.updateSleepSettings({ growthIncenseStock: stock });
-}
-
-/** 入力途中の文字列（"01" や不正値）を捨てて、確定した設定値の表示へ戻す。 */
-function onGrowthIncenseStockBlur() {
-  growthIncenseStockDraft.value = null;
-}
-
 function parseManualEventDraft(row: ManualEventDraft): ManualEventBonus | ManualEventError {
   const from = normalizeGameDate(manualEventInputToGameDate(row.from));
   if (!from) return "date";
@@ -1217,6 +1214,8 @@ const handleKeydown = (e: KeyboardEvent) => {
     closeHint();
     return;
   }
+  // 入力中の欄は blur しないと画面ごと消えて値が失われるので、閉じる前に確定させる。
+  commitFocusedInput(settingsModalRef.value);
   requestClose();
 };
 

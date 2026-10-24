@@ -644,6 +644,19 @@ test.describe('03-settings デスクトップ', () => {
     await expect(settings.growthIncenseStockInput).toHaveValue('');
   });
 
+  test('17b-1c. お香の在庫は入力中のまま Esc で閉じても確定される', async ({ page }) => {
+    const settings = new SettingsModalPage(page);
+    await settings.openSettingsFromDesktop();
+
+    // blur せずに Esc で閉じる（入力中の欄が blur されないと値が失われる）
+    await settings.growthIncenseStockInput.fill('7');
+    await expect(settings.growthIncenseStockInput).toBeFocused();
+    await settings.closeByEscape();
+
+    await settings.openSettingsFromDesktop();
+    await expect(settings.growthIncenseStockInput).toHaveValue('7');
+  });
+
   test('17b-2. 手入力イベント倍率を検証し、有効な複数区間だけを保存する', async ({ page }) => {
     const settings = new SettingsModalPage(page);
     await settings.openSettingsFromDesktop();
@@ -1265,10 +1278,10 @@ test.describe('03-settings デスクトップ', () => {
     });
     await page.getByTestId('data-backup-copy').click();
     const restored = JSON.parse(await page.evaluate(() => (window as Window & { copiedFullBackup?: string }).copiedFullBackup ?? '{}'));
-    // V1入力が最新スキーマ(V3)へ移行されて再エクスポートされることを検証する。
+    // V1入力が最新スキーマ(V4)へ移行されて再エクスポートされることを検証する。
     // 25(ピカチュウ)と26(ライチュウ)は同一系統キー"25"へ集約され、値は系統内最大値max(88,99)=99。
     // candyInventory 自体のスキーマは V2 のまま（V3 の変更対象は計算機行とグローバル設定）。
-    expect(restored.schemaVersion).toBe(3);
+    expect(restored.schemaVersion).toBe(4);
     expect(restored.data.box).toEqual({
       ...expected.data.box,
       // 旧形式にはカスタムタグが無いため、現行形式の空配列として補われる。
@@ -1317,9 +1330,12 @@ test.describe('03-settings デスクトップ', () => {
       }),
     }));
     // 旧形式の行には自動の目印が無い。自動（true）として補われる
-    const expectedSlots = normalizeSlots(expected.data.calculator.slots as never[]).map(slot => ({
+    // 行の title は個体の表示名の基準値で、ボックスが正本。開いたスロットの同期で、ボックスの表示名
+    // （label: "Backup Box N"）へ揃う（入力の "Backup Slot N" はボックスと食い違う旧データの値）。
+    // 上のループで3スロットすべてを開いているので、全スロットが揃った状態で書き出される。
+    const expectedSlots = normalizeSlots(expected.data.calculator.slots as never[]).map((slot, index) => ({
       ...slot,
-      rows: slot.rows?.map(row => ({ ...row, boostReachAuto: true })),
+      rows: slot.rows?.map(row => ({ ...row, title: `Backup Box ${index}`, boostReachAuto: true })),
     }));
     expect(normalizeSlots(restored.data.calculator.slots)).toEqual(expectedSlots);
     for (const slot of restored.data.calculator.slots as Array<Record<string, unknown>>) {

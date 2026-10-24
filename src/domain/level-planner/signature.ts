@@ -29,34 +29,3 @@ export function canonicalJson(value: unknown): string {
 export function buildPlannerInputSignature(input: LevelPlannerInput): string {
   return canonicalJson(input);
 }
-
-/** 構造変更判定専用。数値入力・在庫・boostは含めない。 */
-export function buildPlannerStructureSignature(input: LevelPlannerInput): string {
-  return canonicalJson({
-    rowCount: input.pokemonList.length,
-    rows: input.pokemonList.map(pokemon => ({
-      pokemonId: pokemon.pokemonId,
-      pokedexId: pokemon.pokedexId,
-      candyFamilyKey: pokemon.candyFamilyKey,
-      type: pokemon.type,
-      nature: pokemon.nature,
-      hasCandyTarget: pokemon.candyTarget !== undefined,
-    })),
-  });
-}
-
-/** 構造未変更でも2秒判定をやり直す変更の署名。 */
-export function buildPlannerProbeSignature(input: LevelPlannerInput): string {
-  return canonicalJson({
-    boost: input.boost,
-    dreamShards: input.dreamShards,
-    candyInventory: input.candyInventory,
-    options: input.options,
-    rows: input.pokemonList.map(pokemon => ({
-      pokemonId: pokemon.pokemonId,
-      candyTarget: pokemon.candyTarget ?? null,
-      // アメブ自動最大化による必要アメ再計算も再probe対象にする。
-      requestedBoostCandy: pokemon.requestedBoostCandy,
-    })),
-  });
-}

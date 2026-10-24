@@ -9,6 +9,7 @@ import {
 } from '../../../src/domain/level-planner/core/feasibilityWitness';
 import { CANDY_VALUES, MAX_ACCEPTABLE_SURPLUS } from '../../../src/domain/level-planner/constants';
 import { refineExactSupply } from '../../../src/domain/level-planner/core/exactSupplyRefine';
+import { getCandyFamilyKey } from '../../../src/domain/pokesleep/candy-family';
 import { __levelPlannerTestHooks, solveLevelPlan } from '../../../src/domain/level-planner/core/solveLevelPlan';
 import { simulateCandyBudget } from '../../../src/domain/pokesleep/simulateCandyBudget';
 import type {
@@ -35,7 +36,7 @@ function demandRow(
   return {
     pokemonId,
     pokedexId,
-    candyFamilyKey: String(pokedexId),
+    candyFamilyKey: getCandyFamilyKey(pokedexId),
     type,
     totalCandy,
     boostCandy: 0,
@@ -57,18 +58,18 @@ function emptyInventory(): CandyInventory {
 }
 
 /**
- * §6 / §14.4.2 の反例で使う共有系統（イーブイ）。
+ * §6 / §14.4.2 の反例で使う共有系統（ゼニガメ・カメール。どちらも水タイプ）。
  *
  * **`candyFamilyKey` の契約は「正の整数文字列」**（`candy-family.ts` の `isCandyFamilyKey()` が正本）。
  * `'shared-family'` のような任意の文字列を使うと `invalid_candy_family_key` で
  * **その prefix ごと infeasible になり、到達数が黙って落ちる。**
  */
-const SHARED_EEVEE_FAMILY = '133';
+const SHARED_SQUIRTLE_FAMILY = '7';
 
 /** 種族4・水タイプM1個（価値25）。§6 の反例そのもの。 */
 function sharedFamilyInventory(): CandyInventory {
   return {
-    species: { [SHARED_EEVEE_FAMILY]: 4 },
+    species: { [SHARED_SQUIRTLE_FAMILY]: 4 },
     typeCandy: { water: { s: 0, m: 1 } },
     universal: { s: 0, m: 0, l: 0 },
   };
@@ -88,9 +89,9 @@ describe('fbl01d feasibility witness', () => {
       universal: { s: 0, m: 3, l: 0 },
     };
     const twoReachedAndBoundary = [
-      demandRow('upper-a', 1, 'normal', 19),
-      demandRow('upper-b', 2, 'normal', 19),
-      demandRow('boundary', 3, 'normal', 18, { candyDemandMet: false }),
+      demandRow('upper-a', 19, 'normal', 19),
+      demandRow('upper-b', 52, 'normal', 19),
+      demandRow('boundary', 115, 'normal', 18, { candyDemandMet: false }),
     ];
     const valid = solveFeasibilityForFixedRows(twoReachedAndBoundary, inventory, {
       ...noBoost,
@@ -118,13 +119,13 @@ describe('fbl01d feasibility witness', () => {
 
   it('prefix decision sessionは通常solverとprefixごとの可否が一致する', () => {
     const rows = [
-      demandRow('p1', 1, 'alpha', 13),
-      demandRow('p2', 2, 'alpha', 21),
-      demandRow('p3', 3, 'beta', 19),
-      demandRow('p4', 4, 'alpha', 34),
+      demandRow('p1', 9001, 'alpha', 13),
+      demandRow('p2', 9002, 'alpha', 21),
+      demandRow('p3', 9003, 'beta', 19),
+      demandRow('p4', 9004, 'alpha', 34),
     ];
     const inventory: CandyInventory = {
-      species: { '1': 4, '2': 5, '3': 0, '4': 8 },
+      species: { '9001': 4, '9002': 5, '9003': 0, '9004': 8 },
       typeCandy: { alpha: { s: 12, m: 2 }, beta: { s: 1, m: 1 } },
       universal: { s: 16, m: 2, l: 0 },
     };
@@ -144,9 +145,9 @@ describe('fbl01d feasibility witness', () => {
 
   it('prefix独立探索の締切超過は例外ではなくinconclusiveとして返す', () => {
     const rows = [
-      demandRow('p1', 1, 'alpha', 13),
-      demandRow('p2', 2, 'beta', 21),
-      demandRow('p3', 3, 'gamma', 19),
+      demandRow('p1', 9001, 'alpha', 13),
+      demandRow('p2', 9002, 'beta', 21),
+      demandRow('p3', 9003, 'gamma', 19),
     ];
     const inventory: CandyInventory = {
       species: {},
@@ -173,9 +174,9 @@ describe('fbl01d feasibility witness', () => {
    */
   it('deadlineAt は context をまたいで共有され、probe ごとにリセットされない', () => {
     const rows = [
-      demandRow('p1', 1, 'alpha', 13),
-      demandRow('p2', 2, 'beta', 21),
-      demandRow('p3', 3, 'gamma', 19),
+      demandRow('p1', 9001, 'alpha', 13),
+      demandRow('p2', 9002, 'beta', 21),
+      demandRow('p3', 9003, 'gamma', 19),
     ];
     const inventory: CandyInventory = { species: {}, typeCandy: {}, universal: { s: 32, m: 8, l: 2 } };
     // 締切は既に過ぎている。`deadlineMs` は与えないので、絶対締切だけが効く。
@@ -197,12 +198,12 @@ describe('fbl01d feasibility witness', () => {
 
   it('prefix decision sessionは共有種族を含むprefixでは安全に通常solverへ退避する', () => {
     const rows = [
-      demandRow('p1', 1, 'alpha', 13),
-      demandRow('p2', 11, 'alpha', 21, { candyFamilyKey: '1' }),
-      demandRow('p3', 2, 'beta', 19),
+      demandRow('p1', 9001, 'alpha', 13),
+      demandRow('p2', 9011, 'alpha', 21, { candyFamilyKey: '9001' }),
+      demandRow('p3', 9002, 'beta', 19),
     ];
     const inventory: CandyInventory = {
-      species: { '1': 20, '2': 0 },
+      species: { '9001': 20, '9002': 0 },
       typeCandy: { alpha: { s: 2, m: 1 }, beta: { s: 4, m: 0 } },
       universal: { s: 8, m: 1, l: 0 },
     };
@@ -230,8 +231,8 @@ describe('fbl01d feasibility witness', () => {
    */
   it('§14.4.2: 行余りゲート下では prefix の可解性が単調にならない', () => {
     const rows = [
-      demandRow('A', 134, 'water', 25, { candyFamilyKey: SHARED_EEVEE_FAMILY }),
-      demandRow('B', 136, 'water', 4, { candyFamilyKey: SHARED_EEVEE_FAMILY }),
+      demandRow('A', 7, 'water', 25, { candyFamilyKey: SHARED_SQUIRTLE_FAMILY }),
+      demandRow('B', 8, 'water', 4, { candyFamilyKey: SHARED_SQUIRTLE_FAMILY }),
     ];
     const session = createPrefixDecisionSession(rows, sharedFamilyInventory(), {
       ...noBoost,
@@ -259,14 +260,14 @@ describe('fbl01d feasibility witness', () => {
     '§14.4.2: ゲート内に解があれば到達数を取りこぼさない: %s',
     mode => {
       const row = (id: string, pokedexId: number, totalCandyUnits: number): LevelPlannerInput['pokemonList'][number] => ({
-        pokemonId: id, pokedexId, candyFamilyKey: SHARED_EEVEE_FAMILY, name: id, type: 'water',
+        pokemonId: id, pokedexId, candyFamilyKey: SHARED_SQUIRTLE_FAMILY, name: id, type: 'water',
         currentLevel: 10, currentExpInLevel: 0, targetLevel: 70, expType: 600, nature: 'normal',
         requestedBoostCandy: 0, boostAllowed: true,
         candyTarget: { totalCandyUnits, boostedCandyUnits: 0 },
         priorityIndex: id === 'A' ? 0 : 1,
       });
       const result = solveLevelPlan({
-        pokemonList: [row('A', 134, 25), row('B', 136, 4)],
+        pokemonList: [row('A', 7, 25), row('B', 8, 4)],
         dreamShards: 999_999_999,
         boost: { kind: 'none', limit: 0 },
         candyInventory: sharedFamilyInventory(),
@@ -314,7 +315,8 @@ describe('fbl01d feasibility witness', () => {
    * 検出力: `findPrefix` の上側スキャンを消すと落ちる（2026-08-01 に確認）。
    */
   it('§14.4.2: findPrefix は線形走査の最大 feasible 長と一致する', { timeout: 120_000 }, () => {
-    const families = ['133', '25', '172'];
+    // 作り物の行なので、番号も系統も図鑑にない値にする（実在の系統にまとまらない）
+    const families = ['60001', '60002', '60003'];
     const types = ['water', 'electric'];
     const rng = (seed: number) => {
       let state = (seed ^ 0x9e37_79b9) >>> 0;
@@ -334,7 +336,7 @@ describe('fbl01d feasibility witness', () => {
       const count = int(2, 4);
       const specs = Array.from({ length: count }, (_, index) => ({
         id: `p${index}`,
-        pokedexId: 900 + seed * 10 + index,
+        pokedexId: 50_000 + seed * 10 + index,
         candyFamilyKey: families[int(0, families.length - 1)],
         type: types[int(0, types.length - 1)],
         totalCandy: int(1, 28),
@@ -431,14 +433,14 @@ describe('fbl01d feasibility witness', () => {
     '§14.4.3: ゲート内で到達0匹ならゲートを外して上位から育てる: %s',
     mode => {
       const row = (id: string, pokedexId: number, priorityIndex: number): LevelPlannerInput['pokemonList'][number] => ({
-        pokemonId: id, pokedexId, candyFamilyKey: String(pokedexId), name: id, type: 'water',
+        pokemonId: id, pokedexId, candyFamilyKey: getCandyFamilyKey(pokedexId), name: id, type: 'water',
         currentLevel: 10, currentExpInLevel: 0, targetLevel: 70, expType: 600, nature: 'normal',
         requestedBoostCandy: 0, boostAllowed: true,
         candyTarget: { totalCandyUnits: 1, boostedCandyUnits: 0 },
         priorityIndex,
       });
       const result = solveLevelPlan({
-        pokemonList: [row('A', 134, 0), row('B', 136, 1)],
+        pokemonList: [row('A', 134, 0), row('B', 7, 1)],
         dreamShards: 999_999_999,
         boost: { kind: 'none', limit: 0 },
         // 水タイプM 1個だけ。需要1に対して価値25なので、どちらへ渡しても余り24になる。
@@ -516,7 +518,7 @@ describe('fbl01d feasibility witness', () => {
       ): LevelPlannerInput['pokemonList'][number] => ({
         pokemonId,
         pokedexId,
-        candyFamilyKey: String(pokedexId),
+        candyFamilyKey: getCandyFamilyKey(pokedexId),
         name: pokemonId,
         type,
         currentLevel: 10,
@@ -569,9 +571,9 @@ describe('fbl01d feasibility witness', () => {
     '需要0行だけの prefix witness は全成分0で境界行を含まない: %s',
     mode => {
       const rows = [
-        demandRow('zero-a', 1, 'water', 0),
-        demandRow('zero-b', 2, 'fire', 0),
-        demandRow('needed', 3, 'electric', 3),
+        demandRow('zero-a', 7, 'water', 0),
+        demandRow('zero-b', 4, 'fire', 0),
+        demandRow('needed', 25, 'electric', 3),
       ];
       const inventory: CandyInventory = {
         species: {},
@@ -631,7 +633,7 @@ describe('fbl01d feasibility witness', () => {
     const row = (
       id: string, pokedexId: number, type: string, totalCandyUnits: number, priorityIndex: number,
     ): LevelPlannerInput['pokemonList'][number] => ({
-      pokemonId: id, pokedexId, candyFamilyKey: String(pokedexId), name: id, type,
+      pokemonId: id, pokedexId, candyFamilyKey: getCandyFamilyKey(pokedexId), name: id, type,
       currentLevel: 10, currentExpInLevel: 0, targetLevel: 70, expType: 600, nature: 'normal',
       requestedBoostCandy: 0, boostAllowed: true,
       candyTarget: { totalCandyUnits, boostedCandyUnits: 0 },
@@ -707,9 +709,9 @@ describe('fbl01d feasibility witness', () => {
   });
 
   it('validatorは供給値・余り・共有在庫・remainingを独立に検証する', () => {
-    const rows = [demandRow('p1', 1, 'alpha', 4)];
+    const rows = [demandRow('p1', 9001, 'alpha', 4)];
     const inventory: CandyInventory = {
-      species: { '1': 4 },
+      species: { '9001': 4 },
       typeCandy: { alpha: { s: 1, m: 0 } },
       universal: { s: 0, m: 0, l: 1 },
     };
@@ -723,14 +725,14 @@ describe('fbl01d feasibility witness', () => {
     expect(validateFeasibilityWitness(invalidSupply, rows, inventory, noBoost)).toMatchObject({ valid: false });
 
     const invalidRemaining = structuredClone(result.witness);
-    invalidRemaining.remaining.species['1'] = 3;
+    invalidRemaining.remaining.species['9001'] = 3;
     expect(validateFeasibilityWitness(invalidRemaining, rows, inventory, noBoost)).toMatchObject({ valid: false });
   });
 
   it('種族アメは非共有行で使用総量最大になり、余りを種族在庫へ戻さない', () => {
-    const rows = [demandRow('p1', 1, 'alpha', 4)];
+    const rows = [demandRow('p1', 9001, 'alpha', 4)];
     const inventory: CandyInventory = {
-      species: { '1': 4 },
+      species: { '9001': 4 },
       typeCandy: { alpha: { s: 1, m: 0 } },
       universal: { s: 0, m: 0, l: 1 },
     };
@@ -738,12 +740,12 @@ describe('fbl01d feasibility witness', () => {
     expectFeasible(result);
 
     expect(result.witness.rows[0].supply).toMatchObject({ species: 4, typeS: 0, typeM: 0, universalL: 0 });
-    expect(result.witness.remaining.species['1']).toBe(0);
+    expect(result.witness.remaining.species['9001']).toBe(0);
     expect(result.witness.remaining.universal.l).toBe(1);
   });
 
   it('feasible witnessは余り最小では同じ固定需要を満たす代表の中で余りが小さい供給を選ぶ', () => {
-    const rows = [demandRow('p1', 1, 'alpha', 98)];
+    const rows = [demandRow('p1', 9001, 'alpha', 98)];
     const inventory: CandyInventory = {
       species: {},
       typeCandy: {},
@@ -759,7 +761,7 @@ describe('fbl01d feasibility witness', () => {
   it('バッグ圧縮のfeasible witnessは余り0〜2ゲート候補をアイテム節約候補で落とさない', () => {
     const rows = [demandRow('swalot', 317, 'poison', 308)];
     const inventory: CandyInventory = {
-      species: { '317': 272 },
+      species: { '316': 272 },
       typeCandy: { poison: { s: 0, m: 2 } },
       universal: { s: 4, m: 0, l: 0 },
     };
@@ -776,7 +778,7 @@ describe('fbl01d feasibility witness', () => {
       demandRow('upper-fire', 244, 'fire', 12),
     ];
     const inventory: CandyInventory = {
-      species: { '317': 272 },
+      species: { '316': 272 },
       typeCandy: { poison: { s: 0, m: 2 }, fire: { s: 0, m: 0 } },
       universal: { s: 4, m: 0, l: 0 },
     };
@@ -790,11 +792,11 @@ describe('fbl01d feasibility witness', () => {
 
   it('共有種族は総量最大を守り、実行可能な分配の中でトップダウン正規形へ復元する', () => {
     const rows = [
-      demandRow('upper', 1, 'alpha', 25),
-      demandRow('lower', 1, 'alpha', 4),
+      demandRow('upper', 9001, 'alpha', 25),
+      demandRow('lower', 9001, 'alpha', 4),
     ];
     const inventory: CandyInventory = {
-      species: { '1': 4 },
+      species: { '9001': 4 },
       typeCandy: { alpha: { s: 0, m: 1 } },
       universal: { s: 0, m: 0, l: 0 },
     };
@@ -808,11 +810,11 @@ describe('fbl01d feasibility witness', () => {
 
   it('共有種族が別タイプの行へまたがっても、連結タイプブロック内で解く', () => {
     const rows = [
-      demandRow('upper', 1, 'alpha', 25),
-      demandRow('lower', 11, 'beta', 4, { candyFamilyKey: '1' }),
+      demandRow('upper', 9001, 'alpha', 25),
+      demandRow('lower', 9011, 'beta', 4, { candyFamilyKey: '9001' }),
     ];
     const inventory: CandyInventory = {
-      species: { '1': 4 },
+      species: { '9001': 4 },
       typeCandy: { alpha: { s: 0, m: 1 }, beta: { s: 0, m: 0 } },
       universal: { s: 0, m: 0, l: 0 },
     };
@@ -825,12 +827,12 @@ describe('fbl01d feasibility witness', () => {
 
   it('多グループのトップダウン候補が余る場合は、完全探索で余り0の共有種族配分を選ぶ', () => {
     const rows = [
-      demandRow('shared-upper', 1, 'alpha', 4),
-      demandRow('shared-lower', 11, 'beta', 4, { candyFamilyKey: '1' }),
-      demandRow('independent', 2, 'gamma', 3),
+      demandRow('shared-upper', 9001, 'alpha', 4),
+      demandRow('shared-lower', 9011, 'beta', 4, { candyFamilyKey: '9001' }),
+      demandRow('independent', 9002, 'gamma', 3),
     ];
     const inventory: CandyInventory = {
-      species: { '1': 4, '2': 0 },
+      species: { '9001': 4, '9002': 0 },
       typeCandy: {
         alpha: { s: 1, m: 0 },
         beta: { s: 0, m: 0 },
@@ -857,11 +859,11 @@ describe('fbl01d feasibility witness', () => {
    */
   it('種族アメはアイテム優先順位より先に上位行へ寄せる', () => {
     const rows = [
-      demandRow('upper', 134, 'water', 4, { candyFamilyKey: SHARED_EEVEE_FAMILY }),
-      demandRow('lower', 136, 'water', 9, { candyFamilyKey: SHARED_EEVEE_FAMILY }),
+      demandRow('upper', 7, 'water', 4, { candyFamilyKey: SHARED_SQUIRTLE_FAMILY }),
+      demandRow('lower', 8, 'water', 9, { candyFamilyKey: SHARED_SQUIRTLE_FAMILY }),
     ];
     const inventory: CandyInventory = {
-      species: { [SHARED_EEVEE_FAMILY]: 1 },
+      species: { [SHARED_SQUIRTLE_FAMILY]: 1 },
       typeCandy: { water: { s: 3, m: 0 } },
       universal: { s: 4, m: 0, l: 0 },
     };
@@ -877,8 +879,8 @@ describe('fbl01d feasibility witness', () => {
       {
         id: 'upper',
         name: 'upper',
-        pokedexId: 134,
-        candyFamilyKey: SHARED_EEVEE_FAMILY,
+        pokedexId: 7,
+        candyFamilyKey: SHARED_SQUIRTLE_FAMILY,
         type: 'water',
         totalCandyCount: 4,
         candyDemandMet: true,
@@ -887,8 +889,8 @@ describe('fbl01d feasibility witness', () => {
       {
         id: 'lower',
         name: 'lower',
-        pokedexId: 136,
-        candyFamilyKey: SHARED_EEVEE_FAMILY,
+        pokedexId: 8,
+        candyFamilyKey: SHARED_SQUIRTLE_FAMILY,
         type: 'water',
         totalCandyCount: 9,
         candyDemandMet: true,
@@ -927,9 +929,9 @@ describe('fbl01d feasibility witness', () => {
 
   it('同タイプ複数行ではタイプ在庫をタイプブロック内だけで共有する', () => {
     const rows = [
-      demandRow('alpha-1', 1, 'alpha', 4),
-      demandRow('alpha-2', 2, 'alpha', 25),
-      demandRow('beta-1', 3, 'beta', 20),
+      demandRow('alpha-1', 9001, 'alpha', 4),
+      demandRow('alpha-2', 9002, 'alpha', 25),
+      demandRow('beta-1', 9003, 'beta', 20),
     ];
     const inventory: CandyInventory = {
       species: {},
@@ -947,7 +949,7 @@ describe('fbl01d feasibility witness', () => {
   it.each([1, 2, 3, 19, 20, 24, 25, 99, 100])(
     '万能L/M/Sの大余りをfeasibleとして扱う: 需要%d',
     totalCandy => {
-      const rows = [demandRow(`universal-${totalCandy}`, totalCandy, 'universal-only', totalCandy)];
+      const rows = [demandRow(`universal-${totalCandy}`, 50_000 + totalCandy, 'universal-only', totalCandy)];
       const inventory: CandyInventory = {
         species: {},
         typeCandy: { 'universal-only': { s: 0, m: 0 } },
@@ -962,8 +964,8 @@ describe('fbl01d feasibility witness', () => {
 
   it('タイプ偏在と万能共有競合を全体DPで判定する', () => {
     const rows = [
-      demandRow('alpha', 10, 'alpha', 4),
-      demandRow('beta', 11, 'beta', 20),
+      demandRow('alpha', 9010, 'alpha', 4),
+      demandRow('beta', 9011, 'beta', 20),
     ];
     const feasibleInventory: CandyInventory = {
       species: {},
@@ -982,8 +984,8 @@ describe('fbl01d feasibility witness', () => {
   });
 
   it('独立境界セッションのdecision envelopeはfull solveと同じ可否を返す', () => {
-    const prefixRows = [demandRow('prefix', 10, 'alpha', 20)];
-    const boundaryRow = demandRow('boundary', 11, 'beta', 20, { candyDemandMet: false, reachedLv: 54, expInLevel: 1004 });
+    const prefixRows = [demandRow('prefix', 9010, 'alpha', 20)];
+    const boundaryRow = demandRow('boundary', 9011, 'beta', 20, { candyDemandMet: false, reachedLv: 54, expInLevel: 1004 });
     const blockedInventory: CandyInventory = {
       species: {},
       typeCandy: { alpha: { s: 0, m: 0 }, beta: { s: 0, m: 0 } },
@@ -1003,8 +1005,8 @@ describe('fbl01d feasibility witness', () => {
   });
 
   it('独立境界セッションは再構築せず上位余り上限を適用してfull solveと一致する', () => {
-    const prefixRows = [demandRow('reached-prefix', 20, 'alpha', 2, { candyDemandMet: true })];
-    const boundaryRow = demandRow('unreached-boundary', 21, 'beta', 3, { candyDemandMet: false, reachedLv: 20, expInLevel: 1 });
+    const prefixRows = [demandRow('reached-prefix', 9020, 'alpha', 2, { candyDemandMet: true })];
+    const boundaryRow = demandRow('unreached-boundary', 9021, 'beta', 3, { candyDemandMet: false, reachedLv: 20, expInLevel: 1 });
     const inventory: CandyInventory = {
       species: {},
       typeCandy: { alpha: { s: 0, m: 0 }, beta: { s: 0, m: 0 } },
@@ -1028,7 +1030,7 @@ describe('fbl01d feasibility witness', () => {
   });
 
   it('緩和上界が不可行と判定したprefixをsolverがfeasibleにしない', () => {
-    const result = solveFeasibilityForFixedRows([demandRow('relaxation-upper', 12, 'alpha', 4)], {
+    const result = solveFeasibilityForFixedRows([demandRow('relaxation-upper', 9012, 'alpha', 4)], {
       species: {},
       typeCandy: { alpha: { s: 0, m: 0 } },
       universal: { s: 0, m: 0, l: 0 },
@@ -1040,9 +1042,9 @@ describe('fbl01d feasibility witness', () => {
 
   it('mini/full/none、かけら境界、個数指定の固定値を変更しない', () => {
     const rows = [
-      demandRow('mini', 20, 'alpha', 4, { boostCandy: 2, normalCandy: 2, shards: 5, candyDemandMet: true }),
-      demandRow('full', 21, 'beta', 20, { boostCandy: 10, normalCandy: 10, shards: 7, candyDemandMet: false, reachedLv: 31, expInLevel: 99 }),
-      demandRow('count', 22, 'gamma', 25, { boostCandy: 0, normalCandy: 25, candyDemandMet: false, reachedLv: 31, expInLevel: 99 }),
+      demandRow('mini', 9020, 'alpha', 4, { boostCandy: 2, normalCandy: 2, shards: 5, candyDemandMet: true }),
+      demandRow('full', 9021, 'beta', 20, { boostCandy: 10, normalCandy: 10, shards: 7, candyDemandMet: false, reachedLv: 31, expInLevel: 99 }),
+      demandRow('count', 9022, 'gamma', 25, { boostCandy: 0, normalCandy: 25, candyDemandMet: false, reachedLv: 31, expInLevel: 99 }),
     ];
     const inventory: CandyInventory = {
       species: {},
@@ -1080,13 +1082,13 @@ describe('fbl01d feasibility witness', () => {
 
   it('prefixを飛ばした入力を到達扱いにしない', () => {
     const rows = [
-      demandRow('first', 1, 'alpha', 1, { candyDemandMet: true }),
-      demandRow('skipped', 2, 'alpha', 1, { candyDemandMet: false }),
-      demandRow('after', 3, 'alpha', 1, { candyDemandMet: true }),
+      demandRow('first', 9001, 'alpha', 1, { candyDemandMet: true }),
+      demandRow('skipped', 9002, 'alpha', 1, { candyDemandMet: false }),
+      demandRow('after', 9003, 'alpha', 1, { candyDemandMet: true }),
     ];
     const result = solveFeasibilityForFixedRows(rows, {
       ...emptyInventory(),
-      species: { '1': 1, '2': 1, '3': 1 },
+      species: { '9001': 1, '9002': 1, '9003': 1 },
     }, noBoost);
     expect(result.status).toBe('infeasible');
     if (result.status !== 'infeasible') return;
@@ -1094,7 +1096,7 @@ describe('fbl01d feasibility witness', () => {
   });
 
   it('探索打ち切りはinfeasibleではなくinconclusiveで、渡された床witnessを保持する', () => {
-    const rows = [demandRow('p1', 1, 'alpha', 25)];
+    const rows = [demandRow('p1', 9001, 'alpha', 25)];
     const inventory: CandyInventory = {
       species: {},
       typeCandy: { alpha: { s: 0, m: 1 } },
@@ -1114,7 +1116,7 @@ describe('fbl01d feasibility witness', () => {
   });
 
   it('refine成功時は供給内訳だけを置換し、失敗時はfeasibility baselineを維持する', () => {
-    const rows = [demandRow('refine-ok', 31, 'alpha', 4)];
+    const rows = [demandRow('refine-ok', 9031, 'alpha', 4)];
     const inventory: CandyInventory = {
       species: {},
       typeCandy: { alpha: { s: 1, m: 0 } },
@@ -1181,7 +1183,7 @@ describe('fbl01d feasibility witness', () => {
   it('性能ログは指定されたfrontier/遷移/witness復元統計を出す', () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
     try {
-      const result = solveFeasibilityForFixedRows([demandRow('perf', 1, 'alpha', 4)], {
+      const result = solveFeasibilityForFixedRows([demandRow('perf', 9001, 'alpha', 4)], {
         species: {},
         typeCandy: { alpha: { s: 1, m: 0 } },
         universal: { s: 0, m: 0, l: 0 },
@@ -1230,7 +1232,7 @@ describe('fbl01d feasibility witness', () => {
         for (const typeM of [0, 1]) {
           for (const universalS of [2, 4, 6]) {
             cases.push({
-              rows: totals.map((total, index) => demandRow(`same-${totals.join('-')}-${index}`, 100 + index, 'alpha', total, { preferZeroSurplus: index % 2 === 0 })),
+              rows: totals.map((total, index) => demandRow(`same-${totals.join('-')}-${index}`, 50_100 + index, 'alpha', total, { preferZeroSurplus: index % 2 === 0 })),
               inventory: { species: {}, typeCandy: { alpha: { s: typeS, m: typeM } }, universal: { s: universalS, m: 1, l: 0 } },
             });
           }
@@ -1256,16 +1258,16 @@ describe('fbl01d feasibility witness', () => {
   it('小規模全列挙oracleとfeasibility判定が一致する', () => {
     const cases: Array<{ rows: FeasibilityDemandRow[]; inventory: CandyInventory }> = [
       {
-        rows: [demandRow('a', 1, 'alpha', 1), demandRow('b', 1, 'alpha', 2)],
-        inventory: { species: { '1': 1 }, typeCandy: { alpha: { s: 1, m: 0 } }, universal: { s: 1, m: 0, l: 0 } },
+        rows: [demandRow('a', 9001, 'alpha', 1), demandRow('b', 9001, 'alpha', 2)],
+        inventory: { species: { '9001': 1 }, typeCandy: { alpha: { s: 1, m: 0 } }, universal: { s: 1, m: 0, l: 0 } },
       },
       {
-        rows: [demandRow('a', 2, 'alpha', 4), demandRow('b', 3, 'alpha', 5)],
+        rows: [demandRow('a', 9002, 'alpha', 4), demandRow('b', 9003, 'alpha', 5)],
         inventory: { species: {}, typeCandy: { alpha: { s: 1, m: 0 } }, universal: { s: 2, m: 0, l: 0 } },
       },
       {
-        rows: [demandRow('a', 4, 'alpha', 6), demandRow('b', 4, 'alpha', 3)],
-        inventory: { species: { '4': 2 }, typeCandy: { alpha: { s: 1, m: 0 } }, universal: { s: 1, m: 0, l: 0 } },
+        rows: [demandRow('a', 9004, 'alpha', 6), demandRow('b', 9004, 'alpha', 3)],
+        inventory: { species: { '9004': 2 }, typeCandy: { alpha: { s: 1, m: 0 } }, universal: { s: 1, m: 0, l: 0 } },
       },
     ];
 
@@ -1280,11 +1282,11 @@ describe('fbl01d feasibility witness', () => {
     for (let seed = 0; seed < 18; seed++) {
       const shared = seed % 2 === 0;
       const rows = [
-        demandRow(`oracle-a-${seed}`, shared ? 40 : 40 + seed, 'alpha', 1 + (seed % 8)),
-        demandRow(`oracle-b-${seed}`, shared ? 40 : 41 + seed, 'alpha', 1 + ((seed * 3) % 8)),
+        demandRow(`oracle-a-${seed}`, shared ? 50_040 : 50_040 + seed, 'alpha', 1 + (seed % 8)),
+        demandRow(`oracle-b-${seed}`, shared ? 50_040 : 50_041 + seed, 'alpha', 1 + ((seed * 3) % 8)),
       ];
       const inventory: CandyInventory = {
-        species: shared ? { '40': seed % 4 } : {},
+        species: shared ? { '50040': seed % 4 } : {},
         typeCandy: { alpha: { s: seed % 3, m: seed % 2 } },
         universal: { s: (seed + 1) % 3, m: seed % 2, l: seed % 2 },
       };
@@ -1298,12 +1300,12 @@ describe('fbl01d feasibility witness', () => {
     for (let seed = 0; seed < 120; seed++) {
       const shared = seed % 3 === 0;
       const rows = [
-        demandRow(`random-a-${seed}`, shared ? 900 : 900 + seed, 'alpha', 1 + (seed % 10)),
-        demandRow(`random-b-${seed}`, shared ? 900 : 1000 + seed, seed % 4 === 0 ? 'beta' : 'alpha', 1 + ((seed * 7) % 10)),
-        demandRow(`random-c-${seed}`, 1100 + seed, 'beta', 1 + ((seed * 5) % 7)),
+        demandRow(`random-a-${seed}`, shared ? 50_900 : 50_900 + seed, 'alpha', 1 + (seed % 10)),
+        demandRow(`random-b-${seed}`, shared ? 50_900 : 51_000 + seed, seed % 4 === 0 ? 'beta' : 'alpha', 1 + ((seed * 7) % 10)),
+        demandRow(`random-c-${seed}`, 51_100 + seed, 'beta', 1 + ((seed * 5) % 7)),
       ];
       const inventory: CandyInventory = {
-        species: shared ? { '900': seed % 4 } : { [String(900 + seed)]: seed % 3 },
+        species: shared ? { '50900': seed % 4 } : { [String(50_900 + seed)]: seed % 3 },
         typeCandy: { alpha: { s: seed % 3, m: (seed + 1) % 2 }, beta: { s: (seed + 2) % 3, m: seed % 2 } },
         universal: { s: (seed + 1) % 3, m: seed % 2, l: seed % 2 },
       };
@@ -1314,7 +1316,7 @@ describe('fbl01d feasibility witness', () => {
   });
 
   it('row/type-block/global frontierと遷移数・witness復元時間を記録する', () => {
-    const rows = Array.from({ length: 10 }, (_, index) => demandRow(`p${index}`, 100 + index, 'alpha', 4 + (index % 3)));
+    const rows = Array.from({ length: 10 }, (_, index) => demandRow(`p${index}`, 50_100 + index, 'alpha', 4 + (index % 3)));
     const result = solveFeasibilityForFixedRows(rows, {
       species: {},
       typeCandy: { alpha: { s: 20, m: 0 } },
@@ -1506,11 +1508,11 @@ describe('fbl01d feasibility witness', () => {
     ];
     const inventory: CandyInventory = {
       species: {
-        '923': 181,
+        '921': 181,
         '845': 0,
-        '700': 2947,
-        '149': 436,
-        '317': 272,
+        '133': 2947,
+        '147': 436,
+        '316': 272,
         '488': 500,
       },
       typeCandy: {

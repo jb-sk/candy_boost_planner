@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPlannerInputSignature, buildPlannerProbeSignature, buildPlannerStructureSignature } from '../../../src/domain/level-planner/signature';
+import { buildPlannerInputSignature } from '../../../src/domain/level-planner/signature';
 import type { LevelPlannerInput } from '../../../src/domain/level-planner/types';
 
 const baseInput: LevelPlannerInput = {
@@ -11,7 +11,7 @@ const baseInput: LevelPlannerInput = {
 };
 
 describe('planner signatures', () => {
-  it('inventory key insertion order does not change input/probe signatures', () => {
+  it('inventory key insertion order does not change the input signature', () => {
     const reordered: LevelPlannerInput = {
       ...baseInput,
       candyInventory: {
@@ -22,35 +22,23 @@ describe('planner signatures', () => {
     };
 
     expect(buildPlannerInputSignature(reordered)).toBe(buildPlannerInputSignature(baseInput));
-    expect(buildPlannerProbeSignature(reordered)).toBe(buildPlannerProbeSignature(baseInput));
   });
 
-  it('row order and candy-target presence are structural changes', () => {
+  it('candy-target presence changes the input signature', () => {
     const changed: LevelPlannerInput = {
       ...baseInput,
       pokemonList: [{ ...baseInput.pokemonList[0], candyTarget: { totalCandyUnits: 20, boostedCandyUnits: 20 } }],
     };
 
-    expect(buildPlannerStructureSignature(changed)).not.toBe(buildPlannerStructureSignature(baseInput));
     expect(buildPlannerInputSignature(changed)).not.toBe(buildPlannerInputSignature(baseInput));
   });
 
-  it('reprobes when automatic boost-candy allocation changes the requested amount', () => {
-    const changed: LevelPlannerInput = {
-      ...baseInput,
-      pokemonList: [{ ...baseInput.pokemonList[0], requestedBoostCandy: 21 }],
-    };
-
-    expect(buildPlannerProbeSignature(changed)).not.toBe(buildPlannerProbeSignature(baseInput));
-  });
-
-  it('family key の変更を構造変更として扱う', () => {
+  it('family key の変更は入力の署名を変える', () => {
     const changed: LevelPlannerInput = {
       ...baseInput,
       pokemonList: [{ ...baseInput.pokemonList[0], candyFamilyKey: '172' }],
     };
 
-    expect(buildPlannerStructureSignature(changed)).not.toBe(buildPlannerStructureSignature(baseInput));
     expect(buildPlannerInputSignature(changed)).not.toBe(buildPlannerInputSignature(baseInput));
   });
 });

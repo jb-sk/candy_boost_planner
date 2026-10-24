@@ -1,31 +1,116 @@
-/* Design Switcher Styles */
+/* Design Switcher Styles (DesignSwitcher.vue) */
 
-.design-switch-select {
+.designSwitch {
+  /* 開いたときのボタン上側と一覧下側の角丸。閉じたときの丸み（高さの半分 = 文字 0.7rem + 上下の padding と線 17px の半分）に合わせる。
+     --radius-pill（99px など）のまま上だけに付けると、角丸が高さに収まるよう全体が縮み、ボタンがお椀形になる。
+     角張ったテーマ（cyberpunk）はテーマ側で上書きする（min() は古い端末で使えない） */
+  --designSwitch-radius: calc(0.35rem + 8.5px);
+  position: relative;
+  display: inline-block;
+  vertical-align: text-bottom;
+}
+
+/*
+ * 一覧はこの部品の箱（= ボタンの大きさ）に合わせて置くので、ボタンの位置と大きさを変えるものはすべて止める。
+ * - margin: 古い iOS Safari はボタンに既定の margin を付け、箱がボタンより広く・高くなる。一覧が左右にはみ出して
+ *   段差になり、下にすき間ができた（2026-10-20 実機）
+ * - 影・押したときの移動: Blue はすべてのボタンに影を付け、押すと 2px 沈ませる。沈むと一覧とずれる
+ */
+.designSwitch__trigger {
+  display: block;
+  margin: 0;
+  box-shadow: none;
+  font-family: inherit;
   font-size: 0.7rem;
   font-weight: 700;
-  padding: 7px 10px;
+  padding: 7px 22px 7px 10px;
   line-height: 1;
+  text-align: left;
   border-radius: var(--radius-pill, 99px);
   border: 1.5px solid var(--accent, #e2e8f0);
   background: var(--paper, white);
   cursor: pointer;
   color: var(--accent, #64748b);
   transition: border-color 0.2s, color 0.2s, background-color 0.2s;
-  vertical-align: text-bottom;
   -webkit-appearance: none;
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 6px center;
   background-size: 12px;
-  padding-right: 22px;
+}
+
+.designSwitch__trigger:active {
+  transform: none;
+  box-shadow: none;
+}
+
+.designSwitch__value {
+  white-space: nowrap;
+}
+
+/* 一番長い名前の幅だけ取り、高さは取らない */
+.designSwitch__sizer > span {
+  display: block;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  white-space: nowrap;
+}
+
+/* 開いたら下の角を四角にして、真下の一覧とつなげる。ボタンの下の線が一覧との区切りになる */
+.designSwitch--open .designSwitch__trigger {
+  border-radius: var(--designSwitch-radius) var(--designSwitch-radius) 0 0;
+}
+
+/* ボタンと同じ幅（親の幅 = ボタンの幅）。上の線はボタンの下の線と重なるので引かない */
+.designSwitch__list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  /* スマホのナビ（z-index: 30）より上 */
+  z-index: 40;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--paper, white);
+  border: 1.5px solid var(--accent, #e2e8f0);
+  border-top: 0;
+  border-radius: 0 0 var(--designSwitch-radius) var(--designSwitch-radius);
+  overflow: hidden;
+}
+
+.designSwitch__option {
+  padding: 7px 10px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--accent, #64748b);
+  cursor: pointer;
+  outline: none;
+}
+
+/* キーボードで選んでいる行（フォーカス）。下の hover と同じ下地。選択中の行は塗りつぶしのまま */
+.designSwitch__option:focus {
+  background-color: rgba(var(--accent-rgb), 0.14);
+}
+
+.designSwitch__option[aria-selected="true"] {
+  background-color: var(--accent);
+  color: var(--paper);
 }
 
 /* hover はホバーできる端末だけ。タッチ端末ではタップ後も hover が残り、色が反転したままになる。
    background の一括指定は ▼ の画像まで消すので、色だけ変える */
 @media (hover: hover) {
-  .design-switch-select:hover {
+  .designSwitch__trigger:hover {
     background-color: var(--accent);
     color: var(--paper);
+  }
+
+  .designSwitch__option:hover:not([aria-selected="true"]) {
+    background-color: rgba(var(--accent-rgb), 0.14);
   }
 }

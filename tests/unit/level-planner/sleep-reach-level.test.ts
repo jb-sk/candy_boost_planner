@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { ExpType } from '../../../src/domain/types';
-import { calcSleepReachLevel } from '../../../src/domain/level-planner/sleepReachLevel';
+import { calcSleepLandingLevel, calcSleepReachLevel } from '../../../src/domain/level-planner/sleepReachLevel';
 
 const EXP_TYPE: ExpType = 600;
 
@@ -129,5 +129,27 @@ describe('calcSleepReachLevel: 目標Lv内EXPがある行', () => {
     expect(atLevel60(2100, { level: 60, expInLevel: 2000 })).toEqual({
       shown: true, level: 60, tenths: 7, ratio: 2100 / 2865,
     });
+  });
+});
+
+/**
+ * 着地点（表示条件を掛けない版）。計算画面の不足がある行と、育成プランの CSV / TSV が使う（2026-10-13 ユーザー指示）。
+ */
+describe('calcSleepLandingLevel: 目標に関係なく着地点を返す', () => {
+  it('目標Lvへ届かない行でも着地点を返す（不足がある行で、睡眠のあとどこまで届くかを見せる）', () => {
+    // Lv58 + 500EXP。Lv58→59 は 2,666EXP なので 500 / 2,666 = 0.18… → 約58.1
+    expect(calcSleepLandingLevel({ reachedLevel: 58, reachedExpInLevel: 0, sleepExp: 500, expType: EXP_TYPE }))
+      .toEqual({ shown: true, level: 58, expInLevel: 500, tenths: 1, ratio: 500 / 2666 });
+  });
+
+  it('目標Lvちょうどの着地点も返す（calcSleepReachLevel は displayEqualsTargetLevel で隠す）', () => {
+    expect(atLevel60(100, { level: 60, expInLevel: 0 }).shown).toBe(false);
+    expect(calcSleepLandingLevel({ reachedLevel: 60, reachedExpInLevel: 0, sleepExp: 100, expType: EXP_TYPE }))
+      .toEqual({ shown: true, level: 60, expInLevel: 100, tenths: 0, ratio: 100 / 2865 });
+  });
+
+  it('睡眠EXPが 0 なら返さない', () => {
+    expect(calcSleepLandingLevel({ reachedLevel: 60, reachedExpInLevel: 0, sleepExp: 0, expType: EXP_TYPE }))
+      .toEqual({ shown: false, reason: 'noSleepExp' });
   });
 });

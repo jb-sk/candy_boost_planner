@@ -106,6 +106,8 @@ export const MIN_DAILY_SLEEP_MINUTES = 60;
  * これを超える睡眠計画は**同時には実行できない**ので、画面で注意を出す。
  */
 export const MAX_SLEEP_TEAM_SIZE = 5;
+/** おひるね島に同時に預けられる数 */
+export const MAX_NAP_ISLAND_SIZE = 1;
 /** 最大睡眠目標を最小日次時間で進める場合の日数上限。 */
 export const MAX_SLEEP_PLANNING_DAYS = Math.ceil(
   SLEEP_TARGET_HOURS_OPTIONS[SLEEP_TARGET_HOURS_OPTIONS.length - 1] * 60

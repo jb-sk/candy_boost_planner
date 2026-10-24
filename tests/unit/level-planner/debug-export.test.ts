@@ -5,14 +5,14 @@ import { createSleepSchedule } from '../../../src/domain/pokesleep/sleep-schedul
 
 const heavySolverSpies = vi.hoisted(() => ({
   refineExactSupply: vi.fn(() => { throw new Error('debug export must not run refineExactSupply'); }),
-  solveLevelPlanWithBudget: vi.fn(() => { throw new Error('debug export must not run solveLevelPlanWithBudget'); }),
+  solveLevelPlan: vi.fn(() => { throw new Error('debug export must not run solveLevelPlan'); }),
 }));
 
 vi.mock('../../../src/domain/level-planner/core/exactSupplyRefine', () => ({
   refineExactSupply: heavySolverSpies.refineExactSupply,
 }));
 vi.mock('../../../src/domain/level-planner/core/solveLevelPlan', () => ({
-  solveLevelPlanWithBudget: heavySolverSpies.solveLevelPlanWithBudget,
+  solveLevelPlan: heavySolverSpies.solveLevelPlan,
 }));
 
 import { buildDebugExportTsv } from '../../../src/domain/level-planner/debugExport';
@@ -117,6 +117,8 @@ function context(): DebugExportContext {
       targetLevel: 20,
       targetExpInLevel: 0,
       candyTarget: 5,
+      boostCandyInput: 2,
+      boostCandyEffective: 2,
       sleep: {
         sleepTargetHours: 1000,
         sleepHours: 500,
@@ -177,17 +179,8 @@ function context(): DebugExportContext {
     sleepCalculationError: null,
     displayed: {
       result: plannerResult,
-      calculationMode: 'prefixLocalMixed',
       loss: false,
       durationMs: 15,
-      mixedPrefixCount: 0,
-      mixedSource: 'feasibility',
-    },
-    performanceProfile: {
-      policy: 'autoMixed',
-      structuralProbeStatus: 'exactCompleted',
-      lastDeadlineMs: 2_000,
-      mixedPrefixCount: 0,
     },
     verificationMode: 'normalPathSnapshot',
   };
@@ -196,7 +189,7 @@ function context(): DebugExportContext {
 const mainColumns = [
   'index', 'id', 'name', 'pokedexId', 'candyFamilyKey', 'type', 'nature',
   'currentLv', 'currentExpInLevel', 'expRemaining', 'targetLv', 'targetExpInLevel', 'candyTarget', 'sleepTargetMode',
-  'boostKind', 'itemCompareMode', 'calculationScope', 'reachedLv', 'candyDemandMet', 'role', 'expToNext', 'expToTarget',
+  'boostKind', 'boostCandyInput', 'boostCandyEffective', 'itemCompareMode', 'reachedLv', 'candyDemandMet', 'role', 'expToNext', 'expToTarget',
   'shortageCandy', 'shortageBoost', 'shortageShards', 'limitingFactor', 'initialSpeciesStock',
   'reachableBoost', 'reachableNormal', 'reachableTotalCandy', 'reachableShards',
   'reachableSpecies', 'reachableTypeS', 'reachableTypeM', 'reachableUniversalS', 'reachableUniversalM', 'reachableUniversalL',
@@ -222,15 +215,25 @@ describe('level planner debug TSV golden contract', () => {
     expect(sections.map(section => section.split('\n')[0])).toEqual([
       mainColumns.join('\t'),
       'SLEEP_EXP',
-      'CALCULATION_POLICY',
+      'CALCULATION_PERFORMANCE',
       'BOUNDARY_SEARCH',
       'LOSS_LEDGER',
       'EXACT_VERIFICATION',
       'FBL01D_FEASIBILITY',
     ]);
     expect(sections[0].split('\n')[0].split('\t')).toEqual(mainColumns);
-    expect(sections[2].split('\n')[1]).toBe('mode\tpolicy\tstructuralProbeStatus\tdeadlineMs\tactualDurationMs\tfeasibilityMs\trefineMs\trefineStatus\trefineReason\tloss\tsource\texactPrefixCount\tlocalStartIndex\tlocalSuffixCount');
-    expect(sections[5].split('\n')[1]).toBe('status\tselectedIsExactBest\tmode\trows\tlocalCandidateCounts\tdpFinalStates\tscope\texactPrefixCount\tlocalSuffixCount\tnote');
+
+    // アメブ個数: 明示入力した個数と、計算に渡した個数。未入力（アメブ目標Lvから導出）の行は入力欄を空にする
+    const boostCells = (ctx: DebugExportContext) => {
+      const cells = buildDebugExportTsv(ctx).split('\n')[1]!.split('\t');
+      return [cells[mainColumns.indexOf('boostCandyInput')], cells[mainColumns.indexOf('boostCandyEffective')]];
+    };
+    expect(boostCells(input)).toEqual(['2', '2']);
+    const derived = context();
+    derived.rows = [{ ...derived.rows[0]!, boostCandyInput: undefined, boostCandyEffective: 4 }];
+    expect(boostCells(derived)).toEqual(['', '4']);
+    expect(sections[2].split('\n')[1]).toBe('actualDurationMs\tfeasibilityMs\trefineMs\trefineStatus\trefineReason\tloss');
+    expect(sections[5].split('\n')[1]).toBe('status\tselectedIsExactBest\tmode\trows\tlocalCandidateCounts\tdpFinalStates\tscope\tnote');
     expect(sections[6].split('\n')[1]).toBe('status\tselectedValid\tsolverStatus\trefineStatus\trows\treachedCount\tboundaryIndex\tboundaryLv\tboundaryExp\tdurationMs\tglobalKeyCount\ttransitions\twitnessRestoreMs\treason');
 
     // 睡眠EXPの中間値: 入力（設定・時間）から合計までを1行に並べ、どこで食い違うか切り分けられるようにする
@@ -269,7 +272,7 @@ describe('level planner debug TSV golden contract', () => {
     expect(first).toContain('normal-path fixed-demand refine snapshot; export solver disabled');
     expect(first).toContain('heavy_solver_disabled_in_tsv_export');
     expect(heavySolverSpies.refineExactSupply).not.toHaveBeenCalled();
-    expect(heavySolverSpies.solveLevelPlanWithBudget).not.toHaveBeenCalled();
+    expect(heavySolverSpies.solveLevelPlan).not.toHaveBeenCalled();
   });
 
   it('睡眠到達Lvの表示値・生比・非表示理由・Lv70の非該当値をSLEEP_EXPへ出す', () => {
@@ -337,6 +340,46 @@ describe('level planner debug TSV golden contract', () => {
       sleepReachTenths: 'notApplicable',
       sleepReachDisplay: '70',
       sleepReachRatio: 'notApplicable',
+    });
+  });
+
+
+  it('島の行だけがNAP_ISLAND節に入り、睡眠の節には出ない。島の行が無ければ節ごと出さない', () => {
+    const withoutNap = buildDebugExportTsv(context()).split('\n\n').map(section => section.split('\n')[0]);
+    expect(withoutNap).not.toContain('NAP_ISLAND');
+
+    const input = context();
+    const base = input.rows[0]!;
+    input.rows[0] = {
+      ...base,
+      candyTarget: undefined,
+      sleepTargetMode: 'napTicket',
+      sleep: undefined,
+      nap: {
+        ticket: true,
+        expToTarget: 4_201,
+        result: { minutes: 10_083, napGainedExp: 4_201, ticketCount: 2, lastTicketMinutes: 3 },
+      },
+      plan: { ...base.plan!, reachableLine: { ...base.plan!.reachableLine, level: 19, expInLevel: 0 } },
+    };
+    const sections = buildDebugExportTsv(input).split('\n\n');
+    const names = sections.map(section => section.split('\n')[0]);
+    expect(names.slice(0, 3)).toEqual([mainColumns.join('\t'), 'SLEEP_EXP', 'NAP_ISLAND']);
+    expect(sections[1]!.split('\n').at(-1)).toBe('row\tnone');
+
+    const lines = sections[2]!.split('\n');
+    const headers = lines[1]!.split('\t');
+    const values = lines[2]!.split('\t');
+    expect(Object.fromEntries(headers.map((header, index) => [header, values[index]]))).toMatchObject({
+      ticket: 'true',
+      expToTarget: '4201',
+      napMinutes: '10083',
+      napDays: '7',
+      napHours: '0',
+      napMins: '3',
+      napGainedExp: '4201',
+      ticketCount: '2',
+      lastTicketMinutes: '3',
     });
   });
 

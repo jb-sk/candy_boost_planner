@@ -556,6 +556,10 @@
   white-space: nowrap;
 }
 
+.boxTagBulk__error {
+  margin: 4px 0 0;
+}
+
 /* ===== Chip Buttons ===== */
 .chipBtn {
   font: inherit;
@@ -777,13 +781,14 @@
   font-size: 13px;
 }
 
-.boxSortRow__undoRedo {
+.boxSortRow__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   align-items: center;
 }
 
-.boxSortRow__undoRedo .btn {
+.boxSortRow__actions .btn {
   font-size: 12px;
   padding: 4px 10px;
 }

@@ -161,8 +161,9 @@ export class BoxPanelPage {
     this.subSkillClearButton = page.getByTestId('box-subskill-clear');
 
     // Undo/Redo/Clear
-    this.undoButton = page.getByTestId('box-undo');
-    this.redoButton = page.getByTestId('box-redo');
+    // 元に戻す・やり直すは計算機と共通（スマホ・タブレットは上部のナビ、PC は画面下中央の帯）。見えている方を使う
+    this.undoButton = page.getByTestId('history-undo-button').filter({ visible: true });
+    this.redoButton = page.getByTestId('history-redo-button').filter({ visible: true });
     this.clearAllBoxButton = page.getByTestId('box-clear-all');
     this.clearConfirm = page.getByTestId('box-clear-confirm');
     this.clearConfirmYesButton = page.getByTestId('box-clear-confirm-yes');

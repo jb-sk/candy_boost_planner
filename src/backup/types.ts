@@ -1,12 +1,12 @@
 import type { BoxCustomTag, PokemonBoxEntryV1, SleepSettings } from "../domain/types";
-import type { CalcSaveSlotV1 } from "../persistence/calc";
+import { MAX_CALC_ROWS_PER_SLOT, type CalcSaveSlotV1 } from "../persistence/calc";
 import type { CandyInventoryV1, CandyInventoryV2 } from "../persistence/candy";
 
 export const BACKUP_FORMAT = "candy-boost-planner-backup" as const;
-export const BACKUP_SCHEMA_VERSION = 3 as const;
+export const BACKUP_SCHEMA_VERSION = 4 as const;
 export const BACKUP_MAX_BYTES = 5 * 1024 * 1024;
 export const BACKUP_MAX_BOX_ENTRIES = 300;
-export const BACKUP_MAX_ROWS_PER_SLOT = 60;
+export const BACKUP_MAX_ROWS_PER_SLOT = MAX_CALC_ROWS_PER_SLOT;
 
 export type BackupBoxEntryV1 = Omit<PokemonBoxEntryV1, "source">;
 
@@ -38,7 +38,10 @@ export type CandyBoostPlannerBackupV2 = {
 };
 
 /**
- * 現行形式。1〜4を含むschema V3は先に公開された。
+ * 現行形式。V3 からの形の変更は無い。ボックスの個体を正本にする意味の変更を示す印として版を上げた
+ * （V3 以前の取り込みでは、行の個体属性をボックスへ移す。`migrateLegacyIndividuals`）。
+ *
+ * 1〜5を含むschema V3は先に公開された。
  *
  * 1. `CalcRowV1.sleepTargetHours` の追加
  * 2. アメブ個数の `undefined` を「導出」、値ありを「明示入力」として区別する（設計書 §10.18）
@@ -53,7 +56,7 @@ export type CandyBoostPlannerBackupV2 = {
  * 読み込み時に `boostOrExpAdjustment` を落とす（`backupCodec.validateRow`）。
  * したがってこの形式を V2 のままにはできない。
  */
-export type CandyBoostPlannerBackupV3 = {
+export type CandyBoostPlannerBackupV4 = {
   format: typeof BACKUP_FORMAT;
   schemaVersion: typeof BACKUP_SCHEMA_VERSION;
   exportedAt: string;
@@ -76,8 +79,8 @@ export type BackupMigrationNotice = {
 };
 
 export type ValidatedBackup = {
-  /** 旧入力も現行形式へ移行済みのV3として返す。 */
-  backup: CandyBoostPlannerBackupV3;
+  /** 旧入力も現行形式へ移行済みのV4として返す。 */
+  backup: CandyBoostPlannerBackupV4;
   warnings: BackupWarning[];
   /** 復元は可能だが、旧形式からの移行で保存値の意味が変わることを復元前に知らせる。 */
   migrationNotices: BackupMigrationNotice[];

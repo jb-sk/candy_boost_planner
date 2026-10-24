@@ -6,9 +6,13 @@ import App from "./App.vue";
 
 import { createAppI18n, ensureLocaleMessagesLoaded, normalizeLocale } from "./i18n";
 import { installPersistFlushHandlers } from "./persistence/deferredPersist";
+import { migrateStoredIndividuals } from "./persistence/legacyIndividuals";
 import { installFlexGapPolyfill } from "./utils/flexGapPolyfill";
 import { isPerfEnabled } from "./utils/perf";
 import { preventIosInputZoom } from "./utils/preventIosInputZoom";
+
+// 旧データの個体属性をボックスへ移す。ストアが保存データを読む（マウントする）より前に行う
+migrateStoredIndividuals();
 
 // iOS が小さい文字の入力欄・選択欄のフォーカスで画面を拡大しないようにする（ピンチでの拡大はできる）
 preventIosInputZoom();

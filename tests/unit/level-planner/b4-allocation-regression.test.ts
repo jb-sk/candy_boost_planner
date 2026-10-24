@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { solveLevelPlan } from '../../../src/domain/level-planner/core/solveLevelPlan';
 import { targetFromCandy } from '../../../src/domain/level-planner/deriveTarget';
+import { getCandyFamilyKey } from '../../../src/domain/pokesleep/candy-family';
 import type {
   BoostKind,
   LevelPlannerInput,
@@ -31,7 +32,7 @@ function fixedCandyRow(params: {
   return {
     pokemonId: params.id,
     pokedexId: params.pokedexId,
-    candyFamilyKey: String(params.pokedexId),
+    candyFamilyKey: getCandyFamilyKey(params.pokedexId),
     name: params.id,
     type: params.type,
     currentLevel: 10,
@@ -61,7 +62,7 @@ function targetLevelRow(params: {
   return {
     pokemonId: params.id,
     pokedexId: params.pokedexId,
-    candyFamilyKey: String(params.pokedexId),
+    candyFamilyKey: getCandyFamilyKey(params.pokedexId),
     name: params.id,
     type: params.type,
     currentLevel: 10,

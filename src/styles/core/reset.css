@@ -10,6 +10,9 @@
   --font-body: system-ui, -apple-system, sans-serif;
   --font-heading: system-ui, -apple-system, sans-serif;
   --mobile-nav-height: 36px;
+  /* PC の画面下中央の元に戻す・やり直す（HistoryDock.css）。トーストとページ下の余白もこれを避ける */
+  --history-dock-bottom: 16px;
+  --history-dock-height: 40px;
 }
 
 /* ===== Global Reset ===== */
@@ -92,5 +95,13 @@ body {
 @media (hover: none) and (pointer: coarse) {
   .shell__scroll {
     padding-bottom: 48px;
+  }
+}
+
+/* PC: 一番下までスクロールしたとき、最後の行が画面下中央の元に戻す・やり直すに隠れないようにする。
+   タッチの規則（48px）より大きいので後に置く */
+@media (min-width: 1400px) {
+  .shell__scroll {
+    padding-bottom: calc(var(--history-dock-bottom) + var(--history-dock-height) + 24px);
   }
 }

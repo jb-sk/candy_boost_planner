@@ -45,6 +45,26 @@ describe("persistence/box", () => {
     expect(entries[0]?.planner?.sleepHours).toBe(123);
   });
 
+  it("サブスキルを全削除した空の配列を、未設定に戻さずそのまま読み込む", () => {
+    const payload = {
+      schemaVersion: 1,
+      entries: [
+        {
+          id: "entry-1",
+          source: "nitoyon",
+          rawText: "0TRAEBRERw1p@100ウッウ（油）",
+          label: "test",
+          planner: { subSkills: [] },
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    };
+    localStorage.setItem("candy-boost-planner:box:v1", JSON.stringify(payload));
+
+    expect(loadBox()[0]?.planner?.subSkills).toEqual([]);
+  });
+
   it("keeps reading the released raw-array storage format", () => {
     localStorage.setItem("candy-boost-planner:box:v1", JSON.stringify([{
       id: "legacy-entry",

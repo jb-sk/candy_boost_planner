@@ -35,7 +35,9 @@ Two more tests belong to the same safety net even though they own no fixture fil
 - **`_generated/sleep-exp-events.ts` must stay stubbed with `vi.mock`.** `auto-update-events.yml`
   refreshes that generated module **daily**, so depending on the real one makes goldens break on their own.
 - **`_generated/full-moon-dates.ts` is a fixed generated file, so use the real one** (you should).
-- Normalize only measured timings such as `actualDurationMs`. `deadlineMs` is behavior — keep it fixed.
+- Normalize only measured timings such as `actualDurationMs`. Everything else in the `CALCULATION_PERFORMANCE`
+  section (`refineStatus`, `refineReason`, `loss`) is behavior — keep it fixed. The calculation is always exact,
+  so the TSV carries no mode, policy, or deadline columns.
 - Goldens are easy to forget in a commit. **Make sure new fixture files are staged**, or they fail elsewhere.
 
 ## Proven to bite

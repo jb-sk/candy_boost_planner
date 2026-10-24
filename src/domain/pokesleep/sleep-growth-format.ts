@@ -57,3 +57,51 @@ export function formatSleepTimeResult(
     + `${tokens.estimateOpen}${completedDuration}${tokens.estimateClose}`
     + `${tokens.exactDayJoiner}${lastNight}`;
 }
+
+export type NapIslandDurationTokens = Pick<SleepTimeFormatTokens, 'dayUnit' | 'hourUnit' | 'minuteUnit'>;
+
+/**
+ * おひるね島の預け時間を「〇日〇時間〇分」で書く。
+ * - `full`: 結果行の所要時間。0 の単位も省かない（`7日0時間0分` / `0日0時間3分`）
+ * - `compact`: チケットの「N枚目は…」。先頭の 0 の単位だけ省く（`3分` / `4時間0分` / `2日0時間0分`）
+ */
+export function formatNapIslandDuration(
+  minutes: number,
+  tokens: NapIslandDurationTokens,
+  style: 'full' | 'compact',
+): string {
+  const days = Math.floor(minutes / (24 * 60));
+  const hours = Math.floor((minutes % (24 * 60)) / 60);
+  const mins = minutes % 60;
+  const day = `${days}${tokens.dayUnit}`;
+  const hour = `${hours}${tokens.hourUnit}`;
+  const minute = `${mins}${tokens.minuteUnit}`;
+  if (style === 'full') return `${day}${hour}${minute}`;
+  if (days > 0) return `${day}${hour}${minute}`;
+  if (hours > 0) return `${hour}${minute}`;
+  return minute;
+}
+
+export type NapTicketCountTexts = {
+  /** `calc.row.napTicketCount`（{count}） */
+  count: (count: number) => string;
+  /** `calc.row.napTicketCountWithLast`（{count} と {duration}） */
+  countWithLast: (count: number, duration: string) => string;
+};
+
+/**
+ * アイテム欄に出すチケット枚数の完成文字列。
+ * - 1枚 → `1枚`（使う時間は隣の「おひるね島 〇日〇時間〇分」と同じなので添えない）
+ * - 2枚以上で最後の1枚が途中まで → `N枚（N枚目は{使う時間}）`
+ * - 2枚以上で最後の1枚も使い切る → `N枚`
+ */
+export function formatNapTicketCount(
+  ticketCount: number,
+  lastTicketMinutes: number,
+  fullTicketMinutes: number,
+  tokens: NapIslandDurationTokens,
+  texts: NapTicketCountTexts,
+): string {
+  if (ticketCount <= 1 || lastTicketMinutes >= fullTicketMinutes) return texts.count(ticketCount);
+  return texts.countWithLast(ticketCount, formatNapIslandDuration(lastTicketMinutes, tokens, 'compact'));
+}

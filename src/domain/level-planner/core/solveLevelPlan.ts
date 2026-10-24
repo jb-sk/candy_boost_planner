@@ -3,8 +3,7 @@ import type {
   CandyInventory, CandySupplyBreakdown, LevelPlannerInput, LevelPlannerResult,
   PokemonPlanInput, PokemonPlanLine, PokemonPlanResult, PokemonShortage,
   PokemonConstraintDiagnosis, PlannerLossLedger, PlannerOptions, TypeCandyStock, UniversalCandyStock,
-  DeadlineExceededMeta, MixedCalculationMeta, PlannerSolveOptions, PlannerSolveOutcome, PlannerTuning,
-  ItemCompareMode, ShortageType,
+  PlannerTuning, ItemCompareMode, ShortageType,
 } from '../types';
 import { isPerfEnabled } from '../../../utils/perf';
 import { CANDY_VALUES, MAX_ACCEPTABLE_SURPLUS } from '../constants';
@@ -65,7 +64,6 @@ type StateMetrics = { zeroSurplusCount: number; speciesUsed: number; rawSurplus:
 type State = { choices: Candidate[]; usage: Usage; reachedPrefixCount: number; boundary?: Candidate; metrics: StateMetrics };
 type SupplyOption = { supply: CandySupplyBreakdown; order: number };
 type SupplyCandidateCacheEntry = { candidates: CandySupplyBreakdown[]; cut?: PlannerLossLedger['supplyCandidateCuts'][number] };
-type MixedChoiceResult = { choices: Candidate[]; source: MixedCalculationMeta['source']; exactPrefixCount: number };
 type BoundarySearchSummary = NonNullable<NonNullable<LevelPlannerResult['performance']>['boundarySearch']>;
 type PrefixSearchSummary = NonNullable<NonNullable<LevelPlannerResult['performance']>['prefixSearch']>;
 type CandyExpOptimizationResult = {
@@ -108,80 +106,8 @@ let activeTuning: InternalPlannerTuning = {
   stopAfterInputStates: Number.POSITIVE_INFINITY,
 };
 
-type DeadlineContext = {
-  startedAt: number;
-  deadlineAt?: number;
-  abortAfterExpansions?: number;
-  checks: number;
-  maxNextStates: number;
-  maxOutputStates: number;
-  reachedIndex: number;
-  expansions: number;
-  prefix: DeadlinePrefix;
-};
-
-type DeadlinePrefix = {
-  state: State;
-  completedPrefixCount: number;
-};
-
-class PlannerDeadlineExceeded extends Error {
-  readonly prefix: DeadlinePrefix;
-  readonly meta: DeadlineExceededMeta;
-
-  constructor(meta: DeadlineExceededMeta, prefix: DeadlinePrefix) {
-    super('level planner deadline exceeded');
-    this.name = 'PlannerDeadlineExceeded';
-    this.meta = meta;
-    this.prefix = prefix;
-  }
-}
-
-let activeDeadline: DeadlineContext | null = null;
 const emptySupply = (): CandySupplyBreakdown => ({ species: 0, type: { s: 0, m: 0 }, universal: { s: 0, m: 0, l: 0 } });
 const emptyUsage = (): Usage => ({ boost: 0, shards: 0, species: {}, type: {}, universal: { s: 0, m: 0, l: 0 } });
-const emptyPlannerState = (): State => ({ choices: [], usage: emptyUsage(), reachedPrefixCount: 0, metrics: emptyStateMetrics() });
-
-function deadlineCheckpoint(
-  reachedIndex: number,
-  expansions: number,
-  prefixState: State,
-  completedPrefixCount: number,
-  force = false,
-): void {
-  const deadline = activeDeadline;
-  if (!deadline) return;
-  deadline.reachedIndex = reachedIndex;
-  deadline.expansions = expansions;
-  deadline.prefix = { state: prefixState, completedPrefixCount };
-  deadline.checks++;
-  deadline.maxNextStates = Math.max(deadline.maxNextStates, 0);
-  const deterministicAbort = deadline.abortAfterExpansions !== undefined
-    && expansions >= deadline.abortAfterExpansions;
-  const shouldCheckClock = force || deterministicAbort || deadline.checks % 64 === 0;
-  if (!shouldCheckClock) return;
-  const now = performance.now();
-  const timedOut = deadline.deadlineAt !== undefined && now >= deadline.deadlineAt;
-  if (!deterministicAbort && !timedOut) return;
-  throw new PlannerDeadlineExceeded(
-    {
-      deadlineExceeded: true,
-      elapsedMs: Math.max(0, now - deadline.startedAt),
-      reachedIndex,
-      expansions,
-      maxNextStates: deadline.maxNextStates,
-      maxOutputStates: deadline.maxOutputStates,
-      completedPrefixCount,
-    },
-    { state: prefixState, completedPrefixCount },
-  );
-}
-
-function preparationCheckpoint(force = false): void {
-  const deadline = activeDeadline;
-  if (!deadline) return;
-  deadlineCheckpoint(deadline.reachedIndex, deadline.expansions, deadline.prefix.state, deadline.prefix.completedPrefixCount, force);
-}
 
 function copyUsage(usage: Usage): Usage {
   const species: Record<string, number> = {};
@@ -583,14 +509,12 @@ function visitSupplyOptionsAtSurplus(
   const target = total + targetSurplus;
   const maxUniversalL = Math.min(universal.l, Math.floor(target / CANDY_VALUES.universal.l));
   for (let universalL = 0; universalL <= maxUniversalL; universalL++) {
-    preparationCheckpoint();
     const afterL = universalL * CANDY_VALUES.universal.l;
     const maxUniversalM = Math.min(universal.m, Math.floor((target - afterL) / CANDY_VALUES.universal.m));
     for (let universalM = 0; universalM <= maxUniversalM; universalM++) {
       const afterM = afterL + universalM * CANDY_VALUES.universal.m;
       const maxTypeM = Math.min(type.m, Math.floor((target - afterM) / CANDY_VALUES.type.m));
       for (let typeM = 0; typeM <= maxTypeM; typeM++) {
-        preparationCheckpoint();
         const base = afterM + typeM * CANDY_VALUES.type.m;
         const residual = target - base - speciesMax;
         if (residual < 0) continue;
@@ -601,7 +525,6 @@ function visitSupplyOptionsAtSurplus(
         const firstTypeS = minTypeS + ((residue - minTypeS) % CANDY_VALUES.universal.s + CANDY_VALUES.universal.s) % CANDY_VALUES.universal.s;
         if (firstTypeS > maxTypeS) continue;
         for (let typeS = firstTypeS; typeS <= maxTypeS; typeS += CANDY_VALUES.universal.s) {
-          preparationCheckpoint();
           const universalS = (residual - typeS * CANDY_VALUES.type.s) / CANDY_VALUES.universal.s;
           if (universalS < 0 || universalS > universal.s) continue;
           visit({
@@ -964,7 +887,6 @@ function cacheCandidates(key: string, candidates: Candidate[]): Candidate[] {
   return candidates;
 }
 function generatePokemonCandidates(pokemon: NormalizedPokemon, input: NormalizedInput): Candidate[] {
-  preparationCheckpoint();
   const key = cacheKey(pokemon, input); const cached = candidateCache.get(key);
   if (cached) return cached;
   // 0配分は非転落不変条件の前提でもあるため、資源が非競合でも必ず残す。
@@ -2848,9 +2770,17 @@ function consumeInventory(inventory: CandyInventory, pokemon: NormalizedPokemon,
   inventory.universal.s = Math.max(0, inventory.universal.s - supply.universal.s); inventory.universal.m = Math.max(0, inventory.universal.m - supply.universal.m); inventory.universal.l = Math.max(0, inventory.universal.l - supply.universal.l);
 }
 export function solveLevelPlan(rawInput: LevelPlannerInput): LevelPlannerResult {
+  // 例外で抜けてもモジュールの状態（activeLossLedger）を残さない。メインスレッドの代わりの経路は同じモジュールを使い続ける。
+  const previousLossLedger = activeLossLedger;
+  try {
+    return solveLevelPlanBody(rawInput);
+  } finally {
+    activeLossLedger = previousLossLedger;
+  }
+}
+function solveLevelPlanBody(rawInput: LevelPlannerInput): LevelPlannerResult {
   const perfEnabled = isPerfEnabled();
   const started = perfEnabled || DEBUG_LEVEL_PLANNER ? performance.now() : 0;
-  const previousLossLedger = activeLossLedger;
   const lossLedger = createPlannerLossLedger();
   activeLossLedger = lossLedger;
   let phaseStarted = started;
@@ -2925,110 +2855,12 @@ export function solveLevelPlan(rawInput: LevelPlannerInput): LevelPlannerResult 
       prefixSearchAttempts: optimized.prefixSearchAttempts,
     },
   };
-  activeLossLedger = previousLossLedger;
   return result;
 }
 
 function boundaryIndexForChoices(choices: Candidate[]): number | null {
   const index = choices.findIndex(candidate => !candidate.line.candyDemandMet);
   return index >= 0 ? index : null;
-}
-
-function renderMixedResult(input: NormalizedInput, choices: Candidate[], lossLedger: InternalPlannerLossLedger): LevelPlannerResult {
-  const normalizedChoices = input.pokemonList.map((pokemon, index) => choices[index] ?? { p: pokemon, line: zeroLine(pokemon), usage: emptyUsage(), stableIndex: 0 });
-  const boundaryIndex = boundaryIndexForChoices(normalizedChoices);
-  const inventory = cloneCandyInventory(input.candyInventory);
-  let snapshot = emptyUsage();
-  const pokemonResults: PokemonPlanResult[] = normalizedChoices.map((candidate, index) => {
-    const pokemon = candidate.p;
-    const planned = plannedCandyForDisplay(pokemon, input);
-    const targetLine = displayLine(pokemon, input, inventory, planned.total, planned.boost, candidate.line.candySupply, candidate.line.totalCandyUnitsUsed);
-    const diagnostic = calcDiagnosis(pokemon, candidate.line, snapshot, input);
-    const role = boundaryIndex === null || index < boundaryIndex ? 'upper' : index === boundaryIndex ? 'boundary' : 'lower';
-    consumeInventory(inventory, pokemon, candidate.line);
-    snapshot = mergeUsage(snapshot, candidate.usage);
-    return { pokemonId: pokemon.pokemonId, pokedexId: pokemon.pokedexId, name: pokemon.name, currentLevel: pokemon.currentLevel, currentExpInLevel: pokemon.currentExpInLevel, targetLevel: pokemon.targetLevel, targetExpInLevel: pokemon.targetExpInLevel, targetLine, reachableLine: candidate.line, candyDemandMet: candidate.line.candyDemandMet, shortage: diagnostic.shortage, constraintDiagnosis: diagnostic.diagnosis, role };
-  });
-  const boostUsed = pokemonResults.reduce((sum, result) => sum + result.reachableLine.boostedCandyUnits, 0);
-  const candyShortages = pokemonResults.filter(result => result.shortage.candyToTarget > 0).map(result => ({ pokemonId: result.pokemonId, name: result.name, amount: result.shortage.candyToTarget }));
-  const shardShortages = pokemonResults.filter(result => result.shortage.dreamShardShortage > 0).map(result => ({ pokemonId: result.pokemonId, name: result.name, amount: result.shortage.dreamShardShortage }));
-  return {
-    pokemonResults,
-    summary: {
-      totalDreamShardsUsed: snapshot.shards,
-      dreamShardsRemaining: Math.max(0, input.dreamShards - snapshot.shards),
-      boost: { kind: input.boost.kind, boostLimit: input.boost.limit, boostUsed, boostRemaining: Math.max(0, input.boost.limit - boostUsed) },
-      speciesCandyUsed: snapshot.species,
-      typeCandyUsed: snapshot.type,
-      universalCandyUsed: snapshot.universal,
-      speciesCandyRemaining: inventory.species,
-      typeCandyRemaining: inventory.typeCandy,
-      universalCandyRemaining: inventory.universal,
-      itemUsageRanking: pokemonResults.map(result => ({ pokemonId: result.pokemonId, name: result.name, typeS: result.reachableLine.candySupply.type.s, typeM: result.reachableLine.candySupply.type.m, universalS: result.reachableLine.candySupply.universal.s, universalM: result.reachableLine.candySupply.universal.m, universalL: result.reachableLine.candySupply.universal.l, totalValue: supplyValue({ species: 0, type: result.reachableLine.candySupply.type, universal: result.reachableLine.candySupply.universal }) })).sort((a, b) => b.totalValue - a.totalValue),
-      totalNeed: { totalCandyUnits: pokemonResults.reduce((sum, result) => sum + result.reachableLine.totalCandyUnitsUsed, 0), totalDreamShards: pokemonResults.reduce((sum, result) => sum + result.reachableLine.dreamShardsUsed, 0), totalBoostCandyRequested: boostUsed },
-      totalSupplied: { totalCandyValue: pokemonResults.reduce((sum, result) => sum + supplyValue(result.reachableLine.candySupply), 0), totalBoostedCandyUnits: boostUsed, totalNonBoostCandyUnits: pokemonResults.reduce((sum, result) => sum + result.reachableLine.nonBoostCandyUnits, 0), totalDreamShards: snapshot.shards },
-      boundaryPokemonId: boundaryIndex === null ? undefined : input.pokemonList[boundaryIndex]?.pokemonId,
-      fullyReachedCount: boundaryIndex ?? pokemonResults.length,
-    },
-    shortages: { hasShortage: candyShortages.length > 0 || shardShortages.length > 0, totalExpToTargets: pokemonResults.reduce((sum, result) => sum + result.shortage.expToTarget, 0), totalCandyShortage: candyShortages.reduce((sum, result) => sum + result.amount, 0), totalDreamShardShortage: shardShortages.reduce((sum, result) => sum + result.amount, 0), candyShortages, shardShortages },
-    lossLedger: toPublicPlannerLossLedger(lossLedger),
-  };
-}
-
-function chooseMixedChoices(input: NormalizedInput): MixedChoiceResult {
-  const feasibility = selectFbl01dChoices(input);
-  return { choices: feasibility.choices, source: 'feasibility', exactPrefixCount: 0 };
-}
-
-/** deadline付き実行のworker/store境界用API。通常のsolveLevelPlanは従来通り結果だけを返す。 */
-export function solveLevelPlanWithBudget(rawInput: LevelPlannerInput, options: PlannerSolveOptions): PlannerSolveOutcome {
-  const started = performance.now();
-  const previousLossLedger = activeLossLedger;
-  const previousDeadline = activeDeadline;
-  const previousTuning = activeTuning;
-  const mixedLedger = createPlannerLossLedger();
-  const tuning = options.tuning;
-  if (tuning) activeTuning = { ...activeTuning, ...tuning };
-  activeDeadline = options.abortAfterExpansions !== undefined
-    ? { startedAt: started, deadlineAt: undefined, abortAfterExpansions: options.abortAfterExpansions, checks: 0, maxNextStates: 0, maxOutputStates: 0, reachedIndex: -1, expansions: 0, prefix: { state: emptyPlannerState(), completedPrefixCount: 0 } }
-    : null;
-  try {
-    if (options.calculationMode === 'exact') deadlineCheckpoint(-1, 0, emptyPlannerState(), 0, true);
-    if (options.calculationMode === 'prefixLocalMixed') {
-      const input = normalizeInput(rawInput);
-      activeLossLedger = mixedLedger;
-      const mixed = chooseMixedChoices(input);
-      const durationMs = roundMs(performance.now() - started);
-      return {
-        kind: 'result',
-        result: renderMixedResult(input, mixed.choices, mixedLedger),
-        durationMs,
-        mixedMeta: { source: mixed.source, exactPrefixCount: mixed.exactPrefixCount, localSuffixCount: input.pokemonList.length - mixed.exactPrefixCount },
-      };
-    }
-    const result = solveLevelPlan(rawInput);
-    return { kind: 'result', result, durationMs: roundMs(performance.now() - started) };
-  } catch (error) {
-    if (!(error instanceof PlannerDeadlineExceeded)) throw error;
-    const input = normalizeInput(rawInput);
-    // solveLevelPlan が deadline 例外で脱出した場合、内部exact用ledgerが
-    // 復元される前にここへ来る。ミックス計算の候補生成・描画は専用ledgerへ切り替える。
-    activeLossLedger = mixedLedger;
-    activeDeadline = null;
-    const mixed = chooseMixedChoices(input);
-    const mixedResult = renderMixedResult(input, mixed.choices, mixedLedger);
-    return {
-      kind: 'deadlineExceeded',
-      meta: error.meta,
-      mixedResult,
-      durationMs: roundMs(performance.now() - started),
-      mixedMeta: { source: mixed.source, exactPrefixCount: mixed.exactPrefixCount, localSuffixCount: input.pokemonList.length - mixed.exactPrefixCount },
-    };
-  } finally {
-    activeLossLedger = previousLossLedger;
-    activeDeadline = previousDeadline;
-    activeTuning = previousTuning;
-  }
 }
 
 /** テスト用の観測点。公開APIではなく、候補メモ化の回帰確認だけに使う。 */

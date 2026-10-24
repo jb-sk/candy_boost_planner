@@ -26,6 +26,9 @@
   --booklet-destructive-rgb: 209, 26, 42;
   --danger: var(--booklet-destructive);
   --danger-rgb: var(--booklet-destructive-rgb);
+  /* リンク切れの行の強調色。計算機の --danger は不足用の青に差し替わるので、破壊的操作の赤を直接使う */
+  --link-broken: var(--booklet-destructive);
+  --link-broken-rgb: var(--booklet-destructive-rgb);
   --booklet-shortage: #236ba5;
   --booklet-shortage-rgb: 35, 107, 165;
   --paper-rgb: 255, 255, 255;
@@ -111,32 +114,13 @@ body {
   z-index: 10;
 }
 
-/* Lang buttons — opaque paper fill prevents the ruled lines from bleeding through. */
-.lang__btn {
-  background: var(--paper);
-  color: var(--ink);
+/* 言語の切り替えは墨の線と塗りにする（下地は共通の --paper で、罫線を透かさない） */
+.lang__switch {
   border-color: var(--ink);
 }
 
 .lang__btn--on {
   background: var(--ink);
-  color: var(--paper);
-  border-color: var(--ink);
-}
-
-.lang__btn--help {
-  background: var(--accent);
-  color: var(--paper);
-  border-color: var(--accent);
-}
-
-/* Hero support / theme-picker — opaque fill to prevent ruled-line bleed-through */
-.hero .support__link {
-  background: var(--paper);
-}
-
-.hero .support__link:hover {
-  background: var(--accent);
   color: var(--paper);
 }
 

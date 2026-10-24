@@ -4,6 +4,7 @@ import { getPokemonType } from '../pokesleep/pokemon-names';
 import { getCandyFamilyKey, isValidPokedexId, normalizeSpeciesCandyByFamily } from '../pokesleep/candy-family';
 import { calcCandyTargetFromSleepExp } from '../pokesleep/sleep-growth';
 import { deriveTarget } from './deriveTarget';
+import type { CandyPolicy } from '../sleep-target';
 import type {
   BoostKind,
   CandyInventory,
@@ -36,11 +37,12 @@ export type PlannerInputRowDto = {
   readonly boostOrExpAdjustment?: number;
   readonly boostCandyInput: number;
   readonly sleepExp: number;
-  readonly sleepTargetMode?: "all" | "stock";
+  /** アメの使い方（睡眠目標の性質。`sleepTargetTraits(row).candy`）。`none` はアメを1個も配らない。 */
+  readonly candyPolicy: CandyPolicy;
   /**
    * 睡眠目標「アメ在庫＋睡眠」の行が使うアメ数。**在庫の取り合いは呼び出し側が解く**
    * （`useCalcStore.stockCandyTargetByRowId` が正本）。ここで数え直すと、画面に出ている
-   * 個数とソルバーの需要がずれる。`sleepTargetMode !== "stock"` の行では読まない。
+   * 個数とソルバーの需要がずれる。`candyPolicy !== "stockOnly"` の行では読まない。
    */
   readonly stockCandyTarget?: number;
 };
@@ -109,10 +111,10 @@ export function buildPlannerInput(
       boostOrExpAdjustment: row.boostOrExpAdjustment,
       expType: row.expType,
     });
-    const allSleep = row.sleepTargetMode === "all";
+    const allSleep = row.candyPolicy === "none";
     // 「アメ在庫＋睡眠」は在庫が使うアメ数を決める。数えるのは呼び出し側で、ここは受け取るだけ。
     // 残りは睡眠が担当するので、この個数がそのままこの行の需要になる。
-    const stockCandyTarget = row.sleepTargetMode === "stock"
+    const stockCandyTarget = row.candyPolicy === "stockOnly"
       ? Math.max(0, Math.floor(row.stockCandyTarget ?? 0))
       : undefined;
     // アメブは総アメ数の内数（型が `boostedCandyUnits ≤ totalCandyUnits` を前提にしている）。

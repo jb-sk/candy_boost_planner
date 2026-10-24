@@ -49,6 +49,8 @@
             <dd>{{ t("help.purpose.simulateDesc") }}</dd>
             <dt>{{ t("help.purpose.sleepTitle") }}</dt>
             <dd>{{ t("help.purpose.sleepDesc") }}</dd>
+            <dt>{{ t("help.purpose.napTitle") }}</dt>
+            <dd>{{ t("help.purpose.napDesc") }}</dd>
           </dl>
         </section>
 

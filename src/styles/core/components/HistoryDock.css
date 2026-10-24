@@ -1,0 +1,48 @@
+/* PC（2列表示）の元に戻す・やり直す。ナビが無いので画面下の中央に浮かせる。
+   トーストもこの上に出すので、何が戻ったかが押した場所のすぐ上に見える（AppToast.css） */
+
+.historyDock {
+  display: none;
+}
+
+@media (min-width: 1400px) {
+  .shell > .historyDock {
+    display: flex;
+    position: fixed;
+    left: 50%;
+    bottom: var(--history-dock-bottom);
+    transform: translateX(-50%);
+    /* サマリー・ナビ（20〜30）より前、ヒントやモーダル（100〜）より後ろ */
+    z-index: 40;
+    height: var(--history-dock-height);
+    padding: 3px;
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    box-shadow: var(--shadow-md);
+  }
+
+  .historyDock .historyBtn {
+    padding: 0 14px;
+    border-radius: var(--radius-pill);
+  }
+
+  .historyDock .historyBtn + .historyBtn {
+    margin-left: 2px;
+  }
+
+  .historyDock .historyBtn:hover:not(:disabled) {
+    background: rgba(var(--accent-rgb), 0.08);
+  }
+
+  /* テーマのボタン全体の影・押し込み（Blue など）を打ち消す。帯そのものが影を持つ */
+  .historyDock button,
+  .historyDock button:active {
+    box-shadow: none;
+    transform: none;
+  }
+
+  .historyDock .historyBtn__label {
+    display: inline;
+  }
+}

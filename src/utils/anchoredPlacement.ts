@@ -112,3 +112,18 @@ export function placeNearAnchor(
   const base = document.body.getBoundingClientRect();
   return { left: left - base.left, top: top - base.top };
 }
+
+/**
+ * 浮き要素が画面に収まる最大の大きさ。`placeNearAnchor` は位置をずらすだけで大きさは縮めないので、
+ * 中身が画面より大きくなりうる浮き要素（睡眠目標のドロップダウン）は、これを max-width / max-height に使う。
+ * 幅は左右の余白を除いた見えている幅、高さは上部の帯と下端の余白を除いた見えている高さ。
+ */
+export function maxFloatingSize(anchor: Element): { width: number; height: number } {
+  const viewport = visibleViewport();
+  const topBound = stickyHeadersBottom(anchor, viewport.top);
+  const bottomBound = viewport.bottom - bottomGap(false);
+  return {
+    width: Math.max(0, viewport.right - viewport.left - EDGE_GAP * 2),
+    height: Math.max(0, bottomBound - topBound),
+  };
+}

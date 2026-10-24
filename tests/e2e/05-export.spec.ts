@@ -430,6 +430,35 @@ test.describe('05-export C. CSV出力', () => {
     await expect(exportPanel.statusMessage).toContainText('コピー');
   });
 
+  // 古い iPhone（iOS 13.4 未満）は navigator.clipboard が無く、テキスト欄を選んで execCommand("copy") する。
+  // iOS は select() だけでは選択しないので setSelectionRange で選ぶ（src/utils/copyText.ts）。ここでは経路が動くことを確かめる
+  test('11b. navigator.clipboard が無い端末でも CSV・TSV をコピーできる', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(Navigator.prototype, 'clipboard', { get: () => undefined, configurable: true });
+    });
+    await page.reload();
+    await new CalcPanelPage(page).clickExport();
+    const exportPanel = new ExportPanelPage(page);
+    const copied: string[] = [];
+    await page.exposeFunction('recordCopy', (text: string) => { copied.push(text); });
+    await page.evaluate(() => {
+      document.addEventListener('copy', () => {
+        (window as unknown as { recordCopy: (text: string) => void }).recordCopy(String(window.getSelection() ?? ''));
+      });
+    });
+
+    await exportPanel.openCsvMenu();
+    await exportPanel.clickCsvCopy();
+    await expect(exportPanel.statusMessage).toHaveText('CSVをクリップボードにコピーしました');
+
+    await exportPanel.openCsvMenu();
+    await exportPanel.clickTsvCopy();
+    await expect(exportPanel.statusMessage).toHaveText('TSVをクリップボードにコピーしました');
+    await expect.poll(() => copied.length).toBe(2);
+    expect(copied[0]).toContain('ポケモン,EXP補正,現在Lv,あとEXP,目標Lv,アメ到達Lv');
+    expect(copied[1]).toContain('ポケモン\tEXP補正\t現在Lv\tあとEXP\t目標Lv\tアメ到達Lv');
+  });
+
   test('12. メニュー外クリックでメニューが閉じる', async ({ page }) => {
     const exportPanel = new ExportPanelPage(page);
 
@@ -507,6 +536,16 @@ test.describe('05-export E. リスト表示', () => {
 
     const calc = new CalcPanelPage(page);
     await calc.clickExport();
+  });
+
+  test('18b. Lv列は左寄せで、見出しと値の左端がそろう', async ({ page }) => {
+    // Lv 列は幅 680px 以上でだけ出る。行ごとに長さが違うので左寄せ（2026-10-13 ユーザー指示）
+    await page.setViewportSize({ width: 1000, height: 900 });
+    const head = page.locator('.exportList__lvHead > span');
+    const value = page.getByTestId('listRow').first().locator('.exportList__lvWrap');
+    await expect(value).toBeVisible();
+    const [headBox, valueBox] = [await head.boundingBox(), await value.boundingBox()];
+    expect(valueBox!.x).toBeCloseTo(headBox!.x, 0);
   });
 
   test('18. ポケモンリストが表示される', async ({ page }) => {
@@ -733,9 +772,30 @@ test.describe('05-export G. 計算機との整合性検証', () => {
     await exportPanel.clickCsvCopy();
     const csv = await page.evaluate(() => navigator.clipboard.readText());
 
-    expect(csv).toContain('アイテム');
-    expect(csv).toContain('タM3');
-    expect(csv).toContain('万S475');
-    expect(csv).toContain(',▼▼,');
+    // アイテムは種類ごとの列に分かれる（表計算ソフトで足し上げられるように）
+    const [head, ...body] = csv.split('\r\n').map(line => line.split(','));
+    const column = (label: string) => body.map(line => line[head!.indexOf(label)]);
+    expect(column('タイプM')).toContain('3');
+    expect(column('万能S')).toContain('475');
+    expect(column('EXP補正')).toContain('▼▼');
+  });
+
+  test('34. TSVをコピーすると、タブ区切りで同じ表がコピーされる', async ({ page }) => {
+    const exportPanel = new ExportPanelPage(page);
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await exportPanel.openCsvMenu();
+    await exportPanel.clickCsvCopy();
+    const csv = await page.evaluate(() => navigator.clipboard.readText());
+
+    await exportPanel.openCsvMenu();
+    await exportPanel.clickTsvCopy();
+    await expect(exportPanel.statusMessage).toContainText('TSV');
+    const tsv = await page.evaluate(() => navigator.clipboard.readText());
+
+    // 出力日時の行は分単位で変わり得るので比べない。クリップボードは OS によって改行が CRLF になる
+    const rows = (text: string, sep: string) =>
+      text.split(/\r?\n/).filter(line => line && !line.startsWith('出力日時')).map(line => line.split(sep));
+    expect(rows(tsv, '\t')).toEqual(rows(csv, ','));
+    expect(tsv.split(/\r?\n/)[0]).toContain('ポケモン\tEXP補正\t現在Lv');
   });
 });

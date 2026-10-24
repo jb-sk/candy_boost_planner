@@ -1,0 +1,60 @@
+/* 元に戻す・やり直すのボタン本体。大きさと名前の表示は置き場所（MobileNav.css / HistoryDock.css）が決める */
+
+.historyBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  /* 押せるときはアクセント色にして、戻せることが一目で分かるようにする */
+  color: var(--accent);
+  /* button は既定で font を継承しない。OS のボタン用フォントのままだと、文字の上下の位置がアプリ本体とずれる */
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.historyBtn:hover:not(:disabled) {
+  color: var(--accent-strong);
+}
+
+.historyBtn:disabled {
+  color: var(--muted);
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* アイコンと名前を1行の文として並べ、アイコンの高さを文字のベースラインから決める。
+   flex の中央揃えにすると、文字が行の中のどこに描かれるかがフォントの上下の余白で変わり、
+   フォントによってアイコンが上にも下にもずれる（Meiryo と Yu Gothic UI で約 2px 違った） */
+.historyBtn__content {
+  display: block;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/*
+ * 和文フォントは漢字・かなをベースラインの 0.12em 下から 0.88em 上までの枠に描くので、
+ * 文字の中心はベースラインの 0.38em 上。アイコン（18px）の中心をそこへ合わせる。
+ * inline-flex の中身が svg だけなので、この要素のベースラインは下端になる（下端 = 0.38em - 9px）。
+ */
+.historyBtn__icon {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  vertical-align: -0.31em;
+}
+
+.historyBtn__icon > svg {
+  width: 100%;
+  height: 100%;
+}
+
+.historyBtn__label {
+  display: none;
+  margin-left: 4px;
+  font-weight: 600;
+}

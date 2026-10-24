@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick, ref } from "vue";
 import type { Composer } from "vue-i18n";
-import { useBoxStore } from "./useBoxStore";
+import { useBoxStore as useBoxStoreWithHistory } from "./useBoxStore";
+import { useHistory } from "./useHistory";
+import { SubSkillNameJaByEn } from "../domain/box/nitoyon";
 import { calcExp } from "../domain/pokesleep/exp";
 import { cancelPersist, flushPersist } from "../persistence/deferredPersist";
+import { useToast } from "./useToast";
 
 function installLocalStorageMock() {
   const store = new Map<string, string>();
@@ -24,6 +27,16 @@ function installLocalStorageMock() {
     configurable: true,
     writable: true,
   });
+}
+
+/**
+ * 計算機なしのボックスストア。個体属性の編集・削除は計算機の行と組で記録するので、
+ * 計算機の提供者は何も持たない代役を登録しておく。
+ */
+function useBoxStore(opts: Omit<Parameters<typeof useBoxStoreWithHistory>[0], "history">) {
+  const history = useHistory();
+  history.registerProvider("calc", { prepare() {}, capture: () => ({}), restore() {} });
+  return useBoxStoreWithHistory({ ...opts, history });
 }
 
 describe("useBoxStore", () => {
@@ -101,6 +114,55 @@ describe("useBoxStore", () => {
 
     const saved = JSON.parse(localStorage.getItem("candy-boost-planner:box:v1") ?? "null");
     expect(saved.entries.map((entry: { id: string }) => entry.id)).toEqual([entryId]);
+  });
+
+  it("サブスキルの選択を確定すると保存され、Undo に「○○のサブスキル」で積まれてトーストが出る", () => {
+    const t = ((key: string, params?: Record<string, unknown>) => {
+      if (key === "box.undoLabel.field") return `${params?.name}の${params?.field}`;
+      if (key === "box.detail.subSkills") return "サブスキル";
+      if (key === "status.undoWithLabel") return `${params?.label}を元に戻しました`;
+      return key;
+    }) as unknown as Composer["t"];
+    const store = useBoxStore({ locale: ref("ja"), t });
+    store.addLabel.value = "ピカチュウ";
+    store.onCreateManual({ mode: "toBox" });
+    store.selectedBoxId.value = store.boxEntries.value[0]?.id ?? null;
+
+    // 画面の <select> の @change と同じ呼び順
+    const nameEn = Object.keys(SubSkillNameJaByEn)[0]!;
+    store.onBoxEditSubInput(10, nameEn);
+    store.onBoxEditSubBlur(10);
+    expect(store.boxEntries.value[0]?.planner?.subSkills).toEqual([{ lv: 10, nameEn }]);
+
+    store.onUndo();
+    expect(store.boxEntries.value[0]?.planner?.subSkills).toBeUndefined();
+    expect(useToast().toasts.value.at(-1)?.message).toBe("ピカチュウのサブスキルを元に戻しました");
+  });
+
+  it("インポートした個体でも、編集したサブスキルが表示に反映され、他のLvは残り、Undo で入力欄も戻る", async () => {
+    const t = ((key: string) => key) as unknown as Composer["t"];
+    const store = useBoxStore({ locale: ref("en"), t });
+    store.importText.value = "0TRAEBRERw1p@100ウッウ（油）";
+    expect(store.onImport()).toBe(1);
+    store.selectedBoxId.value = store.boxEntries.value[0]?.id ?? null;
+    await nextTick();
+
+    const before = store.selectedDetail.value?.decoded.subSkills.map((s) => ({ lv: s.lv, nameEn: s.nameEn })) ?? [];
+    expect(before.find((s) => s.lv === 10)).toBeDefined();
+    const nameEn = Object.keys(SubSkillNameJaByEn).find((en) => en !== before.find((s) => s.lv === 10)?.nameEn)!;
+
+    store.onBoxEditSubInput(10, nameEn);
+    store.onBoxEditSubBlur(10);
+    await nextTick();
+    const expected = [...before.filter((s) => s.lv !== 10), { lv: 10, nameEn }].sort((a, b) => a.lv - b.lv);
+    expect(store.selectedDetail.value?.decoded.subSkills.map((s) => ({ lv: s.lv, nameEn: s.nameEn }))).toEqual(expected);
+    // 絞り込みの候補も編集後の値で作る
+    expect(store.availableSubSkills.value.map((s) => s.nameEn).sort()).toEqual(expected.map((s) => s.nameEn).sort());
+
+    store.onUndo();
+    await nextTick();
+    expect(store.selectedDetail.value?.decoded.subSkills.map((s) => ({ lv: s.lv, nameEn: s.nameEn }))).toEqual(before);
+    expect(store.boxEditSubInputs.value["10"]).toBe(before.find((s) => s.lv === 10)?.nameEn);
   });
 
   it("restores a multi-entry import through repeated undo and redo", () => {
@@ -433,16 +495,17 @@ describe("useBoxStore", () => {
       expect(store.boxEntries.value[0]?.planner?.expRemaining).toBe(100);
     });
 
-    it("clamps on commit and accepts 0 as the whole next level", () => {
+    it("clamps on commit and treats 0 as unset (the whole next level)", () => {
       const toNext = calcExp(15, 16, 600);
       const store = createStoreWithEntry(15, "");
 
       store.onEditSelectedExpRemaining(String(toNext + 1));
       expect(store.boxEntries.value[0]?.planner?.expRemaining).toBe(toNext);
 
-      // 0 は「Lvが上がった直後」を表す正当な入力。計算パネル（下限1）と違って弾かない
+      // 0 は未設定と同じ「次Lvまで全部」。保存せず、表示は実際の数値（次Lvまでの必要EXP）にする
       store.onEditSelectedExpRemaining("0");
-      expect(store.boxEntries.value[0]?.planner?.expRemaining).toBe(0);
+      expect(store.boxEntries.value[0]?.planner?.expRemaining).toBeUndefined();
+      expect(store.selectedDetail.value?.expRemaining).toBe(toNext);
     });
 
     it("treats an empty input as unset", () => {
@@ -452,13 +515,13 @@ describe("useBoxStore", () => {
       expect(store.boxEntries.value[0]?.planner?.expRemaining).toBeUndefined();
     });
 
-    it("shows a stored value above the new cap as the cap after the level changes", () => {
+    it("resets expRemaining to the whole next level when the level changes", () => {
       const toNextAtLv30 = calcExp(30, 31, 600);
       const store = createStoreWithEntry(30, String(toNextAtLv30));
 
       store.onEditSelectedLevel("5");
 
-      // 保存値は据え置きでも、表示は新しい上限へ丸める
+      // Lv を変えると あとEXP は未設定へ戻り、表示は新しいLvの「次Lvまで全部」になる
       expect(store.selectedDetail.value?.expRemaining).toBe(calcExp(5, 6, 600));
     });
 
@@ -475,6 +538,152 @@ describe("useBoxStore", () => {
       store.addExpRemaining.value = "";
       store.onAddExpRemainingCommit();
       expect(store.addExpRemaining.value).toBe("");
+    });
+  });
+
+  describe("updateIndividual / individualById", () => {
+    const t = ((key: string) => key) as unknown as Composer["t"];
+
+    function createStore() {
+      const store = useBoxStore({ locale: ref("ja"), t });
+      store.addLabel.value = "ind";
+      store.addLevel.value = 15;
+      const id = store.onCreateManual({ mode: "toBox" });
+      return { store, id: id! };
+    }
+
+    it("throws for an unknown boxId", () => {
+      const { store } = createStore();
+      expect(() => store.updateIndividual("missing", { level: 20 }, { label: "edit" })).toThrow();
+    });
+
+    it("exposes resolved individuals by box id and follows edits", () => {
+      const { store, id } = createStore();
+      const toNext15 = calcExp(15, 16, 600);
+      expect(store.individualById.value.get(id)).toMatchObject({ level: 15, expRemaining: toNext15, sleepHours: 0, nature: "normal" });
+
+      store.updateIndividual(id, { level: 20, nature: "up", sleepHours: 12.7 }, { label: "edit" });
+      expect(store.individualById.value.get(id)).toMatchObject({
+        level: 20,
+        expRemaining: calcExp(20, 21, 600),
+        nature: "up",
+        sleepHours: 12,
+      });
+    });
+
+    it("resets expRemaining when the level changes unless the patch gives one", () => {
+      const { store, id } = createStore();
+      store.updateIndividual(id, { expRemaining: 100 }, { label: "edit" });
+      expect(store.boxEntries.value[0]?.planner?.expRemaining).toBe(100);
+
+      store.updateIndividual(id, { level: 16 }, { label: "edit" });
+      expect(store.boxEntries.value[0]?.planner?.expRemaining).toBeUndefined();
+
+      store.updateIndividual(id, { level: 17, expRemaining: 50 }, { label: "edit" });
+      expect(store.boxEntries.value[0]?.planner?.expRemaining).toBe(50);
+    });
+
+    it("keeps expRemaining when the expType changes and only trims what exceeds the new cap", () => {
+      const { store, id } = createStore();
+      const big = calcExp(15, 16, 1320) - 10;
+      store.updateIndividual(id, { expType: 1320, expRemaining: big }, { label: "edit" });
+      expect(store.boxEntries.value[0]?.planner?.expRemaining).toBe(big);
+
+      store.updateIndividual(id, { expType: 600 }, { label: "edit" });
+      expect(store.boxEntries.value[0]?.planner?.expRemaining).toBe(calcExp(15, 16, 600));
+    });
+
+    it("records one undo step per edit and nothing for a no-op", () => {
+      const { store, id } = createStore();
+      store.updateIndividual(id, { level: 15 }, { label: "edit" });
+      store.onUndo(); // 変更なしは記録されないので、追加が戻る
+      expect(store.boxEntries.value).toHaveLength(0);
+      store.onRedo();
+
+      store.updateIndividual(id, { level: 30 }, { label: "edit" });
+      expect(store.individualById.value.get(id)?.level).toBe(30);
+      store.onUndo();
+      expect(store.individualById.value.get(id)?.level).toBe(15);
+    });
+  });
+
+  describe("box capacity", () => {
+    const t = ((key: string) => key) as unknown as Composer["t"];
+    const MAX = 300;
+
+    function fill(store: ReturnType<typeof useBoxStore>, n: number) {
+      for (let i = 0; i < n; i++) {
+        store.addLabel.value = "mon" + i;
+        expect(store.onCreateManual({ mode: "toBox" })).not.toBeNull();
+      }
+    }
+
+    const toastCount = () => useToast().toasts.value.length;
+    const lastToast = () => useToast().toasts.value.at(-1)?.message;
+
+    function createFullStore() {
+      const store = useBoxStore({ locale: ref("ja"), t });
+      fill(store, MAX);
+      return store;
+    }
+
+    it("returns the created id and refuses at the limit without touching entries or the form", () => {
+      const store = createFullStore();
+      expect(store.boxEntries.value).toHaveLength(MAX);
+      const idsBefore = store.boxEntries.value.map((e) => e.id);
+      store.selectedBoxId.value = idsBefore[5]!;
+
+      store.addLabel.value = "overflow";
+      store.addLevel.value = 33;
+      store.addExpRemaining.value = "123";
+      store.addSleepHours.value = "45";
+
+      const toastsBefore = toastCount();
+      expect(store.onCreateManual({ mode: "toCalc" })).toBeNull();
+
+      expect(store.boxEntries.value.map((e) => e.id)).toEqual(idsBefore);
+      expect(store.selectedBoxId.value).toBe(idsBefore[5]);
+      expect(store.addLabel.value).toBe("overflow");
+      expect(store.addLevel.value).toBe(33);
+      expect(store.addExpRemaining.value).toBe("123");
+      expect(store.addSleepHours.value).toBe("45");
+      // 満杯の案内は、どこにも表示されない importStatus ではなくトーストで出す
+      expect(store.importStatus.value).toBe("");
+      expect(toastCount()).toBe(toastsBefore + 1);
+      expect(lastToast()).toBe("status.boxFull");
+    });
+
+    it("does not record an undo step when a manual add is refused", () => {
+      const store = createFullStore();
+      store.addLabel.value = "overflow";
+      store.onCreateManual({ mode: "toBox" });
+      store.onUndo(); // 最後に成功した追加だけが戻る
+      expect(store.boxEntries.value).toHaveLength(MAX - 1);
+    });
+
+    it("imports only up to the limit and keeps existing entries", () => {
+      const store = useBoxStore({ locale: ref("ja"), t });
+      fill(store, MAX - 2);
+      const idsBefore = store.boxEntries.value.map((e) => e.id);
+
+      store.importText.value = ["AA1", "AA2", "AA3", "AA4"].join("\n");
+      const toastsBefore = toastCount();
+      expect(store.onImport()).toBe(2);
+
+      expect(store.boxEntries.value).toHaveLength(MAX);
+      expect(idsBefore.every((id) => store.boxEntries.value.some((e) => e.id === id))).toBe(true);
+      expect(toastCount()).toBe(toastsBefore + 1);
+      expect(lastToast()).toBe("status.boxFull");
+    });
+
+    it("imports nothing and says so when the box is already full", () => {
+      const store = createFullStore();
+      store.importText.value = "AA1";
+      const toastsBefore = toastCount();
+      expect(store.onImport()).toBe(0);
+      expect(store.boxEntries.value).toHaveLength(MAX);
+      expect(toastCount()).toBe(toastsBefore + 1);
+      expect(lastToast()).toBe("status.boxFull");
     });
   });
 });

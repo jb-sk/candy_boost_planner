@@ -617,14 +617,15 @@
 }
 
 /* Lv column — hidden on mobile, shown at 680px+.
-   Placed AFTER .u-align-center so same-specificity cascade wins. */
+   Lv のセルには u-align-center を付けない（680px+ の .u-align-center が後ろにあり、中央寄せが勝つ）。 */
 .exportList__col.exportList__lvCol {
   display: none;
 }
 
+/* Lv は左寄せ（行ごとに長さが違い、中央寄せだと先頭の現在Lvの位置がそろわない。画像も同じ） */
 .exportList__head > .exportList__lvHead {
   display: none;
-  text-align: center;
+  text-align: left;
 }
 
 .u-mobile-label {
@@ -968,7 +969,7 @@
   .exportList__head > .exportList__lvHead {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
   }
 
   .exportList__row {
@@ -1004,8 +1005,10 @@
     display: flex;
     grid-column: span 1;
     justify-self: stretch;
-    justify-content: center;
-    text-align: center;
+    min-width: 0;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: left;
     font-size: 17px;
     padding: 10px 12px;
     border-right: 1px solid rgba(var(--accent-rgb), 0.24);

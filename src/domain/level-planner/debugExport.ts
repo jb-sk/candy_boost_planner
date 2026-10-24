@@ -1,15 +1,16 @@
 import { CANDY_VALUES } from './constants';
 import { validateFeasibilityWitness } from './core/feasibilityWitness';
-import { getCandyFamilyKey } from '../pokesleep/candy-family';
+import { getCandyFamilyKey, isValidPokedexId } from '../pokesleep/candy-family';
 import { isSleepPlan, sleepExpBonusMultiplier, type SleepExpBreakdown, type SleepTimeResult } from '../pokesleep/sleep-growth';
 import type { GameDate } from '../pokesleep/game-date';
 import type { EventSource, SleepSchedule } from '../pokesleep/sleep-schedule';
 import { calcSleepReachLevel } from './sleepReachLevel';
+import type { SleepTargetMode } from '../sleep-target';
+import type { NapIslandResult } from '../pokesleep/nap-island';
+import { addExpToLevel } from '../pokesleep/exp';
 import type { ExpType, SleepSettings } from '../types';
 import type {
   BoostKind,
-  CalculationMode,
-  CalculationPolicy,
   CandyInventory,
   CandySupplyBreakdown,
   FeasibilityDemandRow,
@@ -17,10 +18,8 @@ import type {
   FeasibilityWitness,
   ItemCompareMode,
   LevelPlannerResult,
-  MixedCalculationMeta,
   PokemonPlanLine,
   PokemonPlanResult,
-  StructuralProbeStatus,
 } from './types';
 import { entriesToObject } from '../../utils/entriesToObject';
 
@@ -93,6 +92,17 @@ function plannedSleepExpOf(sleep: DebugExportSleepRow): number {
   return sleep.sleepTargetHours === undefined ? 0 : sleep.sleepExp;
 }
 
+/**
+ * おひるね島の行の検算値。値は画面と同じ `calcNapIslandTime` の結果をそのまま渡す（計算し直さない）。
+ * `result.napGainedExp` は **Lv70 上限で切る前**の島のEXP。上限で止めた着地点は `napReachLevel` 列に出す。
+ */
+export type DebugExportNapRow = {
+  /** モードが「おひるね島＋チケ」か */
+  ticket: boolean;
+  expToTarget: number;
+  result: NapIslandResult;
+};
+
 export type DebugExportRow = {
   id: string;
   name: string;
@@ -107,26 +117,22 @@ export type DebugExportRow = {
   targetLevel: number;
   targetExpInLevel?: number;
   candyTarget?: number;
-  sleepTargetMode?: "all" | "stock";
+  sleepTargetMode?: SleepTargetMode;
+  /** 明示入力したアメブ個数。未入力（アメブ目標Lvから導出）の行は undefined */
+  boostCandyInput?: number;
+  /** 計算に渡したアメブ個数（明示入力、または導出した個数）。在庫・残枠で減る前の値 */
+  boostCandyEffective: number;
   /** 睡眠目標が未設定の行では undefined */
   sleep?: DebugExportSleepRow;
+  /** おひるね島の行だけ。島の行が無ければ節ごと出さない */
+  nap?: DebugExportNapRow;
   plan: PokemonPlanResult | null;
 };
 
 export type DebugExportDisplayedResult = {
   result: LevelPlannerResult;
-  calculationMode: CalculationMode;
   loss: boolean;
   durationMs: number;
-  mixedPrefixCount?: number;
-  mixedSource?: MixedCalculationMeta['source'];
-};
-
-export type DebugExportPerformanceProfile = {
-  policy: CalculationPolicy;
-  structuralProbeStatus: StructuralProbeStatus;
-  lastDeadlineMs?: number;
-  mixedPrefixCount?: number;
 };
 
 /** Immutable snapshots only. Vue refs/views and solver callbacks must not enter this DTO. */
@@ -155,7 +161,6 @@ export type DebugExportContext = {
   debugNow: string;
   sleepCalculationError: string | null;
   displayed: DebugExportDisplayedResult | null;
-  performanceProfile: DebugExportPerformanceProfile;
   /** Documents that exact supply information came from the normal calculation path. */
   verificationMode: 'normalPathSnapshot';
 };
@@ -201,34 +206,28 @@ function debugOptionFromLine(line: PokemonPlanLine) {
   };
 }
 
-function mixedPrefixCount(context: DebugExportContext): number {
-  const rowCount = context.rows.length;
-  const displayed = context.displayed;
-  if (displayed?.calculationMode !== 'prefixLocalMixed') return rowCount;
-  if (displayed.mixedSource === 'feasibility') return 0;
-  return Math.max(0, Math.min(
-    rowCount,
-    displayed.mixedPrefixCount ?? context.performanceProfile.mixedPrefixCount ?? 0,
-  ));
+/**
+ * スロットの全体計画に入る行。種族不明の行（系統キーが無い）は全体計画に入らず、
+ * 行の結果だけをその行で解いている（入力正本 §4.15）ので、在庫の差し引きや最適の検証には数えない。
+ */
+function isGlobalPlanRow(row: DebugExportRow): boolean {
+  return familyKeyOf(row) !== undefined;
 }
 
-function mixedLocalSuffixCount(context: DebugExportContext): number {
-  const displayed = context.displayed;
-  if (displayed?.calculationMode !== 'prefixLocalMixed') return 0;
-  if (displayed.mixedSource === 'feasibility') return 0;
-  return context.rows.length - mixedPrefixCount(context);
-}
-
-function calculationScopeForRow(context: DebugExportContext, index: number): string {
-  const displayed = context.displayed;
-  if (!displayed) return '';
-  if (displayed.calculationMode === 'exact') return 'exact';
-  if (displayed.mixedSource === 'feasibility') return 'feasibilityWitness';
-  return index < mixedPrefixCount(context) ? 'exactPrefix' : 'localSuffix';
+/** 行の系統キー。種族不明の行（図鑑番号が無い）は undefined。 */
+function familyKeyOf(row: DebugExportRow): string | undefined {
+  if (row.candyFamilyKey !== undefined) return row.candyFamilyKey;
+  const pokedexId = row.plan?.pokedexId ?? row.pokedexId;
+  return pokedexId !== undefined && isValidPokedexId(pokedexId) ? getCandyFamilyKey(pokedexId) : undefined;
 }
 
 function planRows(context: DebugExportContext): Array<DebugExportRow & { plan: PokemonPlanResult }> {
-  return context.rows.filter((row): row is DebugExportRow & { plan: PokemonPlanResult } => row.plan !== null);
+  return context.rows.filter((row): row is DebugExportRow & { plan: PokemonPlanResult } => isGlobalPlanRow(row) && row.plan !== null);
+}
+
+/** 全体計画の結果がまだ揃っていない（計算待ち）か。 */
+function globalPlanPending(context: DebugExportContext): boolean {
+  return planRows(context).length !== context.rows.filter(isGlobalPlanRow).length;
 }
 
 function appendSupplyRows(
@@ -259,14 +258,8 @@ function appendSupplyRows(
 function buildExactVerificationTsv(context: DebugExportContext): string[] {
   if (!context.result) return ['EXACT_VERIFICATION', 'status\tno_plan'];
   const rows = planRows(context);
-  if (rows.length !== context.rows.length) return ['EXACT_VERIFICATION', 'status\tplan_pending'];
+  if (globalPlanPending(context)) return ['EXACT_VERIFICATION', 'status\tplan_pending'];
 
-  const prefixCount = context.displayed?.calculationMode === 'prefixLocalMixed'
-    ? mixedPrefixCount(context)
-    : rows.length;
-  const localSuffixCount = context.displayed?.calculationMode === 'prefixLocalMixed'
-    ? mixedLocalSuffixCount(context)
-    : 0;
   const refineStatus = context.result.performance?.refineStatus ?? 'not_available';
   const refineReason = context.result.performance?.refineReason ?? '';
   const selectedIsExactBest = refineStatus === 'ok' && !refineReason;
@@ -283,7 +276,7 @@ function buildExactVerificationTsv(context: DebugExportContext): string[] {
 
   const lines = [
     'EXACT_VERIFICATION',
-    'status\tselectedIsExactBest\tmode\trows\tlocalCandidateCounts\tdpFinalStates\tscope\texactPrefixCount\tlocalSuffixCount\tnote',
+    'status\tselectedIsExactBest\tmode\trows\tlocalCandidateCounts\tdpFinalStates\tscope\tnote',
     [
       refineStatus,
       selectedIsExactBest ? true : '',
@@ -292,8 +285,6 @@ function buildExactVerificationTsv(context: DebugExportContext): string[] {
       '',
       '',
       context.verificationMode,
-      prefixCount,
-      localSuffixCount,
       note,
     ].map(tsvCell).join('\t'),
   ];
@@ -360,7 +351,7 @@ function subtractRemaining(
 function buildFeasibilityTsv(context: DebugExportContext): string[] {
   if (!context.result) return ['FBL01D_FEASIBILITY', 'status\tno_plan'];
   const rows = planRows(context);
-  if (rows.length !== context.rows.length) return ['FBL01D_FEASIBILITY', 'status\tplan_pending'];
+  if (globalPlanPending(context)) return ['FBL01D_FEASIBILITY', 'status\tplan_pending'];
   const options: FeasibilitySolverOptions = {
     boostKind: context.boost.kind,
     boostLimit: context.boost.limit,
@@ -455,41 +446,18 @@ function buildLossLedgerTsv(context: DebugExportContext): string[] {
   return lines;
 }
 
-function displayCalculationMode(displayed: DebugExportDisplayedResult | null): string {
-  if (!displayed) return 'none';
-  if (displayed.calculationMode === 'prefixLocalMixed' && displayed.mixedSource === 'feasibility') return 'feasibilityWitness';
-  return displayed.calculationMode;
-}
-
-function displayCalculationPolicy(policy: CalculationPolicy): string {
-  return policy === 'autoMixed' ? 'autoWitness' : policy;
-}
-
-function buildCalculationPolicyTsv(context: DebugExportContext): string[] {
+function buildCalculationPerformanceTsv(context: DebugExportContext): string[] {
   const displayed = context.displayed;
-  const rowCount = context.rows.length;
-  const prefix = displayed?.calculationMode === 'prefixLocalMixed' ? mixedPrefixCount(context) : null;
-  const prefixCount = prefix ?? (displayed?.calculationMode === 'exact' ? rowCount : '');
-  const localCount = prefix === null ? '' : mixedLocalSuffixCount(context);
-  const localStartIndex = prefix === null || localCount === 0 ? '' : prefix + 1;
   return [
-    'CALCULATION_POLICY',
-    'mode\tpolicy\tstructuralProbeStatus\tdeadlineMs\tactualDurationMs\tfeasibilityMs\trefineMs\trefineStatus\trefineReason\tloss\tsource\texactPrefixCount\tlocalStartIndex\tlocalSuffixCount',
+    'CALCULATION_PERFORMANCE',
+    'actualDurationMs\tfeasibilityMs\trefineMs\trefineStatus\trefineReason\tloss',
     [
-      displayCalculationMode(displayed),
-      displayCalculationPolicy(context.performanceProfile.policy),
-      context.performanceProfile.structuralProbeStatus,
-      context.performanceProfile.lastDeadlineMs ?? '',
       displayed?.durationMs ?? '',
       displayed?.result.performance?.feasibilityMs ?? '',
       displayed?.result.performance?.refineMs ?? '',
       displayed?.result.performance?.refineStatus ?? '',
       displayed?.result.performance?.refineReason ?? '',
       displayed?.loss ?? '',
-      displayed?.mixedSource ?? '',
-      prefixCount,
-      localStartIndex,
-      localCount,
     ].map(tsvCell).join('\t'),
   ];
 }
@@ -688,11 +656,44 @@ function buildSleepExpTsv(context: DebugExportContext): string[] {
   return lines;
 }
 
+/**
+ * おひるね島の節。島の行があるときだけ出す。
+ * `napReachLevel` / `napReachExpInLevel` は Lv70 上限で止めた着地点の Lv と Lv内EXP（`napGainedExp` は上限で切る前の値）。
+ */
+function buildNapIslandTsv(context: DebugExportContext): string[] {
+  const napRows = context.rows
+    .map((row, index) => ({ row, index }))
+    .filter((x): x is { row: DebugExportRow & { nap: DebugExportNapRow }; index: number } => x.row.nap !== undefined);
+  if (!napRows.length) return [];
+
+  const lines = [
+    'NAP_ISLAND',
+    [
+      'row', 'index', 'id', 'name', 'nature', 'ticket', 'expToTarget',
+      'napMinutes', 'napDays', 'napHours', 'napMins', 'napGainedExp',
+      'ticketCount', 'lastTicketMinutes', 'napReachLevel', 'napReachExpInLevel',
+    ].join('\t'),
+  ];
+  for (const { row, index } of napRows) {
+    const { result } = row.nap;
+    const landed = row.plan
+      ? addExpToLevel(row.plan.reachableLine.level, row.plan.reachableLine.expInLevel, result.napGainedExp, row.expType)
+      : undefined;
+    lines.push([
+      'row', index + 1, row.id, row.name, row.nature, row.nap.ticket, row.nap.expToTarget,
+      result.minutes,
+      Math.floor(result.minutes / 1440), Math.floor((result.minutes % 1440) / 60), result.minutes % 60,
+      result.napGainedExp, result.ticketCount, result.lastTicketMinutes, landed?.level ?? '', landed?.expInLevel ?? '',
+    ].map(tsvCell).join('\t'));
+  }
+  return lines;
+}
+
 export function buildDebugExportTsv(context: DebugExportContext): string {
   const headers = [
     'index', 'id', 'name', 'pokedexId', 'candyFamilyKey', 'type', 'nature',
     'currentLv', 'currentExpInLevel', 'expRemaining', 'targetLv', 'targetExpInLevel', 'candyTarget', 'sleepTargetMode',
-    'boostKind', 'itemCompareMode', 'calculationScope', 'reachedLv', 'candyDemandMet', 'role', 'expToNext', 'expToTarget',
+    'boostKind', 'boostCandyInput', 'boostCandyEffective', 'itemCompareMode', 'reachedLv', 'candyDemandMet', 'role', 'expToNext', 'expToTarget',
     'shortageCandy', 'shortageBoost', 'shortageShards', 'limitingFactor', 'initialSpeciesStock',
     'reachableBoost', 'reachableNormal', 'reachableTotalCandy', 'reachableShards',
     'reachableSpecies', 'reachableTypeS', 'reachableTypeM', 'reachableUniversalS', 'reachableUniversalM', 'reachableUniversalL',
@@ -705,23 +706,25 @@ export function buildDebugExportTsv(context: DebugExportContext): string {
     'reachableCandyEndLevel', 'reachableCandyEndExpInLevel',
   ];
   const lines = [headers.join('\t')];
-  if (!context.result) return lines.join('\n');
+  // 種族不明の行だけのスロットは全体計画が無いが、行の結果はある（入力正本 §4.15）
+  if (!context.result && !context.rows.some(row => row.plan)) return lines.join('\n');
 
   context.rows.forEach((row, index) => {
     const plan = row.plan;
     if (!plan) {
-      lines.push([index + 1, row.id, row.name, row.pokedexId ?? '', row.candyFamilyKey ?? (row.pokedexId ? getCandyFamilyKey(row.pokedexId) : ''), row.type, row.nature, row.currentLevel, row.currentExpInLevel, row.expRemaining, row.targetLevel, row.targetExpInLevel ?? '', row.candyTarget ?? '', row.sleepTargetMode ?? '', context.boost.kind, context.itemCompareMode, calculationScopeForRow(context, index)].map(tsvCell).join('\t'));
+      lines.push([index + 1, row.id, row.name, row.pokedexId ?? '', familyKeyOf(row) ?? '', row.type, row.nature, row.currentLevel, row.currentExpInLevel, row.expRemaining, row.targetLevel, row.targetExpInLevel ?? '', row.candyTarget ?? '', row.sleepTargetMode ?? '', context.boost.kind, row.boostCandyInput ?? '', row.boostCandyEffective, context.itemCompareMode].map(tsvCell).join('\t'));
       return;
     }
     const reachable = plan.reachableLine;
     const target = plan.targetLine;
     const targetTotal = target.boostedCandyUnits + target.nonBoostCandyUnits;
+    const familyKey = familyKeyOf(row);
     lines.push([
-      index + 1, row.id, row.name, plan.pokedexId, row.candyFamilyKey ?? getCandyFamilyKey(plan.pokedexId), row.type, row.nature,
+      index + 1, row.id, row.name, plan.pokedexId, familyKey ?? '', row.type, row.nature,
       row.currentLevel, row.currentExpInLevel, row.expRemaining, row.targetLevel, plan.targetExpInLevel, row.candyTarget ?? '', row.sleepTargetMode ?? '',
-      context.boost.kind, context.itemCompareMode, calculationScopeForRow(context, index), reachable.level, reachable.candyDemandMet, plan.role,
+      context.boost.kind, row.boostCandyInput ?? '', row.boostCandyEffective, context.itemCompareMode, reachable.level, reachable.candyDemandMet, plan.role,
       reachable.expToNextLevel, plan.shortage.expToTarget, plan.shortage.candyToTarget, plan.shortage.boostCandyUnavailable,
-      plan.shortage.dreamShardShortage, plan.constraintDiagnosis.limitingFactor ?? '', context.inventorySnapshot.species[row.candyFamilyKey ?? getCandyFamilyKey(plan.pokedexId)] ?? 0,
+      plan.shortage.dreamShardShortage, plan.constraintDiagnosis.limitingFactor ?? '', familyKey === undefined ? '' : context.inventorySnapshot.species[familyKey] ?? 0,
       reachable.boostedCandyUnits, reachable.nonBoostCandyUnits, reachable.totalCandyUnitsUsed, reachable.dreamShardsUsed,
       reachable.candySupply.species, reachable.candySupply.type.s, reachable.candySupply.type.m, reachable.candySupply.universal.s, reachable.candySupply.universal.m, reachable.candySupply.universal.l,
       lineItemValue(reachable), lineItemValue(reachable), lineNonSpeciesItemValue(reachable), lineSurplus(reachable),
@@ -734,7 +737,9 @@ export function buildDebugExportTsv(context: DebugExportContext): string {
   });
 
   lines.push('', ...buildSleepExpTsv(context));
-  lines.push('', ...buildCalculationPolicyTsv(context));
+  const napLines = buildNapIslandTsv(context);
+  if (napLines.length) lines.push('', ...napLines);
+  lines.push('', ...buildCalculationPerformanceTsv(context));
   lines.push('', ...buildBoundarySearchTsv(context));
   lines.push('', ...buildLossLedgerTsv(context));
   lines.push('', ...buildExactVerificationTsv(context));

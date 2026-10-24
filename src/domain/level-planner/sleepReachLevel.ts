@@ -48,18 +48,42 @@ export type SleepReachLevelOutcome =
  * 過去の事故は睡眠後Lvと睡眠前EXPの合成だった（`個数指定と目標Lvの一本化_設計書.md` §7）。
  */
 export function calcSleepReachLevel(params: SleepReachLevelParams): SleepReachLevelOutcome {
+  const landing = calcSleepLandingLevel(params);
+  if (!landing.shown) return landing;
+
+  // 条件1: 着地点が最終目標を**超えて余る**こと（§3.1 / §3.6）。
+  // 届かない行は既存の「残EXP → 約◯日」がすでに『何日寝ればいいか』に答えているので二重に出さない。
+  // 在庫不足の行は着地点が目標より下にあり、表示値だけを見ると通ってしまう。
+  const exceedsTarget = landing.level > params.targetLevel
+    || (landing.level === params.targetLevel && landing.expInLevel > params.targetExpInLevel);
+  if (!exceedsTarget) return { shown: false, reason: 'notExceedingTarget' };
+
+  // 条件2: **表示値**が目標Lvより高いこと（§3.3）。
+  // アメ＋睡眠でちょうど目標へ届く行には必ず ceil の余剰EXP（〜100EXP＝0.03Lv）が乗るため、
+  // これが無いと睡眠目標のあるほぼ全部の行に「約60.0」が出る。
+  if (landing.level === params.targetLevel && (landing.tenths ?? 0) === 0) {
+    return { shown: false, reason: 'displayEqualsTargetLevel' };
+  }
+
+  return { shown: true, level: landing.level, tenths: landing.tenths, ratio: landing.ratio };
+}
+
+/**
+ * 睡眠（・おひるね島）のあとの着地点。`calcSleepReachLevel` の**表示条件（目標を超えるか）を掛けない**版。
+ * 睡眠EXPが 0 のときだけ出さない。
+ *
+ * 使うのは、目標に届かない行でも着地点を見せたい所だけ:
+ * - 計算画面で、アメ不足・かけら不足がある行（睡眠のあとどこまで届くかを見せる。2026-10-13 ユーザー指示）
+ * - 育成プランの CSV / TSV（データなので、目標ちょうどの行も埋める。同上）
+ */
+export function calcSleepLandingLevel(
+  params: Omit<SleepReachLevelParams, 'targetLevel' | 'targetExpInLevel'>,
+): (Extract<SleepReachLevelOutcome, { shown: true }> & { expInLevel: number }) | { shown: false; reason: 'noSleepExp' } {
   const sleepExp = Math.max(0, Math.floor(params.sleepExp));
   if (sleepExp <= 0) return { shown: false, reason: 'noSleepExp' };
 
   // アメが先、睡眠が後（`targetFromCandy` と同じ正本ヘルパー）。
   const landed = addExpToLevel(params.reachedLevel, params.reachedExpInLevel, sleepExp, params.expType);
-
-  // 条件1: 着地点が最終目標を**超えて余る**こと（§3.1 / §3.6）。
-  // 届かない行は既存の「残EXP → 約◯日」がすでに『何日寝ればいいか』に答えているので二重に出さない。
-  // 在庫不足の行は着地点が目標より下にあり、表示値だけを見ると通ってしまう。
-  const exceedsTarget = landed.level > params.targetLevel
-    || (landed.level === params.targetLevel && landed.expInLevel > params.targetExpInLevel);
-  if (!exceedsTarget) return { shown: false, reason: 'notExceedingTarget' };
 
   // 小数は「そのLv内で得ているEXP ÷ 次Lvまでの全EXP」。**切り捨て**（§3.5）。
   // 四捨五入すると 60.96 が 61.0 になり「Lv61 に到達した」と読める。
@@ -68,13 +92,5 @@ export function calcSleepReachLevel(params: SleepReachLevelParams): SleepReachLe
     : calcExp(landed.level, landed.level + 1, params.expType);
   const ratio = expToNextLevel === null ? null : landed.expInLevel / expToNextLevel;
   const tenths = expToNextLevel === null ? null : Math.floor((landed.expInLevel * 10) / expToNextLevel);
-
-  // 条件2: **表示値**が目標Lvより高いこと（§3.3）。
-  // アメ＋睡眠でちょうど目標へ届く行には必ず ceil の余剰EXP（〜100EXP＝0.03Lv）が乗るため、
-  // これが無いと睡眠目標のあるほぼ全部の行に「約60.0」が出る。
-  if (landed.level === params.targetLevel && (tenths ?? 0) === 0) {
-    return { shown: false, reason: 'displayEqualsTargetLevel' };
-  }
-
-  return { shown: true, level: landed.level, tenths, ratio };
+  return { shown: true, level: landed.level, expInLevel: landed.expInLevel, tenths, ratio };
 }

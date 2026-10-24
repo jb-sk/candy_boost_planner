@@ -4,7 +4,7 @@ import { perfBudgetMs } from './perfBudget';
 import { solveFeasibilityForFixedRows } from '../../../src/domain/level-planner/core/feasibilityWitness';
 import {
   __levelPlannerTestHooks,
-  solveLevelPlanWithBudget,
+  solveLevelPlan,
 } from '../../../src/domain/level-planner/core/solveLevelPlan';
 import type {
   CandyInventory,
@@ -254,15 +254,9 @@ describe('reported six-row reproduction', () => {
   it.each(modes)('solves the full reported plan exactly and quickly: %s', mode => {
     __levelPlannerTestHooks.clearCandidateCache();
     const startedAt = performance.now();
-    const outcome = solveLevelPlanWithBudget(input(mode), {
-      calculationMode: 'exact',
-      deadlineMs: 2_000,
-    });
+    const result = solveLevelPlan(input(mode));
     const durationMs = performance.now() - startedAt;
 
-    expect(outcome.kind).toBe('result');
-    if (outcome.kind !== 'result') return;
-    const result = outcome.result;
     const lines = result.pokemonResults.map(row => row.reachableLine);
 
     expect(lines.map(line => line.totalCandyUnitsUsed)).toEqual([161, 298, 825, 585, 1089, 860]);

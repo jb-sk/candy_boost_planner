@@ -11,6 +11,7 @@
       type="button"
       class="natureSelect__trigger field__input"
       data-testid="nature-select-trigger"
+      :disabled="disabled"
       @click="toggle"
       @blur="handleBlur"
       :aria-label="label"
@@ -61,6 +62,7 @@ const props = defineProps<{
   labelUp: string;
   labelDown: string;
   compact?: boolean;
+  disabled?: boolean;
   /**
    * 記号の上に出す小見出し。**ラベルを置く余地が無い場所でだけ使う。**
    * 計算機の行ヘッダは他の入力と違って項目名を置く場所が無く、▲▲ だけでは

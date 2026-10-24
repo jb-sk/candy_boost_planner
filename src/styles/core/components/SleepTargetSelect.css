@@ -1,0 +1,127 @@
+/* SleepTargetSelect — 睡眠目標の自作ドロップダウン（チェックボックス付き）。NatureSelect.css に揃える */
+
+.sleepTargetSelect {
+  position: relative;
+  width: 100%;
+}
+
+.sleepTargetSelect__trigger {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+  padding-right: 8px;
+}
+
+/* flex の gap は使わない（古い Safari では補正が入り、伸びる子の幅がずれる）。間隔は margin で取る */
+.sleepTargetSelect__value {
+  flex: 1 1 auto;
+  margin-right: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sleepTargetSelect__chevron {
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: transform 0.2s;
+  color: var(--muted);
+}
+
+.sleepTargetSelect--open .sleepTargetSelect__chevron {
+  transform: rotate(180deg);
+}
+
+/* body 直下へ出し、位置は JS が position: absolute のページ座標で決める（left / top / width / min-width / max-width / max-height は inline）。
+   width: max-content は測るときだけの幅。JS が実寸に余裕を足した幅で置き換える（古い iOS Safari はぴったりの幅を端数ぶん狭く出し、行の最後の要素が次の段へ落ちる）。
+   中身が画面より大きいときは、最大幅・最大高さで抑えて一覧の中を縦にスクロールする。
+   overscroll-behavior は Safari 11 で効かないので使わない。 */
+.sleepTargetSelect__dropdown {
+  position: absolute;
+  box-sizing: border-box;
+  width: max-content;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--paper, #fff);
+  border: 1px solid rgba(var(--ink-rgb), 0.2);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  z-index: 10000;
+}
+
+/* 行の中は折り返す。狭いときはチェックボックスの組（__checks）が行の名前の下の段へ回る（名前とチェックの対応は崩れない） */
+.sleepTargetSelect__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  transition: background-color 0.15s;
+}
+
+.sleepTargetSelect__row:hover {
+  background: rgba(var(--accent-rgb), 0.1);
+}
+
+.sleepTargetSelect__row--selected {
+  background: rgba(var(--ink-rgb), 0.08);
+  font-weight: 600;
+}
+
+.sleepTargetSelect__name {
+  flex: 1 1 auto;
+  min-height: 40px;
+  padding: 8px 0 8px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 16px;
+  font-weight: inherit;
+  color: var(--ink);
+  text-align: left;
+  white-space: nowrap;
+}
+
+/* チェックボックスの組。行の名前の右に入らなければ、組ごと下の段へ回る（1つずつ回すと、チケットだけが右端に残る）。
+   組そのものも入らないほど狭いときだけ、組の中で折り返す。
+   名前の右の余白・チェックの左右の余白・チェックボックスは詰めてある。幅320pxの画面（一覧の内側302px）でも、
+   おひるね島の行が「名前＋チケット＋アメ在庫」で1段に収まるようにするため。
+   文字は system-ui なので幅は端末のフォントで変わる。かなと漢字が1文字ちょうど1文字幅のフォント（iPhone のヒラギノ・
+   Android の Noto Sans CJK・Linux の WenQuanYi）がいちばん広く、詰める前はこの行に約316px要って組ごと2段目に回った
+   （2026-10-24 CI の Linux で検出。Windows の Yu Gothic UI は狭いので手元では収まっていた）。
+   余白・チェックボックス（20→18px）・チェックの文字（14→13px）を詰めて約290px（端末の絵文字の幅の差を見込んだ余裕を残す） */
+.sleepTargetSelect__checks {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+}
+
+.sleepTargetSelect__check {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 3px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.sleepTargetSelect__check input {
+  width: 18px;
+  height: 18px;
+  margin: 0 3px 0 0;
+  cursor: pointer;
+}
+
+.sleepTargetSelect__name:focus,
+.sleepTargetSelect__check input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}

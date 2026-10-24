@@ -21,6 +21,9 @@
   --accent-strong: #c94f76;
   --danger: #ef4444;
   --danger-rgb: 239, 68, 68;
+  /* リンク切れの行の強調色（文字にも使うので紙の上で読める濃さにする） */
+  --link-broken: #c92f2f;
+  --link-broken-rgb: 201, 47, 47;
   --paper-rgb: 255, 255, 255;
   --muted-rgb: 118, 100, 111;
 
@@ -120,23 +123,6 @@
   color: var(--ink);
   --muted: #76646f;
   box-shadow: 0 3px 0 rgba(var(--candy-pink-rgb), 0.3);
-}
-
-/* Lang buttons (non-active) inside hero */
-.hero .lang__btn:not(.lang__btn--on):not(.lang__btn--help) {
-  background: rgba(255, 255, 255, 0.7);
-  border-color: var(--border);
-  color: var(--ink);
-}
-
-/* Support links inside hero */
-.hero .support__link {
-  background: rgba(255, 255, 255, 0.9);
-}
-
-.hero .support__link:hover {
-  background: var(--candy-pink);
-  color: var(--paper);
 }
 
 /* ===== Panel ===== */
@@ -296,6 +282,12 @@
 .mobileNav {
   background: #fff;
   box-shadow: 0 4px 10px rgba(var(--candy-pink-rgb), 0.12);
+}
+
+/* PC の元に戻す・やり直す。`--shadow-md` は半透明で下の文字が透けるので、
+   白地に重ねたときと同じ色（ピンク 50%）の不透明な影にする */
+.shell > .historyDock {
+  box-shadow: 4px 4px 0 #ffbecf;
 }
 
 /* ===== PC Desktop (≥ 1400px) ===== */

@@ -1,7 +1,7 @@
 import { effectScope, ref } from "vue";
 import type { Composer } from "vue-i18n";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useCalcStore } from "../../../src/composables/useCalcStore";
+import { addBoxRow, createCalcStore } from "../../helpers/fakeIndividuals";
 
 const t = ((key: string) => key) as unknown as Composer["t"];
 
@@ -29,7 +29,7 @@ describe("useCalcStore public API integration", () => {
 
   it("keeps add → sleep/settings → result → undo/redo → persistence/restore as one public flow", async () => {
     const firstScope = effectScope();
-    const store = firstScope.run(() => useCalcStore({
+    const store = firstScope.run(() => createCalcStore({
       locale: ref("ja"),
       t,
       currentGameDate: "2026-08-24",
@@ -38,7 +38,7 @@ describe("useCalcStore public API integration", () => {
     store.setSlotBoostKind("full");
     store.onBoostCandyRemainingInput("80");
     store.onTotalShardsInput("750000");
-    store.upsertFromBox({
+    addBoxRow(store, {
       boxId: "public-flow-box",
       title: "Public flow Pikachu",
       pokedexId: 25,
@@ -119,7 +119,7 @@ describe("useCalcStore public API integration", () => {
     firstScope.stop();
 
     const restoredScope = effectScope();
-    const restored = restoredScope.run(() => useCalcStore({
+    const restored = restoredScope.run(() => createCalcStore({
       locale: ref("ja"),
       t,
       currentGameDate: "2026-08-24",

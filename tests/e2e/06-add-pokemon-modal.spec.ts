@@ -13,6 +13,7 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { AddPokemonModalPage } from './pages/AddPokemonModalPage';
 import { BoxPanelPage } from './pages/BoxPanelPage';
+import { CalcPanelPage } from './pages/CalcPanelPage';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -315,5 +316,61 @@ test.describe('AddPokemonModal - 睡眠時間・追加フィードバック', ()
 
     // 閉じるボタン左に追加成功メッセージが表示される
     await expect(modal.addedMessage).toBeVisible();
+    // PC は続けて追加しやすいよう名前欄へフォーカスする（タッチ端末はしない。responsive-panels.spec.ts）
+    await expect(modal.nameInput).toBeFocused();
+  });
+});
+
+// ============================================
+// 追加と元に戻す: ボックスへの追加・種族アメの在庫・計算機への追加を1件に記録する
+// ============================================
+
+test.describe('ポケモンの追加は元に戻す1回で戻る', () => {
+  test('追加モーダル: 種族アメを入れて追加しても、元に戻す1回でボックスと計算機の両方から消え、やり直す1回で戻る', async ({ page }) => {
+    await page.goto('/');
+    const modal = new AddPokemonModalPage(page);
+    const boxPanel = new BoxPanelPage(page);
+    const calc = new CalcPanelPage(page);
+    await modal.open();
+    await modal.fillAndPickName(latestPokemonName.slice(0, 2));
+    await modal.speciesCandyInput.fill('31');
+    await modal.submitButton.click();
+    await expect(modal.addedMessage).toBeVisible();
+    await modal.close();
+
+    await expect(boxPanel.boxTiles).toHaveCount(1);
+    await calc.expectRowCount(1);
+    await expect(calc.undoButton).toHaveAttribute('title', /^元に戻す：.+の追加 \(/);
+
+    await calc.clickUndo();
+    await expect(boxPanel.boxTiles).toHaveCount(0);
+    await calc.expectRowCount(0);
+    // 在庫の書き込みも同じ1件に入っているので、ほかに戻すものは無い
+    await expect(calc.undoButton).toBeDisabled();
+
+    await calc.clickRedo();
+    await expect(boxPanel.boxTiles).toHaveCount(1);
+    await calc.expectRowCount(1);
+    await expect(calc.redoButton).toBeDisabled();
+  });
+
+  test('ボックスの追加フォーム: 計算機にも追加したときも、元に戻す1回で両方から消える', async ({ page }) => {
+    await page.goto('/');
+    const boxPanel = new BoxPanelPage(page);
+    const calc = new CalcPanelPage(page);
+    await boxPanel.openAddNewPanel();
+    await boxPanel.fillPokemonName(latestPokemonName);
+    await boxPanel.confirmPokemonName();
+    await boxPanel.speciesCandyInput.fill('31');
+    await boxPanel.setAddToCalcCheckbox(true);
+    await boxPanel.clickAddToBox();
+
+    await expect(boxPanel.boxTiles).toHaveCount(1);
+    await calc.expectRowCount(1);
+
+    await calc.clickUndo();
+    await expect(boxPanel.boxTiles).toHaveCount(0);
+    await calc.expectRowCount(0);
+    await expect(calc.undoButton).toBeDisabled();
   });
 });

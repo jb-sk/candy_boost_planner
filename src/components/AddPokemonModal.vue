@@ -192,7 +192,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from "vue";
 import { useI18n } from "vue-i18n";
 import LevelPicker from "./LevelPicker.vue";
-import { vKeypad } from "../composables/useNumericKeypad";
+import { isTouchDevice, vKeypad } from "../composables/useNumericKeypad";
 import NatureSelect from "./NatureSelect.vue";
 import { getPokemonNameLocalized } from "../domain/pokesleep/pokemon-name-localize";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
@@ -202,7 +202,7 @@ import { useCandyStore } from "../composables/useCandyStore";
 
 const emit = defineEmits<{
   (e: "close"): void;
-  (e: "added", dstLevel: number, ev?: MouseEvent): void;
+  (e: "added", boxId: string, dstLevel: number, ev?: MouseEvent): void;
 }>();
 
 const props = defineProps<{
@@ -315,26 +315,41 @@ function onSubmit(ev?: MouseEvent) {
   // （そのまま .trim() すると数値入力時に throw して追加できなくなる。expRemaining / speciesCandy と同様の対策）
   box.addSleepHours.value = String(sleepHoursInput.value ?? "").trim();
 
-  // Create box entry via store (expRemaining is now embedded in the entry)
-  box.onCreateManual({ mode: "toCalc", tagIds: selectedTagIds.value });
+  // 計算機への追加（親が "added" で行う）まで含めて履歴1件にする。
+  // 断られた（上限など）ときは、在庫・計算機・成功表示・フォームを何も変えない
+  const createdId = box.recordAddAsOne(() => {
+    // Create box entry via store (expRemaining is now embedded in the entry)
+    const id = box.onCreateManual({ mode: "toCalc", tagIds: selectedTagIds.value });
+    if (id === null) return null;
 
-  // Save species candy stock if a value was entered and species is known
-  if (addLookup.value) {
-    const rawCandy = String(speciesCandyInput.value ?? '').trim();
-    const parsedCandy = rawCandy === "" ? undefined : Math.max(0, Math.floor(Number(rawCandy) || 0));
-    if (parsedCandy !== undefined) {
-      props.calc.updateSpeciesCandy(addLookup.value.pokedexId, parsedCandy);
+    // Save species candy stock if a value was entered and species is known
+    if (addLookup.value) {
+      const rawCandy = String(speciesCandyInput.value ?? '').trim();
+      const parsedCandy = rawCandy === "" ? undefined : Math.max(0, Math.floor(Number(rawCandy) || 0));
+      if (parsedCandy !== undefined) {
+        props.calc.updateSpeciesCandy(addLookup.value.pokedexId, parsedCandy);
+      }
     }
-  }
 
-  // Emit to parent so it can bridge to CalcStore
-  emit("added", dstLevel.value, ev);
+    // Emit to parent so it can bridge to CalcStore
+    emit("added", id, dstLevel.value, ev);
+    return id;
+  });
+  if (createdId === null) return;
 
   // 追加成功フィードバック（閉じるボタン左に「✓ 追加しました」を一時表示）
   flashAdded();
 
   // Reset local form for next add
   resetForm();
+
+  // 続けて追加しやすいよう名前欄へフォーカスする。タッチ端末ではしない: キーボードが出て画面が上へずれ、
+  // 「追加しました」が見えなくなる（2026-10-20 ユーザー指摘）
+  if (!isTouchDevice()) {
+    nextTick(() => {
+      nameInputRef.value?.focus();
+    });
+  }
 }
 
 function resetForm() {
@@ -350,11 +365,6 @@ function resetForm() {
   selectedTagIds.value = [];
   newTagName.value = "";
   tagError.value = "";
-
-  // Focus name input for quick consecutive adds
-  nextTick(() => {
-    nameInputRef.value?.focus();
-  });
 }
 
 // Focus name input on mount

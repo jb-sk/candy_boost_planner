@@ -1,6 +1,6 @@
 /**
  * E2E Test: 04-calculator
- * 計算機パネルのテスト（63件）
+ * 計算機パネルのテスト
  */
 import { test, expect, type Locator } from '@playwright/test';
 import * as fs from 'fs';
@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import { CalcPanelPage } from './pages/CalcPanelPage';
 import { BoxPanelPage } from './pages/BoxPanelPage';
 import { SettingsModalPage } from './pages/SettingsModalPage';
+import { ThemePickerPage } from './pages/ThemePickerPage';
 import { markForSleep } from '../../src/domain/pokesleep/sleep-growth';
 import type { SleepSchedule } from '../../src/domain/pokesleep/sleep-schedule';
 
@@ -128,7 +129,9 @@ test.describe('04-calculator A. 初期状態', () => {
     await expect(descriptionFor('育成を睡眠時間1000h / 2000hで仕上げたい')).toHaveText(
       '睡眠目標から1000h / 2000hを選ぶと、ちょうどその時間寝れば目標Lvに到達できるようにアメの数を調節します。あらかじめ十分なリソースと、睡眠育成設定、ポケモンの累計睡眠時間を設定してください。日数や時間は目安としてお使いください。',
     );
-    await expect(usagePanel.locator('.section--purpose dt')).toHaveCount(3);
+    // 目的別: 目標設定 / アメ個数指定 / おひるね島 / 睡眠
+    await expect(usagePanel.locator('.section--purpose dt')).toHaveCount(4);
+    await expect(descriptionFor('おひるね島で育てたい')).toContainText('目標Lvまで預ける時間が表示されます');
     await expect(usagePanel.locator('.section--allocation .section__note')).toHaveText(
       '※「バランス」「EXP最大」はタイプアメや万能Sをより多く使います。バッグを空けたいときはこちらが適しています。',
     );
@@ -309,6 +312,41 @@ test.describe('04-calculator A. 初期状態', () => {
     const summary = page.getByTestId('calc-sticky-summary');
     await expect.poll(() => sticky.evaluate(element => element.getBoundingClientRect().top)).toBe(0);
     expect(await summary.evaluate(element => element.getBoundingClientRect().top)).toBe(12);
+  });
+
+  test('4h. 既定のBlueでもサマリーの開閉シェブロンは押している間に沈まない', async ({ page }) => {
+    // Blue の「押すと沈む」装飾が、シェブロンの上下中央寄せ（translateY(-50%)）を置き換えて約16px 沈んでいた
+    const toggle = page.locator('.calcSticky__toggle');
+    const before = (await toggle.boundingBox())!;
+    const transform = await toggle.evaluate(element => getComputedStyle(element).transform);
+    await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+    await page.mouse.down();
+    // 沈む装飾には 0.1 秒の transition があるので、押した直後ではなく落ち着いた値を見る
+    await page.waitForTimeout(250);
+    expect(await toggle.evaluate(element => getComputedStyle(element).transform)).toBe(transform);
+    expect((await toggle.boundingBox())!.y).toBeCloseTo(before.y, 1);
+    await page.mouse.up();
+  });
+
+  test('4i. 全テーマで計算機の補助ボタンは枠なしの薄い塗りになる（テーマの .btn の装飾を受けない）', async ({ page }) => {
+    // Booklet の `.btn` が同じ詳細度で後から勝ち、塗りと墨の枠が付いていた
+    const clear = page.getByTestId('calc-clear-button');
+    const look = () => clear.evaluate((el) => {
+      const style = getComputedStyle(el);
+      const alpha = /rgba\([^)]*,\s*([\d.]+)\)/.exec(style.backgroundColor);
+      return { border: style.borderTopColor, backgroundAlpha: alpha ? Number(alpha[1]) : 1 };
+    });
+    const themePicker = new ThemePickerPage(page);
+    const themes = await themePicker.themeIds();
+    expect(themes.length).toBeGreaterThanOrEqual(7);
+    for (const theme of themes) {
+      await page.evaluate((id) => localStorage.setItem('candy-boost-planner:design', id), theme);
+      await page.reload();
+      await themePicker.expectValue(theme);
+      const { border, backgroundAlpha } = await look();
+      expect({ theme, border }).toEqual({ theme, border: 'rgba(0, 0, 0, 0)' });
+      expect(backgroundAlpha, theme).toBeLessThan(0.5);
+    }
   });
 
   test('5. ボタンが無効化されている（クリア/エクスポート）', async ({ page }) => {
@@ -548,6 +586,9 @@ test.describe('04-calculator C. 元に戻す/やり直し', () => {
 
   test('11. 元に戻すが無効（操作前）', async ({ page }) => {
     const calc = new CalcPanelPage(page);
+    // ボックスの取り込みも共通履歴に載る。履歴はメモリ上だけなので、リロードして操作前にする
+    await expect(calc.undoButton).toBeEnabled();
+    await page.reload();
     await expect(calc.undoButton).toBeDisabled();
   });
 
@@ -727,6 +768,70 @@ test.describe('04-calculator C. 元に戻す/やり直し', () => {
     expect(state.movedX).toBe(0);
     expect(state.movedY).toBe(0);
     expect(state.shrank).toBe(0);
+  });
+
+  test('14. PC は元に戻す・やり直すを画面下中央に固定し、通知はそのすぐ上に出す', async ({ page }) => {
+    const box = new BoxPanelPage(page);
+    const calc = new CalcPanelPage(page);
+    await box.selectBoxTile(0);
+    await box.clickApplyToCalc();
+    await calc.deleteRow(calc.getRow(0));
+
+    // 計算機の上にあったボタンは無く、どこまでスクロールしても同じ位置で押せる
+    await expect(page.getByTestId('calc-actions').getByTestId('history-undo-button')).toHaveCount(0);
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const dock = page.locator('.historyDock');
+    const viewport = page.viewportSize()!;
+    const dockBox = (await dock.boundingBox())!;
+    expect(dockBox.x + dockBox.width / 2).toBeCloseTo(viewport.width / 2, 0);
+    expect(dockBox.y + dockBox.height).toBeCloseTo(viewport.height - 16, 0);
+
+    await calc.clickUndo();
+    await calc.expectRowCount(1);
+    const toastBox = (await page.locator('.appToast').first().boundingBox())!;
+    expect(toastBox.y + toastBox.height).toBeLessThanOrEqual(dockBox.y);
+    expect(dockBox.y - (toastBox.y + toastBox.height)).toBeLessThanOrEqual(12);
+  });
+
+  test('15. Ctrl+Z / Ctrl+Y で元に戻す・やり直す。文字の入力欄の中ではブラウザの取り消しに任せる', async ({ page }) => {
+    const box = new BoxPanelPage(page);
+    const calc = new CalcPanelPage(page);
+    await box.selectBoxTile(0);
+    await box.clickApplyToCalc();
+    await calc.deleteRow(calc.getRow(0));
+    await calc.expectRowCount(0);
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+
+    await page.keyboard.press('Control+z');
+    await calc.expectRowCount(1);
+    await page.keyboard.press('Control+y');
+    await calc.expectRowCount(0);
+    await page.keyboard.press('Control+z');
+    await calc.expectRowCount(1);
+    await page.keyboard.press('Control+Shift+Z');
+    await calc.expectRowCount(0);
+
+    await box.searchInput.fill('abc');
+    await box.searchInput.press('Control+z');
+    await calc.expectRowCount(0);
+    await expect(calc.undoButton).toBeEnabled();
+
+    // モーダルの表示中は背面で何が戻ったか見えないので効かない
+    const settings = new SettingsModalPage(page);
+    await settings.openSettingsFromDesktop();
+    await page.keyboard.press('Control+z');
+    await settings.closeByButton();
+    await calc.expectRowCount(0);
+  });
+
+  test('16. 元に戻す・やり直すの説明に、次に戻る操作の名前を出す', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    // 取り込みの直後なので、次に戻るのは取り込み
+    await expect(calc.undoButton).toHaveAttribute('title', /^元に戻す：インポート \(/);
+    await expect(calc.redoButton).toHaveAttribute('title', /^やり直す \(/);
+    await calc.clickUndo();
+    await expect(calc.undoButton).toBeDisabled();
+    await expect(calc.redoButton).toHaveAttribute('title', /^やり直す：インポート \(/);
   });
 });
 
@@ -952,7 +1057,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
 
     // 睡眠目標が大きく、睡眠EXPだけで目標に届く（アメの担当分が 0 になる）
     await calc.setRowDstLevel(row, srcLevel + 1);
-    await calc.getRowSleepTargetSelect(row).selectOption('2000');
+    await calc.chooseSleepTarget(row, { base: 'hours', hours: 2000 });
     await page.waitForTimeout(600);
     await expect(warning, '睡眠だけで目標に届いても出さない').toHaveCount(0);
   });
@@ -1111,7 +1216,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     await dstLevel.fill('70');
     await dstLevel.blur();
     await calc.setRowSpeciesCandy(row, 350);
-    await calc.getRowSleepTargetSelect(row).selectOption('stock');
+    await calc.chooseSleepTarget(row, { base: 'sleep', stock: true });
     await calc.setRowBoostCandy(row, 300);
 
     const boostCandy = calc.getRowBoostCandyInput(row);
@@ -1162,7 +1267,6 @@ test.describe('04-calculator E. 行の入力操作', () => {
     const calc = new CalcPanelPage(page);
     const settings = new SettingsModalPage(page);
     const row = calc.getRow(0);
-    const sleepTarget = calc.getRowSleepTargetSelect(row);
     const candyTargetInput = calc.getRowCandyTargetInput(row);
     const requiredCandy = async () =>
       Number((await calc.getRowResultValue(row, 'required', 'candy')).replace(/,/g, ''));
@@ -1181,7 +1285,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     await expect.poll(async () => requiredCandy()).toBeGreaterThan(0);
     const candyBefore = await requiredCandy();
 
-    await sleepTarget.selectOption('1000');
+    await calc.chooseSleepTarget(row, { base: 'hours', hours: 1000 });
     // 個数指定欄は空のまま（＝目的は目標Lv到達）。目標Lvも動かない
     await expect(candyTargetInput).toHaveValue('');
     await expect.poll(async () => requiredCandy()).toBeLessThan(candyBefore);
@@ -1205,12 +1309,12 @@ test.describe('04-calculator E. 行の入力操作', () => {
 
     // 同じ選択肢を選び直しても結果が変わらない（冪等。設計書§5.3）
     const candyAt1000 = await requiredCandy();
-    await sleepTarget.selectOption('1000');
+    await calc.chooseSleepTarget(row, { base: 'hours', hours: 1000 });
     await page.waitForTimeout(300);
     expect(await requiredCandy()).toBe(candyAt1000);
 
     // 睡眠目標を上げると、目標Lvは変わらず必要アメ数だけが減る（設計書§9）
-    await sleepTarget.selectOption('2000');
+    await calc.chooseSleepTarget(row, { base: 'hours', hours: 2000 });
     await expect.poll(async () => requiredCandy()).toBeLessThan(candyAt1000);
     await expect(candyTargetInput).toHaveValue('');
     expect(await calc.getRowDstLevelInput(row).inputValue()).toBe(dstBefore);
@@ -1227,10 +1331,14 @@ test.describe('04-calculator E. 行の入力操作', () => {
     await calc.setRowDstLevel(row, 60);
     await calc.setRowBoostCandy(row, 25);
     await calc.setRowCandyTarget(row, 100);
-    await sleepTarget.selectOption('all');
+    await calc.chooseSleepTarget(row, { base: 'sleep', stock: false });
 
-    await expect(sleepTarget).toHaveValue('all');
-    await expect(sleepTarget.locator('option[value="all"]')).toHaveText('すべて睡眠');
+    // 閉じたときの表示は「睡眠」（アメ在庫のチェックが無いので絵文字は付かない）。一覧の行の名前も「睡眠」
+    await expect(sleepTarget).toHaveText('睡眠');
+    await calc.openSleepTarget(row);
+    await expect(page.getByTestId('sleep-target-dropdown').locator('[data-option="sleep"]')).toHaveText('睡眠');
+    await expect(page.getByTestId('sleep-target-stock-check')).not.toBeChecked();
+    await calc.closeSleepTarget();
     await expect(candyTarget).toBeDisabled();
     await expect(candyTarget).toHaveValue('');
     await expect(boostCandy).toBeDisabled();
@@ -1240,7 +1348,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     await expect.poll(async () => calc.getRowResultValue(row, 'required', 'shards')).toBe('0');
     await expect.poll(async () => calc.getRowSleepTime(row)).not.toBe('');
 
-    await sleepTarget.selectOption('');
+    await calc.chooseSleepTarget(row, { base: 'none' });
     await expect(candyTarget).toBeEnabled();
     await expect(boostCandy).toBeEnabled();
     await expect(boostCandy).toHaveValue('25');
@@ -1249,7 +1357,6 @@ test.describe('04-calculator E. 行の入力操作', () => {
   test('27c. すべて睡眠で編集できない3欄は破線になり、理由は各欄の場所で読める', async ({ page }) => {
     const calc = new CalcPanelPage(page);
     const row = calc.getRow(0);
-    const sleepTarget = calc.getRowSleepTargetSelect(row);
     const candyTarget = calc.getRowCandyTargetInput(row);
     const boostCandy = calc.getRowBoostCandyInput(row);
     const boostReach = row.getByTestId('boostReachLevel');
@@ -1260,7 +1367,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     await expect(boostCandy).not.toHaveClass(/field__input--allSleep/);
     await expect(boostReach).not.toHaveClass(/levelPick--allSleep/);
 
-    await sleepTarget.selectOption('all');
+    await calc.chooseSleepTarget(row, { base: 'sleep', stock: false });
 
     await expect(candyTarget).toHaveClass(/field__input--allSleep/);
     await expect(boostCandy).toHaveClass(/field__input--allSleep/);
@@ -1271,20 +1378,20 @@ test.describe('04-calculator E. 行の入力操作', () => {
     // 破線の理由は3欄それぞれの場所で読める。アメ関連はヒント2つ、
     // アメブ目標Lvには ? が無いのでピッカー内の note（disabled でも開ける）で読ませる。
     await row.getByTestId('hintBtn').click();
-    await expect(allSleepNote).toContainText('すべて睡眠ではアメを使いません');
+    await expect(allSleepNote).toContainText('睡眠（アメ在庫なし）ではアメを使いません');
     await page.getByTestId('calc-hint-overlay').click({ position: { x: 5, y: 5 } });
 
     await row.getByTestId('candyTargetHintBtn').click();
-    await expect(allSleepNote).toContainText('すべて睡眠ではアメを使いません');
+    await expect(allSleepNote).toContainText('睡眠（アメ在庫なし）ではアメを使いません');
     await page.getByTestId('calc-hint-overlay').click({ position: { x: 5, y: 5 } });
 
     // 上限（MAX_LEVEL）には余裕があるので、note は disabled 分岐でしか出ない
     await boostReach.getByTestId('level-picker-chevron').click();
-    await expect(boostReach.getByTestId('level-picker-note')).toContainText('すべて睡眠ではアメを使いません');
+    await expect(boostReach.getByTestId('level-picker-note')).toContainText('睡眠（アメ在庫なし）ではアメを使いません');
     await boostReach.getByTestId('level-picker-chevron').click();
 
     // 解除すれば破線も案内も消える（残ると編集できるのに編集不能に見える）
-    await sleepTarget.selectOption('');
+    await calc.chooseSleepTarget(row, { base: 'none' });
     await expect(candyTarget).not.toHaveClass(/field__input--allSleep/);
     await expect(boostCandy).not.toHaveClass(/field__input--allSleep/);
     await expect(boostReach).not.toHaveClass(/levelPick--allSleep/);
@@ -1300,7 +1407,6 @@ test.describe('04-calculator E. 行の入力操作', () => {
     const calc = new CalcPanelPage(page);
     const settings = new SettingsModalPage(page);
     const row = calc.getRow(0);
-    const sleepTarget = calc.getRowSleepTargetSelect(row);
     const candyTargetInput = calc.getRowCandyTargetInput(row);
 
     // 現在Lvを25に設定（Lv25→Lv60で十分な必要アメ数が発生するように）
@@ -1311,7 +1417,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     await disableGrowthIncense(settings);
     await settings.closeByButton();
 
-    await sleepTarget.selectOption('2000');
+    await calc.chooseSleepTarget(row, { base: 'hours', hours: 2000 });
     await expect(candyTargetInput).toHaveValue('');
 
     const mark = markForSleep({
@@ -1326,7 +1432,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     ).toBeLessThanOrEqual(mark.sleepExp);
 
     // 睡眠目標を解除しても個数指定には触れない（設計書§10.10）
-    await sleepTarget.selectOption('');
+    await calc.chooseSleepTarget(row, { base: 'none' });
     await page.waitForTimeout(400);
     await expect(candyTargetInput).toHaveValue('');
   });
@@ -1367,7 +1473,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     const candyTargets: number[] = [];
     for (const currentHours of [995, 999]) {
       await setCurrentSleepHours(currentHours);
-      await calc.getRowSleepTargetSelect(row).selectOption('1000');
+      await calc.chooseSleepTarget(row, { base: 'hours', hours: 1000 });
 
       await expect.poll(async () =>
         Number((await calc.getRowRemainingExp(row)).replace(/,/g, ''))
@@ -1412,7 +1518,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     await page.getByTestId('sleep-hint-overlay').click({ position: { x: 5, y: 5 } });
 
     // 残り1500hの睡眠EXPは Lv50→55（8,812EXP）を超える。
-    await calc.getRowSleepTargetSelect(row).selectOption('2000');
+    await calc.chooseSleepTarget(row, { base: 'hours', hours: 2000 });
     await expect.poll(async () => calc.getRowSleepReachLevel(row)).toMatch(/^約\d+\.\d（1500時間）$/);
 
     // 小数1桁・切り捨て。整数部は目標Lvより高い（設計書『睡眠育成の拡張』§3.3）
@@ -1431,7 +1537,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     expect(orderedSleepResults).toEqual(['result-remaining-exp', 'result-sleep-reached-level']);
 
     // 睡眠目標を外すと消え、ラベルも「到達Lv」へ戻る
-    await calc.getRowSleepTargetSelect(row).selectOption('');
+    await calc.chooseSleepTarget(row, { base: 'none' });
     await expect.poll(async () => calc.getRowSleepReachLevel(row)).toBe('');
     await expect(usedRow.getByText('到達Lv', { exact: true })).toBeVisible();
   });
@@ -1445,7 +1551,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     const row = calc.getRow(0);
     const usedRow = calc.getRowUsedRow(row);
 
-    await calc.getRowSleepTargetSelect(row).selectOption('all');
+    await calc.chooseSleepTarget(row, { base: 'sleep', stock: false });
 
     const toggle = row.getByTestId('result-bonus-toggle');
     await expect(toggle).toBeVisible();
@@ -1482,7 +1588,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     const calc = new CalcPanelPage(page);
     const row = calc.getRow(0);
 
-    await calc.getRowSleepTargetSelect(row).selectOption('all');
+    await calc.chooseSleepTarget(row, { base: 'sleep', stock: false });
     await row.getByTestId('result-bonus-toggle').click();
 
     const details = row.getByTestId('result-bonus-details');
@@ -1519,7 +1625,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     // 到達可能行は常時 visible なので、visible を計算完了待ちに使えない。
     // 入力前の結果も「時間」を含み得るため、残EXPの値で更新完了を特定する。
     await expect.poll(async () => calc.getRowRemainingExp(row)).toBe('80');
-    await calc.getRowSleepTargetSelect(row).selectOption('all');
+    await calc.chooseSleepTarget(row, { base: 'sleep', stock: false });
 
     // 実時間は行の見出しに出る（「約N日」ではない）ことがこの行の目印
     const usedRow = calc.getRowUsedRow(row);
@@ -1548,7 +1654,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     const calc = new CalcPanelPage(page);
     const row = calc.getRow(0);
 
-    await calc.getRowSleepTargetSelect(row).selectOption('2000');
+    await calc.chooseSleepTarget(row, { base: 'hours', hours: 2000 });
 
     // 値は変えられないが、理由を読むためにピッカーは開ける（title 属性だけでは
     // disabled の欄でホバーしても出ない。設計書 §10.18）
@@ -1581,7 +1687,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     // アメブ目標Lvを既定値（＝目標Lv）へ戻す。行を追加した直後と同じ状態
     await row.getByTestId('boostCandyReset').click();
     await expect(calc.getRowBoostReachLevelInput(row)).toHaveValue('70');
-    await calc.getRowSleepTargetSelect(row).selectOption('1000');
+    await calc.chooseSleepTarget(row, { base: 'hours', hours: 1000 });
     await expect(boostCandy).toBeEnabled();
     await expect(boostPicker).toHaveClass(/levelPick--sleepCapped/);
     await expect(boostCandy).toHaveClass(/field__input--sleepCapped/);
@@ -1630,7 +1736,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     const dstInput = calc.getRowDstLevelInput(row);
     await dstInput.fill(String(src + 1));
     await dstInput.blur();
-    await calc.getRowSleepTargetSelect(row).selectOption('2000');
+    await calc.chooseSleepTarget(row, { base: 'hours', hours: 2000 });
 
     const boostCandy = calc.getRowBoostCandyInput(row);
     await expect(boostCandy).toBeDisabled();
@@ -1652,7 +1758,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     const dstInput = calc.getRowDstLevelInput(row);
     await dstInput.fill('65');
     await dstInput.blur();
-    await calc.getRowSleepTargetSelect(row).selectOption('1000');
+    await calc.chooseSleepTarget(row, { base: 'hours', hours: 1000 });
 
     await calc.openLevelPicker(row, 'boostReachLevel');
     const note = row.getByTestId('boostReachLevel').getByTestId('level-picker-note');
@@ -1670,6 +1776,32 @@ test.describe('04-calculator E. 行の入力操作', () => {
     await expect(note).toBeVisible();
     await expect(note).toContainText('睡眠EXP');
     await expect(warn).toBeVisible();
+  });
+
+  test('26d-2. アメブ目標Lvの上限で▶を押すと、上限のLvの先の端数までアメブ個数を入れる', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+    await calc.setBoostKind('full');
+    const dstInput = calc.getRowDstLevelInput(row);
+    await dstInput.fill('60');
+    await dstInput.blur();
+    // 在庫1個では Lv55 の途中までしか届かない。上限は Lv55（端数はLvでは選べない）
+    await calc.setRowSpeciesCandy(row, 1);
+    await calc.chooseSleepTarget(row, { base: 'sleep', stock: true });
+    const boostCandy = calc.getRowBoostCandyInput(row);
+    await calc.setRowBoostCandy(row, 0);
+    await expect(calc.getRowBoostReachLevelInput(row)).toHaveAttribute('max', '55');
+    await expect(calc.getRowBoostReachLevelInput(row)).toHaveValue('55');
+
+    await calc.openLevelPicker(row, 'boostReachLevel');
+    const increment = row.getByTestId('boostReachLevel').getByTestId('level-picker-increment');
+    await expect(increment).toBeEnabled();
+    await increment.click();
+
+    // Lvは上限のまま、アメブ個数が在庫の分まで入る。これ以上は入らないので▶は押せなくなる
+    await expect(boostCandy).toHaveValue('1');
+    await expect(calc.getRowBoostReachLevelInput(row)).toHaveValue('55');
+    await expect(increment).toBeDisabled();
   });
 
   test('26f. 未入力のアメブ個数欄は▲▼が自動値を起点に動く', async ({ page }) => {
@@ -1699,10 +1831,12 @@ test.describe('04-calculator E. 行の入力操作', () => {
   test('26h. 累計睡眠時間が届いた睡眠目標にチェックが付く（選択肢は消さない）', async ({ page }) => {
     const calc = new CalcPanelPage(page);
     const row = calc.getRow(0);
-    const select = calc.getRowSleepTargetSelect(row);
+    const sleepTargetRows = page.getByTestId('sleep-target-dropdown').getByTestId('sleep-target-option');
 
     // 累計0h では全部が未達成
-    await expect(select.locator('option')).toHaveText(['未設定', '200h', '500h', '1000h', '2000h', 'すべて睡眠', 'アメ在庫＋睡眠']);
+    await calc.openSleepTarget(row);
+    await expect(sleepTargetRows).toHaveText(['未設定', '200h', '500h', '1000h', '2000h', '睡眠', 'おひるね島']);
+    await calc.closeSleepTarget();
 
     await calc.getRowSleepTargetCurrentLink(row).click();
     const hoursInput = page.getByTestId('sleep-hint-hours-input');
@@ -1715,7 +1849,12 @@ test.describe('04-calculator E. 行の入力操作', () => {
     await page.getByTestId('sleep-hint-overlay').click({ position: { x: 5, y: 5 } });
 
     // 達成済みは残したままチェックを後ろに付ける（消すと選択中の項目まで消える）
-    await expect(select.locator('option')).toHaveText(['未設定', '200h ✓', '500h ✓', '1000h', '2000h', 'すべて睡眠', 'アメ在庫＋睡眠']);
+    await calc.openSleepTarget(row);
+    await expect(sleepTargetRows).toHaveText(['未設定', '200h ✓', '500h ✓', '1000h', '2000h', '睡眠', 'おひるね島']);
+    await calc.closeSleepTarget();
+    // 閉じたときの表示にも ✓ が付く（選択中の目標に累計が届いているとき）
+    await calc.chooseSleepTarget(row, { base: 'hours', hours: 500 });
+    await expect(calc.getRowSleepTargetSelect(row)).toHaveText('500h ✓');
   });
 
   test('26h-2. ヒントは開いたままページがスクロールしても対象の行に付いて動く', async ({ page }) => {
@@ -1863,7 +2002,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     await page.getByTestId('calc-hint-overlay').click({ position: { x: 5, y: 5 } });
 
     // 睡眠目標を入れると個数指定が空になるので、入れ直す
-    await calc.getRowSleepTargetSelect(row).selectOption('1000');
+    await calc.chooseSleepTarget(row, { base: 'hours', hours: 1000 });
     await calc.getRowCandyTargetInput(row).fill('100');
     await calc.getRowCandyTargetInput(row).blur();
     await row.getByTestId('candyTargetHintBtn').click();
@@ -1904,7 +2043,7 @@ test.describe('04-calculator E. 行の入力操作', () => {
     await expect(hint).not.toContainText('睡眠EXP');
     await page.getByTestId('calc-hint-overlay').click({ position: { x: 5, y: 5 } });
 
-    await calc.getRowSleepTargetSelect(row).selectOption('1000');
+    await calc.chooseSleepTarget(row, { base: 'hours', hours: 1000 });
     await row.getByTestId('hintBtn').click();
     await expect(hint).toContainText('睡眠EXP');
 
@@ -2069,7 +2208,7 @@ test.describe('04-calculator F. 計算結果表示', () => {
     const calc = new CalcPanelPage(page);
     const row = calc.getRow(0);
     await calc.setRowDstLevel(row, 56);
-    await calc.getRowSleepTargetSelect(row).selectOption('all');
+    await calc.chooseSleepTarget(row, { base: 'sleep', stock: false });
     // 在庫0なのでアメは1個も使えず、残EXPがそのまま睡眠時間になる。
     // （旧テストは個数指定0でアメを止めていたが、新設計では個数指定＝目標なので目標ごと現在地へ落ちる）
     await calc.setRowExpRemaining(row, 24);
@@ -2143,7 +2282,7 @@ test.describe('04-calculator F. 計算結果表示', () => {
     await expect(calc.getRowRequiredRow(row)).not.toContainText('成長のお香');
     await expect(calc.getRowUsedRow(row)).not.toContainText('成長のお香');
 
-    await calc.getRowSleepTargetSelect(row).selectOption('2000');
+    await calc.chooseSleepTarget(row, { base: 'hours', hours: 2000 });
 
     const incense = /成長のお香\s*([\d,]+)/;
     await expect(calc.getRowRequiredRow(row)).toBeVisible();
@@ -2173,7 +2312,7 @@ test.describe('04-calculator F. 計算結果表示', () => {
     });
     await settings.closeByButton();
 
-    await calc.getRowSleepTargetSelect(row).selectOption('all');
+    await calc.chooseSleepTarget(row, { base: 'sleep', stock: false });
 
     const incense = /成長のお香\s*([\d,]+)/;
     const usedRow = calc.getRowUsedRow(row);
@@ -2238,15 +2377,14 @@ test.describe('04-calculator G. プログレスバー・サマリー表示', () 
         return colors;
       });
 
-    const themes = await page.locator('.design-switch-select option').evaluateAll((options) =>
-      options.map((o) => (o as HTMLOptionElement).value),
-    );
+    const themePicker = new ThemePickerPage(page);
+    const themes = await themePicker.themeIds();
     expect(themes.length).toBeGreaterThanOrEqual(7);
 
     for (const theme of themes) {
       await page.evaluate((id) => localStorage.setItem('candy-boost-planner:design', id), theme);
       await page.reload();
-      await expect(page.locator('.design-switch-select')).toHaveValue(theme);
+      await themePicker.expectValue(theme);
       await calc.stickySummary.click();
       const plan = await planColors();
       expect({ theme, boost: await boostFill.evaluate(backgroundColor), shards: await shardsFill.evaluate(backgroundColor) })
@@ -2421,7 +2559,7 @@ test.describe('04-calculator H. 行の並べ替え', () => {
 
   test('43a. Greenテーマの選択行ではドラッグハンドルが行背景になじむ', async ({ page }) => {
     const calc = new CalcPanelPage(page);
-    await page.locator('.design-switch-select').selectOption('green');
+    await new ThemePickerPage(page).select('green');
     const row = calc.getRow(0);
     await row.click();
 
@@ -2572,28 +2710,86 @@ test.describe('04-calculator I. BOX連携', () => {
     await box.clickApplyToCalc();
   });
 
-  test('44. 「BOXに反映」ボタンが表示される（boxIdがある行）', async ({ page }) => {
+  test('44. BOXでLvを変えると計算機の行が変わる（リアルタイム同期）', async ({ page }) => {
+    const box = new BoxPanelPage(page);
     const calc = new CalcPanelPage(page);
-    const row = calc.getRow(0);
-    const applyBtn = calc.getRowApplyToBoxButton(row);
-    await expect(applyBtn).toBeVisible();
+    const srcLevel = calc.getRowSrcLevelInput(calc.getRow(0));
+
+    await expect(box.detailLevelTrigger).not.toHaveValue('40');
+    await box.detailLevelTrigger.fill('40');
+    await box.detailLevelTrigger.blur();
+
+    await expect(srcLevel).toHaveValue('40');
   });
 
-  test('45. 「BOXに反映」クリックでBOXが更新される', async ({ page }) => {
+  test('45. 計算機でLvを変えるとBOXの個体が変わる（リアルタイム同期）', async ({ page }) => {
+    const box = new BoxPanelPage(page);
+    const calc = new CalcPanelPage(page);
+
+    await calc.setRowSrcLevel(calc.getRow(0), 30);
+
+    await expect(box.detailLevelTrigger).toHaveValue('30');
+    await expect(box.boxTiles.first().locator('.boxTile__lv')).toHaveText('Lv30');
+  });
+});
+
+// ============================================================
+// I2. リンク切れの行
+// ============================================================
+test.describe('04-calculator I2. リンク切れの行', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    const box = new BoxPanelPage(page);
+    await box.openImportPanel();
+    await box.fillImportText(testConfig.importData.singlePokemon);
+    await box.clickImport();
+    await box.selectBoxTile(0);
+    await box.clickApplyToCalc();
+    await new CalcPanelPage(page).expectRowCount(1);
+
+    // 参照先の個体が無い行を作る（UI からは作れない）。保存済みの行の boxId を、存在しない ID に差し替えて読み込み直す。
+    await page.addInitScript(() => {
+      const key = 'candy-boost-planner:calc:slots:v1';
+      const raw = localStorage.getItem(key);
+      if (raw) localStorage.setItem(key, raw.replace(/"boxId":"[^"]*"/g, '"boxId":"missing-box-id"'));
+    });
+    await page.reload();
+  });
+
+  test('46. 赤い強調と案内が出て、個体属性の入力欄だけが無効になる', async ({ page }) => {
     const calc = new CalcPanelPage(page);
     const row = calc.getRow(0);
 
-    // 個数指定を入力してレベルアップ
-    const candyTargetInput = calc.getRowCandyTargetInput(row);
-    await candyTargetInput.fill('100');
-    await candyTargetInput.blur();
+    await expect(row).toHaveClass(/calcRow--linkBroken/);
+    await expect(row.getByTestId('calc-row-link-broken')).toHaveText(
+      'ポケモンボックスとのリンクが切れています。この行を削除して、ポケモンボックスから登録し直してください。',
+    );
+    // 強調は計算エリア全体を囲む（テーマの危険色）
+    await expect(row).not.toHaveCSS('outline-style', 'none');
 
-    // BOXに反映
-    const applyBtn = calc.getRowApplyToBoxButton(row);
-    await applyBtn.click();
+    // 個体属性の入力欄は無効
+    await expect(calc.getRowSrcLevelInput(row)).toBeDisabled();
+    await expect(calc.getRowExpRemainingInput(row)).toBeDisabled();
+    await expect(calc.getRowNatureTrigger(row)).toBeDisabled();
+    await expect(calc.getRowSleepTargetCurrentLink(row)).toBeDisabled();
 
-    // BOXのタイルが更新されていることを確認（レベルが変わる）
-    // 具体的な値の確認は状況依存のため、ボタンクリックが成功することを確認
+    // 計画の入力と行の削除は使える
+    await expect(calc.getRowDstLevelInput(row)).toBeEnabled();
+    await expect(calc.getRowCandyTargetInput(row)).toBeEnabled();
+    await calc.getRowDeleteButton(row).click();
+    await calc.expectRowCount(0);
+  });
+
+  test('47. 全テーマで案内が出て、強調色が設定されている', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+    for (const theme of ['blue', 'booklet', 'candy', 'cyberpunk', 'dark', 'green', 'vivid']) {
+      await page.evaluate((id) => localStorage.setItem('candy-boost-planner:design', id), theme);
+      await page.reload();
+      await expect(row.getByTestId('calc-row-link-broken')).toBeVisible();
+      const color = await row.evaluate((el) => getComputedStyle(el).outlineColor);
+      expect(color).toMatch(/^rgb\(/);
+    }
   });
 });
 
@@ -3544,28 +3740,548 @@ test.describe('04-calculator O. 睡眠チーム5匹の警告', () => {
 
     for (let index = 0; index < 6; index++) {
       const row = calc.getRow(index);
-      await calc.getRowSleepTargetSelect(row).selectOption('all');
+      await calc.chooseSleepTarget(row, { base: 'sleep', stock: false });
     }
 
     // 1晩に睡眠EXPを得られるのは5匹まで。あふれるのは6行目だけ
-    await expect(page.getByTestId('sleep-team-overflow')).toHaveCount(1);
+    await expect(page.getByTestId('rest-capacity-overflow')).toHaveCount(1);
     const overflowRow = calc.getRow(5);
-    const warn = overflowRow.getByTestId('sleep-team-overflow');
+    const warn = overflowRow.getByTestId('rest-capacity-overflow');
     await expect(warn).toBeVisible();
 
     // 置き場所を固定する。入力欄の見出しへ戻すと英語で見切れる（移設の理由）
     const usedRow = calc.getRowUsedRow(overflowRow);
-    await expect(usedRow.getByTestId('sleep-team-overflow')).toHaveCount(1);
+    await expect(usedRow.getByTestId('rest-capacity-overflow')).toHaveCount(1);
     // 結果の最後尾＝「内訳」より後ろ
     const order = await usedRow
-      .locator('[data-testid="result-bonus-toggle"], [data-testid="sleep-team-overflow"]')
+      .locator('[data-testid="result-bonus-toggle"], [data-testid="rest-capacity-overflow"]')
       .evaluateAll(nodes => nodes.map(node => (node as HTMLElement).dataset.testid));
-    expect(order).toEqual(['result-bonus-toggle', 'sleep-team-overflow']);
+    expect(order).toEqual(['result-bonus-toggle', 'rest-capacity-overflow']);
 
     await warn.click();
     await expect(page.getByTestId('calc-hint-sleep-team-note')).toContainText('5匹');
     // このヒントはアメの話を載せない（他の kind の案内が混ざっていないこと）
     await expect(page.getByTestId('calc-hint-quota-warn')).toHaveCount(0);
     await expect(page.getByTestId('calc-hint-all-sleep-note')).toHaveCount(0);
+  });
+});
+
+// ============================================================
+// P. 睡眠目標の自作ドロップダウン
+// ============================================================
+test.describe('04-calculator P. 睡眠目標ドロップダウン', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    const box = new BoxPanelPage(page);
+    await box.openImportPanel();
+    await box.fillImportText(testConfig.importData.lowLevelPokemon);
+    await box.clickImport();
+    await box.selectBoxTile(0);
+    await box.clickApplyToCalc();
+  });
+
+  test('69. 行の名前を押すとその行を選んで閉じ、閉じたときの表示と読み上げが変わる', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+    const trigger = calc.getRowSleepTargetSelect(row);
+
+    await expect(trigger).toHaveText('未設定');
+    await expect(trigger).toHaveAttribute('aria-label', '睡眠目標: 未設定');
+    await expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+
+    await calc.openSleepTarget(row);
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    // 中に操作できる要素があるので listbox / option は使わない
+    await expect(calc.getSleepTargetDropdown()).toHaveAttribute('role', 'dialog');
+    await expect(calc.getSleepTargetDropdown().locator('[role="listbox"], [role="option"]')).toHaveCount(0);
+    await calc.getSleepTargetDropdown().locator('[data-option="h1000"]').click();
+    await expect(calc.getSleepTargetDropdown()).toHaveCount(0);
+    await expect(trigger).toHaveText('1000h');
+    await expect(trigger).toHaveAttribute('aria-label', '睡眠目標: 1000h');
+    await expect(trigger).toBeFocused();
+
+    await calc.chooseSleepTarget(row, { base: 'sleep', stock: false });
+    await expect(trigger).toHaveText('睡眠');
+    await expect(trigger).toHaveAttribute('aria-label', '睡眠目標: 睡眠');
+  });
+
+  test('70. チェックボックスは押した瞬間に確定し、一覧は閉じない。選んでいない行のチェックでもその行が選ばれる', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+    const trigger = calc.getRowSleepTargetSelect(row);
+    const dropdown = calc.getSleepTargetDropdown();
+    const stockCheck = dropdown.getByTestId('sleep-target-stock-check');
+
+    await calc.chooseSleepTarget(row, { base: 'hours', hours: 500 });
+    await calc.openSleepTarget(row);
+    await expect(stockCheck).not.toBeChecked();
+
+    // 選んでいない行（睡眠）のチェックを入れると、その行が選ばれてチェックも反映される
+    await stockCheck.check();
+    await expect(dropdown).toBeVisible();
+    await expect(dropdown.locator('[data-option="sleep"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(dropdown.locator('[data-option="h500"]')).toHaveAttribute('aria-pressed', 'false');
+    await expect(trigger).toHaveText('睡眠🍬');
+    await expect(trigger).toHaveAttribute('aria-label', '睡眠目標: 睡眠（アメ在庫）');
+
+    // 選択中の行のチェックを外すと、閉じずに「睡眠」だけへ戻る
+    await stockCheck.uncheck();
+    await expect(dropdown).toBeVisible();
+    await expect(trigger).toHaveText('睡眠');
+
+    // 行の名前で閉じ、開き直すと、チェックの状態は今の睡眠目標のものになる
+    await stockCheck.check();
+    await dropdown.locator('[data-option="sleep"]').click();
+    await expect(trigger).toHaveText('睡眠🍬');
+    await calc.openSleepTarget(row);
+    await expect(stockCheck).toBeChecked();
+  });
+
+  test('71. 開いて閉じるまでの変更は元に戻す1回でまとまる', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+    const trigger = calc.getRowSleepTargetSelect(row);
+    const dropdown = calc.getSleepTargetDropdown();
+    const stockCheck = dropdown.getByTestId('sleep-target-stock-check');
+
+    await calc.openSleepTarget(row);
+    await stockCheck.check();
+    await stockCheck.uncheck();
+    await stockCheck.check();
+    await dropdown.locator('[data-option="h2000"]').click();
+    await expect(trigger).toHaveText('2000h');
+
+    await calc.clickUndo();
+    await expect(trigger).toHaveText('未設定');
+
+    // 開き直した操作は別の履歴になる
+    await calc.chooseSleepTarget(row, { base: 'hours', hours: 200 });
+    await calc.chooseSleepTarget(row, { base: 'hours', hours: 500 });
+    await calc.clickUndo();
+    await expect(trigger).toHaveText('200h');
+  });
+
+  test('72. Esc と外側の操作で閉じ、Esc ではトリガーへフォーカスが戻る', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+    const trigger = calc.getRowSleepTargetSelect(row);
+    const dropdown = calc.getSleepTargetDropdown();
+
+    await calc.openSleepTarget(row);
+    // 開いたら選択中の行の名前へフォーカスが移る
+    await expect(dropdown.locator('[data-option="none"]')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(dropdown).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    await expect(trigger).toHaveText('未設定');
+
+    await calc.openSleepTarget(row);
+    await page.mouse.click(5, 5);
+    await expect(dropdown).toHaveCount(0);
+  });
+
+  test('73. キーボードだけで、Tab で一覧に入り、行を Enter / Space で選び、チェックを Space で切り替えられる', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+    const trigger = calc.getRowSleepTargetSelect(row);
+    const dropdown = calc.getSleepTargetDropdown();
+    const stockCheck = dropdown.getByTestId('sleep-target-stock-check');
+    const napStockCheck = dropdown.getByTestId('sleep-target-nap-stock-check');
+    const napTicketCheck = dropdown.getByTestId('sleep-target-nap-ticket-check');
+
+    await trigger.focus();
+    await page.keyboard.press('Enter');
+    await expect(dropdown).toBeVisible();
+    await expect(dropdown.locator('[data-option="none"]')).toBeFocused();
+
+    // Tab は一覧の中を回る（未設定 → 200h → 500h → 1000h → 2000h → 睡眠 → アメ在庫 → おひるね島 → チケット → アメ在庫 → 未設定）
+    for (const option of ['h200', 'h500', 'h1000', 'h2000', 'sleep']) {
+      await page.keyboard.press('Tab');
+      await expect(dropdown.locator(`[data-option="${option}"]`)).toBeFocused();
+    }
+    await page.keyboard.press('Tab');
+    await expect(stockCheck).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(dropdown.locator('[data-option="nap"]')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(napTicketCheck).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(napStockCheck).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(dropdown.locator('[data-option="none"]')).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(napStockCheck).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(napTicketCheck).toBeFocused();
+
+    // チェックを Space で切り替える（その行を選んで確定し、閉じない）
+    await page.keyboard.press('Space');
+    await expect(dropdown).toBeVisible();
+    await expect(trigger).toHaveText('おひるね島🎫');
+
+    // 行の名前を Space で選ぶと閉じ、トリガーへフォーカスが戻る
+    await page.keyboard.press('Shift+Tab');
+    await expect(dropdown.locator('[data-option="nap"]')).toBeFocused();
+    await page.keyboard.press('Space');
+    await expect(dropdown).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    await expect(trigger).toHaveText('おひるね島🎫');
+
+    // Enter でも選べる（開くと選択中の行へフォーカスが移る）
+    await page.keyboard.press('Enter');
+    await expect(dropdown.locator('[data-option="nap"]')).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(stockCheck).toBeFocused();
+    for (const option of ['sleep', 'h2000', 'h1000']) {
+      await page.keyboard.press('Shift+Tab');
+      await expect(dropdown.locator(`[data-option="${option}"]`)).toBeFocused();
+    }
+    await expect(dropdown.locator('[data-option="h1000"]')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(dropdown).toHaveCount(0);
+    await expect(trigger).toHaveText('1000h');
+  });
+
+  test('74. 睡眠から数値へ選び直すと、アメ在庫のチェックは外れる', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+    const trigger = calc.getRowSleepTargetSelect(row);
+    const stockCheck = calc.getSleepTargetDropdown().getByTestId('sleep-target-stock-check');
+
+    await calc.chooseSleepTarget(row, { base: 'sleep', stock: true });
+    await expect(trigger).toHaveText('睡眠🍬');
+    await calc.chooseSleepTarget(row, { base: 'hours', hours: 1000 });
+    await calc.openSleepTarget(row);
+    await expect(stockCheck).not.toBeChecked();
+  });
+
+  for (const viewport of [
+    { name: '幅320px', width: 320, height: 700 },
+    { name: '横向き（568×320）', width: 568, height: 320 },
+    { name: '拡大表示相当（200×300）', width: 200, height: 300 },
+  ]) {
+    test(`75. ${viewport.name}でも一覧が画面に収まり、アメ在庫のチェックまで操作できる`, async ({ page }) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      const calc = new CalcPanelPage(page);
+      const row = calc.getRow(0);
+      const trigger = calc.getRowSleepTargetSelect(row);
+      const dropdown = calc.getSleepTargetDropdown();
+      // 一覧でいちばん下にある最後のチェックボックス（おひるね島のアメ在庫）まで操作できる
+      const stockCheck = dropdown.getByTestId('sleep-target-nap-stock-check');
+
+      await trigger.scrollIntoViewIfNeeded();
+      await calc.openSleepTarget(row);
+      await expect(dropdown).toHaveCSS('visibility', 'visible');
+      const rect = await dropdown.evaluate(el => {
+        const r = el.getBoundingClientRect();
+        return { left: r.left, right: r.right, scrollWidth: el.scrollWidth, clientWidth: el.clientWidth };
+      });
+      // 幅は画面に収まり、横にはみ出さない（行の中は折り返す）
+      expect(rect.left).toBeGreaterThanOrEqual(0);
+      expect(rect.right).toBeLessThanOrEqual(viewport.width);
+      expect(rect.scrollWidth).toBeLessThanOrEqual(rect.clientWidth);
+
+      // 幅320px以上では、おひるね島の行は「名前＋チケット＋アメ在庫」が1段に並ぶ。
+      // 古い iPhone（幅320px）で、チケットだけが名前の右端に残りアメ在庫が次の段へ落ちた。組ごと2段目へ回るのも不可（余白を詰めて収める）。
+      // 組すら入らない幅（200px）では折り返してよい。日本語表示が対象（英語は320pxに収まらず、組ごと下の段へ回る）
+      const expectNapRowOnOneLine = async () => {
+        if (viewport.width < 320) return;
+        const napNameBox = await dropdown.locator('[data-option="nap"]').boundingBox();
+        const ticketBox = await dropdown.getByTestId('sleep-target-nap-ticket-check').boundingBox();
+        const napStockBox = await stockCheck.boundingBox();
+        const centerY = (box: { y: number; height: number }) => box.y + box.height / 2;
+        expect(centerY(ticketBox!)).toBeCloseTo(centerY(napNameBox!), 0);
+        expect(centerY(napStockBox!)).toBeCloseTo(centerY(napNameBox!), 0);
+        expect(napNameBox!.x).toBeLessThan(ticketBox!.x);
+        expect(ticketBox!.x).toBeLessThan(napStockBox!.x);
+
+        // 一覧の幅は中身ぴったりではなく、4px の余裕を足してある。古い iOS Safari はぴったりの幅を端数ぶん狭く出し、
+        // チェックの組が次の段へ落ちた（Chromium では再現しないので、余裕が付いていることを確かめる）
+        const spare = await dropdown.locator('[data-option="nap"]').evaluate(name => {
+          const range = document.createRange();
+          range.selectNodeContents(name);
+          const style = getComputedStyle(name);
+          const nameNatural = range.getBoundingClientRect().width + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+          const row = name.parentElement!;
+          const checks = row.querySelector('.sleepTargetSelect__checks')!;
+          return row.getBoundingClientRect().width - nameNatural - checks.getBoundingClientRect().width;
+        });
+        expect(spare).toBeGreaterThanOrEqual(4);
+      };
+      await expectNapRowOnOneLine();
+
+      // 高さが足りなければ一覧の中をスクロールして、最後の行のチェックまで操作できる
+      await stockCheck.check();
+      await expect(dropdown).toBeVisible();
+      await expect(trigger).toHaveText('おひるね島🍬');
+      // チェックを押すとおひるね島の行が選ばれて太字になり、幅が広がる。開いたまま測り直して余裕を保つ
+      await expectNapRowOnOneLine();
+      const checkBox = await stockCheck.boundingBox();
+      expect(checkBox).not.toBeNull();
+      expect(checkBox!.x + checkBox!.width).toBeLessThanOrEqual(viewport.width);
+    });
+  }
+
+  test('76. 一覧の中のスクロールでは閉じず、外側のスクロール操作では閉じる', async ({ page }) => {
+    await page.setViewportSize({ width: 568, height: 320 });
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+    const dropdown = calc.getSleepTargetDropdown();
+
+    await calc.getRowSleepTargetSelect(row).scrollIntoViewIfNeeded();
+    await calc.openSleepTarget(row);
+    // 高さが足りないので、一覧は中でスクロールできる
+    const scrollable = await dropdown.evaluate(el => el.scrollHeight > el.clientHeight);
+    expect(scrollable).toBe(true);
+
+    await dropdown.hover();
+    await page.mouse.wheel(0, 120);
+    await expect(dropdown).toBeVisible();
+
+    // 外側でホイールを回すと閉じる
+    await page.mouse.move(2, 2);
+    await page.mouse.wheel(0, 120);
+    await expect(dropdown).toHaveCount(0);
+  });
+
+  test('82. 高さが足りない画面で Tab が先頭 ⇔ 末尾へ回ると、一覧の中がスクロールしてフォーカス先が見える', async ({ page }) => {
+    await page.setViewportSize({ width: 568, height: 320 });
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+    const dropdown = calc.getSleepTargetDropdown();
+    const lastCheck = dropdown.getByTestId('sleep-target-nap-stock-check');
+    const first = dropdown.locator('[data-option="none"]');
+
+    await calc.getRowSleepTargetSelect(row).scrollIntoViewIfNeeded();
+    await calc.openSleepTarget(row);
+    await expect(first).toBeFocused();
+    expect(await dropdown.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+
+    await page.keyboard.press('Shift+Tab');
+    await expect(lastCheck).toBeFocused();
+    await expect(lastCheck).toBeInViewport();
+    await expect.poll(() => isInsideDropdownView(lastCheck)).toBe(true);
+
+    await page.keyboard.press('Tab');
+    await expect(first).toBeFocused();
+    await expect.poll(() => isInsideDropdownView(first)).toBe(true);
+
+    /** 一覧の見えている範囲（スクロールで隠れていない）に要素が収まっているか */
+    async function isInsideDropdownView(target: Locator): Promise<boolean> {
+      const box = await target.boundingBox();
+      const view = await dropdown.evaluate(el => {
+        const r = el.getBoundingClientRect();
+        return { top: r.top + el.clientTop, bottom: r.top + el.clientTop + el.clientHeight };
+      });
+      return box !== null && box.y >= view.top - 1 && box.y + box.height <= view.bottom + 1;
+    }
+  });
+});
+
+// ============================================================
+// Q. おひるね島
+// ============================================================
+test.describe('04-calculator Q. おひるね島', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    const box = new BoxPanelPage(page);
+    await box.openImportPanel();
+    await box.fillImportText(testConfig.importData.importText);
+    await box.clickImport();
+    await box.selectBoxTile(0);
+    await box.clickApplyToCalc();
+  });
+
+  /**
+   * 残EXP を total にそろえる（現在Lv60 から数Lv上の目標へ。あとEXPの入力は現在Lvの次のLvまでの分だけなので、
+   * 1万を超える値は目標を1つ上げ、残りを逆算して入れる）。性格は補正なしにそろえる。
+   */
+  async function setRemainingExp(calc: CalcPanelPage, row: Locator, total: number): Promise<void> {
+    await calc.setRowNature(row, '-');
+    await calc.setRowSrcLevel(row, 60);
+    if (total <= 1000) {
+      await calc.setRowDstLevel(row, 61);
+      await calc.setRowExpRemaining(row, total);
+    } else {
+      const readRemaining = async () => Number((await calc.getRowRemainingExp(row)).replace(/,/g, ''));
+      await calc.setRowDstLevel(row, 62);
+      const stale = await readRemaining();
+      await calc.setRowExpRemaining(row, 1);
+      // 計画の更新は遅れて入る。更新前の値（stale）でなく、1 + (次のLvまでのEXP) になるまで待つ
+      await expect.poll(async () => {
+        const value = await readRemaining();
+        return value !== stale && value > 1 && value < 9000;
+      }).toBe(true);
+      const withOne = await readRemaining();
+      const nextLevelExp = withOne - 1;
+      if (total > nextLevelExp) {
+        await calc.setRowExpRemaining(row, total - nextLevelExp);
+      } else {
+        // 次のLvまでの分で収まる合計は、1つ上のLvから目標の1つ上までの1Lvぶんで作る
+        await calc.setRowSrcLevel(row, 61);
+        await calc.setRowDstLevel(row, 62);
+        await calc.setRowExpRemaining(row, total);
+      }
+    }
+    await expect.poll(async () => calc.getRowRemainingExp(row)).toBe(total.toLocaleString('en-US'));
+  }
+
+  test('77. 「おひるね島」を選ぶと島の所要時間が出て、睡眠時間・睡眠到達Lvは出ず、アメブ欄は無効になる', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+    const usedRow = calc.getRowUsedRow(row);
+
+    await calc.chooseSleepTarget(row, { base: 'napIsland', stock: false, ticket: false });
+    await setRemainingExp(calc, row, 600);
+
+    // 補正なし・チケットなし・残EXP 600 は半減のままでは届かず、7日待つ（1,050 EXP もらえて 450 余る）
+    const napTime = usedRow.getByTestId('result-nap-time');
+    await expect(napTime).toContainText('おひるね島');
+    await expect(napTime).toContainText('7日0時間0分');
+    await expect(usedRow.getByTestId('result-sleep-time')).toHaveCount(0);
+    await expect(usedRow.getByTestId('result-sleep-reached-level')).toHaveCount(0);
+    // 余った分は島到達Lv（約61.x）として出る
+    await expect(usedRow.getByTestId('result-nap-reached-level')).toBeVisible();
+    await expect(usedRow.getByTestId('result-nap-reached-level-value')).toHaveText(/^約61\.\d$/);
+
+    // アメ・かけらは使わず、アメブ欄は無効（破線）。理由は島のヒント
+    await expect.poll(async () => calc.getRowResultValue(row, 'used', 'candy')).toBe('0');
+    await expect.poll(async () => calc.getRowResultValue(row, 'used', 'shards')).toBe('0');
+    await expect(calc.getRowBoostCandyInput(row)).toHaveClass(/field__input--allSleep/);
+    await row.getByTestId('hintBtn').click();
+    await expect(page.getByTestId('calc-hint-all-sleep-note')).toContainText('おひるね島（アメ在庫なし）ではアメ・ゆめのかけらを使いません');
+  });
+
+  test('78. 「おひるね島＋チケット」はアイテム欄に枚数を出し、7日を少し超えると「2枚（2枚目は3分）」になる', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+    const usedRow = calc.getRowUsedRow(row);
+
+    await calc.chooseSleepTarget(row, { base: 'napIsland', stock: false, ticket: true });
+    await setRemainingExp(calc, row, 4201);
+
+    await expect(usedRow.getByTestId('result-nap-time')).toContainText('7日0時間3分');
+    await expect(usedRow.getByTestId('result-reachable-items-value')).toHaveText('おひるね島＋チケット 2枚（2枚目は3分）');
+    // 7日以上なので半減の注記は出ない
+    await expect(usedRow.getByTestId('nap-ticket-half-hint')).toHaveCount(0);
+
+    // ちょうど7日分ならチケットは1枚で、使う時間は添えない
+    await setRemainingExp(calc, row, 4200);
+    await expect(usedRow.getByTestId('result-nap-time')).toContainText('7日0時間0分');
+    await expect(usedRow.getByTestId('result-reachable-items-value')).toHaveText('おひるね島＋チケット 1枚');
+  });
+
+  test('79. 「おひるね島＋チケット」の答えが7日未満のときだけ「チケットの効果も半分」の注記が出る', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+    const usedRow = calc.getRowUsedRow(row);
+
+    await calc.chooseSleepTarget(row, { base: 'napIsland', stock: false, ticket: true });
+    await setRemainingExp(calc, row, 1000);
+
+    await expect(usedRow.getByTestId('result-nap-time')).toContainText('3日7時間58分');
+    const hint = usedRow.getByTestId('nap-ticket-half-hint');
+    await expect(hint).toBeVisible();
+    await hint.click();
+    await expect(page.getByTestId('calc-hint-nap-ticket-half-note')).toContainText('7日未満で引き取るため、チケットの効果も半分になります');
+    // アメの案内や定員の警告は混ざらない
+    await expect(page.getByTestId('calc-hint-all-sleep-note')).toHaveCount(0);
+    await expect(page.getByTestId('calc-hint-sleep-team-note')).toHaveCount(0);
+    await page.getByTestId('calc-hint-overlay').click({ position: { x: 5, y: 5 } });
+
+    // チケットを外した島（同じ残EXP）には注記が出ない
+    await calc.chooseSleepTarget(row, { base: 'napIsland', stock: false, ticket: false });
+    await expect(usedRow.getByTestId('result-nap-time')).toContainText('7日0時間0分');
+    await expect(usedRow.getByTestId('nap-ticket-half-hint')).toHaveCount(0);
+    await expect(usedRow.getByTestId('result-reachable-items-value')).toHaveCount(0);
+  });
+
+  test('80. 島の行が2つあると2行目に警告が出て、押すと島のヒントが読める。睡眠チームの警告とは別に数える', async ({ page }) => {
+    const box = new BoxPanelPage(page);
+    const calc = new CalcPanelPage(page);
+    await box.selectBoxTile(1);
+    await box.clickApplyToCalc();
+    await calc.expectRowCount(2);
+
+    await calc.chooseSleepTarget(calc.getRow(0), { base: 'napIsland', stock: false, ticket: false });
+    await expect(page.getByTestId('rest-capacity-overflow')).toHaveCount(0);
+    await calc.chooseSleepTarget(calc.getRow(1), { base: 'napIsland', stock: false, ticket: true });
+
+    await expect(page.getByTestId('rest-capacity-overflow')).toHaveCount(1);
+    const warn = calc.getRow(1).getByTestId('rest-capacity-overflow');
+    await expect(warn).toBeVisible();
+    await warn.click();
+    await expect(page.getByTestId('calc-hint-sleep-team-note')).toContainText('おひるね島に預けられるのは1匹まで');
+    await page.getByTestId('calc-hint-overlay').click({ position: { x: 5, y: 5 } });
+
+    // 睡眠の行に切り替えると、島の行は1つだけになり警告は消える
+    await calc.chooseSleepTarget(calc.getRow(1), { base: 'sleep', stock: false });
+    await expect(page.getByTestId('rest-capacity-overflow')).toHaveCount(0);
+  });
+
+  test('83. 別の行でそれぞれ1回目に開いて選んだ変更は、undo で1行ずつ戻る（行をまたいで履歴がまとまらない）', async ({ page }) => {
+    const box = new BoxPanelPage(page);
+    const calc = new CalcPanelPage(page);
+    await box.selectBoxTile(1);
+    await box.clickApplyToCalc();
+    await calc.expectRowCount(2);
+    const trigger0 = calc.getRowSleepTargetSelect(calc.getRow(0));
+    const trigger1 = calc.getRowSleepTargetSelect(calc.getRow(1));
+
+    await calc.chooseSleepTarget(calc.getRow(0), { base: 'napIsland', stock: false, ticket: false });
+    await calc.chooseSleepTarget(calc.getRow(1), { base: 'napIsland', stock: false, ticket: false });
+    await expect(trigger0).toHaveText('おひるね島');
+    await expect(trigger1).toHaveText('おひるね島');
+
+    await calc.clickUndo();
+    await expect(trigger1).toHaveText('未設定');
+    await expect(trigger0).toHaveText('おひるね島');
+    await calc.clickUndo();
+    await expect(trigger0).toHaveText('未設定');
+  });
+
+  test('81. 睡眠 ⇔ おひるね島でアメ在庫のチェックが引き継がれ、チケットは今が島＋チケットのときだけチェックされる', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const row = calc.getRow(0);
+    const trigger = calc.getRowSleepTargetSelect(row);
+    const dropdown = calc.getSleepTargetDropdown();
+
+    await calc.chooseSleepTarget(row, { base: 'sleep', stock: true });
+    await calc.openSleepTarget(row);
+    await expect(dropdown.getByTestId('sleep-target-nap-stock-check')).toBeChecked();
+    await expect(dropdown.getByTestId('sleep-target-nap-ticket-check')).not.toBeChecked();
+
+    // おひるね島の行の名前を押すと、アメ在庫のチェックを引き継いだ島を選ぶ
+    await dropdown.locator('[data-option="nap"]').click();
+    await expect(dropdown).toHaveCount(0);
+    await expect(trigger).toHaveText('おひるね島🍬');
+    await expect(trigger).toHaveAttribute('aria-label', '睡眠目標: おひるね島（アメ在庫）');
+
+    // チケットのチェックは閉じずに確定する。表示は絵文字2つ、読み上げは文字で全部言う
+    await calc.openSleepTarget(row);
+    await dropdown.getByTestId('sleep-target-nap-ticket-check').check();
+    await expect(dropdown).toBeVisible();
+    await expect(trigger).toHaveText('おひるね島🎫🍬');
+    await expect(trigger).toHaveAttribute('aria-label', '睡眠目標: おひるね島（チケット・アメ在庫）');
+    await dropdown.getByTestId('sleep-target-nap-stock-check').uncheck();
+    await expect(trigger).toHaveText('おひるね島🎫');
+
+    // 睡眠へ戻ると、チケットは持ち越さず、アメ在庫の状態だけが引き継がれる
+    await dropdown.getByTestId('sleep-target-nap-stock-check').check();
+    await dropdown.locator('[data-option="sleep"]').click();
+    await expect(trigger).toHaveText('睡眠🍬');
+    await calc.openSleepTarget(row);
+    await expect(dropdown.getByTestId('sleep-target-nap-ticket-check')).not.toBeChecked();
+
+    // 開いて閉じるまでの変更は元に戻す1回でまとまる
+    await calc.closeSleepTarget();
+    await calc.chooseSleepTarget(row, { base: 'none' });
+    await calc.openSleepTarget(row);
+    await dropdown.getByTestId('sleep-target-nap-ticket-check').check();
+    await dropdown.getByTestId('sleep-target-nap-stock-check').check();
+    await dropdown.locator('[data-option="nap"]').click();
+    await expect(trigger).toHaveText('おひるね島🎫🍬');
+    await calc.clickUndo();
+    await expect(trigger).toHaveText('未設定');
   });
 });

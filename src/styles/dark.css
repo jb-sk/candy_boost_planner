@@ -22,6 +22,9 @@
   --accent-strong: #f5e3a0;
   --danger: #ff7a8a;
   --danger-rgb: 255, 122, 138;
+  /* リンク切れの行の強調色（文字にも使うので紙の上で読める濃さにする） */
+  --link-broken: #ff7a8a;
+  --link-broken-rgb: 255, 122, 138;
   --paper-rgb: 20, 26, 46;
   --muted-rgb: 170, 179, 204;
 
@@ -205,6 +208,11 @@
 .mobileNav {
   background: #10152a;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+/* PC の元に戻す・やり直す。暗い紺の上で埋もれないよう、アクセントの黄色で太めに縁取る */
+.shell > .historyDock {
+  border: 2px solid var(--accent);
 }
 
 /* ===== PC Desktop (≥ 1400px) ===== */

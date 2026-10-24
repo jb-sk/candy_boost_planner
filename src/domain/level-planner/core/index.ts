@@ -2,7 +2,7 @@
  * LevelPlanner - コア関数公開
  */
 
-export { solveLevelPlan, solveLevelPlanWithBudget, __levelPlannerTestHooks } from './solveLevelPlan';
+export { solveLevelPlan,__levelPlannerTestHooks } from './solveLevelPlan';
 export { findBestItemAllocation } from './itemAllocation';
 export {
   refineExactSupply,

@@ -18,6 +18,7 @@ import { calcExp, calcExpAndCandyMixed, calcExpPerCandy } from '../../../src/dom
 import { boostRules } from '../../../src/domain/pokesleep/boost-config';
 import { minBoostForTarget } from '../../../src/domain/pokesleep/minBoostForTarget';
 import { dreamShardsPerCandy, maxLevel } from '../../../src/domain/pokesleep/tables';
+import { getCandyFamilyKey } from '../../../src/domain/pokesleep/candy-family';
 
 type OracleCandidate = {
   pokemon: PokemonPlanInput & { targetExpInLevel: number; requestedBoostCandy: number; effectiveLevel: number; effectiveExp: number };
@@ -1037,7 +1038,7 @@ function pokemon(index: number, overrides: Partial<PokemonPlanInput> = {}): Poke
     priorityIndex: index,
     ...overrides,
   };
-  if (overrides.candyFamilyKey === undefined) result.candyFamilyKey = String(result.pokedexId);
+  if (overrides.candyFamilyKey === undefined) result.candyFamilyKey = getCandyFamilyKey(result.pokedexId);
   return result;
 }
 
@@ -1351,23 +1352,23 @@ describe('level planner full-plan oracle', () => {
   it.each(modes)('小さい固定ケースで計算機の結果が全プランoracleと一致する: %s', mode => {
     const cases: LevelPlannerInput[] = [
       caseInput({
-        pokemonList: [pokemon(0, { pokedexId: 1, type: 'electric' })],
-        candyInventory: { species: { '1': 3 }, typeCandy: { electric: { s: 1, m: 0 } }, universal: { s: 3, m: 1, l: 0 } },
+        pokemonList: [pokemon(0, { pokedexId: 25, type: 'electric' })],
+        candyInventory: { species: { '25': 3 }, typeCandy: { electric: { s: 1, m: 0 } }, universal: { s: 3, m: 1, l: 0 } },
       }),
       caseInput({
         pokemonList: [
-          pokemon(0, { pokedexId: 2, type: 'water', requestedBoostCandy: isLegacyLikeMode(mode) ? 0 : 2 }),
-          pokemon(1, { pokedexId: 3, type: 'water' }),
+          pokemon(0, { pokedexId: 7, type: 'water', requestedBoostCandy: isLegacyLikeMode(mode) ? 0 : 2 }),
+          pokemon(1, { pokedexId: 54, type: 'water' }),
         ],
         boost: { kind: isLegacyLikeMode(mode) ? 'none' : 'mini', limit: isLegacyLikeMode(mode) ? 0 : 2 },
-        candyInventory: { species: { '2': 1, '3': 0 }, typeCandy: { water: { s: 2, m: 1 } }, universal: { s: 8, m: 1, l: 0 } },
+        candyInventory: { species: { '7': 1, '54': 0 }, typeCandy: { water: { s: 2, m: 1 } }, universal: { s: 8, m: 1, l: 0 } },
       }),
       caseInput({
         pokemonList: [
-          pokemon(0, { pokedexId: 4, type: 'grass', candyTarget: { totalCandyUnits: 2, boostedCandyUnits: 0 } }),
-          pokemon(1, { pokedexId: 5, candyFamilyKey: '4', type: 'fire', candyTarget: { totalCandyUnits: 2, boostedCandyUnits: 0 } }),
+          pokemon(0, { pokedexId: 133, type: 'normal', candyTarget: { totalCandyUnits: 2, boostedCandyUnits: 0 } }),
+          pokemon(1, { pokedexId: 136, candyFamilyKey: '133', type: 'fire', candyTarget: { totalCandyUnits: 2, boostedCandyUnits: 0 } }),
         ],
-        candyInventory: { species: { '4': 3 }, typeCandy: { grass: { s: 1, m: 0 }, fire: { s: 1, m: 0 } }, universal: { s: 2, m: 0, l: 0 } },
+        candyInventory: { species: { '133': 3 }, typeCandy: { normal: { s: 1, m: 0 }, fire: { s: 1, m: 0 } }, universal: { s: 2, m: 0, l: 0 } },
       }),
       caseInput({
         pokemonList: [

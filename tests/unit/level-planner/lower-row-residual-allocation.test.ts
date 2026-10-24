@@ -7,6 +7,7 @@ import {
 } from '../../../src/domain/level-planner/buildPlannerInput';
 import { solveLevelPlan } from '../../../src/domain/level-planner/core/solveLevelPlan';
 import type { ItemCompareMode, LevelPlannerInput, LevelPlannerResult } from '../../../src/domain/level-planner/types';
+import { getCandyFamilyKey } from '../../../src/domain/pokesleep/candy-family';
 
 type PokemonInput = LevelPlannerInput['pokemonList'][number];
 
@@ -40,7 +41,7 @@ function targetLevelRow(params: {
   return {
     pokemonId: params.id,
     pokedexId: params.pokedexId,
-    candyFamilyKey: params.candyFamilyKey ?? String(params.pokedexId),
+    candyFamilyKey: params.candyFamilyKey ?? getCandyFamilyKey(params.pokedexId),
     name: params.id,
     type: params.type,
     currentLevel: 10,
@@ -223,6 +224,7 @@ const sleepRow = (patch: Partial<PlannerInputRowDto>): PlannerInputRowDto => ({
   expType: 600,
   nature: 'normal',
   boostReachLevel: 40,
+  candyPolicy: 'normal',
   candyTarget: undefined,
   boostCandyInput: 0,
   sleepExp: 0,
@@ -252,9 +254,9 @@ describe('フェーズ3 × 睡眠', () => {
       sleepRow({ id: 'upper', pokedexId: 25, pokemonType: 'electric', boostCandyInput: 400 }),
       sleepRow({
         id: 'lower-all', pokedexId: 143, pokemonType: 'normal',
-        sleepTargetMode: 'all', boostCandyInput: dormantBoost, sleepExp: 99_999,
+        candyPolicy: 'none', boostCandyInput: dormantBoost, sleepExp: 99_999,
       }),
-      sleepRow({ id: 'lower-plain', pokedexId: 133, pokemonType: 'psychic', dstLevel: 45, boostCandyInput: 3_000 }),
+      sleepRow({ id: 'lower-plain', pokedexId: 196, pokemonType: 'psychic', dstLevel: 45, boostCandyInput: 3_000 }),
     ], sleepSnapshot())!;
 
     // 休眠アメブ値を振っても、モード行は0のまま・下位の非モード行への付与も変わらない。
@@ -275,15 +277,18 @@ describe('フェーズ3 × 睡眠', () => {
 // ------------------------------------------------------------------
 
 /**
- * イーブイ系統のように、タイプが違っても同じアメを共有する系統（代表IDはイーブイ）。
+ * 同じアメを共有する系統の2匹。A は水タイプで、B のタイプはケースで変える。
+ * ポケモンは実在の組み合わせにする（同タイプはゼニガメ・カメール、別タイプはイーブイ系のシャワーズ・ブースター）。
  *
  * **`candyFamilyKey` は型こそ `string` だが、実装の契約は「正の整数文字列」**
  * （`feasibilityWitness.ts` の `validateDemandRows` と `candy-family.ts` の両方が `/^[1-9]\d*$/` で検査する）。
  * 破ると `invalid_candy_family_key` でその prefix ごと infeasible になり、**到達数が黙って落ちる。**
  */
-const SHARED_FAMILY = '133';
-
 type SharedFamilyCase = {
+  pokedexA: number;
+  pokedexB: number;
+  /** 系統の代表ID（`candyFamilyKey`）。 */
+  family: string;
   demandA: number;
   demandB: number;
   /** B のタイプ。A（水）と同じなら B もタイプアメを使える。 */
@@ -302,12 +307,12 @@ type SharedFamilyCase = {
 function sharedFamilyPair(testCase: SharedFamilyCase, withBlocker: boolean): LevelPlannerInput {
   const pair = [
     targetLevelRow({
-      id: 'A', pokedexId: 134, type: 'water', targetLevel: 70, priorityIndex: 0,
-      candyFamilyKey: SHARED_FAMILY, totalCandyUnits: testCase.demandA,
+      id: 'A', pokedexId: testCase.pokedexA, type: 'water', targetLevel: 70, priorityIndex: 0,
+      candyFamilyKey: testCase.family, totalCandyUnits: testCase.demandA,
     }),
     targetLevelRow({
-      id: 'B', pokedexId: 136, type: testCase.typeB, targetLevel: 70, priorityIndex: 1,
-      candyFamilyKey: SHARED_FAMILY, totalCandyUnits: testCase.demandB,
+      id: 'B', pokedexId: testCase.pokedexB, type: testCase.typeB, targetLevel: 70, priorityIndex: 1,
+      candyFamilyKey: testCase.family, totalCandyUnits: testCase.demandB,
     }),
   ];
   return {
@@ -320,7 +325,7 @@ function sharedFamilyPair(testCase: SharedFamilyCase, withBlocker: boolean): Lev
     dreamShards: 999_999_999,
     boost: { kind: 'none', limit: 0 },
     candyInventory: {
-      species: { '25': 10, [SHARED_FAMILY]: testCase.species },
+      species: { '25': 10, [testCase.family]: testCase.species },
       typeCandy: { water: { s: 0, m: testCase.typeM } },
       universal: { s: 0, m: 0, l: 0 },
     },
@@ -329,9 +334,9 @@ function sharedFamilyPair(testCase: SharedFamilyCase, withBlocker: boolean): Lev
 }
 
 /** §6 の反例そのもの。A は種族なし（タイプM単独）でも到達でき、B は種族でしか到達できない。 */
-const SAME_TYPE_CASE: SharedFamilyCase = { demandA: 25, demandB: 4, typeB: 'water', species: 4, typeM: 1 };
+const SAME_TYPE_CASE: SharedFamilyCase = { pokedexA: 7, pokedexB: 8, family: '7', demandA: 25, demandB: 4, typeB: 'water', species: 4, typeM: 1 };
 /** 掃引が出した最小例。A が「余り0の種族1個」を取ると B が死ぬ。 */
-const CROSS_TYPE_CASE: SharedFamilyCase = { demandA: 1, demandB: 1, typeB: 'fire', species: 1, typeM: 1 };
+const CROSS_TYPE_CASE: SharedFamilyCase = { pokedexA: 134, pokedexB: 136, family: '133', demandA: 1, demandB: 1, typeB: 'fire', species: 1, typeM: 1 };
 
 const pairRowsOf = (input: LevelPlannerInput) => {
   const rows = rowsOf(solveLevelPlan(input));
@@ -439,7 +444,7 @@ describe('フェーズ3 × 共有種族（§6 の反例）', () => {
       pokemonList: [
         targetLevelRow({ id: 'blocker', pokedexId: 25, type: 'electric', targetLevel: 70, priorityIndex: 0, totalCandyUnits: 1 }),
         targetLevelRow({ id: 'A', pokedexId: 7, type: 'water', targetLevel: 70, priorityIndex: 1, totalCandyUnits: 50 }),
-        targetLevelRow({ id: 'B', pokedexId: 8, type: 'water', targetLevel: 70, priorityIndex: 2, totalCandyUnits: 51 }),
+        targetLevelRow({ id: 'B', pokedexId: 54, type: 'water', targetLevel: 70, priorityIndex: 2, totalCandyUnits: 51 }),
       ],
       dreamShards: 999_999_999,
       boost: { kind: 'none', limit: 0 },
@@ -495,9 +500,9 @@ describe('フェーズ3 × 共有種族（§6 の反例）', () => {
     const input: LevelPlannerInput = {
       pokemonList: [
         targetLevelRow({ id: 'blocker', pokedexId: 25, type: 'electric', targetLevel: 70, priorityIndex: 0, totalCandyUnits: 1 }),
-        targetLevelRow({ id: 'dead', pokedexId: 133, type: 'psychic', targetLevel: 70, priorityIndex: 1, totalCandyUnits: 9_999 }),
+        targetLevelRow({ id: 'dead', pokedexId: 196, type: 'psychic', targetLevel: 70, priorityIndex: 1, totalCandyUnits: 9_999 }),
         targetLevelRow({ id: 'A', pokedexId: 7, type: 'water', targetLevel: 70, priorityIndex: 2, totalCandyUnits: 50 }),
-        targetLevelRow({ id: 'B', pokedexId: 8, type: 'water', targetLevel: 70, priorityIndex: 3, totalCandyUnits: 51 }),
+        targetLevelRow({ id: 'B', pokedexId: 54, type: 'water', targetLevel: 70, priorityIndex: 3, totalCandyUnits: 51 }),
       ],
       dreamShards: 999_999_999,
       boost: { kind: 'none', limit: 0 },

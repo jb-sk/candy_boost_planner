@@ -5,6 +5,13 @@
  */
 import { type Page, type Locator, expect } from '@playwright/test';
 
+/** 睡眠目標の選び方（`src/domain/sleep-target.ts` の `SleepTargetChoice` と同じ形） */
+export type SleepTargetChoiceInput =
+  | { base: 'none' }
+  | { base: 'hours'; hours: number }
+  | { base: 'sleep'; stock: boolean }
+  | { base: 'napIsland'; stock: boolean; ticket: boolean };
+
 export class CalcPanelPage {
   readonly page: Page;
 
@@ -65,8 +72,9 @@ export class CalcPanelPage {
     // アクションボタン
     this.exportButton = page.getByTestId('calc-export-button');
     this.clearButton = page.getByTestId('calc-clear-button');
-    this.undoButton = page.getByTestId('calc-undo-button');
-    this.redoButton = page.getByTestId('calc-redo-button');
+    // 元に戻す・やり直すはスマホ・タブレットは上部のナビ、PC は画面下中央の帯にある。見えている方を使う
+    this.undoButton = page.getByTestId('history-undo-button').filter({ visible: true });
+    this.redoButton = page.getByTestId('history-redo-button').filter({ visible: true });
     this.settingsButton = page.getByTestId('settings-open-button-desktop');
     this.copySlotButton = page.getByTestId('calc-copy-slot-button');
     this.pasteSlotButton = page.getByTestId('calc-paste-slot-button');
@@ -200,9 +208,49 @@ export class CalcPanelPage {
     await input.blur();
   }
 
-  /** 睡眠目標のドロップダウン（未設定 / 200h / 500h / 1000h / 2000h / すべて睡眠）。 */
+  /** 睡眠目標のドロップダウンを開くトリガー。閉じたときの表示（`睡眠🍬` など）がテキストになる。 */
   getRowSleepTargetSelect(row: Locator): Locator {
     return row.getByTestId('sleepTargetHours');
+  }
+
+  /** 開いている睡眠目標の一覧（`body` 直下。同時に開けるのは1つ）。 */
+  getSleepTargetDropdown(): Locator {
+    return this.page.getByTestId('sleep-target-dropdown');
+  }
+
+  /** 睡眠目標の一覧を開く。 */
+  async openSleepTarget(row: Locator): Promise<void> {
+    await this.getRowSleepTargetSelect(row).click();
+    await expect(this.getSleepTargetDropdown()).toBeVisible();
+  }
+
+  /** 開いている睡眠目標の一覧を Esc で閉じる（選択は変えない）。 */
+  async closeSleepTarget(): Promise<void> {
+    await this.page.keyboard.press('Escape');
+    await expect(this.getSleepTargetDropdown()).toHaveCount(0);
+  }
+
+  /**
+   * 睡眠目標を選ぶ（一覧を開く → チェックを合わせる → 行の名前を押す。一覧は閉じる）。
+   * 選び方は画面と同じ形（`SleepTargetChoice`）。
+   */
+  async chooseSleepTarget(row: Locator, choice: SleepTargetChoiceInput): Promise<void> {
+    await this.openSleepTarget(row);
+    const dropdown = this.getSleepTargetDropdown();
+    if (choice.base === 'sleep') {
+      // 選んでいない行のチェックでも、その行が選ばれてチェックが反映される
+      await dropdown.getByTestId('sleep-target-stock-check').setChecked(choice.stock);
+    }
+    if (choice.base === 'napIsland') {
+      await dropdown.getByTestId('sleep-target-nap-stock-check').setChecked(choice.stock);
+      await dropdown.getByTestId('sleep-target-nap-ticket-check').setChecked(choice.ticket);
+    }
+    const option = choice.base === 'none' ? 'none'
+      : choice.base === 'hours' ? `h${choice.hours}`
+      : choice.base === 'sleep' ? 'sleep'
+      : 'nap';
+    await dropdown.locator(`[data-option="${option}"]`).click();
+    await expect(dropdown).toHaveCount(0);
   }
 
   /** 累計睡眠時間の編集ポップオーバーを開くラベル添え字リンク。 */
@@ -252,10 +300,6 @@ export class CalcPanelPage {
 
   getRowDragHandle(row: Locator): Locator {
     return row.getByTestId('dragHandle');
-  }
-
-  getRowApplyToBoxButton(row: Locator): Locator {
-    return row.getByTestId('applyToBoxBtn');
   }
 
   getRowHintButton(row: Locator): Locator {

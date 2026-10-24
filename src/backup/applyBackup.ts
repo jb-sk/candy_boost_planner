@@ -15,7 +15,7 @@ import {
   serializeCalcSlots,
 } from "../persistence/calc";
 import { cancelPersist, flushPersist } from "../persistence/deferredPersist";
-import type { CandyBoostPlannerBackupV3 } from "./types";
+import type { CandyBoostPlannerBackupV4 } from "./types";
 import {
   applyRestoreWrites,
   RESTORE_PENDING_KEY,
@@ -54,7 +54,7 @@ export class BackupRollbackError extends Error {
   }
 }
 
-function restoreInternalBoxEntries(backup: CandyBoostPlannerBackupV3) {
+function restoreInternalBoxEntries(backup: CandyBoostPlannerBackupV4) {
   return backup.data.box.entries.map((entry) => ({
     ...entry,
     source: entry.rawText.trim() ? "nitoyon" as const : "manual" as const,
@@ -73,7 +73,7 @@ function clearPendingAfterRollback(storage: StorageLike): { cause: unknown } | n
   }
 }
 
-export function applyBackup(backup: CandyBoostPlannerBackupV3, options: ApplyBackupOptions = {}): void {
+export function applyBackup(backup: CandyBoostPlannerBackupV4, options: ApplyBackupOptions = {}): void {
   const storage = options.storage ?? localStorage;
   const flush = options.flush ?? (() => flushPersist());
   const cancelPending = options.cancelPending ?? (() => cancelPersist());

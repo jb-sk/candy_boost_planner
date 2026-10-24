@@ -23,6 +23,9 @@
   --accent-strong: #00b8e0;
   --danger: #f43f5e;
   --danger-rgb: 244, 63, 94;
+  /* リンク切れの行の強調色（文字にも使うので紙の上で読める濃さにする） */
+  --link-broken: #f43f5e;
+  --link-broken-rgb: 244, 63, 94;
   --paper-rgb: 15, 23, 42;
   --muted-rgb: 195, 206, 221;
 
@@ -119,6 +122,11 @@ body {
   background: rgba(var(--paper-rgb), 0.98);
 }
 
+/* テーマ選択を開いたときの角も、閉じたときと同じく角張らせる（既定は丸いボタンに合わせた値） */
+.designSwitch {
+  --designSwitch-radius: var(--radius-pill);
+}
+
 .panel {
   border: 1px solid rgba(var(--accent-rgb), 0.48);
   box-shadow:
@@ -201,6 +209,13 @@ body {
 /* ===== Mobile Nav ===== */
 .mobileNav {
   background: #0f172a;
+}
+
+/* PC の元に戻す・やり直す。テーマは角張らせる（`--radius-pill: 2px`）が、画面に浮かぶこの帯だけは
+   角丸にして、パネルの部品ではなく浮いた操作だと分かるようにする（2026-10-20 ユーザー指摘） */
+.shell > .historyDock,
+.historyDock .historyBtn {
+  border-radius: 999px;
 }
 
 /* ===== Scrollbar ===== */

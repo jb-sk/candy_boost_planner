@@ -3,7 +3,6 @@ import { CANDY_VALUES, MAX_ACCEPTABLE_SURPLUS } from '../../../src/domain/level-
 import {
   __levelPlannerTestHooks as rawLevelPlannerTestHooks,
   solveLevelPlan as solveLevelPlanCore,
-  solveLevelPlanWithBudget as solveLevelPlanWithBudgetCore,
 } from '../../../src/domain/level-planner/core/solveLevelPlan';
 import type {
   CandySupplyBreakdown,
@@ -13,6 +12,7 @@ import type {
 } from '../../../src/domain/level-planner/types';
 import { calcExp, calcExpAndCandy } from '../../../src/domain/pokesleep/exp';
 import { setPerfEnabled } from '../../../src/utils/perf';
+import { getCandyFamilyKey } from '../../../src/domain/pokesleep/candy-family';
 
 /**
  * フィクスチャの定型項目を埋める。
@@ -38,7 +38,7 @@ function withTestCandyFamilyKeys(input: TestLevelPlannerInput): LevelPlannerInpu
     ...input,
     pokemonList: input.pokemonList.map(row => ({
       ...row,
-      candyFamilyKey: row.candyFamilyKey ?? String(row.pokedexId),
+      candyFamilyKey: row.candyFamilyKey ?? getCandyFamilyKey(row.pokedexId),
       candyTarget: row.candyTarget === undefined
         ? undefined
         : {
@@ -51,13 +51,6 @@ function withTestCandyFamilyKeys(input: TestLevelPlannerInput): LevelPlannerInpu
 
 function solveLevelPlan(input: TestLevelPlannerInput) {
   return solveLevelPlanCore(withTestCandyFamilyKeys(input));
-}
-
-function solveLevelPlanWithBudget(
-  input: TestLevelPlannerInput,
-  budget: Parameters<typeof solveLevelPlanWithBudgetCore>[1],
-) {
-  return solveLevelPlanWithBudgetCore(withTestCandyFamilyKeys(input), budget);
 }
 
 const __levelPlannerTestHooks = {
@@ -130,7 +123,7 @@ describe('単一最適化パイプライン', () => {
     const result = solveLevelPlan({
       pokemonList: [
         { pokemonId: 'upper', pokedexId: 25, name: '上位', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 11, expType: 600, nature: 'normal', requestedBoostCandy: 100, boostAllowed: true, priorityIndex: 0 },
-        { pokemonId: 'boundary', pokedexId: 26, name: '境界', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 30, expType: 600, nature: 'normal', requestedBoostCandy: 100, boostAllowed: true, priorityIndex: 1 },
+        { pokemonId: 'boundary', pokedexId: 179, name: '境界', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 30, expType: 600, nature: 'normal', requestedBoostCandy: 100, boostAllowed: true, priorityIndex: 1 },
       ],
       dreamShards: 0,
       boost: { kind: 'full', limit: 200 },
@@ -147,42 +140,40 @@ describe('単一最適化パイプライン', () => {
     expect(result.summary.boundaryPokemonId).toBe('upper');
   });
 
-  it('fbl01d exactはソフト締切でprefixを途中採用せず、到達可能なクレセリアまで配分する', () => {
-    const outcome = solveLevelPlanWithBudget({
+  it('fbl01d exactは6行の入力でも、到達可能なクレセリアまで配分する', () => {
+    const result = solveLevelPlan({
       pokemonList: [
-        { pokemonId: 'pawmot', pokedexId: 923, name: '80パーモット', type: 'electric', currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, expType: 1080, nature: 'normal', requestedBoostCandy: 316, boostAllowed: true, priorityIndex: 0 },
-        { pokemonId: 'cramorant', pokedexId: 845, name: '70ウッウ（油）', type: 'flying', currentLevel: 68, currentExpInLevel: 198, targetLevel: 70, expType: 900, nature: 'down', requestedBoostCandy: 264, boostAllowed: true, priorityIndex: 1 },
+        { pokemonId: 'raikou', pokedexId: 243, name: '80ライコウ', type: 'electric', currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, expType: 1080, nature: 'normal', requestedBoostCandy: 316, boostAllowed: true, priorityIndex: 0 },
+        { pokemonId: 'tyranitar', pokedexId: 248, name: '70バンギラス', type: 'dark', currentLevel: 68, currentExpInLevel: 198, targetLevel: 70, expType: 900, nature: 'down', requestedBoostCandy: 264, boostAllowed: true, priorityIndex: 1 },
         { pokemonId: 'sylveon', pokedexId: 700, name: '70仮ニンフィア', type: 'fairy', currentLevel: 16, currentExpInLevel: 0, targetLevel: 70, expType: 600, nature: 'down', requestedBoostCandy: 3598, boostAllowed: true, priorityIndex: 2 },
-        { pokemonId: 'dragonite', pokedexId: 149, name: '80カイリュー', type: 'dragon', currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, expType: 1080, nature: 'normal', requestedBoostCandy: 948, boostAllowed: true, priorityIndex: 3 },
-        { pokemonId: 'swalot', pokedexId: 317, name: '70マルノーム', type: 'poison', currentLevel: 57, currentExpInLevel: 1553, targetLevel: 60, expType: 1080, nature: 'down', requestedBoostCandy: 308, boostAllowed: true, priorityIndex: 4 },
+        { pokemonId: 'latios', pokedexId: 381, name: '80ラティオス', type: 'dragon', currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, expType: 1080, nature: 'normal', requestedBoostCandy: 948, boostAllowed: true, priorityIndex: 3 },
+        { pokemonId: 'suicune', pokedexId: 245, name: '70スイクン', type: 'water', currentLevel: 57, currentExpInLevel: 1553, targetLevel: 60, expType: 1080, nature: 'down', requestedBoostCandy: 308, boostAllowed: true, priorityIndex: 4 },
         { pokemonId: 'cresselia', pokedexId: 488, name: '70仮クレセリア', type: 'psychic', currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, expType: 1080, nature: 'normal', requestedBoostCandy: 1138, boostAllowed: true, priorityIndex: 5 },
       ],
       dreamShards: 10_000_000,
       boost: { kind: 'mini', limit: 350 },
       candyInventory: {
-        species: { '923': 181, '845': 0, '700': 2947, '149': 436, '317': 272, '488': 500 },
+        species: { '243': 181, '246': 0, '133': 2947, '381': 436, '245': 272, '488': 500 },
         typeCandy: {
           electric: { s: 0, m: 0 },
-          flying: { s: 0, m: 0 },
+          dark: { s: 0, m: 0 },
           fairy: { s: 0, m: 10 },
           dragon: { s: 13, m: 0 },
-          poison: { s: 0, m: 2 },
+          water: { s: 0, m: 2 },
           psychic: { s: 18, m: 10 },
         },
         universal: { s: 432, m: 102, l: 9 },
       },
       options: { itemCompareMode: 'legacyImproved' },
-    }, { calculationMode: 'exact', deadlineMs: 20 });
+    });
 
-    expect(outcome.kind).toBe('result');
-    if (outcome.kind !== 'result') return;
-    const cresselia = outcome.result.pokemonResults.find(row => row.pokemonId === 'cresselia');
+    const cresselia = result.pokemonResults.find(row => row.pokemonId === 'cresselia');
     expect(cresselia?.candyDemandMet).toBe(true);
     expect(cresselia?.reachableLine.level).toBe(70);
   });
 
   it('fbl01d exactは到達不能な下位ゼロ行を到達済み扱いにしない', () => {
-    const outcome = solveLevelPlanWithBudget({
+    const result = solveLevelPlan({
       pokemonList: [
         { pokemonId: 'cresselia', pokedexId: 488, name: '70仮クレセリア', type: 'psychic', currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, expType: 1080, nature: 'normal', requestedBoostCandy: 1138, boostAllowed: true, priorityIndex: 0 },
         { pokemonId: 'lower-zero', pokedexId: 244, name: '下位ゼロ', type: 'fire', currentLevel: 50, currentExpInLevel: 0, targetLevel: 60, expType: 1080, nature: 'down', requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 100 }, priorityIndex: 1 },
@@ -198,12 +189,10 @@ describe('単一最適化パイプライン', () => {
         universal: { s: 0, m: 0, l: 0 },
       },
       options: { itemCompareMode: 'legacyImproved' },
-    }, { calculationMode: 'exact', deadlineMs: 20 });
+    });
 
-    expect(outcome.kind).toBe('result');
-    if (outcome.kind !== 'result') return;
-    const cresselia = outcome.result.pokemonResults.find(row => row.pokemonId === 'cresselia');
-    const lowerZero = outcome.result.pokemonResults.find(row => row.pokemonId === 'lower-zero');
+    const cresselia = result.pokemonResults.find(row => row.pokemonId === 'cresselia');
+    const lowerZero = result.pokemonResults.find(row => row.pokemonId === 'lower-zero');
     expect(cresselia?.candyDemandMet).toBe(true);
     expect(cresselia?.reachableLine.totalCandyUnitsUsed).toBeGreaterThan(0);
     expect(lowerZero?.candyDemandMet).toBe(false);
@@ -243,23 +232,23 @@ describe('単一最適化パイプライン', () => {
     __levelPlannerTestHooks.clearCandidateCache();
     const input: TestLevelPlannerInput = {
       pokemonList: [
-        { pokemonId: 'pawmot', pokedexId: 923, name: '80パーモット', type: 'electric', currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, expType: 1080, nature: 'normal', requestedBoostCandy: 316, boostAllowed: true, priorityIndex: 0 },
-        { pokemonId: 'cramorant', pokedexId: 845, name: '70ウッウ（油）', type: 'flying', currentLevel: 68, currentExpInLevel: 198, targetLevel: 70, expType: 900, nature: 'down', requestedBoostCandy: 264, boostAllowed: true, priorityIndex: 1 },
+        { pokemonId: 'raikou', pokedexId: 243, name: '80ライコウ', type: 'electric', currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, expType: 1080, nature: 'normal', requestedBoostCandy: 316, boostAllowed: true, priorityIndex: 0 },
+        { pokemonId: 'tyranitar', pokedexId: 248, name: '70バンギラス', type: 'dark', currentLevel: 68, currentExpInLevel: 198, targetLevel: 70, expType: 900, nature: 'down', requestedBoostCandy: 264, boostAllowed: true, priorityIndex: 1 },
         { pokemonId: 'sylveon', pokedexId: 700, name: '70仮ニンフィア', type: 'fairy', currentLevel: 16, currentExpInLevel: 0, targetLevel: 70, expType: 600, nature: 'down', requestedBoostCandy: 3598, boostAllowed: true, priorityIndex: 2 },
-        { pokemonId: 'dragonite', pokedexId: 149, name: '80カイリュー', type: 'dragon', currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, expType: 1080, nature: 'normal', requestedBoostCandy: 948, boostAllowed: true, priorityIndex: 3 },
-        { pokemonId: 'swalot', pokedexId: 317, name: '70マルノーム', type: 'poison', currentLevel: 57, currentExpInLevel: 1553, targetLevel: 60, expType: 1080, nature: 'down', requestedBoostCandy: 308, boostAllowed: true, priorityIndex: 4 },
+        { pokemonId: 'latios', pokedexId: 381, name: '80ラティオス', type: 'dragon', currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, expType: 1080, nature: 'normal', requestedBoostCandy: 948, boostAllowed: true, priorityIndex: 3 },
+        { pokemonId: 'suicune', pokedexId: 245, name: '70スイクン', type: 'water', currentLevel: 57, currentExpInLevel: 1553, targetLevel: 60, expType: 1080, nature: 'down', requestedBoostCandy: 308, boostAllowed: true, priorityIndex: 4 },
         { pokemonId: 'cresselia', pokedexId: 488, name: '70仮クレセリア', type: 'psychic', currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, expType: 1080, nature: 'normal', requestedBoostCandy: 1138, boostAllowed: true, priorityIndex: 5 },
       ],
       dreamShards: 10_000_000,
       boost: { kind: 'mini', limit: 350 },
       candyInventory: {
-        species: { '923': 181, '845': 0, '700': 2947, '149': 436, '317': 272, '488': 500 },
+        species: { '243': 181, '246': 0, '133': 2947, '381': 436, '245': 272, '488': 500 },
         typeCandy: {
           electric: { s: 0, m: 0 },
-          flying: { s: 0, m: 0 },
+          dark: { s: 0, m: 0 },
           fairy: { s: 0, m: 10 },
           dragon: { s: 13, m: 0 },
-          poison: { s: 0, m: 2 },
+          water: { s: 0, m: 2 },
           psychic: { s: 18, m: 10 },
         },
         universal: { s: 432, m: 102, l: 9 },
@@ -267,22 +256,19 @@ describe('単一最適化パイプライン', () => {
       options: { itemCompareMode: 'legacyImproved' },
     };
 
-    const first = solveLevelPlanWithBudget(input, { calculationMode: 'exact', deadlineMs: 30_000 });
+    const first = solveLevelPlan(input);
     const cacheSize = __levelPlannerTestHooks.fbl01dFrontierCacheSize();
-    const second = solveLevelPlanWithBudget(input, { calculationMode: 'exact', deadlineMs: 30_000 });
-    expect(first.kind).toBe('result');
-    expect(second.kind).toBe('result');
-    if (first.kind !== 'result' || second.kind !== 'result') return;
+    const second = solveLevelPlan(input);
     expect(cacheSize).toBeGreaterThan(0);
     // 供給内訳refineは250msで打ち切る任意処理なので、CPU負荷とcacheの温冷により
     // 同価な行別内訳は変わり得る。cache不変条件はfbl01dが厳密保証する軸に限定する。
-    expect(second.result.pokemonResults.map(row => ({
+    expect(second.pokemonResults.map(row => ({
       id: row.pokemonId,
       level: row.reachableLine.level,
       exp: row.reachableLine.expInLevel,
       candyDemandMet: row.reachableLine.candyDemandMet,
       totalCandy: row.reachableLine.totalCandyUnitsUsed,
-    }))).toEqual(first.result.pokemonResults.map(row => ({
+    }))).toEqual(first.pokemonResults.map(row => ({
       id: row.pokemonId,
       level: row.reachableLine.level,
       exp: row.reachableLine.expInLevel,
@@ -298,7 +284,7 @@ describe('単一最適化パイプライン', () => {
     const input = {
       pokemonList: [
         { pokemonId: 'first', pokedexId: 25, name: '一体目', type: 'electric' as const, currentLevel: 10, currentExpInLevel: 0, targetLevel: 11, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 10, boostAllowed: true, priorityIndex: 0 },
-        { pokemonId: 'second', pokedexId: 26, name: '二体目', type: 'electric' as const, currentLevel: 10, currentExpInLevel: 0, targetLevel: 11, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 10, boostAllowed: true, priorityIndex: 1 },
+        { pokemonId: 'second', pokedexId: 179, name: '二体目', type: 'electric' as const, currentLevel: 10, currentExpInLevel: 0, targetLevel: 11, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 10, boostAllowed: true, priorityIndex: 1 },
       ],
       dreamShards: Infinity,
       boost: { kind: 'none' as const, limit: 0 },
@@ -472,7 +458,7 @@ describe('単一最適化パイプライン', () => {
     const result = solveLevelPlan({
       pokemonList: [
         { pokemonId: 'upper', pokedexId: 25, name: '上位', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 11, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 0 },
-        { pokemonId: 'boundary', pokedexId: 26, name: '境界', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 1 },
+        { pokemonId: 'boundary', pokedexId: 179, name: '境界', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 1 },
       ],
       dreamShards: Infinity,
       boost: { kind: 'none', limit: 0 },
@@ -513,7 +499,7 @@ describe('単一最適化パイプライン', () => {
       pokemonList: [{ pokemonId: 'target-display-stock', pokedexId: 76, name: '目標行在庫', type: 'rock', currentLevel: 29, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 0 }],
       dreamShards: Infinity,
       boost: { kind: 'mini', limit: 350 },
-      candyInventory: { species: { '76': 12 }, typeCandy: { rock: { s: 0, m: 3 } }, universal: { s: 0, m: 0, l: 0 } },
+      candyInventory: { species: { '74': 12 }, typeCandy: { rock: { s: 0, m: 3 } }, universal: { s: 0, m: 0, l: 0 } },
       options: { itemCompareMode: 'surplusFirst' },
     });
     const p = result.pokemonResults[0];
@@ -589,7 +575,7 @@ describe('単一最適化パイプライン', () => {
       }],
       dreamShards: Infinity,
       boost: { kind: 'mini', limit: 350 },
-      candyInventory: { species: { '76': 0 }, typeCandy: { Rock: { s: 0, m: 3 } }, universal: { s: 0, m: 0, l: 0 } },
+      candyInventory: { species: { '74': 0 }, typeCandy: { Rock: { s: 0, m: 3 } }, universal: { s: 0, m: 0, l: 0 } },
       options: { itemCompareMode: 'legacyImproved' },
     });
     const p = result.pokemonResults[0];
@@ -643,9 +629,9 @@ describe('単一最適化パイプライン', () => {
     // 「需要ちょうどに対して内訳が組まれ、隣接する指定値の間で内訳が飛ばない」こと。
     const row = (candyTarget?: number): TestLevelPlannerInput => ({
       pokemonList: [{
-        pokemonId: 'cramorant',
-        pokedexId: 845,
-        name: '70ウッウ',
+        pokemonId: 'suicune',
+        pokedexId: 245,
+        name: '70スイクン',
         type: 'water',
         currentLevel: 68,
         currentExpInLevel: calcExp(68, 69, 1080) - 2_991,
@@ -660,7 +646,7 @@ describe('単一最適化パイプライン', () => {
       }],
       dreamShards: 5_000_000,
       boost: { kind: 'full', limit: 1_000 },
-      candyInventory: { species: { '845': 0 }, typeCandy: { water: { s: 0, m: 0 } }, universal: { s: 60, m: 5, l: 1 } },
+      candyInventory: { species: { '245': 0 }, typeCandy: { water: { s: 0, m: 0 } }, universal: { s: 60, m: 5, l: 1 } },
       options: { itemCompareMode: 'surplusFirst' },
     });
     const base = solveLevelPlan(row()).pokemonResults[0].targetLine;
@@ -795,7 +781,7 @@ describe('単一最適化パイプライン', () => {
     const result = solveLevelPlan({
       pokemonList: [
         { pokemonId: 'upper', pokedexId: 25, name: '上位', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 11, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 0 },
-        { pokemonId: 'lower', pokedexId: 26, name: '下位', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 1 },
+        { pokemonId: 'lower', pokedexId: 179, name: '下位', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 1 },
       ],
       dreamShards: Infinity,
       boost: { kind: 'none', limit: 0 },
@@ -884,16 +870,11 @@ describe('単一最適化パイプライン', () => {
     expect(suicune.shortage.boostCandyUnavailable).toBe(0);
   });
 
-  it('余り最小の供給検算中は時間deadlineで打ち切らない', () => {
-    const outcome = solveLevelPlanWithBudget(constrainedCandyTargetInput('surplusFirst'), {
-      calculationMode: 'exact',
-      deadlineMs: 0,
-    });
+  it('余り最小で個数指定が制約される入力でも、アメを配る', () => {
+    const result = solveLevelPlan(constrainedCandyTargetInput('surplusFirst'));
 
-    expect(outcome.kind).toBe('result');
-    if (outcome.kind !== 'result') return;
-    expect(outcome.result.pokemonResults.some(result => result.reachableLine.totalCandyUnitsUsed > 0)).toBe(true);
-    expect(outcome.result.pokemonResults[0].reachableLine.totalCandyUnitsUsed).toBeGreaterThan(0);
+    expect(result.pokemonResults.some(row => row.reachableLine.totalCandyUnitsUsed > 0)).toBe(true);
+    expect(result.pokemonResults[0].reachableLine.totalCandyUnitsUsed).toBeGreaterThan(0);
   });
 
   it('個数指定のアメブ数が明示されている場合は通常アメに置き換えない', () => {
@@ -934,7 +915,7 @@ describe('単一最適化パイプライン', () => {
     const run = (candyTarget: number | undefined) => {
       const p = solveLevelPlan({
         pokemonList: [{
-          pokemonId: 'p', pokedexId: 780, candyFamilyKey: '780', name: '配分一致', type: 'dragon',
+          pokemonId: 'p', pokedexId: 149, name: '配分一致', type: 'dragon',
           currentLevel: 25, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0,
           expType: 900, nature: 'down', requestedBoostCandy: 1728, boostAllowed: true,
           priorityIndex: 0,
@@ -945,7 +926,7 @@ describe('単一最適化パイプライン', () => {
         // かけらだけを絞る。アメ在庫とアメブ枠は潤沢
         dreamShards: 2_005_255,
         boost: { kind: 'full', limit: 3500 },
-        candyInventory: { species: { '780': 656 }, typeCandy: { dragon: { s: 0, m: 0 } }, universal: { s: 0, m: 0, l: 3000 } },
+        candyInventory: { species: { '147': 656 }, typeCandy: { dragon: { s: 0, m: 0 } }, universal: { s: 0, m: 0, l: 3000 } },
         options: { itemCompareMode: 'legacyImproved' },
       } as unknown as LevelPlannerInput).pokemonResults[0].reachableLine;
       return { boost: p.boostedCandyUnits, normal: p.nonBoostCandyUnits };
@@ -1025,11 +1006,11 @@ describe('単一最適化パイプライン', () => {
     const result = solveLevelPlan({
       pokemonList: [
         { pokemonId: 'fixed-upper', pokedexId: 25, name: '固定上位', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 8, boostAllowed: true, candyTarget: { totalCandyUnits: 12, boostedCandyUnits: 8 }, priorityIndex: 0 },
-        { pokemonId: 'fixed-lower', pokedexId: 26, name: '固定下位', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 8, boostAllowed: true, candyTarget: { totalCandyUnits: 12, boostedCandyUnits: 8 }, priorityIndex: 1 },
+        { pokemonId: 'fixed-lower', pokedexId: 179, name: '固定下位', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 8, boostAllowed: true, candyTarget: { totalCandyUnits: 12, boostedCandyUnits: 8 }, priorityIndex: 1 },
       ],
       dreamShards: Infinity,
       boost: { kind: 'full', limit: 10 },
-      candyInventory: { species: { '25': 12, '26': 12 }, typeCandy: { electric: { s: 0, m: 0 } }, universal: { s: 0, m: 0, l: 0 } },
+      candyInventory: { species: { '25': 12, '179': 12 }, typeCandy: { electric: { s: 0, m: 0 } }, universal: { s: 0, m: 0, l: 0 } },
       options: { itemCompareMode: 'surplusFirst' },
     });
 
@@ -1089,7 +1070,7 @@ describe('単一最適化パイプライン', () => {
       pokemonList: [{ pokemonId: 'species-first-large', pokedexId: 923, name: '種族先使い切り', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 632 }, priorityIndex: 0 }],
       dreamShards: Infinity,
       boost: { kind: 'none', limit: 0 },
-      candyInventory: { species: { '923': 319 }, typeCandy: { electric: { s: 0, m: 0 } }, universal: { s: 200, m: 20, l: 0 } },
+      candyInventory: { species: { '921': 319 }, typeCandy: { electric: { s: 0, m: 0 } }, universal: { s: 200, m: 20, l: 0 } },
       options: { itemCompareMode: 'legacyImproved' },
     });
 
@@ -1101,7 +1082,7 @@ describe('単一最適化パイプライン', () => {
   it('バランスは上位が万能Sを使い切った後でも下位を残った万能Mで到達させる', () => {
     const result = solveLevelPlan({
       pokemonList: [
-        { pokemonId: 'uses-s', pokedexId: 26, name: 'S使用', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 3 }, priorityIndex: 0 },
+        { pokemonId: 'uses-s', pokedexId: 179, name: 'S使用', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 3 }, priorityIndex: 0 },
         { pokemonId: 'uses-m-after-s', pokedexId: 25, name: 'Mで補う', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 100 }, priorityIndex: 1 },
       ],
       dreamShards: Infinity,
@@ -1118,7 +1099,7 @@ describe('単一最適化パイプライン', () => {
   it('バランスは初期在庫で万能S余り0でも上位消費後に備えて万能Mの代替候補を残す', () => {
     const result = solveLevelPlan({
       pokemonList: [
-        { pokemonId: 'upper-s', pokedexId: 26, name: '上位S', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 3 }, priorityIndex: 0 },
+        { pokemonId: 'upper-s', pokedexId: 179, name: '上位S', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 3 }, priorityIndex: 0 },
         { pokemonId: 'lower-m-alternative', pokedexId: 25, name: '下位M代替', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 100 }, priorityIndex: 1 },
       ],
       dreamShards: Infinity,
@@ -1139,7 +1120,7 @@ describe('単一最適化パイプライン', () => {
     const input = {
       pokemonList: [
         { pokemonId: 'fixed-value-frontier', pokedexId: 25, name: '固定値候補', type: 'electric' as const, currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 300 }, priorityIndex: 0 },
-        { pokemonId: 'future-type-need', pokedexId: 26, name: '後続タイプ要求', type: 'electric' as const, currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 104 }, priorityIndex: 1 },
+        { pokemonId: 'future-type-need', pokedexId: 179, name: '後続タイプ要求', type: 'electric' as const, currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, candyTarget: { totalCandyUnits: 104 }, priorityIndex: 1 },
       ],
       dreamShards: Infinity,
       boost: { kind: 'none' as const, limit: 0 },
@@ -1331,13 +1312,13 @@ describe('単一最適化パイプライン', () => {
     const base = {
       pokemonList: [
         { pokemonId: 'latias-lvmax-boundary-regression', pokedexId: 380, name: '70ラティアス', type: 'dragon' as const, currentLevel: 55, currentExpInLevel: 4103, targetLevel: 70, expType: 1080 as const, nature: 'normal' as const, requestedBoostCandy: 1561, boostAllowed: true, priorityIndex: 0 },
-        { pokemonId: 'drampa-lvmax-boundary-regression', pokedexId: 780, name: '80仮ジジーロン', type: 'dragon' as const, currentLevel: 25, currentExpInLevel: 622, targetLevel: 60, expType: 900 as const, nature: 'down' as const, requestedBoostCandy: 998, boostAllowed: true, priorityIndex: 1 },
+        { pokemonId: 'dragonite-lvmax-boundary-regression', pokedexId: 149, name: '80仮カイリュー', type: 'dragon' as const, currentLevel: 25, currentExpInLevel: 622, targetLevel: 60, expType: 900 as const, nature: 'down' as const, requestedBoostCandy: 998, boostAllowed: true, priorityIndex: 1 },
         { pokemonId: 'suicune-lvmax-boundary-regression', pokedexId: 245, name: '70スイクン', type: 'water' as const, currentLevel: 61, currentExpInLevel: 5259, targetLevel: 70, expType: 1080 as const, nature: 'down' as const, requestedBoostCandy: 941, boostAllowed: true, priorityIndex: 2 },
       ],
       dreamShards: 9_999_329,
       boost: { kind: 'full' as const, limit: 3500 },
       candyInventory: {
-        species: { '380': 319, '780': 656, '245': 478 },
+        species: { '380': 319, '147': 656, '245': 478 },
         typeCandy: { dragon: { s: 13, m: 0 }, water: { s: 0, m: 0 } },
         universal: { s: 432, m: 102, l: 9 },
       },
@@ -1388,11 +1369,11 @@ describe('単一最適化パイプライン', () => {
     const result = solveLevelPlan({
       pokemonList: [
         { pokemonId: 'upper', pokedexId: 25, name: '上位', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 20, expType: 600, nature: 'normal', requestedBoostCandy: 8, boostAllowed: true, priorityIndex: 0 },
-        { pokemonId: 'lower', pokedexId: 26, name: '下位', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 20, expType: 600, nature: 'normal', requestedBoostCandy: 10, boostAllowed: true, priorityIndex: 1 },
+        { pokemonId: 'lower', pokedexId: 179, name: '下位', type: 'electric', currentLevel: 10, currentExpInLevel: 0, targetLevel: 20, expType: 600, nature: 'normal', requestedBoostCandy: 10, boostAllowed: true, priorityIndex: 1 },
       ],
       dreamShards: Infinity,
       boost: { kind: 'mini', limit: 10 },
-      candyInventory: { species: { '25': 500, '26': 500 }, typeCandy: { electric: { s: 0, m: 0 } }, universal: { s: 0, m: 0, l: 0 } },
+      candyInventory: { species: { '25': 500, '179': 500 }, typeCandy: { electric: { s: 0, m: 0 } }, universal: { s: 0, m: 0, l: 0 } },
       options: { itemCompareMode: 'legacyImproved' },
     });
 
@@ -1511,7 +1492,7 @@ describe('単一最適化パイプライン', () => {
       // 上位行が枠900を使い切り、下位行には枠が回らない
       pokemonList: [
         buildRow('upper', 25, 0),
-        buildRow('lower', 133, 1, extra),
+        buildRow('lower', 179, 1, extra),
       ],
       // アメ・かけらは潤沢。アメブ枠だけを絞る
       dreamShards: 999_999_999,
@@ -1548,7 +1529,7 @@ describe('単一最適化パイプライン', () => {
 
     const result = solveLevelPlan({
       // 上位が枠300を使い、下位には100しか残らない
-      pokemonList: [buildRow('row0', 25, 0), buildRow('row1', 133, 1)],
+      pokemonList: [buildRow('row0', 25, 0), buildRow('row1', 179, 1)],
       dreamShards: 10_000_000,
       boost: { kind: 'full', limit: 400 },
       candyInventory: { species: {}, typeCandy: {}, universal: { s: 1000, m: 100, l: 10 } },
@@ -1603,7 +1584,7 @@ describe('単一最適化パイプライン', () => {
       dreamShards: Infinity,
       boost: { kind: boostKind, limit: boostKind === 'none' ? 0 : 350 },
       candyInventory: {
-        species: { '317': 272 },
+        species: { '316': 272 },
         typeCandy: { poison: { s: 0, m: 4 } },
         universal: { s: 4, m: 0, l: 0 },
       },
@@ -1630,7 +1611,7 @@ describe('単一最適化パイプライン', () => {
       dreamShards: Infinity,
       boost: { kind: 'mini' as const, limit: 350 },
       candyInventory: {
-        species: { '317': 272 },
+        species: { '316': 272 },
         typeCandy: { poison: { s: 0, m: 4 } },
         universal: { s: 0, m: 2, l: 0 },
       },
@@ -1660,7 +1641,7 @@ describe('単一最適化パイプライン', () => {
       dreamShards: Infinity,
       boost: { kind: 'mini' as const, limit: 350 },
       candyInventory: {
-        species: { '10001': 181, '10002': 0, '10003': 2947, '10004': 436, '317': 272 },
+        species: { '10001': 181, '10002': 0, '10003': 2947, '10004': 436, '316': 272 },
         typeCandy: {
           electric: { s: 0, m: 0 },
           flying: { s: 0, m: 0 },
@@ -1688,12 +1669,12 @@ describe('単一最適化パイプライン', () => {
     const base: TestLevelPlannerInput = {
       pokemonList: [
         { pokemonId: 'surplus-first-upper', pokedexId: 317, name: '上位マルノーム', type: 'poison' as const, currentLevel: 57, currentExpInLevel: 1553, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'down' as const, candyTarget: { totalCandyUnits: 308 }, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 0 },
-        { pokemonId: 'surplus-first-boundary', pokedexId: 244, name: '境界エンテイ', type: 'fire' as const, currentLevel: 50, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'down' as const, candyTarget: { totalCandyUnits: 24 }, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 1 },
+        { pokemonId: 'surplus-first-boundary', pokedexId: 136, name: '境界ブースター', type: 'fire' as const, currentLevel: 50, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'down' as const, candyTarget: { totalCandyUnits: 24 }, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 1 },
       ],
       dreamShards: Infinity,
       boost: { kind: 'none' as const, limit: 0 },
       candyInventory: {
-        species: { '317': 272 },
+        species: { '316': 272 },
         typeCandy: { poison: { s: 0, m: 2 }, fire: { s: 0, m: 0 } },
         universal: { s: 4, m: 0, l: 0 },
       },
@@ -1726,9 +1707,9 @@ describe('単一最適化パイプライン', () => {
     const basePokemon = { type: 'normal' as const, currentLevel: 10, currentExpInLevel: 0, targetLevel: 11, targetExpInLevel: 0, expType: 600 as const, nature: 'normal' as const, candyTarget: { totalCandyUnits: 6 }, requestedBoostCandy: 0, boostAllowed: true };
     const result = solveLevelPlan({
       pokemonList: [
-        { ...basePokemon, pokemonId: 'surplus-drop-1', pokedexId: 1, name: '余り低下1', priorityIndex: 0 },
-        { ...basePokemon, pokemonId: 'surplus-drop-2', pokedexId: 2, name: '余り低下2', priorityIndex: 1 },
-        { ...basePokemon, pokemonId: 'surplus-drop-3', pokedexId: 3, name: '余り低下3', priorityIndex: 2 },
+        { ...basePokemon, pokemonId: 'surplus-drop-1', pokedexId: 19, name: '余り低下1', priorityIndex: 0 },
+        { ...basePokemon, pokemonId: 'surplus-drop-2', pokedexId: 52, name: '余り低下2', priorityIndex: 1 },
+        { ...basePokemon, pokemonId: 'surplus-drop-3', pokedexId: 115, name: '余り低下3', priorityIndex: 2 },
       ],
       dreamShards: Infinity,
       boost: { kind: 'none' as const, limit: 0 },
@@ -1749,9 +1730,9 @@ describe('単一最適化パイプライン', () => {
     const basePokemon = { type: 'normal' as const, currentLevel: 10, currentExpInLevel: 0, targetLevel: 11, targetExpInLevel: 0, expType: 600 as const, nature: 'normal' as const, candyTarget: { totalCandyUnits: 19 }, requestedBoostCandy: 0, boostAllowed: true };
     const result = solveLevelPlan({
       pokemonList: [
-        { ...basePokemon, pokemonId: 'surplus-total-1', pokedexId: 1, name: '全体余り1', priorityIndex: 0 },
-        { ...basePokemon, pokemonId: 'surplus-total-2', pokedexId: 2, name: '全体余り2', priorityIndex: 1 },
-        { ...basePokemon, pokemonId: 'surplus-total-3', pokedexId: 3, name: '全体余り3', priorityIndex: 2 },
+        { ...basePokemon, pokemonId: 'surplus-total-1', pokedexId: 19, name: '全体余り1', priorityIndex: 0 },
+        { ...basePokemon, pokemonId: 'surplus-total-2', pokedexId: 52, name: '全体余り2', priorityIndex: 1 },
+        { ...basePokemon, pokemonId: 'surplus-total-3', pokedexId: 115, name: '全体余り3', priorityIndex: 2 },
       ],
       dreamShards: Infinity,
       boost: { kind: 'none' as const, limit: 0 },
@@ -1787,7 +1768,7 @@ describe('単一最適化パイプライン', () => {
       dreamShards: 10_000_000,
       boost: { kind: 'mini' as const, limit: 350 },
       candyInventory: {
-        species: { '923': 181, '845': 0 },
+        species: { '921': 181, '845': 0 },
         typeCandy: { electric: { s: 0, m: 0 }, flying: { s: 0, m: 0 } },
         universal: { s: 0, m: 20, l: 0 },
       },
@@ -1813,7 +1794,7 @@ describe('単一最適化パイプライン', () => {
       dreamShards: 10_000_000,
       boost: { kind: 'mini' as const, limit: 350 },
       candyInventory: {
-        species: { '923': 181, '845': 0 },
+        species: { '921': 181, '845': 0 },
         typeCandy: { electric: { s: 0, m: 0 }, flying: { s: 0, m: 0 } },
         universal: { s: 0, m: 102, l: 9 },
       },
@@ -1835,7 +1816,7 @@ describe('単一最適化パイプライン', () => {
       dreamShards: 10_000_000,
       boost: { kind: 'mini' as const, limit: 350 },
       candyInventory: {
-        species: { '923': 181, '845': 0 },
+        species: { '921': 181, '845': 0 },
         typeCandy: { electric: { s: 0, m: 0 }, flying: { s: 0, m: 0 } },
         universal: { s: 6, m: 102, l: 9 },
       },
@@ -1853,18 +1834,18 @@ describe('単一最適化パイプライン', () => {
         { pokemonId: 'pawmot-few-l', pokedexId: 923, name: '万能L残りパーモット', type: 'electric' as const, currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 316, boostAllowed: true, priorityIndex: 0 },
         { pokemonId: 'cramorant-few-l', pokedexId: 845, name: '万能L残りウッウ', type: 'flying' as const, currentLevel: 68, currentExpInLevel: 198, targetLevel: 70, targetExpInLevel: 0, expType: 600 as const, nature: 'down' as const, requestedBoostCandy: 34, boostAllowed: true, priorityIndex: 1 },
         { pokemonId: 'sylveon-few-l', pokedexId: 700, name: '万能L残りニンフィア', type: 'fairy' as const, currentLevel: 16, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0, expType: 600 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 2 },
-        { pokemonId: 'dragonite-few-l', pokedexId: 149, name: '万能L残りカイリュー', type: 'dragon' as const, currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0, expType: 1080 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 3 },
+        { pokemonId: 'latios-few-l', pokedexId: 381, name: '万能L残りラティオス', type: 'dragon' as const, currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0, expType: 1080 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 3 },
         { pokemonId: 'gulpin-few-l', pokedexId: 317, name: '万能L残りマルノーム', type: 'poison' as const, currentLevel: 57, currentExpInLevel: 1553, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 4 },
         { pokemonId: 'cresselia-few-l', pokedexId: 488, name: '万能L残りクレセリア', type: 'psychic' as const, currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0, expType: 1080 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 5 },
         { pokemonId: 'entei-few-l', pokedexId: 244, name: '万能L残りエンテイ', type: 'fire' as const, currentLevel: 50, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 1080 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 6 },
-        { pokemonId: 'flareon-few-l', pokedexId: 136, name: '万能L残りブースター', type: 'fire' as const, currentLevel: 50, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 7 },
+        { pokemonId: 'charmander-few-l', pokedexId: 4, name: '万能L残りヒトカゲ', type: 'fire' as const, currentLevel: 50, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 7 },
         { pokemonId: 'kangaskhan-few-l', pokedexId: 115, name: '万能L残りガルーラ', type: 'normal' as const, currentLevel: 53, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 8 },
-        { pokemonId: 'raikou-few-l', pokedexId: 243, name: '万能L残りライコウ', type: 'electric' as const, currentLevel: 50, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 9 },
+        { pokemonId: 'pikachu-few-l', pokedexId: 25, name: '万能L残りピカチュウ', type: 'electric' as const, currentLevel: 50, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 9 },
       ],
       dreamShards: 10_000_000,
       boost: { kind: 'mini' as const, limit: 350 },
       candyInventory: {
-        species: { '923': 181, '845': 0, '700': 2947, '149': 436, '317': 272, '488': 500, '244': 100, '136': 2, '115': 0, '243': 0 },
+        species: { '921': 181, '845': 0, '133': 2947, '381': 436, '316': 272, '488': 500, '244': 100, '4': 2, '115': 0, '25': 0 },
         typeCandy: {
           electric: { s: 0, m: 0 },
           flying: { s: 0, m: 0 },
@@ -1896,14 +1877,14 @@ describe('単一最適化パイプライン', () => {
         { pokemonId: 'swalot', pokedexId: 317, name: '70マルノーム', type: 'poison' as const, currentLevel: 57, currentExpInLevel: 1553, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 4 },
         { pokemonId: 'cresselia', pokedexId: 488, name: '70仮クレセリア', type: 'psychic' as const, currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0, expType: 1080 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 5 },
         { pokemonId: 'entei', pokedexId: 244, name: 'エンテイ', type: 'fire' as const, currentLevel: 50, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 1080 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 6 },
-        { pokemonId: 'flareon', pokedexId: 136, name: 'ブースター', type: 'fire' as const, currentLevel: 50, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 7 },
+        { pokemonId: 'charmander', pokedexId: 4, name: 'ヒトカゲ', type: 'fire' as const, currentLevel: 50, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 7 },
         { pokemonId: 'kangaskhan', pokedexId: 115, name: 'ガルーラ', type: 'normal' as const, currentLevel: 53, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 8 },
         { pokemonId: 'raikou', pokedexId: 243, name: '仮ライコウ', type: 'electric' as const, currentLevel: 50, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 1080 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 9 },
       ],
       dreamShards: 10_000_000,
       boost: { kind: 'mini' as const, limit: 350 },
       candyInventory: {
-        species: { '923': 181, '845': 0, '700': 2947, '149': 436, '317': 272, '488': 500, '244': 100, '136': 2, '115': 0, '243': 0 },
+        species: { '921': 181, '845': 0, '133': 2947, '147': 436, '316': 272, '488': 500, '244': 100, '4': 2, '115': 0, '243': 0 },
         typeCandy: {
           electric: { s: 0, m: 0 },
           flying: { s: 0, m: 0 },
@@ -1951,14 +1932,14 @@ describe('単一最適化パイプライン', () => {
         { pokemonId: 'swalot', pokedexId: 317, name: '70マルノーム', type: 'poison' as const, currentLevel: 57, currentExpInLevel: 1553, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 4 },
         { pokemonId: 'cresselia', pokedexId: 488, name: '70仮クレセリア', type: 'psychic' as const, currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0, expType: 1080 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 5 },
         { pokemonId: 'entei', pokedexId: 244, name: 'エンテイ', type: 'fire' as const, currentLevel: 50, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 1080 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 6 },
-        { pokemonId: 'flareon', pokedexId: 136, name: 'ブースター', type: 'fire' as const, currentLevel: 50, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 7 },
+        { pokemonId: 'charmander', pokedexId: 4, name: 'ヒトカゲ', type: 'fire' as const, currentLevel: 50, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 7 },
         { pokemonId: 'kangaskhan', pokedexId: 115, name: 'ガルーラ', type: 'normal' as const, currentLevel: 53, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 8 },
         { pokemonId: 'raikou', pokedexId: 243, name: '仮ライコウ', type: 'electric' as const, currentLevel: 50, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 1080 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 9 },
       ],
       dreamShards: 10_000_000,
       boost: { kind: 'none' as const, limit: 0 },
       candyInventory: {
-        species: { '923': 181, '845': 0, '700': 2947, '149': 436, '317': 272, '488': 500, '244': 100, '136': 2, '115': 0, '243': 0 },
+        species: { '921': 181, '845': 0, '133': 2947, '147': 436, '316': 272, '488': 500, '244': 100, '4': 2, '115': 0, '243': 0 },
         typeCandy: {
           electric: { s: 0, m: 0 },
           flying: { s: 0, m: 0 },
@@ -1975,10 +1956,10 @@ describe('単一最適化パイプライン', () => {
     };
 
     const result = solveLevelPlan(input);
-    const flareon = result.pokemonResults.find(row => row.pokemonId === 'flareon')?.reachableLine;
+    const charmander = result.pokemonResults.find(row => row.pokemonId === 'charmander')?.reachableLine;
 
-    expect(flareon?.candyDemandMet).toBe(false);
-    expect(flareon?.totalCandyUnitsUsed).toBe(557);
+    expect(charmander?.candyDemandMet).toBe(false);
+    expect(charmander?.totalCandyUnitsUsed).toBe(557);
     expect(result.performance?.boundarySearch).toMatchObject({
       mode: 'surplusGateFirst',
       boundaryIndex: 7,
@@ -2000,14 +1981,14 @@ describe('単一最適化パイプライン', () => {
         { pokemonId: 'swalot', pokedexId: 317, name: '70マルノーム', type: 'poison' as const, currentLevel: 57, currentExpInLevel: 1553, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 4 },
         { pokemonId: 'cresselia', pokedexId: 488, name: '70仮クレセリア', type: 'psychic' as const, currentLevel: 65, currentExpInLevel: 0, targetLevel: 70, targetExpInLevel: 0, expType: 1080 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 5 },
         { pokemonId: 'entei', pokedexId: 244, name: 'エンテイ', type: 'fire' as const, currentLevel: 50, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 1080 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 6 },
-        { pokemonId: 'flareon', pokedexId: 136, name: 'ブースター', type: 'fire' as const, currentLevel: 50, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 7 },
+        { pokemonId: 'charmander', pokedexId: 4, name: 'ヒトカゲ', type: 'fire' as const, currentLevel: 50, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 7 },
         { pokemonId: 'kangaskhan', pokedexId: 115, name: 'ガルーラ', type: 'normal' as const, currentLevel: 53, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 600 as const, nature: 'normal' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 8 },
         { pokemonId: 'raikou', pokedexId: 243, name: '仮ライコウ', type: 'electric' as const, currentLevel: 50, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 1080 as const, nature: 'down' as const, requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 9 },
       ],
       dreamShards: 10_000_000,
       boost: { kind: 'none' as const, limit: 0 },
       candyInventory: {
-        species: { '923': 181, '845': 0, '700': 2947, '149': 436, '317': 272, '488': 500, '244': 100, '136': 2, '115': 0, '243': 0 },
+        species: { '921': 181, '845': 0, '133': 2947, '147': 436, '316': 272, '488': 500, '244': 100, '4': 2, '115': 0, '243': 0 },
         typeCandy: {
           electric: { s: 0, m: 0 },
           flying: { s: 0, m: 0 },
@@ -2024,10 +2005,10 @@ describe('単一最適化パイプライン', () => {
     };
 
     const result = solveLevelPlan(input);
-    const flareon = result.pokemonResults.find(row => row.pokemonId === 'flareon')?.reachableLine;
+    const charmander = result.pokemonResults.find(row => row.pokemonId === 'charmander')?.reachableLine;
 
-    expect(flareon?.candyDemandMet).toBe(false);
-    expect(flareon?.totalCandyUnitsUsed).toBe(569);
+    expect(charmander?.candyDemandMet).toBe(false);
+    expect(charmander?.totalCandyUnitsUsed).toBe(569);
     expect(result.performance?.boundarySearch).toMatchObject({
       mode: 'legacyImproved',
       boundaryIndex: 7,
