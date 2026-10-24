@@ -463,6 +463,16 @@ test.describe('12-fine-tune（スマホ幅）', () => {
     const page = await phone.newPage();
     await page.goto('/');
     const fineTune = new FineTuneModalPage(page);
+    // 押す部品の大きさの基準（設計書 §4.4: 計算機の行の ↑↓ より小さくしない）。モーダルの裏では測れないので、開く前に測る
+    const calc = new CalcPanelPage(page);
+    const calcRow = calc.getRow(1);
+    await calcRow.scrollIntoViewIfNeeded();
+    const calcUp = (await calc.getRowMoveUpButton(calcRow).boundingBox())!;
+    const calcDown = (await calc.getRowMoveDownButton(calcRow).boundingBox())!;
+    const minHeight = Math.min(calcUp.height, calcDown.height);
+    const minWidth = Math.min(calcUp.width, calcDown.width);
+    expect(minHeight).toBeGreaterThan(0);
+    expect(minWidth).toBeGreaterThan(0);
     await fineTune.open();
     await fineTune.waitForSettled();
     const viewport = page.viewportSize()!;
@@ -509,13 +519,21 @@ test.describe('12-fine-tune（スマホ幅）', () => {
       }
     }
 
-    // 押す部品（取っ手・▲▼・スライダーの ▲▼）が小さすぎない
+    // 押す部品（取っ手・↑↓・▲▼）が、計算機の行の ↑↓ より小さくない
     await fineTune.selectMode('raise');
     const first = fineTune.rows.first();
-    for (const testId of ['fine-tune-row-handle', 'fine-tune-row-boost-up', 'fine-tune-row-boost-down', 'fine-tune-row-target-up']) {
+    for (const testId of [
+      'fine-tune-row-handle',
+      'fine-tune-row-up',
+      'fine-tune-row-down',
+      'fine-tune-row-boost-up',
+      'fine-tune-row-boost-down',
+      'fine-tune-row-target-up',
+      'fine-tune-row-target-down',
+    ]) {
       const size = (await first.getByTestId(testId).boundingBox())!;
-      expect(size.height, testId).toBeGreaterThanOrEqual(30);
-      expect(size.width, testId).toBeGreaterThanOrEqual(26);
+      expect(size.height, testId).toBeGreaterThanOrEqual(minHeight);
+      expect(size.width, testId).toBeGreaterThanOrEqual(minWidth);
     }
 
     // フッターの操作が画面内に収まる

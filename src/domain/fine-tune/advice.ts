@@ -46,7 +46,6 @@ export interface AlsoShort {
  * 表の9行に対応する判別共用体（§5.1）。向き・文言・案内は `kind` から引く（`DIAGNOSIS_DIRECTION` など）。
  * 1 `allReachedRoom` / 2 `allReachedNoRoom` / 3 `candyShortRoom` / 4 `candyShortNoSlot` / 5 `candyShortNoShards` /
  * 6 `shardsShort` / 7 `boostCapShort` / 8 `noBoostAllReached` / 9 `noBoostShort`。
- * `shortUnknown` は表に無い: 先頭の未達行に律速（`limitingFactor`）が付かなかったとき（制約を全部外しても届かない行）。
  */
 export type Diagnosis =
   | { kind: "allReachedRoom" }
@@ -59,8 +58,7 @@ export type Diagnosis =
         | "candyShortNoShards"
         | "shardsShort"
         | "boostCapShort"
-        | "noBoostShort"
-        | "shortUnknown";
+        | "noBoostShort";
       /** 先頭の未達行 */
       firstShortId: string;
       /** 添え書きの行（先頭の未達行より下で、違うもので止まっている行。向きは変えない） */
@@ -81,7 +79,6 @@ export const DIAGNOSIS_DIRECTION: Readonly<Record<Diagnosis["kind"], RankDirecti
   boostCapShort: null,
   noBoostAllReached: null,
   noBoostShort: null,
-  shortUnknown: null,
 };
 
 const isReached = (p: PokemonPlanResult): boolean => p.reachableLine.effectiveTargetReached;
@@ -118,11 +115,12 @@ export function diagnose(
       : { kind: "allReachedNoRoom" };
   }
   const first = ordered[firstIndex]!;
-  const factor = first.constraintDiagnosis.limitingFactor;
+  // 律速が null なのは届いている行だけ（`calcDiagnosis`）。届かない行には必ず付く
+  const factor = first.constraintDiagnosis.limitingFactor!;
   const alsoShort: AlsoShort[] = [];
   for (const p of ordered.slice(firstIndex + 1)) {
     const f = p.constraintDiagnosis.limitingFactor;
-    if (!isReached(p) && f !== null && f !== factor) alsoShort.push({ rowId: p.pokemonId, factor: f });
+    if (f !== null && f !== factor) alsoShort.push({ rowId: p.pokemonId, factor: f });
   }
   const head = { firstShortId: first.pokemonId, alsoShort };
   if (boostKind === "none") return { kind: "noBoostShort", ...head };
@@ -135,8 +133,6 @@ export function diagnose(
       return { kind: "shardsShort", ...head };
     case "boost":
       return { kind: "boostCapShort", ...head };
-    default:
-      return { kind: "shortUnknown", ...head };
   }
 }
 

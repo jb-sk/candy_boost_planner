@@ -41,7 +41,8 @@ interface Spec {
   /** false は在庫のみの睡眠目標の行（種族アメだけ使える） */
   items?: boolean;
   reached?: boolean;
-  factor?: ShortageType | null;
+  /** 届かない行の律速。届かない行には必ず指定する（ソルバーは届かない行に必ず律速を付ける） */
+  factor?: ShortageType;
   supply?: CandySupplyBreakdown;
   shardsUsed?: number;
   candyToTarget?: number;
@@ -59,7 +60,7 @@ function resultOf(id: string, spec: Spec): PokemonPlanResult {
     pokemonId: id,
     reachableLine: { effectiveTargetReached: reached, candySupply: spec.supply ?? noSupply, dreamShardsUsed: spec.shardsUsed ?? 0 },
     shortage: { candyToTarget: spec.candyToTarget ?? 0, dreamShardShortage: spec.shardShortage ?? 0 },
-    constraintDiagnosis: { limitingFactor: reached ? null : (spec.factor ?? null) },
+    constraintDiagnosis: { limitingFactor: reached ? null : spec.factor },
     role: "upper",
   } as unknown as PokemonPlanResult;
 }
@@ -140,7 +141,7 @@ describe("diagnose（§5.1）", () => {
   });
 
   it("アメブなしのスロットでは 1〜7 が出ず、8・9 だけ", () => {
-    for (const factor of ["candy", "shards", "boost", null] as const) {
+    for (const factor of ["candy", "shards", "boost"] as const) {
       expect(kindOf({ a: { reached: false, factor } }, "none").kind).toBe("noBoostShort");
     }
     expect(kindOf({ a: {}, b: {} }, "none").kind).toBe("noBoostAllReached");
@@ -188,10 +189,6 @@ describe("diagnose（§5.1）", () => {
     expect(diagnose(t.result, reversed, "full", room)).toMatchObject({ kind: "candyShortRoom", firstShortId: "b" });
   });
 
-  it("律速が付かない未達行は shortUnknown（表に無い）", () => {
-    expect(kindOf({ a: { reached: false, factor: null } })).toEqual({ kind: "shortUnknown", firstShortId: "a", alsoShort: [] });
-  });
-
   it("向きの表: 増やすのは 1 と 3、減らすのは 6、ほかは案内のみ", () => {
     expect(DIAGNOSIS_DIRECTION).toEqual({
       allReachedRoom: "increase",
@@ -203,7 +200,6 @@ describe("diagnose（§5.1）", () => {
       boostCapShort: null,
       noBoostAllReached: null,
       noBoostShort: null,
-      shortUnknown: null,
     });
   });
 });

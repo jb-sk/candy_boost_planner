@@ -34,11 +34,15 @@ function installLocalStorageMock() {
 
 /** プレビューの実行役の代わり。頼まれた入力を溜め、結果は測定側が好きなときに返す。 */
 function fakeRunner() {
-  const runs: Array<{ input: LevelPlannerInput; onResult: (output: { result: LevelPlannerResult; durationMs: number }) => void }> = [];
+  const runs: Array<{
+    input: LevelPlannerInput;
+    onResult: (output: { result: LevelPlannerResult; durationMs: number }) => void;
+    onError: (error: unknown) => void;
+  }> = [];
   const runnerCounts = { cancel: 0, dispose: 0 };
   const runner: PlannerRunner = {
-    run: (input, onResult) => {
-      runs.push({ input, onResult });
+    run: (input, onResult, onError) => {
+      runs.push({ input, onResult, onError });
     },
     cancel: () => {
       runnerCounts.cancel += 1;
@@ -182,6 +186,31 @@ describe("useFineTune（設計書 §10.4）", () => {
     expect(fineTune.latest.value!.version).toBe(version);
   });
 
+  it("プレビューが失敗すると計算中をやめ、結果は古いままにして、次の op で計算し直す", async () => {
+    const { store, a } = await makeStore();
+    const { fineTune, runs } = open(store);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      fineTune.dispatch({ kind: "set", rowId: a, boost: 40 });
+      await vi.waitFor(() => expect(runs).toHaveLength(1));
+      runs[0]!.onError("boom");
+      expect(fineTune.previewFailed.value).toBe(true);
+      expect(fineTune.previewing.value).toBe(false);
+      // 結果は今の版のものではないので、結果に頼る表示・操作は古いまま
+      expect(fineTune.stale.value).toBe(true);
+
+      fineTune.dispatch({ kind: "set", rowId: a, boost: 41 });
+      expect(fineTune.previewFailed.value).toBe(false);
+      expect(fineTune.previewing.value).toBe(true);
+      await vi.waitFor(() => expect(runs).toHaveLength(2));
+      runs[1]!.onResult({ result: store.planResult.value!, durationMs: 1 });
+      expect(fineTune.stale.value).toBe(false);
+      expect(fineTune.previewing.value).toBe(false);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it("元に戻す・やり直すは1件ずつで、ラベルは常に null、undo() は null を返す（D41）", async () => {
     const { store, a, b } = await makeStore();
     const { fineTune } = open(store);
@@ -283,6 +312,27 @@ describe("useFineTune（設計書 §10.4）", () => {
     runs[0]!.onResult({ result: store.planResult.value!, durationMs: 1 });
     await nextTick();
     expect(fineTune.givePreview.value).toBeNull();
+  });
+
+  it("ゆずる側のスライダーを離したあとプレビューが失敗しても、動かしている間の棒は止まる", async () => {
+    const { store } = await makeStore("1000000");
+    const [b, a] = store.rows.value.map((r) => r.id) as [string, string];
+    const { fineTune, runs } = open(store);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(fineTune.dispatch({ kind: "receiverSelect", rowId: a })).toHaveProperty("state");
+      const m = Math.floor(fineTune.rowViews.value.find((r) => r.id === b)!.giver!.m0 / 2);
+      fineTune.setGivePreview(b, m);
+      fineTune.dispatch({ kind: "giverSet", rowId: b, candy: m });
+      fineTune.releaseGivePreview();
+      expect(fineTune.givePreview.value).not.toBeNull();
+      await vi.waitFor(() => expect(runs).toHaveLength(1));
+      runs[0]!.onError("boom");
+      await nextTick();
+      expect(fineTune.givePreview.value).toBeNull();
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it("入口のボタン: 実ストアでも、個数指定の行はゆずる側になれるときだけ数える", () => {

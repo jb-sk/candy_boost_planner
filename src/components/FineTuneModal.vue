@@ -3,7 +3,7 @@
     <div
       ref="modalRef"
       class="modal fineTuneModal"
-      :class="{ 'fineTuneModal--pending': fineTune.previewing.value }"
+      :class="{ 'fineTuneModal--pending': fineTune.stale.value }"
       tabindex="-1"
       role="dialog"
       aria-modal="true"
@@ -91,7 +91,7 @@
           </div>
         </section>
 
-        <div class="modal__body fineTuneModal__list" data-testid="fine-tune-list" :data-pending="fineTune.previewing.value ? 'true' : undefined">
+        <div class="modal__body fineTuneModal__list" data-testid="fine-tune-list" :data-pending="fineTune.stale.value ? 'true' : undefined">
           <div class="fineTuneHead" :class="{ 'fineTuneHead--noBoost': !fineTune.hasBoost.value }" aria-hidden="true">
             <span class="fineTuneHead__cell fineTuneHead__cell--move"></span>
             <span class="fineTuneHead__cell fineTuneHead__cell--name">{{ t("calc.fineTune.colPokemon") }}</span>
@@ -107,7 +107,7 @@
             :row="row"
             :mode="mode"
             :has-boost="fineTune.hasBoost.value"
-            :pending="fineTune.previewing.value"
+            :pending="fineTune.stale.value"
             :step="fineTune.step.value"
             :is-first="i === 0"
             :is-last="i === fineTune.rowViews.value.length - 1"
@@ -281,8 +281,6 @@ const DIAGNOSIS_TEXT: Readonly<Record<Diagnosis["kind"], string>> = {
   boostCapShort: "calc.fineTune.diagnosis.boostCapShort",
   noBoostAllReached: "calc.fineTune.diagnosis.noBoostAllReached",
   noBoostShort: "calc.fineTune.diagnosis.noBoostShort",
-  // 表に無い種類（先頭の未達行に律速が付かない防御用）。表の 9（noBoostShort）と同じ案内のみ
-  shortUnknown: "calc.fineTune.diagnosis.noBoostShort",
 };
 
 const FACTOR_TEXT = {

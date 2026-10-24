@@ -163,10 +163,15 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
   // 版が進むたびに同期で予約し直す（古い依頼を捨てるのを遅らせない）
   watch(state, schedulePreview, { flush: "sync" });
 
-  /** 最新の結果が今の下書きの版と同じなら確定、違えば計算中（§8.4）。 */
-  const previewing = computed(() => (
+  /**
+   * 最新の結果が今の下書きの版と違う（§8.4）。結果から出す値を薄くし、結果に頼る操作を押せなくする。
+   * 計算に失敗しても、次の op で計算し直すまで古いまま。
+   */
+  const stale = computed(() => (
     state.value !== null && latest.value !== null && latest.value.version !== state.value.version
   ));
+  /** 今の版を計算中。失敗したら止める（失敗の案内を出し、「計算中」は出さない）。 */
+  const previewing = computed(() => stale.value && !previewFailed.value);
 
   // ===== op =====
   function dispatch(op: FineTuneOp): FineTuneReduceResult | { rejected: "notReady" } {
@@ -239,7 +244,7 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
   let settledAdvice: ReadonlyMap<string, RowAdviceEntry> = NO_ADVICE;
   const advice = computed<ReadonlyMap<string, RowAdviceEntry>>(() => {
     if (!adviceActive.value) return NO_ADVICE;
-    if (previewing.value) return settledAdvice;
+    if (stale.value) return settledAdvice;
     const ctx = adviceContext.value;
     const d = diagnosis.value;
     if (ctx === null || d === null) return NO_ADVICE;
@@ -359,6 +364,7 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     state,
     evaluated,
     latest,
+    stale,
     previewing,
     previewFailed,
     isEmpty,
