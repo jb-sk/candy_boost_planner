@@ -56,6 +56,8 @@ export function createPlannerRunner(): PlannerRunner {
     };
     created.onerror = (event) => {
       console.error('[level-planner] worker error:', event.message);
+      // 破棄したワーカーの遅れて届いた失敗で、新しいワーカーと今の依頼を巻き込まない
+      if (worker !== created) return;
       const failed = active;
       active = null;
       destroyWorker();

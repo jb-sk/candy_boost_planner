@@ -110,6 +110,23 @@ describe("createPlannerRunner（Worker あり）", () => {
     expect(FakeWorker.instances[0]!.terminated).toBe(true);
     errorSpy.mockRestore();
   });
+
+  it("破棄したワーカーの遅れた onerror は、新しいワーカーと今の依頼に触らない", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const runner = createPlannerRunner();
+    const onResult = vi.fn();
+    const onError = vi.fn();
+    runner.run(input, vi.fn(), vi.fn());
+    const first = FakeWorker.instances[0]!;
+    runner.run(input, onResult, onError);
+    const second = FakeWorker.instances[1]!;
+    first.onerror?.({ message: "late crash" } as ErrorEvent);
+    expect(onError).not.toHaveBeenCalled();
+    expect(second.terminated).toBe(false);
+    second.replyResult("new");
+    expect(onResult).toHaveBeenCalledTimes(1);
+    errorSpy.mockRestore();
+  });
 });
 
 describe("createPlannerRunner（Worker なし）", () => {
