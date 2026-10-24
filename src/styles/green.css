@@ -24,6 +24,9 @@
   --accent-strong: #3b6526;
   --danger: #c8412d;
   --danger-rgb: 200, 65, 45;
+  /* リンク切れの行の強調色（文字にも使うので紙の上で読める濃さにする） */
+  --link-broken: #b8361f;
+  --link-broken-rgb: 184, 54, 31;
   --paper-rgb: 248, 250, 242;
   --muted-rgb: 88, 100, 79;
 
@@ -130,25 +133,6 @@ body {
   background: var(--forest-page-bg);
 }
 
-.hero .lang__btn:not(.lang__btn--on):not(.lang__btn--help) {
-  background: var(--input-bg);
-  color: var(--ink);
-  border-color: rgba(var(--ink-rgb), 0.45);
-}
-
-.hero .lang__btn:hover:not(.lang__btn--on):not(.lang__btn--help) {
-  background: var(--surface-alt);
-}
-
-.hero .support__link {
-  background: var(--input-bg);
-}
-
-.hero .support__link:hover {
-  background: var(--accent);
-  color: var(--paper);
-}
-
 /* ===== Panel ===== */
 .panel {
   background: var(--paper);
@@ -218,7 +202,7 @@ body {
   --calc-result-tint: 0.1;
 }
 
-.boxSortRow__undoRedo .btn {
+.boxSortRow__actions .btn {
   background: var(--surface);
   color: var(--ink);
   border: 1px solid var(--border);
@@ -226,7 +210,7 @@ body {
   box-shadow: none;
 }
 
-.boxSortRow__undoRedo .btn:hover:not(:disabled) {
+.boxSortRow__actions .btn:hover:not(:disabled) {
   background: var(--surface-alt);
 }
 
@@ -301,6 +285,11 @@ body {
 /* ===== Mobile Nav ===== */
 .mobileNav {
   background: var(--paper);
+}
+
+/* PC の元に戻す・やり直す。淡い枠線では背景に溶けるので、アクセントの緑で太めに縁取る */
+.shell > .historyDock {
+  border: 2px solid var(--accent);
 }
 
 /* ===== PC Desktop (≥ 1400px) ===== */

@@ -35,7 +35,7 @@ async function prepareProjectedRow(page: Page): Promise<{ calc: CalcPanelPage; r
 
   const calc = new CalcPanelPage(page);
   const row = calc.getRow(0);
-  await calc.getRowSleepTargetSelect(row).selectOption('all');
+  await calc.chooseSleepTarget(row, { base: 'sleep', stock: false });
   await expect(calc.getRowUsedRow(row)).toBeVisible({ timeout: 10_000 });
   return { calc, row };
 }

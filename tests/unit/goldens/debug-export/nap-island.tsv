@@ -1,0 +1,43 @@
+index	id	name	pokedexId	candyFamilyKey	type	nature	currentLv	currentExpInLevel	expRemaining	targetLv	targetExpInLevel	candyTarget	sleepTargetMode	boostKind	boostCandyInput	boostCandyEffective	itemCompareMode	reachedLv	candyDemandMet	role	expToNext	expToTarget	shortageCandy	shortageBoost	shortageShards	limitingFactor	initialSpeciesStock	reachableBoost	reachableNormal	reachableTotalCandy	reachableShards	reachableSpecies	reachableTypeS	reachableTypeM	reachableUniversalS	reachableUniversalM	reachableUniversalL	reachableTotalSupply	reachableItemValue	reachableNonSpeciesItemValue	reachableSurplus	targetBoost	targetNormal	targetTotalCandy	targetShards	targetSpecies	targetTypeS	targetTypeM	targetUniversalS	targetUniversalM	targetUniversalL	targetTotalSupply	targetItemValue	targetNonSpeciesItemValue	targetSurplus	plannedCandyEndLevel	plannedCandyEndExpInLevel	reachableCandyEndLevel	reachableCandyEndExpInLevel
+1	golden-id-1	Golden nap-ticket	25	25	Electric	normal	10	225	120	40	0		napTicket	mini		0	surplusFirst	10	true	upper	120	18323	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	10	225	10	225
+2	golden-id-2	Golden nap-up	25	25	Electric	up	10	225	120	40	0		nap	mini		0	surplusFirst	10	true	upper	120	18323	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	10	225	10	225
+
+SLEEP_EXP
+settings	currentGameDate	debugNow	timeZone	dailySleepHours	sleepExpBonusCount	sleepExpBonus	includeGSD	useProjectedEvents	projectedEventCount	blueSeedPlantWeekday	blueSeedIncenseDays	wikiKnownThrough	growthIncenseGsdDays	growthIncenseNormalPerWeek	growthIncenseStock	manualEventBonuses	calculationError
+settings	2026-08-24		Asia/Tokyo	8.5	0	1	true	on	5	1	auto	2026-08-30	0/0/0	0	unlimited	[]	
+row	none
+
+NAP_ISLAND
+row	index	id	name	nature	ticket	expToTarget	napMinutes	napDays	napHours	napMins	napGainedExp	ticketCount	lastTicketMinutes	napReachLevel	napReachExpInLevel
+row	1	golden-id-1	Golden nap-ticket	normal	true	18323	43976	30	12	56	18323	5	3656	40	0
+row	2	golden-id-2	Golden nap-up	up	false	18323	149069	103	12	29	18323	0	0	40	0
+
+CALCULATION_PERFORMANCE
+actualDurationMs	feasibilityMs	refineMs	refineStatus	refineReason	loss
+<timing>	<timing>	<timing>	ok		false
+
+BOUNDARY_SEARCH
+status	none
+
+LOSS_LEDGER
+status	hasLoss	supplyCandidateCuts	frontierCuts	stateCaps	expansionCapReductions
+ok	false	0	0	0	0
+
+EXACT_VERIFICATION
+status	selectedIsExactBest	mode	rows	localCandidateCounts	dpFinalStates	scope	note
+ok	true	surplusFirst	2			normalPathSnapshot	normal-path fixed-demand refine snapshot; export solver disabled
+selectedRows	index	name	candyFamilyKey	species	typeS	typeM	universalS	universalM	universalL	supply	surplus
+selected	1	Golden nap-ticket	25	0	0	0	0	0	0	0	0
+selected	2	Golden nap-up	25	0	0	0	0	0	0	0	0
+bestRows	index	name	candyFamilyKey	species	typeS	typeM	universalS	universalM	universalL	supply	surplus
+best	1	Golden nap-ticket	25	0	0	0	0	0	0	0	0
+best	2	Golden nap-up	25	0	0	0	0	0	0	0	0
+
+FBL01D_FEASIBILITY
+status	selectedValid	solverStatus	refineStatus	rows	reachedCount	boundaryIndex	boundaryLv	boundaryExp	durationMs	globalKeyCount	transitions	witnessRestoreMs	reason
+ok	true	skipped_export_safety	skipped_export_safety	2	2		0	0					heavy_solver_disabled_in_tsv_export
+selectedRows	index	name	candyFamilyKey	totalCandy	boostCandy	normalCandy	shards	reachedLv	expInLevel	candyDemandMet	species	typeS	typeM	universalS	universalM	universalL	supply	surplus
+selected	1	Golden nap-ticket	25	0	0	0	0	10	225	true	0	0	0	0	0	0	0	0
+selected	2	Golden nap-up	25	0	0	0	0	10	225	true	0	0	0	0	0	0	0	0
+remaining	universalS	universalM	universalL	boostCandy	dreamShards
+selected	0	0	0	350	0

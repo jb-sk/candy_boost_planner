@@ -3,6 +3,7 @@ import { compareExactSupplyObjective, exactSupplyObjectiveFor, refineExactSupply
 import type { ExactSupplyMode, ExactSupplyRow } from '../../../src/domain/level-planner/core/exactSupplyRefine';
 import { itemCountsFromPriority } from '../../../src/domain/level-planner/core/itemPriority';
 import type { CandyInventory } from '../../../src/domain/level-planner/types';
+import { getCandyFamilyKey } from '../../../src/domain/pokesleep/candy-family';
 
 /**
  * このファイルの fixture は需要充足だけを扱うので、`candyDemandMet` はここで既定を与える。
@@ -15,7 +16,7 @@ type TestExactSupplyRow = Omit<ExactSupplyRow, 'candyFamilyKey' | 'candyDemandMe
 function withTestDefaults(rows: TestExactSupplyRow[]): ExactSupplyRow[] {
   return rows.map(row => ({
     ...row,
-    candyFamilyKey: row.candyFamilyKey ?? String(row.pokedexId),
+    candyFamilyKey: row.candyFamilyKey ?? getCandyFamilyKey(row.pokedexId),
     candyDemandMet: row.candyDemandMet ?? true,
   }));
 }
@@ -37,7 +38,7 @@ const rows = [
   {
     id: 'a',
     name: 'A',
-    pokedexId: 1,
+    pokedexId: 9001,
     type: 'alpha',
     totalCandyCount: 2,
     selected: { species: 0, typeS: 0, typeM: 0, universalS: 1, universalM: 0, universalL: 0, supply: 3, surplus: 1 },
@@ -45,7 +46,7 @@ const rows = [
   {
     id: 'b',
     name: 'B',
-    pokedexId: 2,
+    pokedexId: 9002,
     type: 'beta',
     totalCandyCount: 20,
     selected: { species: 0, typeS: 0, typeM: 0, universalS: 0, universalM: 1, universalL: 0, supply: 20, surplus: 0 },
@@ -238,7 +239,7 @@ describe('exactSupplyRefine', () => {
       {
         id: 'type-s',
         name: 'Type S',
-        pokedexId: 10,
+        pokedexId: 9010,
         type: 'alpha',
         totalCandyCount: 24,
         selected: { species: 0, typeS: 6, typeM: 0, universalS: 0, universalM: 0, universalL: 0, supply: 24, surplus: 0 },
@@ -246,7 +247,7 @@ describe('exactSupplyRefine', () => {
       {
         id: 'universal-m',
         name: 'Universal M',
-        pokedexId: 11,
+        pokedexId: 9011,
         type: 'beta',
         totalCandyCount: 20,
         selected: { species: 0, typeS: 0, typeM: 0, universalS: 0, universalM: 1, universalL: 0, supply: 20, surplus: 0 },
@@ -281,7 +282,7 @@ describe('exactSupplyRefine', () => {
       {
         id: 'component-beta',
         name: 'Component Beta',
-        pokedexId: 202,
+        pokedexId: 9202,
         type: 'beta',
         totalCandyCount: 3,
         selected: { species: 0, typeS: 1, typeM: 0, universalS: 0, universalM: 0, universalL: 0, supply: 4, surplus: 1 },
@@ -412,7 +413,7 @@ describe('exactSupplyRefine', () => {
       { id: 'swalot', name: '70マルノーム', pokedexId: 317, type: 'poison', totalCandyCount: 308, selected: { species: 272, typeS: 0, typeM: 1, universalS: 4, universalM: 0, universalL: 0, supply: 309, surplus: 1 } },
     ];
     const stock: CandyInventory = {
-      species: { '923': 181, '700': 2947, '149': 436, '317': 272 },
+      species: { '921': 181, '133': 2947, '147': 436, '316': 272 },
       typeCandy: {
         electric: { s: 0, m: 0 },
         flying: { s: 0, m: 0 },
@@ -446,7 +447,7 @@ describe('exactSupplyRefine', () => {
       { id: 'swalot', name: '70マルノーム', pokedexId: 317, type: 'Poison', totalCandyCount: 308, selected: { species: 272, typeS: 0, typeM: 2, universalS: 0, universalM: 0, universalL: 0, supply: 322, surplus: 14 } },
     ];
     const stock: CandyInventory = {
-      species: { '923': 181, '700': 2947, '149': 436, '488': 500, '244': 100, '317': 272 },
+      species: { '921': 181, '133': 2947, '147': 436, '488': 500, '244': 100, '316': 272 },
       typeCandy: {
         Electric: { s: 0, m: 0 },
         Flying: { s: 0, m: 0 },

@@ -20,6 +20,9 @@
   --accent-strong: #006EAA;
   --danger: #D50000;
   --danger-rgb: 213, 0, 0;
+  /* リンク切れの行の強調色（文字にも使うので紙の上で読める濃さにする） */
+  --link-broken: #D50000;
+  --link-broken-rgb: 213, 0, 0;
   --paper-rgb: 255, 255, 255;
   --muted-rgb: 55, 71, 79;
 
@@ -114,27 +117,10 @@ input, select, textarea {
   background: var(--blue-page-bg);
 }
 
-.hero .lang__btn {
-  box-shadow: none;
-}
-
-.hero .lang__btn:not(.lang__btn--on):not(.lang__btn--help) {
-  background: #FFFFFF;
-  color: var(--ink);
-  border-color: rgba(var(--ink-rgb), 0.4);
-}
-
-.hero .lang__btn:hover:not(.lang__btn--on):not(.lang__btn--help) {
-  background: var(--surface-alt);
-}
-
-.hero .support__link {
-  background: #FFFFFF;
-}
-
-.hero .support__link:hover {
-  background: var(--accent);
-  color: var(--paper);
+/* 言語の切り替えと文字のリンクは、下の「押すと沈む」装飾を付けない（切り替えの枠の中で動いて見える） */
+.lang__btn:active,
+.heroLink:active {
+  transform: none;
 }
 
 /* カスタムタグ管理の名前欄は入力面としてフラットにする。
@@ -202,22 +188,16 @@ input, select, textarea {
   --calc-result-tint: 0.11;
 }
 
-/* ===== Range slider — remove drop shadow ===== */
-/* ===== Calc — Slot Tabs ===== */
-/* Remove button/select shadow inherited from global rules */
-.slotTab {
-  box-shadow: none;
-  border-width: 2px;
-}
-
-.slotTab__select {
-  box-shadow: none;
-}
-
 /* ===== Input-like buttons — remove button shadow ===== */
 .levelPick__chevron,
-.natureSelect__trigger {
+.natureSelect__trigger,
+.sleepTargetSelect__trigger {
   box-shadow: none;
+}
+
+/* 睡眠目標のトリガーは文字を出すので、上の button の太字を外して他の入力欄（<select>）と揃える */
+.sleepTargetSelect__trigger {
+  font-weight: normal;
 }
 
 /* ===== Label link (累計睡眠時間) — 見た目はテキストなのでボタン影を消す ===== */
@@ -226,9 +206,18 @@ input, select, textarea {
   border: none;
 }
 
-/* ===== NatureSelect dropdown — remove shadow ===== */
+/* ===== NatureSelect / SleepTargetSelect dropdown — remove shadow ===== */
 .natureSelect__dropdown,
-.natureSelect__option {
+.natureSelect__option,
+.sleepTargetSelect__dropdown,
+.sleepTargetSelect__row,
+.sleepTargetSelect__name {
+  box-shadow: none;
+}
+
+/* ===== 育成プランの CSV 出力メニュー — 一覧と項目（button）の影を外す ===== */
+.exportCsvMenu,
+.exportCsvMenu__item {
   box-shadow: none;
 }
 

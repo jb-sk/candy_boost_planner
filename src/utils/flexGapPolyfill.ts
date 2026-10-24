@@ -169,8 +169,23 @@ function restoreElement(element: HTMLElement): void {
  */
 const suppressedTransitions = new Map<HTMLElement, string>();
 
+/**
+ * margin が動く transition か。transform だけを動かしている要素（FLIP の途中など）の transition まで止めると、
+ * 動いている途中のアニメーションが打ち切られて最終位置へ飛ぶ。
+ */
+function transitionsMargin(element: HTMLElement): boolean {
+  const style = getComputedStyle(element);
+  const properties = style.transitionProperty.split(",");
+  const durations = style.transitionDuration.split(",");
+  return properties.some((property, index) => {
+    const name = property.trim();
+    const duration = parseFloat(durations[index % durations.length]) || 0;
+    return duration > 0 && (name === "all" || name.indexOf("margin") === 0);
+  });
+}
+
 function suppressTransition(element: HTMLElement): void {
-  if (suppressedTransitions.has(element)) return;
+  if (suppressedTransitions.has(element) || !transitionsMargin(element)) return;
   suppressedTransitions.set(element, element.style.getPropertyValue("transition"));
   element.style.setProperty("transition", "none");
 }
@@ -266,7 +281,26 @@ function collectElements(roots: readonly Element[]): HTMLElement[] {
     const all = root.getElementsByTagName("*");
     for (let i = 0; i < all.length; i++) add(all[i]);
   }
-  return Array.from(seen);
+  // 親を付け直すと、その親が margin を書いた子の inline style も戻る（子自身が並びなら、その gap の補正も消える）。
+  // 子も付け直す対象に含めて、子自身の補正を書き直す。子を戻すとさらにその子も戻るので、入れ子の奥までたどる。
+  // 逆に、親が margin を書いた要素を戻すと、その margin も消える。親を付け直さないと margin が戻らないので、親も含める
+  // （中身の class が変わった要素の親の親など。2026-10-20 実例: テーマ選択を開くと、並びの間隔の margin が消えて左へずれた）。
+  const queue = Array.from(seen);
+  for (let i = 0; i < queue.length; i++) {
+    const parent = queue[i].parentElement;
+    if (parent && !seen.has(parent) && (patchedChildren.get(parent) || []).indexOf(queue[i]) >= 0) {
+      seen.add(parent);
+      queue.push(parent);
+    }
+    const children = patchedChildren.get(queue[i]);
+    if (!children) continue;
+    children.forEach(child => {
+      if (seen.has(child)) return;
+      seen.add(child);
+      queue.push(child);
+    });
+  }
+  return queue;
 }
 
 /** children と childMargins は items と同じ添字。地の文字の添字は null。 */
@@ -399,7 +433,42 @@ function measureWrapLines(plans: readonly Plan[]): void {
   growStopped.forEach(restoreInline);
 }
 
+/**
+ * 並びに影響しない（描画だけの）プロパティ。FLIP などのアニメーションが inline style へ書く。
+ * これらだけの変化で付け直すと、付け直しの transition: none が動いている途中のアニメーションを打ち切ってしまう。
+ */
+const PAINT_ONLY_PROPERTIES = ["transform", "transform-origin", "opacity", "will-change"];
+
+/** inline style の文字列から、描画だけのプロパティを除いたもの。 */
+export function layoutStyleText(text: string | null): string {
+  return (text || "")
+    .split(";")
+    .map(declaration => declaration.trim())
+    .filter(declaration => {
+      if (!declaration) return false;
+      const name = declaration.slice(0, declaration.indexOf(":")).trim().toLowerCase();
+      return PAINT_ONLY_PROPERTIES.indexOf(name) < 0 && name.indexOf("transition") !== 0;
+    })
+    .join(";");
+}
+
+/**
+ * この属性を持つ要素の style の変化では付け直さない。並びに影響しないと分かっている書き換え
+ * （計算機の FLIP がパネルの高さを中身と一緒に動かす margin-bottom など）に付ける。
+ * 中の要素の変化は通常どおり付け直す。
+ */
+const IGNORE_STYLE_ATTRIBUTE = "data-flex-gap-ignore-style";
+
 let started = false;
+let flushNow: (() => void) | null = null;
+
+/**
+ * 保留中の付け直しを今すぐ行う。補正していない端末では何もしない。
+ * 書き換えた直後の位置を測る処理（FLIP など）が、付け直す前の margin で測らないよう、測る前に呼ぶ。
+ */
+export function flushFlexGapPolyfill(): void {
+  if (flushNow) flushNow();
+}
 
 /** gap が効かない端末でだけ補正を始める。アプリを mount する前に呼ぶ。 */
 export function installFlexGapPolyfill(): void {
@@ -432,23 +501,41 @@ export function installFlexGapPolyfill(): void {
 
   // v-show などの表示の切り替えは style 属性の変化なので、class と合わせて見張る。
   // 文字だけの書き換え（件数の更新・言語の切り替え）は、その文字を持つ要素の変化として扱う。
-  const observer = new MutationObserver(records => {
+  const handleRecords = (records: readonly MutationRecord[]) => {
+    let changed = false;
     for (const record of records) {
       const target = record.target instanceof Element ? record.target : record.target.parentElement;
       if (!target) continue;
+      if (
+        record.type === "attributes"
+        && record.attributeName === "style"
+        && (
+          target.hasAttribute(IGNORE_STYLE_ATTRIBUTE)
+          || layoutStyleText(record.oldValue) === layoutStyleText(target.getAttribute("style"))
+        )
+      ) continue;
+      changed = true;
       // テーマの CSS の差し替えなど。読み込みの完了は下の load で拾う。
       if (target === document.head || document.head.contains(target)) scheduleFull();
       else pending.add(target);
     }
-    schedule();
-  });
+    if (changed) schedule();
+  };
+  const observer = new MutationObserver(handleRecords);
   observer.observe(document.documentElement, {
     childList: true,
     subtree: true,
     characterData: true,
     attributes: true,
+    attributeOldValue: true,
     attributeFilter: ["class", "style", "hidden"],
   });
+  flushNow = () => {
+    handleRecords(observer.takeRecords());
+    if (!frame) return;
+    cancelAnimationFrame(frame);
+    flush();
+  };
 
   document.addEventListener("load", event => {
     if (event.target instanceof HTMLLinkElement) scheduleFull();

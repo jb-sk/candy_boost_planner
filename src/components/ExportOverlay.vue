@@ -46,6 +46,9 @@
                   <button class="exportCsvMenu__item" type="button" @click="copyCalcExportCsv" :disabled="exportBusy" data-testid="csvCopyButton">
                     {{ t("calc.export.csvCopy") }}
                   </button>
+                  <button class="exportCsvMenu__item" type="button" @click="copyCalcExportTsv" :disabled="exportBusy" data-testid="tsvCopyButton">
+                    {{ t("calc.export.tsvCopy") }}
+                  </button>
                 </div>
               </div>
               <button class="linkBtn linkBtn--basic" type="button" @click="emit('close')" :disabled="exportBusy" data-testid="closeButton">{{ t("calc.export.close") }}</button>
@@ -131,7 +134,7 @@
           <div class="exportList" :class="{ 'exportList--normal': !isBoostMode }">
             <div class="exportList__head" data-testid="listHead">
               <div class="exportList__col"><span class="exportText exportText--left">{{ t("calc.export.colPokemon") }}</span></div>
-              <div class="exportList__col exportList__lvHead"><span class="exportText exportText--center">{{ t("calc.export.colLv") }}</span></div>
+              <div class="exportList__col exportList__lvHead"><span class="exportText exportText--left">{{ t("calc.export.colLv") }}</span></div>
               <div v-if="isBoostMode" class="exportList__col u-align-right"><span class="exportText exportText--right">{{ t("calc.export.colBoost") }}</span></div>
               <div
                 v-if="isBoostMode"
@@ -157,8 +160,8 @@
                 <ExportNatureBadge v-if="row.natureLabel" :label="row.natureLabel" />
                 <span v-if="row.candySupply" class="exportList__supplyInline exportText exportText--left">{{ row.candySupply }}</span>
               </div>
-              <div class="exportList__col u-align-center exportList__lvCol">
-                <div class="exportList__lvWrap exportText exportText--center">
+              <div class="exportList__col exportList__lvCol">
+                <div class="exportList__lvWrap exportText exportText--left">
                   <span class="exportList__lvVal">{{ row.srcLevel }}</span>
                   <span class="exportList__arrow">→</span>
                   <span class="exportList__lvVal">{{ row.candyReachLevel ?? row.dstLevel }}</span>
@@ -190,7 +193,7 @@
               <div class="exportList__col exportList__nameCol">
                 <span class="exportList__name exportList__totalLabel exportText exportText--left">{{ t("calc.export.rankingTotal") }}</span>
               </div>
-              <div class="exportList__col u-align-center exportList__lvCol"></div>
+              <div class="exportList__col exportList__lvCol"></div>
               <div v-if="isBoostMode" class="exportList__col u-align-right exportList__numCol">
                 <span class="u-mobile-label exportText exportText--left">{{ t("calc.export.colBoost") }}</span>
                 <span class="exportList__num exportText exportText--right">{{ fmtNum(totals.boostCandy) }}</span>
@@ -309,6 +312,14 @@ import {
   type ExportUniversalCandyUsed,
 } from "../export/exportImageModel";
 import ExportNatureBadge from "./ExportNatureBadge.vue";
+import { copyText } from "../utils/copyText";
+import {
+  buildExportTable,
+  formatExportCsv,
+  formatExportedAt,
+  formatExportTsv,
+  type ExportTableRow,
+} from "../export/exportTable";
 import {
   EXPORT_FONT_WEIGHT_VALUES,
   PIE_CENTER_VALUE_OFFSET_Y,
@@ -321,6 +332,8 @@ import { showToast } from "../composables/useToast";
 
 const props = defineProps<{
   rows: ExportImageRow[];
+  /** CSV / TSV の行（画像の `rows` とは別。計算画面の結果行と同じ値） */
+  tableRows: ExportTableRow[];
   totals: ExportImageTotals;
 
   boostUsed: number;
@@ -440,55 +453,69 @@ const exportMonthLabel = computed(() => exportMonthFormatter.value.format(export
 const exportYearPartLabel = computed(() => new Intl.DateTimeFormat(locale.value, { year: "numeric" }).format(exportDisplayDate));
 const exportMonthPartLabel = computed(() => new Intl.DateTimeFormat(locale.value, { month: "short" }).format(exportDisplayDate));
 
-function csvCell(v: unknown): string {
-  const s = String(v ?? "");
-  if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-  return s;
+/** CSV / TSV の表（見出し・行・合計・表全体の情報）。中身は `buildExportTable` が決める */
+function buildCalcExportTable() {
+  const boostKindLabel = props.boostKind === "full" ? t("calc.boostKindFullShort")
+    : props.boostKind === "mini" ? t("calc.boostKindMiniShort")
+    : t("calc.boostKindNoneShort");
+  const uni = t("calc.export.labelUni");
+  const type = t("calc.export.labelType");
+  return buildExportTable({
+    rows: props.tableRows,
+    boostMode: isBoostMode.value,
+    meta: {
+      exportedAt: formatExportedAt(new Date()),
+      boostKindLabel,
+      boostUsed: props.boostUsed,
+      boostCap: props.boostCap,
+      boostUnused: props.boostUnused,
+      shardsUsed: props.shardsUsed,
+      shardsCap: props.shardsCap,
+    },
+    labels: {
+      pokemon: t("calc.export.colPokemon"),
+      expAdj: t("calc.export.colExpAdj"),
+      srcLevel: t("calc.row.srcLevel"),
+      expRemaining: t("calc.row.expRemaining"),
+      candyReachLevel: t("calc.row.candyReachedLv"),
+      candyReachExpToNext: t("calc.export.colCandyReachExpToNext"),
+      targetLevel: t("calc.row.dstLevel"),
+      sleepTarget: t("calc.row.sleepTarget"),
+      remainingExp: t("calc.row.remainingExp"),
+      remainingSleepTime: t("calc.export.colRemainingSleepTime"),
+      restTime: t("calc.export.colRestTime"),
+      restReachLevel: t("calc.export.colRestReachLv"),
+      boostReachLevel: t("calc.row.boostReachLevel"),
+      boostCandy: t("calc.export.colBoost"),
+      normalCandy: t("calc.export.colNormal"),
+      totalCandy: t("calc.export.colTotal"),
+      shards: t("calc.export.colShards"),
+      species: t("calc.export.colSpecies"),
+      typeS: `${type}S`,
+      typeM: `${type}M`,
+      universalS: `${uni}S`,
+      universalM: `${uni}M`,
+      universalL: `${uni}L`,
+      growthIncense: t("calc.row.growthIncense"),
+      napTickets: t("calc.export.colNapTicket"),
+      surplus: t("calc.candy.surplus"),
+      candyShortage: t("calc.row.candyShortage"),
+      shardsShortage: t("calc.row.shardsShortage"),
+      boostShortage: t("calc.row.boostCandyShortage"),
+      total: t("calc.export.rankingTotal"),
+      exportedAt: t("calc.export.metaExportedAt"),
+      boostKind: t("calc.export.metaBoostKind"),
+      boostUsed: t("calc.export.metaBoostUsed"),
+      boostCap: t("calc.export.metaBoostCap"),
+      boostUnused: t("calc.export.sumBoostUnused"),
+      shardsUsed: t("calc.export.metaShardsUsed"),
+      shardsCap: t("calc.export.metaShardsCap"),
+    },
+  });
 }
 
 function buildCalcExportCsv(): string {
-  const isNormal = props.boostKind === "none";
-
-  // 列順：Pokemon, EXP補正, 現在Lv, 目標Lv, (Boost, Normal), Total, Shards, Items
-  const headCols = [
-    t("calc.export.colPokemon"),
-    t("calc.export.colExpAdj"),
-    t("calc.row.srcLevel"),
-    t("calc.row.dstLevel"),
-    ...(isNormal ? [] : [t("calc.export.colBoost"), t("calc.export.colNormal")]),
-    t("calc.export.colTotal"),
-    t("calc.export.colShards"),
-    t("calc.row.candySupply"),
-  ];
-  const head = headCols.map(csvCell).join(",");
-
-  const body = props.rows.map((r) => {
-    const cols = [
-      r.title,
-      r.natureLabel || "",
-      r.srcLevel,
-      r.dstLevel,
-      ...(isNormal ? [] : [r.boostCandy, r.normalCandy]),
-      r.totalCandy,
-      r.shards,
-      r.candySupply || "",
-    ];
-    return cols.map(csvCell).join(",");
-  });
-
-  const totalCols = [
-    "",
-    "",
-    "",
-    "",
-    ...(isNormal ? [] : [props.totals.boostCandy, props.totals.normalCandy]),
-    props.totals.totalCandy,
-    props.totals.shards,
-    "",
-  ];
-  const total = totalCols.map(csvCell).join(",");
-
-  return [head, ...body, total].join("\r\n") + "\r\n";
+  return formatExportCsv(buildCalcExportTable());
 }
 
 function downloadCalcExportCsv() {
@@ -512,38 +539,18 @@ function downloadCalcExportCsv() {
   }
 }
 
-async function copyCalcExportCsv() {
+function copyCalcExportCsv() {
+  return copyCalcExportText(buildCalcExportCsv(), "status.csvCopied", "status.csvCopyFailed");
+}
+
+function copyCalcExportTsv() {
+  return copyCalcExportText(formatExportTsv(buildCalcExportTable()), "status.tsvCopied", "status.tsvCopyFailed");
+}
+
+async function copyCalcExportText(text: string, okKey: string, failKey: string) {
   exportCsvMenuOpen.value = false;
   exportStatus.value = "";
-  const csv = buildCalcExportCsv();
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(csv);
-      exportStatus.value = t("status.csvCopied");
-      return;
-    }
-  } catch {
-    // fall through to legacy copy
-  }
-  try {
-    const ta = document.createElement("textarea");
-    ta.value = csv;
-    ta.setAttribute("readonly", "");
-    ta.style.position = "fixed";
-    ta.style.top = "0";
-    ta.style.left = "0";
-    ta.style.width = "1px";
-    ta.style.height = "1px";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    const ok = document.execCommand("copy");
-    document.body.removeChild(ta);
-    exportStatus.value = ok ? t("status.csvCopied") : t("status.csvCopyFailed");
-  } catch {
-    exportStatus.value = t("status.csvCopyFailed");
-  }
+  exportStatus.value = (await copyText(text)) ? t(okKey) : t(failKey);
 }
 
 // ── Pie chart for universal candy ranking ──

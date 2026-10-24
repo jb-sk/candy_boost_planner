@@ -4,8 +4,9 @@ name: Auto Update Pokemon Data
 
 on:
   schedule:
-    # 毎日 UTC 01:00 (JST 10:00) に実行（毎月1日はコード内分岐で全件チェック）
-    - cron: '0 1 * * *'
+    # 毎日 UTC 00:23 (JST 09:23) に実行（毎月1日はコード内分岐で全件チェック）
+    # 毎時0分は GitHub の定期実行が混んで遅れやすいので、半端な分にずらす
+    - cron: '23 0 * * *'
   workflow_dispatch:
     inputs:
       refresh_en_names:

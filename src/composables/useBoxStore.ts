@@ -1,10 +1,9 @@
-import { computed, nextTick, ref, watch, type Ref } from "vue";
+import { computed, nextTick, ref, watch, type DeepReadonly, type Ref } from "vue";
 import type { Composer } from "vue-i18n";
 import type { AppLocale } from "../i18n";
 
 import { decodeNitoyonIvDetail, decodeNitoyonIvMinimal, parseNitoyonBoxLine } from "../domain/box/nitoyon";
 import { IngredientTypes, SubSkillAllJaSorted, SubSkillAllNames, SubSkillNameJaByEn, subSkillEnFromJa } from "../domain/box/nitoyon";
-import { calcExp } from "../domain/pokesleep/exp";
 import { getPokemonNameLocalized } from "../domain/pokesleep/pokemon-name-localize";
 import {
   findPokemonByNameJa,
@@ -22,17 +21,29 @@ import {
   loadBoxData,
   MAX_BOX_CUSTOM_TAG_NAME_LENGTH,
   MAX_BOX_CUSTOM_TAGS,
+  MAX_BOX_ENTRIES,
   saveBox,
 } from "../persistence/box";
 import { schedulePersist } from "../persistence/deferredPersist";
+import { clampExpRemaining, resolveIndividual, type Individual, type IndividualPatch } from "../domain/individual";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
-import { normalizeSleepHoursInput } from "../domain/box/sleep-milestones";
+import { normalizeSleepHoursInput, normalizeSleepHoursValue } from "../domain/box/sleep-milestones";
+import { INDIVIDUAL_ADD_SCOPES, INDIVIDUAL_EDIT_SCOPES, stepHistoryWithToast, type History, type HistoryScope } from "./useHistory";
+import { showToast } from "./useToast";
 type FilterJoinMode = "and" | "or";
 
-type BoxSnapshot = {
-  entries: PokemonBoxEntryV1[];
+/**
+ * ボックスの個体。その場で書き換えられない型にして、書き込みは必ず配列とエントリの置換にする
+ * （共通履歴の `box` scope が配列への参照を保存するだけで済む前提）。
+ */
+export type BoxEntry = DeepReadonly<PokemonBoxEntryV1>;
+type BoxEntries = ReadonlyArray<BoxEntry>;
+
+/** 共通履歴の `box` scope。配列への参照を持つだけ（ディープコピーしない）。 */
+type BoxHistorySnapshot = {
+  entries: BoxEntries;
   customTags: BoxCustomTag[];
-  selectedId: string | null;
+  selectedBoxId: string | null;
 };
 
 export type BoxStore = ReturnType<typeof useBoxStore>;
@@ -53,52 +64,30 @@ function isBoxSortKey(v: unknown): v is BoxSortKey {
 }
 
 /** ソートキーごとの主比較（常に昇順基準。降順は呼び出し側で符号を反転する） */
-const BOX_SORT_COMPARATORS: Record<BoxSortBase, (a: PokemonBoxEntryV1, b: PokemonBoxEntryV1) => number> = {
+const BOX_SORT_COMPARATORS: Record<BoxSortBase, (a: BoxEntry, b: BoxEntry) => number> = {
   label: () => 0,
-  level: (a, b) => entryLevel(a) - entryLevel(b),
+  level: (a, b) => resolveIndividual(a).level - resolveIndividual(b).level,
   // 累計睡眠時間。未設定はアプリ全体と同じく 0h 扱い
-  sleep: (a, b) => (a.planner?.sleepHours ?? 0) - (b.planner?.sleepHours ?? 0),
+  sleep: (a, b) => resolveIndividual(a).sleepHours - resolveIndividual(b).sleepHours,
   // 図鑑番号 → フォーム順。種族不明は末尾へ
   dex: (a, b) =>
     (a.derived?.pokedexId ?? 9999) - (b.derived?.pokedexId ?? 9999)
     || (a.derived?.form ?? 0) - (b.derived?.form ?? 0),
 };
 
-function entryLevel(e: PokemonBoxEntryV1): number {
-  return e.planner?.level ?? e.derived?.level ?? 0;
-}
-
-/**
- * あとEXPの上限（＝現在Lvから次Lvまでに必要なEXP）。
- * Lvが未確定で上限を出せないときは null。最大Lvでは次のLvがないので 0。
- */
-function expToNextLevel(level: number | null | undefined, expType: ExpType): number | null {
-  const lv = Number(level);
-  if (!Number.isFinite(lv) || lv < 1) return null;
-  return Math.max(0, calcExp(lv, lv + 1, expType));
-}
-
-/**
- * あとEXPを 0〜次Lvまでの必要EXP にクランプする。
- *
- * 0 は「Lvが上がった直後で次Lvまでの全EXPが残っている」を表す正当な値として扱う
- * （読み出し側の `calcRowExpGot` も 0 を上限として解釈する）。この点で下限が 1 の
- * 計算パネルとは異なる。上限が出せない（Lv未確定）ときはクランプしない。
- */
-function clampExpRemaining(raw: number, level: number | null | undefined, expType: ExpType): number {
-  const n = Math.max(0, Math.floor(raw));
-  const toNext = expToNextLevel(level, expType);
-  return toNext === null ? n : Math.min(n, toNext);
-}
-
 // NOTE:
 // - This store is a direct extraction of the Pokémon Box logic from the former monolithic App.vue.
 // - It intentionally keeps behavior compatible with existing UI and persistence.
-export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) {
-  const { locale, t } = opts;
+export function useBoxStore(opts: {
+  locale: Ref<AppLocale>;
+  t: Composer["t"];
+  /** アプリ全体で共有する Undo / Redo 履歴。 */
+  history: History;
+}) {
+  const { locale, t, history } = opts;
 
   const loadedBox = loadBoxData();
-  const boxEntries = ref<PokemonBoxEntryV1[]>(loadedBox.entries);
+  const boxEntries = ref<BoxEntries>(loadedBox.entries);
   const customTags = ref<BoxCustomTag[]>(loadedBox.tags);
   const selectedBoxId = ref<string | null>(null);
   const importText = ref("");
@@ -350,9 +339,8 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     const iv = getIvFromRawText(e.rawText);
     const decoded = iv ? decodeNitoyonIvDetail(iv) : null;
 
-    const expType = e.planner?.expType ?? e.derived?.expType ?? (decoded?.expType ?? 600);
-    const expGainNature = e.planner?.expGainNature ?? e.derived?.expGainNature ?? (decoded?.expGainNature ?? "normal");
-    const level = e.planner?.level ?? e.derived?.level ?? decoded?.level ?? null;
+    const individual = resolveIndividual(e);
+    const { expType, nature: expGainNature, level, expRemaining, sleepHours } = individual;
 
     const pokedexId = e.derived?.pokedexId ?? decoded?.pokedexId ?? null;
     const form = e.derived?.form ?? decoded?.form ?? 0;
@@ -371,13 +359,10 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
       nameEn: s.nameEn,
       nameJa: (SubSkillNameJaByEn as Record<string, string>)[s.nameEn] ?? s.nameEn,
     }));
-    const subSkills = decoded?.subSkills?.length ? decoded.subSkills : subSkillsFromPlanner;
+    // ボックス詳細で編集した値（空の配列を含む）を、Nitoyonのdecodedより優先する
+    const subSkills = e.planner?.subSkills ? subSkillsFromPlanner : (decoded?.subSkills ?? []);
 
     const specialty = (e.planner?.specialty ?? (pokedexId ? getPokemonSpecialty(pokedexId, form) : "unknown")) as PokemonSpecialty;
-    // Lv・EXPタイプを後から変えると上限も変わるため、保存値が新しい上限を超えていても
-    // 表示は常に有効範囲へ丸める（保存値そのものは次の確定時に正規化される）。
-    const expRemaining = clampExpRemaining(e.planner?.expRemaining ?? 0, level, expType);
-    const sleepHours = e.planner?.sleepHours ?? 0;
 
     return {
       decoded: decoded
@@ -385,7 +370,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
         : {
           pokedexId: pokedexId ?? 0,
           form,
-          level: level ?? 1,
+          level,
           natureName: "",
           expGainNature,
           expType,
@@ -422,15 +407,13 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
       relinkStatus.value = t("status.relinkFailed");
       return;
     }
-    const now = new Date().toISOString();
-    boxEntries.value = boxEntries.value.map((x) => {
-      if (x.id !== e.id) return x;
+    replaceEntry(e.id, t("box.undoLabel.relink", { name: displayBoxTitle(e) }), (x) => {
       const nextDerived = {
         pokedexId: found.pokedexId,
         form: found.form,
-        level: x.planner?.level ?? x.derived?.level ?? 1,
+        level: resolveIndividual(x).level,
         expType: found.expType,
-        expGainNature: x.planner?.expGainNature ?? x.derived?.expGainNature ?? "normal",
+        expGainNature: resolveIndividual(x).nature,
         natureName: x.derived?.natureName ?? "",
       };
       return {
@@ -444,9 +427,8 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
           specialty: undefined,
           ingredientType: undefined,
         },
-        updatedAt: now,
       };
-    });
+    }, undefined, INDIVIDUAL_EDIT_SCOPES);
     relinkStatus.value = t("status.relinkUpdated", { id: found.pokedexId });
     relinkName.value = "";
     relinkOpen.value = false;
@@ -507,12 +489,12 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     }
   );
 
-  function displayPokemonName(e: PokemonBoxEntryV1): string | null {
+  function displayPokemonName(e: BoxEntry): string | null {
     if (!e.derived) return null;
     return getPokemonNameLocalized(e.derived.pokedexId, e.derived.form, locale.value);
   }
 
-  function displayBoxTitle(e: PokemonBoxEntryV1): string {
+  function displayBoxTitle(e: BoxEntry): string {
     const name = displayPokemonName(e);
     const label = (e.label ?? "").trim();
     if (!label) return name ?? "(no name)";
@@ -526,7 +508,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     return label;
   }
 
-  function boxTileTypeClass(e: PokemonBoxEntryV1): string {
+  function boxTileTypeClass(e: BoxEntry): string {
     if (!e.derived) return "boxTile--type-unknown";
     const tt = getPokemonType(e.derived.pokedexId, e.derived.form);
     return `boxTile--type-${tt}`;
@@ -564,7 +546,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
 
   // IVデコードは重いのでキャッシュ（1200件でもサクサクに）
   const ivDetailCache = new Map<string, ReturnType<typeof decodeNitoyonIvDetail> | null>();
-  function getDecodedDetailForEntry(e: PokemonBoxEntryV1) {
+  function getDecodedDetailForEntry(e: BoxEntry) {
     const iv = getIvFromRawText(e.rawText);
     if (!iv) {
       // 手入力個体はplanner側のサブスキルをフィルタ用に使う
@@ -572,13 +554,14 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
       if (!subs?.length) return null;
       const pokedexId = e.derived?.pokedexId ?? 0;
       const form = e.derived?.form ?? 0;
+      const individual = resolveIndividual(e);
       return {
         pokedexId,
         form,
-        level: e.planner?.level ?? e.derived?.level ?? 1,
+        level: individual.level,
         natureName: "",
-        expGainNature: e.planner?.expGainNature ?? e.derived?.expGainNature ?? "normal",
-        expType: e.planner?.expType ?? e.derived?.expType ?? 600,
+        expGainNature: individual.nature,
+        expType: individual.expType,
         ingredientType: (e.planner?.ingredientType ?? null) as IngredientType | null,
         subSkills: subs.map((s) => ({
           lv: s.lv,
@@ -587,11 +570,22 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
         })),
       };
     }
-    const cached = ivDetailCache.get(iv);
-    if (cached !== undefined) return cached;
-    const decoded = decodeNitoyonIvDetail(iv);
-    ivDetailCache.set(iv, decoded);
-    return decoded;
+    let decoded = ivDetailCache.get(iv);
+    if (decoded === undefined) {
+      decoded = decodeNitoyonIvDetail(iv);
+      ivDetailCache.set(iv, decoded);
+    }
+    // ボックス詳細で編集したサブスキルを、詳細の表示と同じくdecodedより優先する
+    const subs = e.planner?.subSkills;
+    if (!decoded || !subs) return decoded;
+    return {
+      ...decoded,
+      subSkills: subs.map((s) => ({
+        lv: s.lv,
+        nameEn: s.nameEn,
+        nameJa: (SubSkillNameJaByEn as Record<string, string>)[s.nameEn] ?? s.nameEn,
+      })),
+    };
   }
 
   // ひらがな→カタカナ変換（検索用）
@@ -692,7 +686,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
   }
 
   // 手動ソート用のキャッシュ（自動ソートではなくボタンクリック時のみソート）
-  const sortedBoxEntriesCache = ref<PokemonBoxEntryV1[]>([]);
+  const sortedBoxEntriesCache = ref<BoxEntry[]>([]);
 
   // ソートを実行する関数
   function applySort(direction: "asc" | "desc") {
@@ -703,7 +697,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     const favPriority = key.endsWith("Fav");
     const comparePrimary = BOX_SORT_COMPARATORS[key.replace(/Fav$/, "") as BoxSortBase];
     const collation = locale.value === "en" ? "en" : "ja";
-    const compareTitle = (a: PokemonBoxEntryV1, b: PokemonBoxEntryV1) =>
+    const compareTitle = (a: BoxEntry, b: BoxEntry) =>
       displayBoxTitle(a).localeCompare(displayBoxTitle(b), collation);
 
     list.sort((a, b) => {
@@ -739,11 +733,11 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
 
     // キャッシュの順序を維持しつつ、フィルタ結果に含まれるもののみ返す
     // また、フィルタ結果にあってキャッシュにないものは先頭に追加（新規追加エントリを先頭表示するため）
-    const newEntries: PokemonBoxEntryV1[] = [];
-    const cachedEntries: PokemonBoxEntryV1[] = [];
+    const newEntries: BoxEntry[] = [];
+    const cachedEntries: BoxEntry[] = [];
 
     // フィルタ結果を id→行 にしておき、キャッシュ走査を O(1) 参照に（ボックスが大きいと find が二乗に近づくのを防ぐ）
-    const filteredById = new Map<string, PokemonBoxEntryV1>();
+    const filteredById = new Map<string, BoxEntry>();
     for (const f of filtered) {
       filteredById.set(f.id, f);
     }
@@ -822,62 +816,74 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     boxFilter.value = "";
   }
 
-  // Undo / Redo / persistence
-  const UNDO_LIMIT = 3;
-  const boxUndoStack = ref<BoxSnapshot[]>([]);
-  const boxRedoStack = ref<BoxSnapshot[]>([]);
-  const canUndo = computed(() => boxUndoStack.value.length > 0);
-  const canRedo = computed(() => boxRedoStack.value.length > 0);
+  // Undo / Redo は共通履歴（`box` scope）。記録は配列への参照を保存するだけ。
+  history.registerProvider<BoxHistorySnapshot>("box", {
+    prepare() {
+      // ボックスだけの操作ではスロットを切り替えない
+    },
+    capture: () => ({
+      entries: boxEntries.value,
+      customTags: customTags.value,
+      selectedBoxId: selectedBoxId.value,
+    }),
+    restore(snapshot) {
+      boxEntries.value = snapshot.entries;
+      customTags.value = snapshot.customTags;
+      const validTagIds = new Set(snapshot.customTags.map((tag) => tag.id));
+      selectedCustomTagIds.value = selectedCustomTagIds.value.filter((id) => validTagIds.has(id));
+      selectedBoxId.value = snapshot.selectedBoxId;
+      nextTick(() => {
+        syncBoxEditSubInputsFromSelected();
+      });
+    },
+  });
 
-  function captureBoxSnapshot(): BoxSnapshot {
-    return {
-      entries: cloneBoxEntries(boxEntries.value),
-      customTags: customTags.value.map((tag) => ({ ...tag })),
-      selectedId: selectedBoxId.value,
-    };
+  const canUndo = history.canUndo;
+  const canRedo = history.canRedo;
+
+  /**
+   * ボックスのデータを変える直前に呼ぶ。同じ欄への連続編集は `coalesceKey` で1件にまとめる。
+   * 計画（計算機の行）に影響する操作は `INDIVIDUAL_EDIT_SCOPES` を渡して組で記録する。
+   */
+  function recordBox(label: string, coalesceKey?: string, scopes: readonly HistoryScope[] = ["box"]) {
+    history.record(label, scopes, coalesceKey === undefined ? {} : { coalesceKey });
   }
 
-  function pushUndoSnapshot() {
-    boxUndoStack.value = [...boxUndoStack.value, captureBoxSnapshot()].slice(-UNDO_LIMIT);
-    boxRedoStack.value = [];  // 新しい操作があるとredoスタックをクリア
+  /**
+   * 1件の個体を置き換える（配列とエントリの置換）。`next` の結果が元と変わらなければ記録も更新もしない。
+   * @returns 変更したか
+   */
+  function replaceEntry(
+    id: string,
+    label: string,
+    next: (x: BoxEntry) => BoxEntry,
+    coalesceKey?: string,
+    scopes?: readonly HistoryScope[],
+  ): boolean {
+    const current = boxEntries.value.find((x) => x.id === id);
+    if (!current) return false;
+    const candidate = next(current);
+    if (JSON.stringify(candidate) === JSON.stringify(current)) return false;
+    recordBox(label, coalesceKey, scopes);
+    const updated = { ...candidate, updatedAt: new Date().toISOString() };
+    boxEntries.value = boxEntries.value.map((x) => (x.id === id ? updated : x));
+    return true;
   }
 
-  function cloneBoxEntry(e: PokemonBoxEntryV1): PokemonBoxEntryV1 {
-    const raw = JSON.parse(JSON.stringify(e));
-    return raw;
-  }
-  function cloneBoxEntries(es: PokemonBoxEntryV1[]): PokemonBoxEntryV1[] {
-    return es.map(cloneBoxEntry);
-  }
-
-  function applyBoxSnapshot(snapshot: BoxSnapshot) {
-    boxEntries.value = cloneBoxEntries(snapshot.entries);
-    customTags.value = snapshot.customTags.map((tag) => ({ ...tag }));
-    const validTagIds = new Set(customTags.value.map((tag) => tag.id));
-    selectedCustomTagIds.value = selectedCustomTagIds.value.filter((id) => validTagIds.has(id));
-    selectedBoxId.value = snapshot.selectedId;
+  /**
+   * ポケモンの追加（追加フォーム・追加モーダル）を元に戻す1回で戻せるよう、`fn` の中の記録
+   * （ボックスへの追加・種族アメの在庫・計算機への追加）を1件にまとめる。計算機への追加は `fn` の中で同期的に行う。
+   */
+  function recordAddAsOne<T>(fn: () => T): T {
+    return history.recordAsOne(INDIVIDUAL_ADD_SCOPES, fn);
   }
 
   function onUndo() {
-    const snapshot = boxUndoStack.value.pop();
-    if (!snapshot) return;
-    boxRedoStack.value = [...boxRedoStack.value, captureBoxSnapshot()].slice(-UNDO_LIMIT);
-    applyBoxSnapshot(snapshot);
-    importStatus.value = t("status.undo");
-    nextTick(() => {
-      syncBoxEditSubInputsFromSelected();
-    });
+    stepHistoryWithToast(history, "undo", t);
   }
 
   function onRedo() {
-    const snapshot = boxRedoStack.value.pop();
-    if (!snapshot) return;
-    boxUndoStack.value = [...boxUndoStack.value, captureBoxSnapshot()].slice(-UNDO_LIMIT);
-    applyBoxSnapshot(snapshot);
-    importStatus.value = t("status.redo");
-    nextTick(() => {
-      syncBoxEditSubInputsFromSelected();
-    });
+    stepHistoryWithToast(history, "redo", t);
   }
 
   // Store actions and App.vue replace the array and changed entry objects;
@@ -913,8 +919,9 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     boxEditSubErrors.value = { "10": null, "25": null, "50": null, "70": null, "80": null };
   }
 
+  // 選択の切り替えに加え、Undo / Redo で保存値が変わったときも入力欄を追従させる
   watch(
-    () => selectedBoxId.value,
+    () => [selectedBoxId.value, JSON.stringify(selectedDetail.value?.decoded.subSkills ?? [])],
     () => syncBoxEditSubInputsFromSelected(),
     { immediate: true }
   );
@@ -951,18 +958,18 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
       return;
     }
 
-    const now = new Date().toISOString();
-    boxEntries.value = boxEntries.value.map((x) => {
-      if (x.id !== e.id) return x;
-      const base = (x.planner?.subSkills ?? []).filter((s) => s.lv !== lv);
+    replaceEntry(e.id, t("box.undoLabel.field", { name: displayBoxTitle(e), field: t("box.detail.subSkills") }), (x) => {
+      // 初めて編集するときは、表示中（Nitoyonのdecoded）の他のLvのサブスキルを引き継ぐ
+      const current = x.planner?.subSkills
+        ?? (selectedDetail.value?.decoded.subSkills ?? []).map((s) => ({ lv: s.lv, nameEn: s.nameEn }));
+      const base = current.filter((s) => s.lv !== lv);
       const nextSubs = en ? [...base, { lv, nameEn: en }] : base;
       nextSubs.sort((a, b) => a.lv - b.lv);
       return {
         ...x,
-        planner: { ...(x.planner ?? {}), subSkills: nextSubs.length ? nextSubs : undefined },
-        updatedAt: now,
+        planner: { ...(x.planner ?? {}), subSkills: nextSubs },
       };
-    });
+    }, `boxEdit:${e.id}:subSkill${lv}`);
     importStatus.value = t("status.subSkillsUpdated");
   }
 
@@ -972,39 +979,78 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     return Math.max(min, Math.min(max, Math.floor(n)));
   }
 
-  function writeSelectedLevel(lvl: number) {
+  /** 解決済みの個体属性。表示名は locale に合わせた表示名で、計算機の行の `title` になる。 */
+  const individualById = computed(() => {
+    const m = new Map<string, Individual>();
+    for (const e of boxEntries.value) {
+      m.set(e.id, { ...resolveIndividual(e), label: displayBoxTitle(e) });
+    }
+    return m;
+  });
+
+  /**
+   * 個体属性（Lv・あとEXP・睡眠時間・EXPタイプ・性格・表示名）の唯一の書き込み口。
+   * 共通履歴への記録、値の正規化、`updatedAt`、配列の置換をここで行う。
+   * 存在しない `boxId` は呼び出し側の不具合なので例外にする。
+   *
+   * - あとEXP: 0 / 未設定は「次Lvまで全部」。Lv が変わったら、指定が無い限り未設定へ戻す。
+   *   EXPタイプだけが変わったときは入力済みの値を残し、新しい上限を超える分だけ削る
+   */
+  function updateIndividual(
+    boxId: string,
+    patch: IndividualPatch,
+    opts0: { label: string; coalesceKey?: string },
+  ): void {
+    const current = boxEntries.value.find((x) => x.id === boxId);
+    if (!current) throw new Error(`updateIndividual: unknown boxId ${boxId}`);
+    const before = resolveIndividual(current);
+
+    const level = clampInt(patch.level, 1, MAX_LEVEL, before.level);
+    const expType = patch.expType ?? before.expType;
+    const nature = patch.nature ?? before.nature;
+    const sleepHours = patch.sleepHours === undefined ? before.sleepHours : normalizeSleepHoursValue(patch.sleepHours);
+    const label = patch.label === undefined ? current.label : String(patch.label);
+
+    const rawExpRemaining = "expRemaining" in patch
+      ? patch.expRemaining
+      : level !== before.level ? undefined : current.planner?.expRemaining;
+    const clampedExp = rawExpRemaining === undefined || Number.isNaN(rawExpRemaining)
+      ? 0
+      : clampExpRemaining(rawExpRemaining, level, expType);
+    const expRemaining = clampedExp > 0 ? clampedExp : undefined;
+
+    const planner: NonNullable<PokemonBoxEntryV1["planner"]> = {};
+    if (level !== before.level) planner.level = level;
+    if (expType !== before.expType) planner.expType = expType;
+    if (nature !== before.nature) planner.expGainNature = nature;
+    if (sleepHours !== before.sleepHours) planner.sleepHours = sleepHours;
+    if (expRemaining !== current.planner?.expRemaining) planner.expRemaining = expRemaining;
+
+    replaceEntry(boxId, opts0.label, (x) => ({
+      ...x,
+      label,
+      planner: Object.keys(planner).length ? { ...x.planner, ...planner } : x.planner,
+    }), opts0.coalesceKey, INDIVIDUAL_EDIT_SCOPES);
+  }
+
+  function writeSelectedLevel(lvl: unknown) {
     const e = selectedBox.value;
     if (!e) return;
-    const now = new Date().toISOString();
-    boxEntries.value = boxEntries.value.map((x) => {
-      if (x.id !== e.id) return x;
-      return {
-        ...x,
-        planner: { ...(x.planner ?? {}), level: lvl },
-        updatedAt: now,
-      };
-    });
+    updateIndividual(e.id, { level: Number(lvl) }, { label: t("box.undoLabel.field", { name: displayBoxTitle(e), field: t("calc.row.srcLevel") }), coalesceKey: `boxEdit:${e.id}:level` });
     importStatus.value = t("status.levelUpdated");
   }
 
   function setBoxLevel(v: unknown) {
-    const e = selectedBox.value;
-    if (!e) return;
-    const lvl = clampInt(v, 1, MAX_LEVEL, e.planner?.level ?? e.derived?.level ?? 1);
-    writeSelectedLevel(lvl);
+    writeSelectedLevel(v);
   }
   function onEditSelectedLabel(v: string) {
     const e = selectedBox.value;
     if (!e) return;
-    const now = new Date().toISOString();
-    boxEntries.value = boxEntries.value.map((x) => (x.id === e.id ? { ...x, label: String(v || ""), updatedAt: now } : x));
+    updateIndividual(e.id, { label: String(v || "") }, { label: t("box.undoLabel.field", { name: displayBoxTitle(e), field: t("box.detail.nickname") }), coalesceKey: `boxEdit:${e.id}:label` });
     importStatus.value = t("status.nicknameUpdated");
   }
   function onEditSelectedLevel(v: string) {
-    const e = selectedBox.value;
-    if (!e) return;
-    const lvl = clampInt(v, 1, MAX_LEVEL, e.planner?.level ?? e.derived?.level ?? 1);
-    writeSelectedLevel(lvl);
+    writeSelectedLevel(v);
   }
 
   /**
@@ -1016,18 +1062,11 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
   function onEditSelectedExpRemaining(v: string) {
     const e = selectedBox.value;
     if (!e) return;
-    const d = selectedDetail.value;
+    // 空・不正は未設定（次Lvまで全部）として扱う
     const n = parseInt(v, 10);
-    // 負の数は0、NaN（空）はundefined（未設定）として扱う
-    const val = Number.isFinite(n) && n >= 0 ? clampExpRemaining(n, d?.level, d?.expType ?? 600) : undefined;
-    const now = new Date().toISOString();
-    boxEntries.value = boxEntries.value.map((x) => {
-      if (x.id !== e.id) return x;
-      return {
-        ...x,
-        planner: { ...(x.planner ?? {}), expRemaining: val },
-        updatedAt: now,
-      };
+    updateIndividual(e.id, { expRemaining: Number.isFinite(n) ? n : undefined }, {
+      label: t("box.undoLabel.field", { name: displayBoxTitle(e), field: t("calc.row.expRemaining") }),
+      coalesceKey: `boxEdit:${e.id}:expRemaining`,
     });
     // 専用の文言がないので汎用の更新メッセージ、または既存の近いものを使用
     importStatus.value = t("status.updated");
@@ -1036,15 +1075,9 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
   function setBoxSleepHours(v: string) {
     const e = selectedBox.value;
     if (!e) return;
-    const sleepHours = normalizeSleepHoursInput(v);
-    const now = new Date().toISOString();
-    boxEntries.value = boxEntries.value.map((x) => {
-      if (x.id !== e.id) return x;
-      return {
-        ...x,
-        planner: { ...(x.planner ?? {}), sleepHours },
-        updatedAt: now,
-      };
+    updateIndividual(e.id, { sleepHours: normalizeSleepHoursInput(v) ?? 0 }, {
+      label: t("box.undoLabel.field", { name: displayBoxTitle(e), field: t("calc.undoLabel.sleepHours") }),
+      coalesceKey: `boxEdit:${e.id}:sleepHours`,
     });
     importStatus.value = t("status.updated");
   }
@@ -1054,15 +1087,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     if (!e) return;
     const n = Number(v);
     const expT: ExpType = n === 600 || n === 900 || n === 1080 || n === 1320 ? n : 600;
-    const now = new Date().toISOString();
-    boxEntries.value = boxEntries.value.map((x) => {
-      if (x.id !== e.id) return x;
-      return {
-        ...x,
-        planner: { ...(x.planner ?? {}), expType: expT },
-        updatedAt: now,
-      };
-    });
+    updateIndividual(e.id, { expType: expT }, { label: t("box.undoLabel.field", { name: displayBoxTitle(e), field: t("calc.row.expType") }), coalesceKey: `boxEdit:${e.id}:expType` });
     importStatus.value = t("status.expTypeUpdated");
   }
 
@@ -1070,15 +1095,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     const e = selectedBox.value;
     if (!e) return;
     const nat: ExpGainNature = v === "up" || v === "down" || v === "normal" ? v : "normal";
-    const now = new Date().toISOString();
-    boxEntries.value = boxEntries.value.map((x) => {
-      if (x.id !== e.id) return x;
-      return {
-        ...x,
-        planner: { ...(x.planner ?? {}), expGainNature: nat },
-        updatedAt: now,
-      };
-    });
+    updateIndividual(e.id, { nature: nat }, { label: t("box.undoLabel.field", { name: displayBoxTitle(e), field: t("calc.row.nature") }), coalesceKey: `boxEdit:${e.id}:nature` });
     importStatus.value = t("status.natureUpdated");
   }
 
@@ -1092,31 +1109,27 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     if (!e) return;
     const next = (v || "").trim();
     const ingredientType: IngredientType | undefined = (IngredientTypes as readonly string[]).includes(next) ? (next as IngredientType) : undefined;
-    const now = new Date().toISOString();
-    boxEntries.value = boxEntries.value.map((x) => {
-      if (x.id !== e.id) return x;
-      return {
-        ...x,
-        planner: { ...(x.planner ?? {}), ingredientType },
-        updatedAt: now,
-      };
-    });
+    replaceEntry(e.id, t("box.undoLabel.field", { name: displayBoxTitle(e), field: t("box.detail.ingredients") }), (x) => ({
+      ...x,
+      planner: { ...(x.planner ?? {}), ingredientType },
+    }), `boxEdit:${e.id}:ingredientType`);
     importStatus.value = t("status.ingredientTypeUpdated");
   }
   function onEditSelectedSpecialty(v: string) {
     const e = selectedBox.value;
     if (!e) return;
-    const now = new Date().toISOString();
     const vv: PokemonSpecialty | undefined = v === "Berries" || v === "Ingredients" || v === "Skills" || v === "All" ? v : undefined;
-    boxEntries.value = boxEntries.value.map((x) =>
-      x.id === e.id ? { ...x, planner: { ...(x.planner ?? {}), specialty: vv }, updatedAt: now } : x
-    );
+    replaceEntry(e.id, t("box.undoLabel.field", { name: displayBoxTitle(e), field: t("box.list.specialty") }), (x) => ({
+      ...x,
+      planner: { ...(x.planner ?? {}), specialty: vv },
+    }), `boxEdit:${e.id}:specialty`);
     importStatus.value = t("status.specialtyUpdated");
   }
 
   function toggleFavoriteById(id: string) {
-    const now = new Date().toISOString();
-    boxEntries.value = boxEntries.value.map((x) => (x.id === id ? { ...x, favorite: !x.favorite, updatedAt: now } : x));
+    const e = boxEntries.value.find((x) => x.id === id);
+    if (!e) return;
+    replaceEntry(id, t("box.undoLabel.favorite", { name: displayBoxTitle(e) }), (x) => ({ ...x, favorite: !x.favorite }));
     importStatus.value = t("status.favoriteUpdated");
   }
 
@@ -1139,7 +1152,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
   function addCustomTag(rawName: string): string | null {
     const name = normalizeCustomTagName(rawName);
     if (!name || customTags.value.length >= MAX_BOX_CUSTOM_TAGS || customTagNameExists(name)) return null;
-    pushUndoSnapshot();
+    recordBox(t("box.undoLabel.tag"));
     const id = cryptoRandomId();
     customTags.value = [...customTags.value, { id, name }];
     return id;
@@ -1149,7 +1162,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     const name = normalizeCustomTagName(rawName);
     const current = customTags.value.find((tag) => tag.id === id);
     if (!current || !name || name === current.name || customTagNameExists(name, id)) return false;
-    pushUndoSnapshot();
+    recordBox(t("box.undoLabel.tag"));
     customTags.value = customTags.value.map((tag) => tag.id === id ? { ...tag, name } : tag);
     return true;
   }
@@ -1163,7 +1176,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     const targetIndex = Math.max(0, Math.min(lastIndex, Math.trunc(toIndex)));
     if (fromIndex === targetIndex) return false;
 
-    pushUndoSnapshot();
+    recordBox(t("box.undoLabel.tag"));
     const next = [...customTags.value];
     const [tag] = next.splice(fromIndex, 1);
     next.splice(targetIndex, 0, tag!);
@@ -1177,7 +1190,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
 
   function deleteCustomTag(id: string): boolean {
     if (!customTags.value.some((tag) => tag.id === id)) return false;
-    pushUndoSnapshot();
+    recordBox(t("box.undoLabel.tag"));
     customTags.value = customTags.value.filter((tag) => tag.id !== id);
     selectedCustomTagIds.value = selectedCustomTagIds.value.filter((tagId) => tagId !== id);
     const now = new Date().toISOString();
@@ -1208,7 +1221,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     );
     if (!assignableIds.size) return 0;
 
-    pushUndoSnapshot();
+    recordBox(t("box.undoLabel.tag"));
     const now = new Date().toISOString();
     boxEntries.value = boxEntries.value.map((entry) => {
       if (!assignableIds.has(entry.id)) return entry;
@@ -1227,10 +1240,10 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     const next = new Set(selected.tagIds ?? []);
     if (next.has(id)) next.delete(id);
     else next.add(id);
-    const now = new Date().toISOString();
-    boxEntries.value = boxEntries.value.map((entry) => entry.id === selected.id
-      ? { ...entry, tagIds: next.size ? [...next] : undefined, updatedAt: now }
-      : entry);
+    replaceEntry(selected.id, t("box.undoLabel.entryTag", { name: displayBoxTitle(selected) }), (entry) => ({
+      ...entry,
+      tagIds: next.size ? [...next] : undefined,
+    }));
   }
 
   function subSkillEnFromLabel(label: string): string | null {
@@ -1302,7 +1315,12 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     addExpRemaining.value = String(clampExpRemaining(n, lvl, addExpType.value));
   }
 
-  function onCreateManual(opts0: { mode: "toCalc" | "toBox"; tagIds?: readonly string[] }) {
+  /**
+   * 手入力の個体をボックスの先頭へ作る。
+   * @returns 作った個体の ID。名前が空・上限（300体）に空きが無いときは何も作らず null
+   *   （呼び出し側は null のとき、在庫の更新・計算機への追加・フォームの初期化をしない）
+   */
+  function onCreateManual(opts0: { mode: "toCalc" | "toBox"; tagIds?: readonly string[] }): string | null {
     const found = addLookup.value;
     const now = new Date().toISOString();
     const lvl = Math.max(1, Math.min(MAX_LEVEL, Math.floor(Number(addLevel.value))));
@@ -1310,7 +1328,11 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     // nickname が空でも、名前一致（図鑑リンク）できていればOK（表示名は locale で生成する）
     if (!nickname && !found) {
       importStatus.value = t("status.nameEmpty");
-      return;
+      return null;
+    }
+    if (boxEntries.value.length >= MAX_BOX_ENTRIES) {
+      showToast(t("status.boxFull", { max: MAX_BOX_ENTRIES }));
+      return null;
     }
     const pokedexId = found?.pokedexId ?? 0;
     const form = found?.form ?? 0;
@@ -1356,8 +1378,8 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
       createdAt: now,
       updatedAt: now,
     };
-    pushUndoSnapshot();
-    boxEntries.value = [entry, ...boxEntries.value].slice(0, 300);
+    recordBox(t("box.undoLabel.add", { name: displayBoxTitle(entry) }));
+    boxEntries.value = [entry, ...boxEntries.value];
     selectedBoxId.value = entry.id;
 
     // opts0.mode は呼び出し側が処理（計算機反映など）
@@ -1379,6 +1401,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     addSubLv70.value = "";
     addSubLv80.value = "";
     addSubErrors.value = { "10": null, "25": null, "50": null, "70": null, "80": null };
+    return entry.id;
   }
 
   /** @returns number of entries actually added (0 = nothing imported) */
@@ -1396,8 +1419,10 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     const existing = new Set(boxEntries.value.map((e) => e.rawText));
     let added = 0;
     let skipped = 0;
+    // 上限に空きが無くて取り込めなかった行があるか（既存の個体を押し出さず、超えた分は取り込まない）
+    let overLimit = false;
     const now = new Date().toISOString();
-    const next: PokemonBoxEntryV1[] = [...boxEntries.value];
+    const next: BoxEntry[] = [...boxEntries.value];
     const addedIds: string[] = [];
 
     for (const line of lines) {
@@ -1407,6 +1432,10 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
       if (existing.has(rawText)) {
         skipped++;
         continue;
+      }
+      if (next.length >= MAX_BOX_ENTRIES) {
+        overLimit = true;
+        break;
       }
       const derived0 = decodeNitoyonIvMinimal(parsed.iv);
       const name0 = derived0 ? getPokemonNameLocalized(derived0.pokedexId, derived0.form, locale.value) : null;
@@ -1436,19 +1465,19 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
       addedIds.push(entry.id);
       existing.add(rawText);
       added++;
-      if (next.length >= 300) break;
     }
 
-    if (addedIds.length) pushUndoSnapshot();
+    if (addedIds.length) recordBox(t("box.undoLabel.import"));
     boxEntries.value = next;
     importStatus.value = t("status.importResult", { added, skipped });
+    if (overLimit) showToast(t("status.boxFull", { max: MAX_BOX_ENTRIES }));
     return added;
   }
 
   function onDeleteSelected() {
     const e = selectedBox.value;
     if (!e) return;
-    pushUndoSnapshot();
+    recordBox(t("box.undoLabel.delete", { name: displayBoxTitle(e) }), undefined, INDIVIDUAL_EDIT_SCOPES);
     boxEntries.value = boxEntries.value.filter((x) => x.id !== e.id);
     selectedBoxId.value = null;
     importStatus.value = t("status.deleted");
@@ -1457,7 +1486,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
   /** 確認は呼び出し側（押した場所に出すインライン確認）の担当。ここでは確認しない。 */
   function onClearBox() {
     if (!boxEntries.value.length) return;
-    pushUndoSnapshot();
+    recordBox(t("box.undoLabel.clear"), undefined, INDIVIDUAL_EDIT_SCOPES);
     boxEntries.value = [];
     selectedBoxId.value = null;
     boxFilter.value = "";
@@ -1525,6 +1554,8 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
   return {
     // list/state
     boxEntries,
+    individualById,
+    updateIndividual,
     customTags,
     selectedBoxId,
     importText,
@@ -1588,6 +1619,7 @@ export function useBoxStore(opts: { locale: Ref<AppLocale>; t: Composer["t"] }) 
     onCreateManual,
     onDeleteSelected,
     onClearBox,
+    recordAddAsOne,
     onUndo,
     onRedo,
     canUndo,

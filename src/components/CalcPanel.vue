@@ -14,7 +14,7 @@
           :aria-label="t(stickyExpanded ? 'calc.summaryCollapse' : 'calc.summaryExpand')"
           @click.stop="stickyExpanded = !stickyExpanded"
         ></button>
-        <div class="calcSticky__summaryBody" :aria-busy="calc.planResultPending.value ? 'true' : undefined">
+        <div ref="summaryBodyRef" class="calcSticky__summaryBody" :aria-busy="calc.planResultPending.value ? 'true' : undefined">
           <button v-if="showNoStockWarning" type="button" class="calcSticky__noStock" data-testid="calc-no-stock-warning" @click.stop="$emit('open-settings')">{{ t("calc.export.noStockWarning") }}</button>
           <span
             v-if="calc.boostKind.value !== 'none'"
@@ -24,7 +24,7 @@
               'calcSumInline--danger': calc.boostCandyOver.value > 0,
             }"
           >
-            <span class="calcSumInline__k">{{ t("calc.export.sumBoostTotal") }}</span>
+            <span class="calcSumInline__k">{{ t("calc.summaryLabels.boostTotal") }}</span>
             <span class="calcSumInline__v">{{ calc.planResult.value ? calc.fmtNum(calc.totalBoostCandyUsed.value) : '-' }}</span>
           </span>
           <span
@@ -32,7 +32,7 @@
             class="calcSumInline calcSumInline--unused"
             :class="{ 'calcSumInline--danger': calc.planResult.value && calc.boostCandyUnused.value > 0 }"
           >
-            <span class="calcSumInline__k">{{ t("calc.export.sumBoostUnused") }}</span>
+            <span class="calcSumInline__k">{{ t("calc.summaryLabels.boostUnused") }}</span>
             <span class="calcSumInline__v">{{ calc.planResult.value ? calc.fmtNum(calc.boostCandyUnused.value) : '-' }}</span>
           </span>
           <!--
@@ -44,11 +44,11 @@
             v-if="calc.boostKind.value !== 'none' && calc.boostCandyShortageTotal.value > 0"
             class="calcSumInline calcSumInline--boostShortage calcSumInline--danger"
           >
-            <span class="calcSumInline__k">{{ t("calc.export.sumBoostShortage") }}</span>
+            <span class="calcSumInline__k">{{ t("calc.summaryLabels.boostShortage") }}</span>
             <span class="calcSumInline__v">{{ calc.fmtNum(calc.boostCandyShortageTotal.value) }}</span>
           </span>
           <span class="calcSumInline calcSumInline--shards" :class="{ 'calcSumInline--danger': calc.shardsOver.value > 0 }">
-            <span class="calcSumInline__k">{{ t("calc.shardsTotal") }}</span>
+            <span class="calcSumInline__k">{{ t("calc.summaryLabels.shardsTotal") }}</span>
             <span class="calcSumInline__v">{{ calc.planResult.value ? calc.fmtNum(calc.totalShardsUsed.value) : '-' }}</span>
           </span>
           <template v-if="calc.rowsView.value.length > 0">
@@ -161,53 +161,48 @@
       </div>
     </div>
 
-    <div ref="calcFollowingRef" class="calcFollowing" data-testid="calc-following">
+    <!-- FLIP が書く margin-bottom は並びに影響しないので、古い端末の gap の補正に付け直させない -->
+    <div ref="calcFollowingRef" class="calcFollowing" data-testid="calc-following" data-flex-gap-ignore-style>
     <div class="calcActions" data-testid="calc-actions">
-      <div class="calcActions__group">
-        <button class="btn btn--icon" :class="calc.canUndo.value ? 'btn--primary' : 'btn--ghost'" data-testid="calc-undo-button" type="button" @click="calc.undo()" :disabled="!calc.canUndo.value" :title="t('common.undo')" :aria-label="t('common.undo')">
-          <span class="btn__icon" v-html="iconUndoSvg" aria-hidden="true"></span>
-        </button>
-        <button class="btn btn--icon" :class="calc.canRedo.value ? 'btn--primary' : 'btn--ghost'" data-testid="calc-redo-button" type="button" @click="calc.redo()" :disabled="!calc.canRedo.value" :title="t('common.redo')" :aria-label="t('common.redo')">
-          <span class="btn__icon" v-html="iconRedoSvg" aria-hidden="true"></span>
-        </button>
-      </div>
       <button class="btn btn--primary calcActions__settings" data-testid="settings-open-button-desktop" data-onboarding="settings" type="button" @click="$emit('open-settings')" :title="t('common.settings')">
         {{ t("common.settingsShort") }}
       </button>
       <button class="btn btn--primary" data-testid="calc-export-button" type="button" @click="calc.openExport()" :disabled="!calc.rowsView.value.length || calc.planResultPending.value || !calc.planResult.value" :title="t('calc.export.open')">
         {{ t("calc.export.openShort") }}
       </button>
-      <button v-if="calc.debugExportEnabled" class="btn btn--ghost" data-testid="calc-debug-export-button" type="button" @click="copyDebugExport()" :disabled="!calc.rowsView.value.length || calc.planResultPending.value || !calc.planResult.value" title="検算用TSVをコピー">
+      <button v-if="calc.debugExportEnabled" class="btn btn--ghost" data-testid="calc-debug-export-button" type="button" @click="copyDebugExport()" :disabled="!calc.rowsView.value.length || calc.planResultPending.value || (!calc.planResult.value && calc.pokemonResultByRowId.value.size === 0)" title="検算用TSVをコピー">
         検算TSV
       </button>
-      <button v-if="calc.showManualExactVerification.value" class="btn btn--ghost" data-testid="calc-manual-exact-button" type="button" @click="calc.runManualExactVerification()" :disabled="calc.planResultPending.value || !calc.planResult.value" :title="t('calc.manualExactVerification')">
-        {{ t("calc.manualExactVerification") }}
-      </button>
       <span v-if="debugExportStatus" class="calcActions__status" data-testid="calc-debug-export-status">{{ debugExportStatus }}</span>
-      <button class="btn btn--ghost" data-testid="calc-clear-button" type="button" @click="calc.clear()" :disabled="!calc.rowsView.value.length" :title="t('calc.clearPokemons')">
-        {{ t("calc.clearPokemonsShort") }}
-      </button>
-      <!-- 並べ替え・上位削除のあと「最初から考え直す」ための入口。破壊的な全体操作なので
-           クリアの隣に置く（コピー／ペーストのグループへは入れない）。
-           アメブなしの種別では配るものが無いので出さない。 -->
-      <button
-        v-if="calc.boostKind.value !== 'none'"
-        class="btn btn--ghost"
-        data-testid="calc-reassign-boost-button"
-        type="button"
-        @click="calc.resetAllBoostCandy()"
-        :disabled="!calc.rowsView.value.length"
-        :title="t('calc.reassignBoostTitle')"
-      >
-        {{ t("calc.reassignBoost") }}
-      </button>
-      <div class="calcActions__group">
-        <button class="btn btn--ghost" data-testid="calc-copy-slot-button" type="button" @click="calc.copySlot()" :disabled="!calc.canCopySlot.value" :title="t('calc.copySlotTitle')">
-          {{ t("calc.copySlot") }}
-        </button>
-        <button class="btn btn--ghost" data-testid="calc-paste-slot-button" type="button" @click="calc.pasteSlot()" :disabled="!calc.canPasteSlot.value" :title="t('calc.pasteSlotTitle')">
-          {{ t("calc.pasteSlot") }}
-        </button>
+      <!-- 補助の操作は小さく薄いボタンにまとめ、設定・育成プランより目立たせない -->
+      <div class="calcActions__tools">
+        <div class="calcActions__group">
+          <button class="btn btn--soft" data-testid="calc-clear-button" type="button" @click="calc.clear()" :disabled="!calc.rowsView.value.length" :title="t('calc.clearPokemons')">
+            {{ t("calc.clearPokemonsShort") }}
+          </button>
+          <!-- 並べ替え・上位削除のあと「最初から考え直す」ための入口。破壊的な全体操作なので
+               クリアの隣に置く（コピー／ペーストのグループへは入れない）。
+               アメブなしの種別では配るものが無いので出さない。 -->
+          <button
+            v-if="calc.boostKind.value !== 'none'"
+            class="btn btn--soft"
+            data-testid="calc-reassign-boost-button"
+            type="button"
+            @click="calc.resetAllBoostCandy()"
+            :disabled="!calc.rowsView.value.length"
+            :title="t('calc.reassignBoostTitle')"
+          >
+            {{ t("calc.reassignBoost") }}
+          </button>
+        </div>
+        <div class="calcActions__group">
+          <button class="btn btn--soft" data-testid="calc-copy-slot-button" type="button" @click="calc.copySlot()" :disabled="!calc.canCopySlot.value" :title="t('calc.copySlotTitle')">
+            {{ t("calc.copySlot") }}
+          </button>
+          <button class="btn btn--soft" data-testid="calc-paste-slot-button" type="button" @click="calc.pasteSlot()" :disabled="!calc.canPasteSlot.value" :title="t('calc.pasteSlotTitle')">
+            {{ t("calc.pasteSlot") }}
+          </button>
+        </div>
       </div>
       <!-- ?perf=1 限定。睡眠EXPボーナスは日で変わるので、満月日やイベント期間へ
            時計を進めて内訳を確かめるためのデバッグ用。未設定＝現在日時。
@@ -240,11 +235,6 @@
           {{ calc.debugNowText.value.replace("T", " ") }}
         </span>
       </div>
-    </div>
-
-    <div v-if="calc.showFastCalculation.value" class="calcPlanStatus" data-testid="calc-plan-status" role="status">
-      <span>{{ t("calc.fastCalculation") }}</span>
-      <span v-if="calc.showExactImprovementHint.value">{{ t("calc.fastCalculationHint") }}</span>
     </div>
 
     <div class="calcSlots">
@@ -301,6 +291,7 @@
           'calcRow--active': r.id === calc.activeRowId.value,
           'calcRow--dragOver': r.id === calc.dragOverRowId.value,
           'calcRow--dragging': r.id === calc.dragRowId.value,
+          'calcRow--linkBroken': r.linkBroken,
         }"
         @click="calc.activeRowId.value = r.id"
       >
@@ -312,9 +303,9 @@
               type="button"
               :title="t('calc.row.dragReorder')"
               :aria-label="t('calc.row.dragReorder')"
-              @pointerdown="onRowHandlePress(r.id, $event)"
-              @touchstart="onRowHandlePress(r.id, $event)"
-              @mousedown="onRowHandlePress(r.id, $event)"
+              @pointerdown="rowDrag.onHandlePress(r.id, $event)"
+              @touchstart="rowDrag.onHandlePress(r.id, $event)"
+              @mousedown="rowDrag.onHandlePress(r.id, $event)"
               @click.stop
             >
               <svg class="calcRow__dragIcon" aria-hidden="true" viewBox="0 0 16 17" width="14" height="15"><path d="M4.5 5.5L8 2 11.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 11.5L8 15 11.5 11.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -323,6 +314,7 @@
               class="calcRow__natureSelect"
               compact
               :model-value="r.nature"
+              :disabled="r.linkBroken"
               :caption="t('calc.row.natureCaption')"
               :label="t('calc.row.nature')"
               :label-normal="t('calc.row.natureNormal')"
@@ -336,20 +328,12 @@
           <div class="calcRow__headRight">
             <button data-testid="moveUpBtn" class="linkBtn" type="button" @click.stop="calc.moveRowUp(r.id)" :disabled="!calc.canMoveRowUp(r.id)">↑</button>
             <button data-testid="moveDownBtn" class="linkBtn" type="button" @click.stop="calc.moveRowDown(r.id)" :disabled="!calc.canMoveRowDown(r.id)">↓</button>
-            <button
-              v-if="r.boxId"
-              data-testid="applyToBoxBtn"
-              class="linkBtn"
-              :class="{ 'linkBtn--done': applyFlashMap.has(r.id) }"
-              type="button"
-              @click.stop="onApplyToBoxWithFlash(r.id)"
-              :title="t('calc.applyToBoxTitle')"
-            >
-              {{ applyFlashMap.has(r.id) ? `✓ ${t("status.reflected")}` : t("calc.applyToBox") }}
-            </button>
             <button data-testid="deleteBtn" class="linkBtn linkBtn--danger" type="button" @click.stop="calc.removeRowById(r.id)">{{ t("common.delete") }}</button>
           </div>
         </div>
+
+        <!-- リンク切れの間は出し続ける（トーストはすぐ消えるので使わない） -->
+        <p v-if="r.linkBroken" class="calcRow__linkBroken" data-testid="calc-row-link-broken" role="alert">{{ t("calc.linkBroken") }}</p>
 
         <div class="calcRow__grid" :class="{ 'calcRow__grid--normal': calc.boostKind.value === 'none' }">
           <div class="field field--sm">
@@ -362,6 +346,7 @@
               @update:model-value="calc.setSrcLevel(r.id, $event)"
               :label="`${t('calc.row.srcLevel')}: Lv${r.srcLevel}`"
               :max="r.dstLevel"
+              :disabled="r.linkBroken"
             />
           </div>
 
@@ -369,6 +354,7 @@
             <span class="field__label">{{ t("calc.row.expRemaining") }}</span>
             <input
               data-testid="expRemaining"
+              :disabled="r.linkBroken"
               v-keypad="t('calc.row.expRemaining')"
               :value="expRemainingInputValue(r)"
               type="number"
@@ -407,7 +393,7 @@
               </template>
             </LevelPicker>
           </div>
-          <label class="field field--sm" v-if="getRowPokedexId(r)">
+          <label class="field field--sm" v-if="r.pokedexId">
             <span class="field__label">{{ t("calc.row.speciesCandy") }}</span>
             <input
               data-testid="speciesCandy"
@@ -415,10 +401,10 @@
               type="number"
               min="0"
               class="field__input"
-              :value="speciesCandyInputValue(getRowPokedexId(r)!)"
-              @focus="onSpeciesCandyFocus(getRowPokedexId(r)!)"
-              @input="onSpeciesCandyDraftInput(getRowPokedexId(r)!, ($event.target as HTMLInputElement).value)"
-              @blur="onSpeciesCandyBlur(getRowPokedexId(r)!)"
+              :value="speciesCandyInputValue(r.pokedexId!)"
+              @focus="onSpeciesCandyFocus(r.pokedexId!)"
+              @input="onSpeciesCandyDraftInput(r.pokedexId!, ($event.target as HTMLInputElement).value)"
+              @blur="onSpeciesCandyBlur(r.pokedexId!)"
               @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
             />
           </label>
@@ -434,14 +420,16 @@
               :label="`${t('calc.row.boostReachLevel')}: Lv${r.ui.boostReachLevel}`"
               :min="r.srcLevel"
               :max="r.ui.boostReachLevelMax"
+              :can-exceed-max="r.ui.boostFillToCapAvailable"
+              @exceed-max="calc.fillBoostCandyToCap(r.id)"
               :disabled="r.ui.boostInputDisabled"
-              :note="r.sleepTargetMode === 'all'
-                ? t('calc.row.sleepTargetAllHint')
+              :note="r.ui.noCandyHintKey !== null
+                ? t(r.ui.noCandyHintKey)
                 : boostCapHint(r)"
               :alert="r.ui.boostQuotaViolation === 'reach' ? boostQuotaHint(r) : undefined"
               :class="{
                 'levelPick--sleepCapped': r.ui.boostSleepCapped,
-                'levelPick--allSleep': r.sleepTargetMode === 'all',
+                'levelPick--allSleep': r.ui.noCandyHintKey !== null,
                 'levelPick--overQuota': r.ui.boostQuotaViolation === 'reach',
               }"
               :title="boostReachWarnings(r).length ? boostReachWarnings(r).join('\n') : undefined"
@@ -480,7 +468,7 @@
                 style="margin-left: 4px;"
                 :aria-label="t('calc.row.boostCandyCountReset')"
                 :title="t('calc.row.boostCandyCountReset')"
-                :disabled="r.sleepTargetMode === 'all'"
+                :disabled="r.ui.noCandyHintKey !== null"
                 @click.stop.prevent="calc.resetRowBoostCandy(r.id)"
               ><svg class="hintIcon__resetSvg" style="pointer-events: none;" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v4h4"/><path d="M3 7a5.5 5.5 0 1 1 1 4"/></svg></button>
             </div>
@@ -511,7 +499,7 @@
               :class="{
                 'field__input--overQuota': r.ui.boostQuotaViolation === 'count',
                 'field__input--sleepCapped': r.ui.boostSleepCapped,
-                'field__input--allSleep': r.sleepTargetMode === 'all',
+                'field__input--allSleep': r.ui.noCandyHintKey !== null,
               }"
               :title="r.ui.boostCapActive
                 ? boostCapHint(r)
@@ -558,6 +546,7 @@
                 data-testid="sleepTargetCurrentHours"
                 type="button"
                 class="field__labelLink"
+                :disabled="r.linkBroken"
                 :title="t('calc.sleep.currentSleepHours')"
                 @click.stop="showSleepHint($event, r.id)"
               >{{ t("calc.row.sleepTargetCurrent", { hours: calc.fmtNum(r.sleepHours ?? 0) }) }}</button>
@@ -567,17 +556,12 @@
                 右へ警告マークを置き、クリックでヒントを開く形にした。
               -->
             </div>
-            <select
-              data-testid="sleepTargetHours"
-              class="field__input"
-              :value="r.sleepTargetMode ?? r.sleepTargetHours ?? ''"
-              @change="onSleepTargetChange(r.id, ($event.target as HTMLSelectElement).value)"
-            >
-              <option value="">{{ t("calc.row.sleepTargetNone") }}</option>
-              <option v-for="h in SLEEP_TARGET_HOURS_OPTIONS" :key="h" :value="h">{{ sleepTargetOptionLabel(r, h) }}</option>
-              <option value="all">{{ t("calc.row.sleepTargetAll") }}</option>
-              <option value="stock">{{ t("calc.row.sleepTargetStock") }}</option>
-            </select>
+            <SleepTargetSelect
+              :choice="sleepTargetChoiceOf(r)"
+              :sleep-hours="r.sleepHours ?? 0"
+              :hours-options="SLEEP_TARGET_HOURS_OPTIONS"
+              @change="(target, options) => calc.setRowSleepTarget(r.id, target, options)"
+            />
           </div>
         </div>
 
@@ -606,7 +590,7 @@
                 <span class="calcRow__k">{{ t("calc.row.itemRequired") }}</span>
                 <span class="calcRow__num calcRow__num--text" data-testid="result-required-items-value">
                   <template v-for="(item, idx) in (rowItemUsageMaps.target.get(r.id) ?? [])" :key="idx">
-                    <span :class="{ 'calcRow__num--danger': item.isDanger }">{{ item.label }} {{ item.value }}</span>
+                    <span :class="{ 'calcRow__num--danger': item.isDanger }">{{ item.label }} {{ item.valueText ?? item.value }}</span>
                     <span v-if="idx < (rowItemUsageMaps.target.get(r.id) ?? []).length - 1">, </span>
                   </template>
                 </span>
@@ -654,7 +638,7 @@
                 <span class="calcRow__k">{{ t("calc.row.itemUsage") }}</span>
                 <span class="calcRow__num calcRow__num--text" data-testid="result-reachable-items-value">
                   <template v-for="(item, idx) in (rowItemUsageMaps.reachable.get(r.id) ?? [])" :key="idx">
-                    <span :class="{ 'calcRow__num--danger': item.isDanger }">{{ item.label }} {{ item.value }}</span>
+                    <span :class="{ 'calcRow__num--danger': item.isDanger }">{{ item.label }} {{ item.valueText ?? item.value }}</span>
                     <span v-if="idx < (rowItemUsageMaps.reachable.get(r.id) ?? []).length - 1">, </span>
                   </template>
                 </span>
@@ -678,9 +662,18 @@
               {{ ' ' }}<span class="calcRow__res" data-testid="result-remaining-exp" v-if="(rowP(r)?.shortage.expToTarget ?? 0) > 0">
                 <span class="calcRow__k calcRow__k--info">{{ t("calc.row.remainingExp") }}</span>
                 <span class="calcRow__num calcRow__num--info" data-testid="result-remaining-exp-value">{{ calc.fmtNum(rowP(r)?.shortage.expToTarget ?? 0) }}</span>
-                <span class="calcRow__sleepTime" data-testid="result-sleep-time" v-if="getSleepTimeText(r.id, rowP(r)?.shortage.expToTarget ?? 0)">
-                  {{ getSleepTimeText(r.id, rowP(r)?.shortage.expToTarget ?? 0) }}
+                <span class="calcRow__sleepTime" :data-testid="remainingTimeView(r.id)!.testid" v-if="remainingTimeView(r.id)">
+                  {{ remainingTimeView(r.id)!.text }}
                 </span>
+                <button
+                  v-if="remainingTimeView(r.id)?.halfHint"
+                  type="button"
+                  class="hintIcon"
+                  style="margin-left: 4px;"
+                  data-testid="nap-ticket-half-hint"
+                  :aria-label="t('calc.row.napTicketHalfNote')"
+                  @click.stop.prevent="showHint($event, r, 'napTicketHalf')"
+                >?</button>
               </span>
               <!--
                 睡眠込みの着地点。**残EXP の後ろに置く**（設計書『睡眠育成の拡張』§3.11）。
@@ -689,9 +682,9 @@
                 アメ到達Lv の直後へ戻さないこと（時間の対応が読めなくなる）。
                 「あとEXP」は添えない（小数がその役割。§3.8）。
               -->
-              {{ ' ' }}<span class="calcRow__res" data-testid="result-sleep-reached-level" v-if="rowP(r) && getSleepReachLevelText(r)">
-                <span class="calcRow__k calcRow__k--info">{{ t("calc.row.sleepReachedLv") }}</span>
-                <span class="calcRow__num calcRow__num--info" data-testid="result-sleep-reached-level-value">{{ getSleepReachLevelText(r) }}</span>
+              {{ ' ' }}<span class="calcRow__res" :data-testid="reachLevelView(r)!.testid" v-if="rowP(r) && reachLevelView(r)">
+                <span class="calcRow__k calcRow__k--info">{{ t(reachLevelView(r)!.labelKey) }}</span>
+                <span class="calcRow__num calcRow__num--info" :data-testid="reachLevelView(r)!.testid + '-value'">{{ reachLevelView(r)!.text }}</span>
               </span>
               <!--
                 ボーナス内訳の展開リンク（結果の最後・睡眠時間の右側）。
@@ -711,13 +704,13 @@
                 入力欄の見出しへ戻さないこと（幅が無く、英語だと見切れる）。
                 説明は title ではなくクリックで開くヒントにする（スマホは title を出せない）。
               -->
-              {{ ' ' }}<span class="calcRow__res" v-if="rowP(r) && calc.rowExceedsSleepTeamLimit(r.id)">
+              {{ ' ' }}<span class="calcRow__res" v-if="rowP(r) && calc.rowRestCapacityOverflow(r.id) !== null">
                 <button
                   type="button"
                   class="calcRow__sleepTeamWarn"
-                  data-testid="sleep-team-overflow"
-                  :aria-label="t('calc.row.sleepTeamOverflowNote')"
-                  @click.stop="showHint($event, r, 'sleepTeam')"
+                  data-testid="rest-capacity-overflow"
+                  :aria-label="restCapacityOverflowNote(r.id)"
+                  @click.stop="showHint($event, r, 'restCapacity')"
                 >⚠️</button>
               </span>
             </span>
@@ -804,7 +797,7 @@
         <div v-else class="calcEmpty__list">
           <div>{{ t("calc.emptySteps.step1") }}</div>
           <div>{{ t("calc.emptySteps.step2") }}</div>
-          <i18n-t keypath="calc.emptySteps.step3" tag="div">
+          <i18n-t keypath="calc.emptySteps.step3" tag="div" scope="global">
             <template #settingsLink>
               <button type="button" class="calcEmpty__linkBtn" data-testid="calc-empty-settings-link" @click="$emit('open-settings')">
                 {{ t("common.settings") }}
@@ -820,39 +813,7 @@
     </div>
     </div>
 
-    <Teleport to="body">
-      <div
-        v-if="rowDragNavVisible"
-        class="calcReorderNav"
-        data-testid="calc-reorder-nav"
-        role="status"
-        aria-live="polite"
-        :aria-label="t('calc.row.reorderNavLabel')"
-        :style="{
-          left: `${rowDragNavLeft}px`,
-          top: `${rowDragNavTop}px`,
-          width: `${rowDragNavWidth}px`,
-          maxHeight: `${rowDragNavMaxHeight}px`,
-        }"
-      >
-        <div class="calcReorderNav__head">
-          <span>{{ t('calc.row.reorderNavLabel') }}</span>
-          <span>{{ t('calc.row.reorderNavPosition', { current: rowDragTargetIndex + 1, total: rowDragItems.length }) }}</span>
-        </div>
-        <div ref="rowDragNavListRef" class="calcReorderNav__list">
-          <div
-            v-for="(item, index) in rowDragPreviewItems"
-            :key="item.id"
-            class="calcReorderNav__item"
-            :class="{ 'calcReorderNav__item--moving': item.id === rowDragIdState }"
-            :data-testid="item.id === rowDragIdState ? 'calc-reorder-nav-moving' : 'calc-reorder-nav-item'"
-          >
-            <span class="calcReorderNav__index">{{ index + 1 }}</span>
-            <span class="calcReorderNav__title">{{ item.title }}</span>
-          </div>
-        </div>
-      </div>
-    </Teleport>
+    <RowReorderNav :nav="rowDrag.nav" :set-list="rowDrag.setNavList" />
 
     <Teleport to="body">
       <div v-if="hintState.visible" class="hintOverlay" data-testid="calc-hint-overlay" @click.stop="closeHint"></div>
@@ -876,7 +837,8 @@
         <p v-if="hintBoostCandyWarnings.minimizeFallback" class="hintPopover__warn" data-testid="calc-hint-minimize-fallback-note"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintBoostCandyWarnings.minimizeFallback }}</span></p>
         <p v-if="hintBoostCandyWarnings.minimizeSharedStock" class="hintPopover__warn" data-testid="calc-hint-minimize-shared-stock-note"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintBoostCandyWarnings.minimizeSharedStock }}</span></p>
         <p v-if="hintAllSleepNote" class="hintPopover__warn" data-testid="calc-hint-all-sleep-note"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintAllSleepNote }}</span></p>
-        <p v-if="hintSleepTeamNote" class="hintPopover__warn" data-testid="calc-hint-sleep-team-note"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintSleepTeamNote }}</span></p>
+        <p v-if="hintRestCapacityNote" class="hintPopover__warn" data-testid="calc-hint-sleep-team-note"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintRestCapacityNote }}</span></p>
+        <p v-if="hintNapTicketHalfNote" class="hintPopover__note" data-testid="calc-hint-nap-ticket-half-note">{{ hintNapTicketHalfNote }}</p>
         <template v-if="hintState.kind === 'candyTarget'"
           ><p class="hintPopover__note">{{ t('calc.row.candyTargetHintNote') }}</p>
           <div class="hintPopover__field" data-testid="candy-target-min-boost-tool">
@@ -1003,20 +965,27 @@ import { useI18n } from "vue-i18n";
 import LevelPicker from "./LevelPicker.vue";
 import { vKeypad } from "../composables/useNumericKeypad";
 import { useDismissOnScroll } from "../composables/useDismissOnScroll";
+import { useSummaryFlip } from "../composables/useSummaryFlip";
 import { placeNearAnchor } from "../utils/anchoredPlacement";
 import NatureSelect from "./NatureSelect.vue";
-import type { CalcStore, CalcRowView } from "../composables/useCalcStore";
+import SleepTargetSelect from "./SleepTargetSelect.vue";
+import type { CalcStore, CalcRowView, RestResource, RowRemainingTime } from "../composables/useCalcStore";
+import { NAP_ISLAND_TICKET_MINUTES } from "../domain/pokesleep/nap-island";
+import { sleepTargetChoiceOf, sleepTargetTraits } from "../domain/sleep-target";
 import type { PokemonPlanLine, PokemonPlanResult, ShortageType } from "../domain/level-planner/types";
-import { calcSleepReachLevel } from "../domain/level-planner/sleepReachLevel";
+import { calcSleepLandingLevel, calcSleepReachLevel } from "../domain/level-planner/sleepReachLevel";
 import { useCandyStore } from "../composables/useCandyStore";
 import { useDraftField } from "../composables/useDraftField";
-import { getPokemonType } from "../domain/pokesleep/pokemon-names";
+import { commitFocusedInput } from "../utils/commitFocusedInput";
 import { getTypeName } from "../domain/pokesleep/pokemon-types";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import {
+  formatNapIslandDuration,
+  formatNapTicketCount,
   formatSleepTimeResult,
   type SleepTimeFormatTokens,
 } from "../domain/pokesleep/sleep-growth-format";
+import { formatReachLevelText, sleepTimeFormatTokens } from "../utils/sleepTimeText";
 import { calcExp } from "../domain/pokesleep/exp";
 import { SLEEP_TARGET_HOURS_OPTIONS } from "../persistence/calc";
 import { normalizeSleepHoursInput } from "../domain/box/sleep-milestones";
@@ -1028,12 +997,11 @@ import { buildBonusPanelView, type BonusPanelView } from "../utils/bonusPanelVie
 import type { AppLocale } from "../i18n";
 import { suppressNextClick } from "../utils/suppressNextClick";
 import { trackPress, type Press } from "../utils/trackPress";
+import { useRowReorderDrag } from "../composables/useRowReorderDrag";
+import RowReorderNav from "./RowReorderNav.vue";
 
-import iconUndoSvg from "../assets/icons/undo.svg?raw";
-import iconRedoSvg from "../assets/icons/redo.svg?raw";
 
 const emit = defineEmits<{
-  (e: "apply-to-box", rowId: string): void;
   (e: "open-help"): void;
   (e: "open-settings"): void;
   (e: "open-add-modal"): void;
@@ -1041,7 +1009,6 @@ const emit = defineEmits<{
 
 const props = defineProps<{
   calc: CalcStore;
-  resolvePokedexIdByBoxId?: (boxId: string) => number | undefined;
 }>();
 
 const calc = props.calc;
@@ -1111,15 +1078,6 @@ const onboardingDemoVisible = computed(() => _onboardingDemoVisible?.value ?? fa
 /** Sticky summary bar expand/collapse */
 const stickyExpanded = ref(false);
 
-/* ===== Button flash feedback ===== */
-const applyFlashMap = reactive(new Map<string, boolean>());
-
-function onApplyToBoxWithFlash(rowId: string) {
-  emit("apply-to-box", rowId);
-  applyFlashMap.set(rowId, true);
-  setTimeout(() => { applyFlashMap.delete(rowId); }, 1500);
-}
-
 /** 在庫未設定警告: ポケモン登録済みだが実使用のアメ・かけらが両方0 */
 /**
  * 「在庫を設定してください」の表示条件。
@@ -1129,191 +1087,16 @@ function onApplyToBoxWithFlash(rowId: string) {
  */
 const showNoStockWarning = computed(() => calc.rowsView.value.length > 0 && !candyStore.hasAnyStock.value);
 
-/**
- * サマリーは内容に応じた自然高のままにする。結果確定で折り返し行数が変わったときは、
- * 後続領域、結果行、サマリー項目を旧矩形から transform で移動させ、レイアウトシフトとして
- * 数えられる瞬間移動を避ける。サマリーが sticky 中なら document のスクロール量も補正する。
- */
+/** サマリーは自然な高さのまま変わる。計算結果が届いたときの動きは useSummaryFlip を参照。 */
 const calcFollowingRef = ref<HTMLElement | null>(null);
-let summaryFlipFrame = 0;
-let summaryFlipTimer: ReturnType<typeof setTimeout> | null = null;
-let summaryLayoutGeneration = 0;
-let lastUserScrollAt = Number.NEGATIVE_INFINITY;
-let pointerInteractionActive = false;
-const summaryFlipElements = new Set<HTMLElement>();
-
-function markUserScroll(): void {
-  lastUserScrollAt = performance.now();
-}
-
-function markPointerInteractionStart(): void {
-  pointerInteractionActive = true;
-  markUserScroll();
-}
-
-function markPointerInteractionEnd(): void {
-  pointerInteractionActive = false;
-}
-
-function clearSummaryFlip(): void {
-  if (summaryFlipFrame) cancelAnimationFrame(summaryFlipFrame);
-  if (summaryFlipTimer) clearTimeout(summaryFlipTimer);
-  summaryFlipFrame = 0;
-  summaryFlipTimer = null;
-
-  for (const element of summaryFlipElements) {
-    element.style.transition = "";
-    element.style.transform = "";
-    element.style.transformOrigin = "";
-  }
-  summaryFlipElements.clear();
-}
-
-if (typeof window !== "undefined") {
-  window.addEventListener("wheel", markUserScroll, { passive: true });
-  window.addEventListener("scroll", markUserScroll, { passive: true });
-  window.addEventListener("touchmove", markUserScroll, { passive: true });
-  window.addEventListener("pointerdown", markPointerInteractionStart, { passive: true });
-  window.addEventListener("pointerup", markPointerInteractionEnd, { passive: true });
-  window.addEventListener("pointercancel", markPointerInteractionEnd, { passive: true });
-  window.addEventListener("touchstart", markPointerInteractionStart, { passive: true });
-  window.addEventListener("touchend", markPointerInteractionEnd, { passive: true });
-  window.addEventListener("touchcancel", markPointerInteractionEnd, { passive: true });
-  window.addEventListener("mousedown", markPointerInteractionStart, { passive: true });
-  window.addEventListener("mouseup", markPointerInteractionEnd, { passive: true });
-}
-
-watch(
-  () => [
-    calc.planResult.value,
-    calc.rowsView.value.length,
-    calc.boostKind.value,
-    showNoStockWarning.value,
-    calc.boostCandyShortageTotal.value > 0,
-  ] as const,
-  async () => {
-    const following = calcFollowingRef.value;
-    if (!following || following.getClientRects().length === 0) return;
-
-    const generation = ++summaryLayoutGeneration;
-    clearSummaryFlip();
-    const beforeTop = following.getBoundingClientRect().top;
-    const rowRects = new Map(
-      [...following.querySelectorAll<HTMLElement>('[data-testid="calc-row"]')]
-        .map(element => [element, element.getBoundingClientRect()] as const),
-    );
-    const resultRects = new Map(
-      [...following.querySelectorAll<HTMLElement>('[data-testid="resultRowReachable"]')]
-        .map(element => [element, element.getBoundingClientRect()] as const),
-    );
-    const summaryRects = [...document.querySelectorAll<HTMLElement>('.calcSticky__summaryBody > *')]
-      .map(element => element.getBoundingClientRect());
-    await nextTick();
-
-    if (generation !== summaryLayoutGeneration) return;
-    const currentFollowing = calcFollowingRef.value;
-    if (!currentFollowing || currentFollowing.getClientRects().length === 0) return;
-
-    const afterTop = currentFollowing.getBoundingClientRect().top;
-    const delta = afterTop - beforeTop;
-    // Teleportされたポップオーバーはtransformへ追従しない。操作中の更新はアニメーションせず、
-    // ポップオーバーと対象欄の位置関係を優先する。
-    if (document.querySelector('.levelPick__popover, .numKeypad, [data-testid="calc-hint-popover"], [data-testid="sleep-hint-popover"]')) {
-      return;
-    }
-
-    const sticky = currentFollowing.previousElementSibling as HTMLElement | null;
-    const stickyOffset = sticky ? Number.parseFloat(getComputedStyle(sticky).top) || 0 : 0;
-    const stickyTop = sticky?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY;
-    const isStuck = window.scrollY > 0 && Math.abs(stickyTop - stickyOffset) < 1.5;
-    const userIsInteracting = pointerInteractionActive || performance.now() - lastUserScrollAt < 180;
-
-    if (isStuck && !userIsInteracting && Math.abs(delta) >= 0.5) {
-      window.scrollBy(0, delta);
-    }
-    // クリック直後の同期更新や長押し中の更新は、操作対象を動かす方が不利益になる。
-    // Workerの遅延結果など、操作が終わった後の更新だけをFLIP対象にする。
-    if (userIsInteracting) return;
-
-    const followingTranslateY = beforeTop - currentFollowing.getBoundingClientRect().top;
-
-    const invert = (
-      element: HTMLElement,
-      translateX: number,
-      translateY: number,
-      scaleX = 1,
-      scaleY = 1,
-    ): void => {
-      if (
-        Math.abs(translateX) < 0.5
-        && Math.abs(translateY) < 0.5
-        && Math.abs(scaleX - 1) < 0.005
-        && Math.abs(scaleY - 1) < 0.005
-      ) return;
-      element.style.transition = "none";
-      element.style.transformOrigin = "top left";
-      element.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scaleX}, ${scaleY})`;
-      summaryFlipElements.add(element);
-    };
-
-    invert(currentFollowing, 0, followingTranslateY);
-    const rowTranslations = new Map<HTMLElement, { x: number; y: number }>();
-    for (const [row, before] of rowRects) {
-      if (!row.isConnected) continue;
-      const after = row.getBoundingClientRect();
-      const x = before.left - after.left;
-      const y = before.top - after.top - followingTranslateY;
-      rowTranslations.set(row, { x, y });
-      // 行全体を拡縮すると入力欄のタップ領域まで一時的に縮むため、位置だけを補正する。
-      invert(row, x, y);
-    }
-    for (const [result, before] of resultRects) {
-      if (!result.isConnected) continue;
-      const after = result.getBoundingClientRect();
-      const row = result.closest<HTMLElement>('[data-testid="calc-row"]');
-      const rowTranslation = row ? rowTranslations.get(row) : undefined;
-      invert(
-        result,
-        before.left - after.left - (rowTranslation?.x ?? 0),
-        before.top - after.top - followingTranslateY - (rowTranslation?.y ?? 0),
-        after.width > 0 ? before.width / after.width : 1,
-        after.height > 0 ? before.height / after.height : 1,
-      );
-    }
-    const summaryItems = [...document.querySelectorAll<HTMLElement>('.calcSticky__summaryBody > *')];
-    for (const [index, item] of summaryItems.entries()) {
-      const before = summaryRects[index];
-      if (!before) continue;
-      const after = item.getBoundingClientRect();
-      invert(
-        item,
-        before.left - after.left,
-        before.top - after.top,
-        after.width > 0 ? before.width / after.width : 1,
-        after.height > 0 ? before.height / after.height : 1,
-      );
-    }
-
-    if (summaryFlipElements.size === 0) return;
-    // 強制レイアウトで逆変換を確定してから、transform だけを最終位置へ動かす。
-    void currentFollowing.offsetHeight;
-
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    summaryFlipFrame = requestAnimationFrame(() => {
-      summaryFlipFrame = 0;
-      for (const element of summaryFlipElements) {
-        element.style.transition = reduceMotion ? "transform 1ms linear" : "transform 180ms ease-out";
-        element.style.transform = "none";
-      }
-      summaryFlipTimer = setTimeout(() => {
-        if (generation !== summaryLayoutGeneration) return;
-        summaryFlipTimer = null;
-        clearSummaryFlip();
-      }, reduceMotion ? 50 : 200);
-    });
-  },
-  { flush: "pre" },
-);
+const summaryBodyRef = ref<HTMLElement | null>(null);
+// 行の結果の一覧を見る。全体計画の結果に加えて、種族不明の行の結果（その行だけで解いたもの）も別に届く。
+// 結果が1つも無くなった（行を全部消した）ときは null にして動かさない
+useSummaryFlip({
+  following: calcFollowingRef,
+  summaryBody: summaryBodyRef,
+  result: () => (calc.planResult.value || calc.pokemonResultByRowId.value.size > 0 ? calc.pokemonResultByRowId.value : null),
+});
 
 /**
  * expRemaining の表示値。計算機では常に実際の数値を表示する。
@@ -1414,158 +1197,19 @@ function getSlotBoostKindLabel(slotIndex: number): string {
 }
 
 // ===== 行ドラッグ（全行ナビゲーション付き） =====
-// Popover API / HTML Drag and Drop API は使わない。Pointer Events 非対応の古いSafari向けに
-// Touch Events と Mouse Events も同じ処理へ流す。
-type RowDragNavItem = { id: string; title: string };
-const ROW_DRAG_ITEM_HEIGHT = 34;
-const ROW_DRAG_NAV_HEADER_HEIGHT = 28;
-const ROW_DRAG_NAV_MARGIN = 8;
-const ROW_DRAG_START_THRESHOLD = 5;
-
-const rowDragNavVisible = ref(false);
-const rowDragNavLeft = ref(0);
-const rowDragNavTop = ref(0);
-const rowDragNavWidth = ref(240);
-const rowDragNavMaxHeight = ref(200);
-const rowDragNavListRef = ref<HTMLElement | null>(null);
-const rowDragItems = ref<RowDragNavItem[]>([]);
-const rowDragTargetIndex = ref(0);
-const rowDragIdState = ref<string | null>(null);
-const rowDragPreviewItems = computed(() => {
-  const items = [...rowDragItems.value];
-  const from = items.findIndex((item) => item.id === rowDragIdState.value);
-  if (from < 0) return items;
-  const [moving] = items.splice(from, 1);
-  if (!moving) return items;
-  items.splice(Math.max(0, Math.min(items.length, rowDragTargetIndex.value)), 0, moving);
-  return items;
+// つかんで動かす処理は useRowReorderDrag、浮かぶ一覧は RowReorderNav.vue。
+// 行の強調（calc.dragRowId / dragOverRowId）は計算機の都合なので、ここでストアへ書き写す。
+// 確定（calc.moveRow）はつかんでいる行が残っている間に呼ばれるので、flush: "sync" で書き写しを遅らせない。
+const rowDrag = useRowReorderDrag({
+  items: () => calc.rowsView.value.map((row) => ({ id: row.id, title: row.title })),
+  onCommit: (rowId, toIndex) => calc.moveRow(rowId, toIndex),
 });
-
-let rowDragId: string | null = null;
-let rowDragStartY = 0;
-/** つかんでいる指・ポインターの追跡（入力のまとめは trackPress.ts）。 */
-let rowPress: Press | null = null;
-
-function clampRowDragValue(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function beginRowDrag(rowId: string, clientY: number, handle: HTMLElement) {
-  if (rowDragId) return;
-  const items = calc.rowsView.value.map((row) => ({ id: row.id, title: row.title }));
-  const startIndex = items.findIndex((item) => item.id === rowId);
-  if (startIndex < 0) return;
-
-  rowDragId = rowId;
-  rowDragIdState.value = rowId;
-  rowDragStartY = clientY;
-  rowDragItems.value = items;
-  rowDragTargetIndex.value = startIndex;
-  calc.dragRowId.value = rowId;
-  calc.dragOverRowId.value = rowId;
-  window.getSelection()?.removeAllRanges();
-  document.body.classList.add("calcRowReordering");
-
-  const viewportWidth = Math.max(240, window.innerWidth);
-  const viewportHeight = Math.max(240, window.innerHeight);
-  const width = Math.min(280, viewportWidth - ROW_DRAG_NAV_MARGIN * 2);
-  const contentHeight = items.length * ROW_DRAG_ITEM_HEIGHT + ROW_DRAG_NAV_HEADER_HEIGHT;
-  const maxHeight = Math.min(contentHeight, viewportHeight - ROW_DRAG_NAV_MARGIN * 2);
-  const rect = handle.getBoundingClientRect();
-  let left = rect.right + ROW_DRAG_NAV_MARGIN;
-  if (left + width > viewportWidth - ROW_DRAG_NAV_MARGIN) left = rect.left - width - ROW_DRAG_NAV_MARGIN;
-  left = clampRowDragValue(left, ROW_DRAG_NAV_MARGIN, viewportWidth - width - ROW_DRAG_NAV_MARGIN);
-  const desiredTop = clientY - ROW_DRAG_NAV_HEADER_HEIGHT - (startIndex + 0.5) * ROW_DRAG_ITEM_HEIGHT;
-
-  rowDragNavWidth.value = width;
-  rowDragNavMaxHeight.value = maxHeight;
-  rowDragNavLeft.value = left;
-  rowDragNavTop.value = clampRowDragValue(
-    desiredTop,
-    ROW_DRAG_NAV_MARGIN,
-    viewportHeight - maxHeight - ROW_DRAG_NAV_MARGIN,
-  );
-  rowDragNavVisible.value = true;
-
-  void nextTick(() => {
-    const list = rowDragNavListRef.value;
-    if (!list) return;
-    const relativePointerY = clientY - list.getBoundingClientRect().top;
-    const wantedScrollTop = (startIndex + 0.5) * ROW_DRAG_ITEM_HEIGHT - relativePointerY;
-    list.scrollTop = clampRowDragValue(wantedScrollTop, 0, list.scrollHeight - list.clientHeight);
-  });
-}
-
-function updateRowDrag(clientY: number) {
-  if (!rowDragId) return;
-  if (Math.abs(clientY - rowDragStartY) < ROW_DRAG_START_THRESHOLD) return;
-  const list = rowDragNavListRef.value;
-  if (!list) return;
-  const rect = list.getBoundingClientRect();
-  const edge = Math.min(28, rect.height / 3);
-  if (clientY < rect.top + edge) list.scrollTop -= ROW_DRAG_ITEM_HEIGHT;
-  else if (clientY > rect.bottom - edge) list.scrollTop += ROW_DRAG_ITEM_HEIGHT;
-
-  const contentY = clientY - rect.top + list.scrollTop;
-  const targetIndex = clampRowDragValue(
-    Math.floor(contentY / ROW_DRAG_ITEM_HEIGHT),
-    0,
-    rowDragItems.value.length - 1,
-  );
-  rowDragTargetIndex.value = targetIndex;
-  calc.dragOverRowId.value = rowDragItems.value[targetIndex]?.id ?? rowDragId;
-}
-
-/** 取っ手を押したらドラッグを始める。指での並べ替え中はページをスクロールさせない。 */
-function onRowHandlePress(rowId: string, ev: Event) {
-  if (rowDragId) return;
-  const press = trackPress(ev, {
-    move: ({ y }) => {
-      updateRowDrag(y);
-      return true;
-    },
-    end: finishRowDrag,
-  });
-  if (!press) return;
-  ev.preventDefault();
-  rowPress = press;
-  beginRowDrag(rowId, press.y, ev.currentTarget as HTMLElement);
-  if (!rowDragId) finishRowDrag(false);
-}
-
-function finishRowDrag(commit: boolean) {
-  const movingId = rowDragId;
-  const targetIndex = rowDragTargetIndex.value;
-  if (commit && movingId) calc.moveRow(movingId, targetIndex);
-  rowDragId = null;
-  rowDragIdState.value = null;
-  rowPress?.stop();
-  rowPress = null;
-  rowDragNavVisible.value = false;
-  rowDragItems.value = [];
-  calc.dragRowId.value = null;
-  calc.dragOverRowId.value = null;
-  document.body.classList.remove("calcRowReordering");
-}
+watch(rowDrag.draggingId, (id) => { calc.dragRowId.value = id; }, { flush: "sync" });
+watch(rowDrag.overId, (id) => { calc.dragOverRowId.value = id; }, { flush: "sync" });
 
 onUnmounted(() => {
-  if (rowDragId) finishRowDrag(false);
   if (tabPress) endTabDrag(false);
   if (debugExportStatusTimer) clearTimeout(debugExportStatusTimer);
-  clearSummaryFlip();
-  if (typeof window !== "undefined") {
-    window.removeEventListener("wheel", markUserScroll);
-    window.removeEventListener("scroll", markUserScroll);
-    window.removeEventListener("touchmove", markUserScroll);
-    window.removeEventListener("pointerdown", markPointerInteractionStart);
-    window.removeEventListener("pointerup", markPointerInteractionEnd);
-    window.removeEventListener("pointercancel", markPointerInteractionEnd);
-    window.removeEventListener("touchstart", markPointerInteractionStart);
-    window.removeEventListener("touchend", markPointerInteractionEnd);
-    window.removeEventListener("touchcancel", markPointerInteractionEnd);
-    window.removeEventListener("mousedown", markPointerInteractionStart);
-    window.removeEventListener("mouseup", markPointerInteractionEnd);
-  }
 });
 
 // ===== タブドラッグ（並べ替え） =====
@@ -1779,33 +1423,6 @@ function onCandyTargetBlur(r: CalcRowView) {
 }
 
 /**
- * 睡眠目標の選択肢ラベル。累計睡眠時間が届いているものにチェックを付ける。
- *
- * **選択肢を隠さない。** 隠すと、選択中の目標を累計が追い越した瞬間にその項目だけが
- * リストから消え、`<select>` が空表示になる。累計2000h超のポケモンでは全滅して
- * 「未設定」しか出ない。達成済みは情報であって、選ばせない理由にはならない
- * （累計は手入力なので、打ち間違いを訂正する導線も要る）。
- *
- * チェックは**後ろ**に置く。前置すると数字の開始位置がずれて桁が揃わない。
- */
-function sleepTargetOptionLabel(r: CalcRowView, hours: number): string {
-  const label = `${hours}h`;
-  return (r.sleepHours ?? 0) >= hours ? `${label} ✓` : label;
-}
-
-/**
- * 睡眠目標時間の選択（設計書§5.3, §5.5）。
- * 目標 T を固定したまま個数指定を再計算する処理はストア側に集約されている。
- */
-function onSleepTargetChange(rowId: string, value: string) {
-  const target = value === "" ? undefined
-    : value === "all" ? "all"
-    : value === "stock" ? "stock"
-    : Number(value);
-  calc.setRowSleepTarget(rowId, target);
-}
-
-/**
  * 「到達可能」行のLvの呼び名（操作仕様§8.2）。
  *
  * この行のLvは**アメを使い終えた地点**で、睡眠EXPを含まない。**そのあとに睡眠が続く行だけ**
@@ -1826,59 +1443,78 @@ function reachedLevelLabelKey(r: CalcRowView): string {
 }
 
 /**
- * 残EXPから睡眠時間を計算してフォーマットされたテキストを返す
+ * 残EXPを埋める時間の表示用データ。行ごとに1回だけ `rowRemainingTimeFor` を引く
+ * （アイテム欄のチケット枚数も同じ値を使う）。どちらの時間かはストアが `kind` で返す。
  */
-function getSleepTimeText(rowId: string, expToTarget: number): string | null {
-  if (expToTarget <= 0) return null;
+const rowRemainingTimeMap = computed(() => {
+  const map = new Map<string, RowRemainingTime | null>();
+  for (const r of calc.rowsView.value) {
+    map.set(r.id, calc.rowRemainingTimeFor(r.id, rowP(r)?.shortage.expToTarget ?? 0));
+  }
+  return map;
+});
 
-  const result = calc.calcSleepTimeForRow(rowId, expToTarget);
+type RemainingTimeView = { testid: string; text: string; halfHint: boolean };
 
-  return formatSleepTimeResult(result, getSleepTimeFormatTokens());
+/** 残EXPの時間。`kind` で書式を選ぶだけ（モードの判定はストアが済ませている） */
+function remainingTimeView(rowId: string): RemainingTimeView | null {
+  const time = rowRemainingTimeMap.value.get(rowId);
+  if (!time) return null;
+  if (time.kind === "napIsland") {
+    return {
+      testid: "result-nap-time",
+      text: `${t("calc.row.napIslandTime")} ${formatNapIslandDuration(time.result.minutes, getSleepTimeFormatTokens(), "full")}`,
+      halfHint: time.ticketHalf,
+    };
+  }
+  const text = formatSleepTimeResult(time.result, getSleepTimeFormatTokens());
+  return text ? { testid: "result-sleep-time", text, halfHint: false } : null;
 }
 
+type ReachLevelView = { testid: string; labelKey: string; text: string };
+
 /**
- * 「睡眠到達Lv」の表示文（設計書『睡眠育成の拡張』§3）。出さない行では null。
+ * 「睡眠到達Lv」「島到達Lv」の表示文（設計書『睡眠育成の拡張』§3、『おひるね島』§6.3）。出さない行では null。
  *
  * 規則は `calcSleepReachLevel` が正本で、ここは書式だけを持つ。
  * **「約」は Lv70 でも付ける。** 小数を落とすのは分母が無いから（§3.4）で、
  * 推定値であること（§3.9）は変わらない。
  *
- * **「これから寝る時間」を括弧で添える。** 隣の残EXPが「目標Lvまで 約96日（1248時間）」で、
+ * **睡眠は「これから寝る時間」を括弧で添える。** 隣の残EXPが「目標Lvまで 約96日（1248時間）」で、
  * こちらは「睡眠目標を寝きった時点」という**別の時間軸**なので、
  * 同じ単位（これから寝る時間）を並べて読み分けられるようにする（§3.11）。
+ * 島は隣の「おひるね島 〇日〇時間〇分」と同じ時点なので括弧は付けない。
+ *
+ * **アメ不足・かけら不足がある行は、目標に届かなくても着地点を出す**（2026-10-13 ユーザー指示）。
+ * 不足で目標まで届かないとき、睡眠（・島）のあとどこまで上がるのかが画面から読めないため。
+ * 不足の判定は不足チップと同じ律速要因（`rowShortage` の `limiting`）。
  */
-function getSleepReachLevelText(r: CalcRowView): string | null {
+function reachLevelView(r: CalcRowView): ReachLevelView | null {
   const p = rowP(r);
-  if (!p) return null;
+  const after = calc.rowReachAfterRemainingFor(r.id);
+  if (!p || !after) return null;
 
-  const reach = calcSleepReachLevel({
+  const params = {
     reachedLevel: p.reachableLine.level,
     reachedExpInLevel: p.reachableLine.expInLevel,
-    sleepExp: calc.rowSleepExpFor(r.id),
+    sleepExp: after.kind === "napIsland" ? after.napGainedExp : after.sleepExp,
     targetLevel: p.targetLevel,
     targetExpInLevel: p.targetExpInLevel,
     expType: r.expType,
-  });
+  };
+  const limiting = rowShortage(r).limiting;
+  const reach = limiting === "candy" || limiting === "shards"
+    ? calcSleepLandingLevel(params)
+    : calcSleepReachLevel(params);
   if (!reach.shown) return null;
 
-  const value = reach.tenths === null ? `${reach.level}` : `${reach.level}.${reach.tenths}`;
-  const hours = calc.rowSleepRemainingHoursFor(r.id);
-  return `${t("calc.sleep.approximatePrefix")}${value}`
-    + `${t("calc.sleep.estimateOpen")}${hours}${t("calc.sleep.hourUnit")}${t("calc.sleep.estimateClose")}`;
+  return after.kind === "napIsland"
+    ? { testid: "result-nap-reached-level", labelKey: "calc.row.napReachedLv", text: formatReachLevelText(t, reach) }
+    : { testid: "result-sleep-reached-level", labelKey: "calc.row.sleepReachedLv", text: formatReachLevelText(t, reach, after.hours) };
 }
 
 function getSleepTimeFormatTokens(): SleepTimeFormatTokens {
-  return {
-    hourUnit: t("calc.sleep.hourUnit"),
-    minuteUnit: t("calc.sleep.minuteUnit"),
-    dayUnit: t("calc.sleep.dayUnit"),
-    hourMinuteSeparator: t("calc.sleep.hourMinuteSeparator"),
-    rangeSeparator: t("calc.sleep.rangeSeparator"),
-    exactDayJoiner: t("calc.sleep.exactDayJoiner"),
-    approximatePrefix: t("calc.sleep.approximatePrefix"),
-    estimateOpen: t("calc.sleep.estimateOpen"),
-    estimateClose: t("calc.sleep.estimateClose"),
-  };
+  return sleepTimeFormatTokens(t);
 }
 
 /**
@@ -1893,19 +1529,11 @@ const onboardingSleepTimeText = computed(() =>
   )
 );
 
-// 行から pokedexId を取得（保存済み or boxId から解決）
-function getRowPokedexId(r: { pokedexId?: number; boxId?: string }): number | undefined {
-  if (r.pokedexId) return r.pokedexId;
-  if (r.boxId && props.resolvePokedexIdByBoxId) {
-    return props.resolvePokedexIdByBoxId(r.boxId);
-  }
-  return undefined;
-}
-
 // PokemonPlanResult への直接アクセス: calc.getPokemonResult(rowId) を使用
 
 // アイテム使用リストの項目型
-type ItemUsageItem = { label: string; value: number; isDanger: boolean };
+// `valueText` は表示用の完成文字列（チケットの「2枚（2枚目は3分）」など）。無ければ `value` をそのまま出す
+type ItemUsageItem = { label: string; value: number; valueText?: string; isDanger: boolean };
 
 // アイテム使用リストの赤字判定モード（個数指定行は目標まで行と同値になったため廃止。設計書§4.2）
 type ItemDangerMode = 'target' | 'reachable';
@@ -1916,7 +1544,9 @@ function buildItemUsageList(
   mode: ItemDangerMode,
   pCached?: PokemonPlanResult | null,
   // 成長のお香は目標まで行と到達可能行で同じ値なので、行あたり1回だけ数えて渡す。
-  growthIncenseCached?: number
+  growthIncenseCached?: number,
+  // おひるね島のチケット枚数も目標まで行と到達可能行で同じなので、行あたり1回だけ引いて渡す。
+  remainingCached?: RowRemainingTime | null
 ): ItemUsageItem[] {
   const p = pCached !== undefined ? pCached : rowP(r);
   if (!p) return [];
@@ -1926,7 +1556,7 @@ function buildItemUsageList(
   const sourceItems = sourceLine.candySupply;
 
   const items: ItemUsageItem[] = [];
-  const typeName = getTypeName(r.pokemonType || getPokemonType(p.pokedexId), locale.value);
+  const typeName = getTypeName(r.pokemonType ?? "unknown", locale.value);
   const uniLabel = t("calc.export.labelUni");
 
   // 赤字判定関数。
@@ -1964,6 +1594,20 @@ function buildItemUsageList(
     items.push({ label: t("calc.row.growthIncense"), value: growthIncense, isDanger: false });
   }
 
+  // おひるね島のチケット。お香と同じく赤字にしない。チケットを使わない答え（枚数 0）は出さない。
+  if (remainingCached?.kind === "napIsland" && remainingCached.result.ticketCount > 0) {
+    const { ticketCount, lastTicketMinutes } = remainingCached.result;
+    items.push({
+      label: t("calc.row.napTicket"),
+      value: ticketCount,
+      valueText: formatNapTicketCount(ticketCount, lastTicketMinutes, NAP_ISLAND_TICKET_MINUTES, getSleepTimeFormatTokens(), {
+        count: (count) => t("calc.row.napTicketCount", { count }),
+        countWithLast: (count, duration) => t("calc.row.napTicketCountWithLast", { count, duration }),
+      }),
+      isDanger: false,
+    });
+  }
+
   return items;
 }
 
@@ -1980,8 +1624,9 @@ const rowItemUsageMaps = computed(() => {
   for (const r of calc.rowsView.value) {
     const p = rowP(r);
     const growthIncense = calc.rowGrowthIncenseCountFor(r.id);
-    target.set(r.id, buildItemUsageList(r, "target", p, growthIncense));
-    reachable.set(r.id, buildItemUsageList(r, "reachable", p, growthIncense));
+    const remaining = rowRemainingTimeMap.value.get(r.id) ?? null;
+    target.set(r.id, buildItemUsageList(r, "target", p, growthIncense, remaining));
+    reachable.set(r.id, buildItemUsageList(r, "reachable", p, growthIncense, remaining));
   }
   return { target, reachable };
 });
@@ -2233,7 +1878,7 @@ const boostCandyHintRedRowIds = computed(() => new Set(
 
 // ヒントアイコン用
 // ヒントポップオーバーの状態
-type HintKind = 'boostCandy' | 'candyTarget' | 'sleepTeam';
+type HintKind = 'boostCandy' | 'candyTarget' | 'restCapacity' | 'napTicketHalf';
 
 /**
  * ヒントの状態は**どの行のどのヒントか**と位置だけを持つ。
@@ -2262,8 +1907,7 @@ const canRunMinBoostForCandyTarget = computed(() => {
   return hintState.value.kind === "candyTarget"
     && row !== null
     && (row.candyTarget ?? 0) > 0
-    && row.sleepTargetMode !== "all"
-    && row.sleepTargetMode !== "stock"
+    && sleepTargetTraits(row).candy === "normal"
     && calc.boostKind.value !== "none"
     && row.srcLevel < MAX_LEVEL;
 });
@@ -2315,23 +1959,42 @@ const hintBoostCandyWarnings = computed<BoostCandyHintWarnings>(() => {
  * 開かないため、あちらの `note` も読めない。残る経路がこのヒントだけ。
  */
 const hintAllSleepNote = computed(() => {
-  // 睡眠チームのヒントはアメの話を一切載せない。
+  // 定員超過・チケット半減のヒントはアメの話を一切載せない。
   const kind = hintState.value.kind;
-  const mode = kind === 'sleepTeam' ? undefined : hintRow.value?.sleepTargetMode;
-  if (mode === 'all') return t('calc.row.sleepTargetAllHint');
+  const row = kind === 'restCapacity' || kind === 'napTicketHalf' ? null : hintRow.value;
+  if (!row) return undefined;
+  if (row.ui.noCandyHintKey !== null) return t(row.ui.noCandyHintKey);
   // 「アメ在庫＋睡眠」でもアメブは使えるので、無効なのは個数指定だけ。
   // アメブ個数のヒントには出さない（あちらの欄は無効になっていない）。
-  if (mode === 'stock' && kind === 'candyTarget') return t('calc.row.sleepTargetStockHint');
+  if (sleepTargetTraits(row).candy === 'stockOnly' && kind === 'candyTarget') return t('calc.row.sleepTargetStockHint');
   return undefined;
 });
 
+/** 定員を超えた資源ごとの案内文。 */
+const REST_CAPACITY_OVERFLOW_NOTE_KEY = {
+  sleep: 'calc.row.sleepTeamOverflowNote',
+  napIsland: 'calc.row.napIslandOverflowNote',
+} as const satisfies Record<RestResource, string>;
+
+function restCapacityOverflowNote(rowId: string): string {
+  const resource = calc.rowRestCapacityOverflow(rowId);
+  return resource === null ? '' : t(REST_CAPACITY_OVERFLOW_NOTE_KEY[resource]);
+}
+
 /**
- * 睡眠チーム（1晩5匹）からあふれた行の案内。
+ * 睡眠チーム（1晩5匹）などの定員からあふれた行の案内。
  * 赤い面（`--alert`）にはしない。制約違反ではなく「同時には実行できない」という
  * 段取りの話で、赤で塗ると入力エラーのように見える。
  */
-const hintSleepTeamNote = computed(() =>
-  hintState.value.kind === 'sleepTeam' ? t('calc.row.sleepTeamOverflowNote') : undefined
+const hintRestCapacityNote = computed(() =>
+  hintState.value.kind === 'restCapacity' && hintState.value.rowId
+    ? restCapacityOverflowNote(hintState.value.rowId)
+    : undefined
+);
+
+/** 「おひるね島＋チケ」の答えが7日未満のときの注記。間違いではなく選べる情報なので、警告（⚠️）にしない */
+const hintNapTicketHalfNote = computed(() =>
+  hintState.value.kind === 'napTicketHalf' ? t('calc.row.napTicketHalfNote') : undefined
 );
 
 const hintPopoverRef = ref<HTMLElement | null>(null);
@@ -2363,18 +2026,8 @@ async function showHint(ev: MouseEvent, row?: CalcRowView, kind: HintKind = 'boo
   await placeHint(anchor, () => hintPopoverRef.value, hintState.value);
 }
 
-/**
- * ポップオーバー内の入力欄にフォーカスがあれば外して、入力中の値を確定させる。
- *
- * フォーカスを残したまま v-if で閉じると、blur が起きずに入力欄ごと消え、打った値が保存されない。
- * 起きるのは、iOS でフォーカスできない要素（外側の .hintOverlay）を押したときや、
- * ホイールで閉じたとき（closeAllHints）。閉じる前に自分で blur して、通常の確定経路を通す。
- */
-function commitFocusedInput(popover: HTMLElement | null): void {
-  const active = document.activeElement;
-  if (popover && active instanceof HTMLElement && popover.contains(active)) active.blur();
-}
-
+// ヒントを閉じる前に入力中の欄を確定させる。起きるのは、iOS でフォーカスできない要素
+// （外側の .hintOverlay）を押したときや、ホイールで閉じたとき（closeAllHints）。
 function closeHint() {
   commitFocusedInput(hintPopoverRef.value);
   hintState.value.visible = false;

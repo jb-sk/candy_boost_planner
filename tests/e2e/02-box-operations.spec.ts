@@ -1,3 +1,4 @@
+
 /**
  * 02-box-operations.spec.ts
  * BOX操作のE2Eテスト
@@ -10,6 +11,7 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { BoxPanelPage } from './pages/BoxPanelPage';
 import { SettingsModalPage } from './pages/SettingsModalPage';
+import { ThemePickerPage } from './pages/ThemePickerPage';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -80,7 +82,7 @@ test.describe('検索・フィルタ', () => {
   });
 
   test('Blueテーマでは選択中フィルターを濃い青と白文字で示す', async ({ page }) => {
-    await page.locator('.design-switch-select').selectOption('blue');
+    await new ThemePickerPage(page).select('blue');
     await boxPanel.toggleFavoriteFilter();
 
     await expect(boxPanel.favoriteFilterButton).toHaveClass(/chipBtn--on/);
@@ -229,7 +231,7 @@ test.describe('検索・フィルタ', () => {
   });
 
   test('カスタムタグを管理・付与・絞り込みし、削除をUndoで復元できる', async ({ page }) => {
-    await page.locator('.design-switch-select').selectOption('blue');
+    await new ThemePickerPage(page).select('blue');
     const initialCount = await boxPanel.boxTiles.count();
     const filters = page.getByTestId('box-custom-tag-filters');
     await page.getByTestId('box-tag-manager-toggle').click();
@@ -317,8 +319,10 @@ test.describe('検索・フィルタ', () => {
     const names = manager.locator('.boxTagManager__nameText');
     await expect(names).toHaveText(['タグA', 'タグB', 'タグC']);
 
-    // タグC の取っ手をタグA の上までドラッグする
-    const handleC = manager.locator('.boxTagManager__item').filter({ hasText: 'タグC' }).locator('.boxTagManager__handle');
+    // タグC の取っ手をタグA の上までドラッグする。
+    // PC は画面下中央に元に戻す・やり直すの帯が固定で重なるので、測る前に一覧を画面の中央へ出す
+    await manager.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    const handleC =manager.locator('.boxTagManager__item').filter({ hasText: 'タグC' }).locator('.boxTagManager__handle');
     const firstItem = await manager.locator('.boxTagManager__item').first().boundingBox();
     const itemB = await manager.locator('.boxTagManager__item').nth(1).boundingBox();
     const itemC = await manager.locator('.boxTagManager__item').nth(2).boundingBox();
@@ -405,11 +409,13 @@ test.describe('検索・フィルタ', () => {
     await expect(bulkToggle).toHaveCSS('background-color', 'rgb(1, 87, 155)');
     await expect(managerToggle).not.toHaveClass(/boxCustomTagFilters__manage--open/);
 
-    const firstVisibleName = (await boxPanel.boxTiles.first().locator('.boxTile__name').innerText()).trim();
+    // タイルは content-visibility: auto なので、画面外だと innerText が空になる。textContent で読む
+    const firstVisibleName = ((await boxPanel.boxTiles.first().locator('.boxTile__name').textContent()) ?? '').trim();
     await boxPanel.fillSearch(firstVisibleName);
+    // 入力直後は絞り込み前の件数が読めることがあるので、減るまで待つ
+    await expect.poll(() => boxPanel.boxTiles.count()).toBeLessThan(initialCount);
     const targetCount = await boxPanel.boxTiles.count();
     expect(targetCount).toBeGreaterThan(0);
-    expect(targetCount).toBeLessThan(initialCount);
     await expect(page.getByTestId('box-tag-bulk')).toContainText(`表示中の${targetCount}匹のポケモンへタグを一括登録`);
     await expect(page.getByTestId('box-tag-bulk-apply')).toHaveText('一括登録');
     await page.getByTestId('box-tag-bulk-apply').click();
@@ -424,6 +430,42 @@ test.describe('検索・フィルタ', () => {
     await boxPanel.expectBoxTileCount(0);
     await tagFilter.click();
     await boxPanel.expectBoxTileCount(initialCount);
+  });
+
+  test('一括登録パネルで新しいタグを追加して、そのまま表示中の個体へ登録できる', async ({ page }) => {
+    const initialCount = await boxPanel.boxTiles.count();
+    await page.getByTestId('box-tag-bulk-toggle').click();
+    const bulk = page.getByTestId('box-tag-bulk');
+    await expect(page.getByTestId('box-tag-bulk-select')).toHaveCount(0);
+
+    await page.getByTestId('box-tag-bulk-name-input').fill('一括新規');
+    await expect(page.getByTestId('box-tag-bulk-add')).toHaveText('追加して登録');
+    await page.getByTestId('box-tag-bulk-add').click();
+    await expect(page.getByTestId('box-tag-bulk-name-input')).toHaveValue('');
+    await expect(bulk).toContainText(`${initialCount}匹に登録しました。`);
+    await expect(page.getByTestId('box-tag-bulk-select').locator('option:checked')).toHaveText('一括新規');
+
+    await page.getByTestId('box-tag-bulk-name-input').fill('一括新規');
+    await page.getByTestId('box-tag-bulk-name-input').press('Enter');
+    await expect(bulk.getByRole('alert')).toHaveText('同じ名前のタグがあります。');
+    await expect(bulk.getByRole('status')).toHaveCount(0);
+
+    // 表示中の個体が0匹なら「追加して登録」は押せない
+    await boxPanel.fillSearch('存在しないポケモン名');
+    await boxPanel.expectBoxTileCount(0);
+    await page.getByTestId('box-tag-bulk-name-input').fill('一括新規2');
+    await expect(page.getByTestId('box-tag-bulk-add')).toBeDisabled();
+    await boxPanel.clickSearchClear();
+
+    const tagFilter = page.getByTestId('box-custom-tag-filters').getByRole('button', { name: '一括新規', exact: true });
+    await tagFilter.click();
+    await boxPanel.expectBoxTileCount(initialCount);
+
+    // Undo は登録→タグ作成の順に1回ずつ戻る
+    await boxPanel.undoButton.click();
+    await boxPanel.expectBoxTileCount(0);
+    await boxPanel.undoButton.click();
+    await expect(tagFilter).toHaveCount(0);
   });
 
   test('フィルタリング設定の開閉が動作する', async () => {
@@ -521,7 +563,7 @@ test.describe('BOX詳細パネル', () => {
     await expect(page.getByTestId('calc-row')).toHaveCount(1);
     await boxPanel.clickDeleteFromBox();
     await expect(boxPanel.deleteLinkedConfirm).toBeVisible();
-    await expect(boxPanel.deleteLinkedConfirm).toContainText('計算機側は元に戻せません');
+    await expect(boxPanel.deleteLinkedConfirm).toContainText('個体と計算機の行がまとめて戻ります');
     await boxPanel.confirmLinkedDelete();
 
     // 1匹減っている
@@ -567,6 +609,54 @@ test.describe('BOX詳細パネル', () => {
     // 全て消える
     await boxPanel.expectBoxTileCount(0);
     await expect(page.getByTestId('calc-row')).toHaveCount(0);
+  });
+
+  test('表示中のポケモンを計算機へ追加し、10匹を超えるときは確認する', async ({ page }) => {
+    const initialCount = await boxPanel.boxTiles.count();
+    expect(initialCount).toBeGreaterThan(10);
+    const calcRows = page.getByTestId('calc-row');
+    const calcVisible = page.getByTestId('box-calc-visible');
+    const confirm = page.getByTestId('box-calc-visible-confirm');
+    await expect(calcVisible).toHaveText('表示中のポケモンを計算する');
+
+    // 10匹以内なら確認なしで追加する
+    // タイルは content-visibility: auto なので、画面外だと innerText が空になる。textContent で読む
+    const firstVisibleName = ((await boxPanel.boxTiles.first().locator('.boxTile__name').textContent()) ?? '').trim();
+    await boxPanel.fillSearch(firstVisibleName);
+    // 入力直後は絞り込み前の件数が読めることがあるので、減るまで待つ
+    await expect.poll(() => boxPanel.boxTiles.count()).toBeLessThan(initialCount);
+    const targetCount = await boxPanel.boxTiles.count();
+    expect(targetCount).toBeLessThanOrEqual(10);
+    await calcVisible.click();
+    await expect(confirm).toBeHidden();
+    await expect(calcRows).toHaveCount(targetCount);
+    // 表示中が全て計算中なら押せない
+    await expect(calcVisible).toBeDisabled();
+
+    // 10匹を超えるなら確認し、10匹までにできる
+    await boxPanel.clickSearchClear();
+    await calcVisible.click();
+    await expect(confirm).toBeVisible();
+    await expect(confirm).toContainText(`計算するポケモンが${initialCount}匹になります。`);
+    await page.getByTestId('box-calc-visible-confirm-limit').click();
+    await expect(calcRows).toHaveCount(10);
+    await expect(calcVisible).toHaveText(`✓ ${10 - targetCount}匹追加`);
+    await expect(calcVisible).toBeFocused();
+
+    // 既に10匹なら「10匹までにする」は出さない。やめるでは何も起きない
+    await calcVisible.click();
+    await expect(page.getByTestId('box-calc-visible-confirm-limit')).toHaveCount(0);
+    await expect(confirm).toContainText('10匹を超えると計算が重くなることがあります。');
+    await page.getByTestId('box-calc-visible-confirm-no').click();
+    await expect(confirm).toBeHidden();
+    await expect(calcRows).toHaveCount(10);
+
+    await calcVisible.click();
+    await page.getByTestId('box-calc-visible-confirm-all').click();
+    await expect(calcRows).toHaveCount(initialCount);
+    // 全員追加してボタンが押せなくなったら、隣の全消去へフォーカスを移す
+    await expect(calcVisible).toBeDisabled();
+    await expect(boxPanel.clearAllBoxButton).toBeFocused();
   });
 
   test('全消去の確認は Escape で閉じ、フォーカスが元のボタンへ戻る', async ({ page }) => {

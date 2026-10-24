@@ -18,17 +18,26 @@ import { suppressNextClick } from "../utils/suppressNextClick";
  * スライダー（input[type="range"]）の上で始まった指の動きは見ない。つまみを動かしてもページはスクロールせず、
  * 閉じると浮き要素の中のスライダー（計算機のヒント内のレベルピッカーなど）を動かせなくなる。
  *
+ * 浮き要素の中で始まった動きを見ないようにもできる（`isInside`）。中に縦スクロールする一覧がある浮き要素
+ * （睡眠目標のドロップダウン）で、一覧の中のスクロールが閉じる合図になってしまうのを防ぐ。
+ * 外側でのスクロール操作では、これまでどおり閉じる。
+ *
  * @param isOpen 開いているか（開いている間だけ監視する）
  * @param close 閉じる
+ * @param isInside 触れた・ホイールを回した位置が浮き要素の中なら true を返す。省略時はどこでも閉じる合図にする
  */
-export function useDismissOnScroll(isOpen: () => boolean, close: () => void): void {
+export function useDismissOnScroll(
+  isOpen: () => boolean,
+  close: () => void,
+  isInside: (target: EventTarget | null) => boolean = () => false,
+): void {
   const DRAG_THRESHOLD_PX = 10;
   let touchStartPoint: { x: number; y: number } | null = null;
 
   function onTouchStart(ev: TouchEvent): void {
     const touch = ev.touches[0];
     const onSlider = ev.target instanceof Element && ev.target.closest('input[type="range"]') !== null;
-    touchStartPoint = touch && !onSlider ? { x: touch.clientX, y: touch.clientY } : null;
+    touchStartPoint = touch && !onSlider && !isInside(ev.target) ? { x: touch.clientX, y: touch.clientY } : null;
   }
 
   function onTouchMove(ev: TouchEvent): void {
@@ -41,7 +50,8 @@ export function useDismissOnScroll(isOpen: () => boolean, close: () => void): vo
     close();
   }
 
-  function onWheel(): void {
+  function onWheel(ev: WheelEvent): void {
+    if (isInside(ev.target)) return;
     close();
   }
 

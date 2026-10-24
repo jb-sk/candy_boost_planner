@@ -378,6 +378,8 @@ function drawColumnLabelX(
   inlinePadding = CELL_PAD,
 ): number {
   if (col.key === "name") return col.x + NAME_CELL_PAD;
+  // Lv の見出しは値（LV_CELL_PAD から描く）と左端をそろえる
+  if (col.key === "lv") return col.x + LV_CELL_PAD;
   if (col.align === "left") return col.x + inlinePadding;
   if (col.align === "right") return col.x + col.width - inlinePadding;
   return col.x + col.width / 2;
@@ -452,17 +454,17 @@ function drawTable(ctx: Ctx, model: ExportImageModel, layout: ExportImageLayout,
       }
     }
 
-    // Lv: アメ到達地点を表示し、睡眠育成がある行だけ最終目標を zzZ で分ける。
+    // Lv: アメ到達地点を表示し、睡眠育成がある行だけ睡眠のあとの着地点を zzZ で分ける。左寄せ。
     const candyLevels = `${row.srcLevel} → ${row.candyReachLevel}`;
     if (row.sleepTargetLevel === undefined) {
       drawText(
         ctx,
         candyLevels,
-        lvCol.x + lvCol.width / 2,
+        lvCol.x + LV_CELL_PAD,
         midY,
         layout.fonts.cellLv,
         style.ink,
-        "center",
+        "left",
         "middle",
       );
     } else {
@@ -479,7 +481,7 @@ function drawTable(ctx: Ctx, model: ExportImageModel, layout: ExportImageLayout,
           return measureTextWidth(ctx, text, font);
         },
       );
-      let levelX = lvCol.x + (lvCol.width - fitted.totalWidth) / 2;
+      let levelX = lvCol.x + LV_CELL_PAD;
 
       drawText(ctx, candyLevels, levelX, midY, fitted.levelFont, style.ink, "left", "middle");
       levelX += fitted.candyWidth + gapBeforeMark;

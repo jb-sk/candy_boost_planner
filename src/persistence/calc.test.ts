@@ -429,6 +429,33 @@ describe("persistence/calc slots", () => {
     });
   });
 
+  it.each(["nap", "napTicket", "napStock", "napStockTicket"] as const)(
+    "localStorage は %s を往復し、数値・個数指定より優先する",
+    (mode) => {
+      localStorage.setItem(
+        "candy-boost-planner:calc:slots:v1",
+        JSON.stringify({
+          schemaVersion: 2,
+          slots: [{
+            savedAt: "2026-10-13T00:00:00.000Z",
+            rows: [
+              { ...row, id: "nap", sleepTargetMode: mode, sleepTargetHours: 500, candyTarget: 40, dstExpInLevel: 10 },
+            ],
+            activeRowId: "nap",
+            boostKind: "full",
+          }, null, null],
+        }),
+      );
+
+      expect(loadCalcSlots()[0]!.rows[0]).toMatchObject({
+        sleepTargetMode: mode,
+        sleepTargetHours: undefined,
+        candyTarget: undefined,
+        dstExpInLevel: undefined,
+      });
+    },
+  );
+
   it("normalizes dstExpInLevel: drops it without candyTarget and clamps it below the next level requirement", () => {
     const toNext = calcExp(20, 21, 600);
     localStorage.setItem(
@@ -483,7 +510,7 @@ describe("persistence/calc slots", () => {
     expect(slots[0]?.itemCompareMode).toBe("surplusGateFirst");
   });
 
-  it("writes schemaVersion 2, drops indistinguishable V1 boost values, and preserves explicit V2 values", () => {
+  it("writes schemaVersion 3, drops indistinguishable V1 boost values, and preserves explicit V2 values", () => {
     const slot = {
       slotId: "slot-schema",
       savedAt: "2026-07-28T00:00:00.000Z",
@@ -491,7 +518,7 @@ describe("persistence/calc slots", () => {
       activeRowId: "row-1",
       boostKind: "mini" as const,
     };
-    expect(JSON.parse(serializeCalcSlots([slot, null, null])).schemaVersion).toBe(2);
+    expect(JSON.parse(serializeCalcSlots([slot, null, null])).schemaVersion).toBe(3);
 
     localStorage.setItem(
       "candy-boost-planner:calc:slots:v1",

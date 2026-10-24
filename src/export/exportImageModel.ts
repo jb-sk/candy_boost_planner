@@ -20,7 +20,7 @@ export type ExportImageRow = {
   dstLevel: number;
   /** 画面・画像に表示する、実際にアメを使い終えた時点の到達Lv。 */
   candyReachLevel?: number;
-  /** 睡眠育成後の最終目標Lv。睡眠育成がなければ未指定。 */
+  /** 睡眠（・おひるね島）のあとの実際の着地点の Lv（zzZ の後ろ）。目標Lvではない。睡眠・島のEXPが無ければ未指定。 */
   sleepTargetLevel?: number;
   boostCandy: number;
   normalCandy: number;
@@ -310,7 +310,8 @@ function clampPct(pct: number): number {
 function buildColumns(isBoostMode: boolean, t: ExportImageTranslate): ExportColumn[] {
   const cols: ExportColumn[] = [
     { key: "name", label: t("calc.export.colPokemon"), align: "left" },
-    { key: "lv", label: t("calc.export.colLv"), align: "center" },
+    // Lv は左寄せ（行ごとに「64 → 66 zzZ 67」の長さが違い、中央寄せだと先頭の現在Lvの位置がそろわない。2026-10-13 ユーザー指示）
+    { key: "lv", label: t("calc.export.colLv"), align: "left" },
   ];
   if (isBoostMode) {
     cols.push({ key: "boost", label: t("calc.export.colBoost"), align: "right" });

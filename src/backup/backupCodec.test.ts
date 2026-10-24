@@ -4,7 +4,7 @@ import type { CalcRowV1, CalcSaveSlotV1 } from "../persistence/calc";
 import { DEFAULT_SLEEP_SETTINGS } from "../persistence/calc";
 import { parseBackup, stringifyBackup } from "./backupCodec";
 import { createBackup } from "./createBackup";
-import { BACKUP_MAX_BYTES, BACKUP_SCHEMA_VERSION, BackupValidationError, type BackupBoxEntryV1, type CandyBoostPlannerBackupV3 } from "./types";
+import { BACKUP_MAX_BYTES, BACKUP_SCHEMA_VERSION, BackupValidationError, type BackupBoxEntryV1, type CandyBoostPlannerBackupV4 } from "./types";
 
 function row(id: string, boxId?: string, pokedexId = 25): CalcRowV1 {
   return {
@@ -47,7 +47,7 @@ function entry(id: string, pokedexId = 25): BackupBoxEntryV1 {
   };
 }
 
-function backup(): CandyBoostPlannerBackupV3 {
+function backup(): CandyBoostPlannerBackupV4 {
   return createBackup({
     boxEntries: [],
     totalShards: 0,
@@ -254,7 +254,7 @@ describe("backup codec", () => {
       .toEqual(value.data.globalSettings.sleepSettings);
   });
 
-  it("keeps schema V3 and fills settings added after its release with defaults", () => {
+  it("keeps the current schema and fills settings added after its release with defaults", () => {
     const legacyV3 = JSON.parse(stringifyBackup(backup()));
     delete legacyV3.data.globalSettings.sleepSettings.growthIncenseGsdDays;
     delete legacyV3.data.globalSettings.sleepSettings.growthIncenseStock;
@@ -263,7 +263,7 @@ describe("backup codec", () => {
     delete legacyV3.data.globalSettings.sleepSettings.blueSeedPlantWeekday;
     delete legacyV3.data.globalSettings.sleepSettings.blueSeedIncenseDays;
     const parsed = parseBackup(JSON.stringify(legacyV3)).backup;
-    expect(parsed.schemaVersion).toBe(3);
+    expect(parsed.schemaVersion).toBe(BACKUP_SCHEMA_VERSION);
     expect(parsed.data.globalSettings.sleepSettings).toMatchObject({
       growthIncenseGsdDays: DEFAULT_SLEEP_SETTINGS.growthIncenseGsdDays,
       growthIncenseStock: null,
@@ -327,7 +327,7 @@ describe("backup codec", () => {
     const value = JSON.parse(JSON.stringify(backup()));
     delete value.data.globalSettings.sleepSettings.manualEventBonuses;
     const parsed = parseBackup(JSON.stringify(value)).backup;
-    expect(parsed.schemaVersion).toBe(3);
+    expect(parsed.schemaVersion).toBe(BACKUP_SCHEMA_VERSION);
     expect(parsed.data.globalSettings.sleepSettings.manualEventBonuses).toEqual([]);
   });
 
@@ -436,7 +436,7 @@ describe("backup codec", () => {
       boostOrExpAdjustment: 25,
     }]), null, null];
     const parsed = parseBackup(JSON.stringify(value)).backup;
-    expect(parsed.schemaVersion).toBe(3);
+    expect(parsed.schemaVersion).toBe(BACKUP_SCHEMA_VERSION);
     expect(parsed.data.calculator.slots[0]?.rows[0]).toMatchObject({
       sleepTargetMode: "all",
       sleepTargetHours: undefined,
@@ -474,6 +474,30 @@ describe("backup codec", () => {
     });
     expect(parseBackup(stringifyBackup(parsed)).backup).toEqual(parsed);
   });
+
+  it.each(["nap", "napTicket", "napStock", "napStockTicket"] as const)(
+    "backup V3 は %s を往復し、個数指定より優先する",
+    (mode) => {
+      const value = backup();
+      value.data.calculator.slots = [slot("slot-1", [{
+        ...row("row-1"),
+        sleepTargetMode: mode,
+        sleepTargetHours: 500,
+        candyTarget: 40,
+        dstExpInLevel: 10,
+        boostOrExpAdjustment: 25,
+      }]), null, null];
+      const parsed = parseBackup(JSON.stringify(value)).backup;
+      expect(parsed.data.calculator.slots[0]?.rows[0]).toMatchObject({
+        sleepTargetMode: mode,
+        sleepTargetHours: undefined,
+        candyTarget: undefined,
+        dstExpInLevel: undefined,
+        boostOrExpAdjustment: 25,
+      });
+      expect(parseBackup(stringifyBackup(parsed)).backup).toEqual(parsed);
+    },
+  );
 
   it("rejects rows that violate the target invariants", () => {
     // 個数指定なしでも睡眠目標は有効
@@ -545,5 +569,60 @@ describe("backup codec", () => {
     });
     expect(value.data.box.entries[0]).not.toHaveProperty("source");
     expect(stringifyBackup(value)).not.toContain('"source"');
+  });
+});
+
+describe("旧バックアップ（V1〜V3）の個体属性の移行", () => {
+  // box-1 は Lv 10・あとEXP 20（ボックス）、行は Lv 10・あとEXP 100（row() の値）で食い違う
+  function legacy(version: 1 | 2 | 3, boxUpdatedAt: string, slotSavedAt: string, activeSlotIndex: 0 | 1 | 2 = 0) {
+    const value = JSON.parse(stringifyBackup(backup()));
+    value.schemaVersion = version;
+    if (version === 1) value.data.globalSettings.candyInventory.schemaVersion = 1;
+    value.data.box.entries = [{ ...entry("box-1"), updatedAt: boxUpdatedAt }];
+    value.data.calculator.activeSlotIndex = activeSlotIndex;
+    value.data.calculator.slots = [
+      { ...slot("slot-1", [row("row-1", "box-1")]), savedAt: slotSavedAt },
+      null,
+      null,
+    ];
+    return value;
+  }
+
+  it.each([1, 2, 3] as const)("V%s: ボックスより新しいスロットの行の値を、ボックスの個体へ移して V4 にする", (version) => {
+    const parsed = parseBackup(JSON.stringify(legacy(version, "2026-07-01T00:00:00.000Z", "2026-07-02T00:00:00.000Z"))).backup;
+    expect(parsed.schemaVersion).toBe(4);
+    expect(parsed.data.box.entries[0]?.planner).toMatchObject({ level: 10, expRemaining: 100 });
+    expect(parsed.data.box.entries[0]?.updatedAt).not.toBe("2026-07-01T00:00:00.000Z");
+    // 行は書き換えない（取り込み後の同期が揃える）
+    expect(parsed.data.calculator.slots[0]?.rows[0]).toMatchObject({ srcLevel: 10, expRemaining: 100 });
+  });
+
+  it.each([1, 2, 3] as const)("V%s: スロットより新しいボックスの値は、そのまま残す", (version) => {
+    const parsed = parseBackup(JSON.stringify(legacy(version, "2026-07-02T00:00:00.000Z", "2026-07-01T00:00:00.000Z"))).backup;
+    expect(parsed.data.box.entries[0]?.planner).toMatchObject({ expRemaining: 20 });
+    expect(parsed.data.box.entries[0]?.updatedAt).toBe("2026-07-02T00:00:00.000Z");
+  });
+
+  it("バックアップの表示中スロットを使う（同時刻は表示中スロットの行が勝つ）", () => {
+    const sameTime = "2026-07-01T00:00:00.000Z";
+    expect(parseBackup(JSON.stringify(legacy(3, sameTime, sameTime, 0))).backup.data.box.entries[0]?.planner?.expRemaining).toBe(100);
+    // 表示中スロットに個体が無ければ、同時刻はボックスが勝つ
+    expect(parseBackup(JSON.stringify(legacy(3, sameTime, sameTime, 1))).backup.data.box.entries[0]?.planner?.expRemaining).toBe(20);
+  });
+
+  it("リンク切れの行は移行で扱わず、そのまま残す", () => {
+    const value = legacy(3, "2026-07-01T00:00:00.000Z", "2026-07-02T00:00:00.000Z");
+    value.data.calculator.slots[0].rows = [row("row-1", "missing"), row("row-2")];
+    const parsed = parseBackup(JSON.stringify(value));
+    expect(parsed.backup.data.box.entries[0]?.planner).toMatchObject({ expRemaining: 20 });
+    expect(parsed.backup.data.calculator.slots[0]?.rows.map((r) => r.boxId)).toEqual(["missing", undefined]);
+    expect(parsed.warnings.map((w) => w.code)).toEqual(["orphan-box-reference"]);
+  });
+
+  it("V4 は移行しない（行がボックスと違っても、そのまま取り込む）", () => {
+    const value = legacy(3, "2026-07-01T00:00:00.000Z", "2026-07-02T00:00:00.000Z");
+    value.schemaVersion = 4;
+    const parsed = parseBackup(JSON.stringify(value)).backup;
+    expect(parsed.data.box.entries[0]).toEqual(value.data.box.entries[0]);
   });
 });

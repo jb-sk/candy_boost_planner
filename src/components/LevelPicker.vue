@@ -47,10 +47,17 @@ const props = defineProps<{
    * 共用の部品なので、使う画面だけが指定する。
    */
   keypad?: boolean;
+  /**
+   * 上限より上へ上げる操作（上限での ▶・上限超えの直接入力）を、値へ丸めずに `exceedMax` で親へ渡す。
+   * 上限のLvでは表しきれない値を親が持っている欄で使う（計算機のアメブ目標Lv: `T'` の端数までアメブ）。
+   */
+  canExceedMax?: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: "update:modelValue", value: number): void;
+  /** `canExceedMax` のとき、上限より上へ上げようとした */
+  (e: "exceedMax"): void;
   /** 開閉。親が開いている間だけ重なり順を上げるのに使う（CSS の :has() は iOS 15.4・Chrome 105 からなので使わない） */
   (e: "update:open", open: boolean): void;
 }>();
@@ -178,6 +185,11 @@ function update(v: number) {
   const min = props.min ?? 1;
   const max = props.max ?? MAX_LEVEL;
   noteIfOverMax(v);
+  if (v > max && props.canExceedMax) {
+    inputValue.value = String(props.modelValue);
+    emit("exceedMax");
+    return;
+  }
   if (v < min) v = min;
   if (v > max) v = max;
   inputValue.value = String(v);
@@ -208,6 +220,11 @@ function commitInput(): number {
   const lo = props.min ?? 1;
   const hi = props.max ?? MAX_LEVEL;
   noteIfOverMax(n);
+  if (n > hi && props.canExceedMax) {
+    inputValue.value = String(props.modelValue);
+    emit("exceedMax");
+    return props.modelValue;
+  }
   const clamped = Math.max(lo, Math.min(hi, n));
   inputValue.value = String(clamped);
   setValue(clamped);
@@ -326,7 +343,7 @@ onUnmounted(() => {
           type="button"
           data-testid="level-picker-increment"
           @click.stop="nudge(1)"
-          :disabled="disabled || effectiveInputNumber() >= (max ?? MAX_LEVEL)"
+          :disabled="disabled || (effectiveInputNumber() >= (max ?? MAX_LEVEL) && !canExceedMax)"
         >
           ▶
         </button>

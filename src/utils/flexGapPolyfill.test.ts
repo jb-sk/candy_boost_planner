@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planFlexGapPatches, type AutoSides, type FlexItem } from "./flexGapPolyfill";
+import { layoutStyleText, planFlexGapPatches, type AutoSides, type FlexItem } from "./flexGapPolyfill";
 
 const el = (auto: AutoSides = {}, mainSize?: number): FlexItem => ({ kind: "element", auto, mainSize });
 const sized = (mainSize: number, auto: AutoSides = {}): FlexItem => el(auto, mainSize);
@@ -101,5 +101,20 @@ describe("planFlexGapPatches", () => {
   it("折り返す縦並びは、行（列）の2つ目以降の上と2列目以降の左に足す", () => {
     const patches = planFlexGapPatches({ direction: "column", wrap: "wrap", rowGap: 5, columnGap: 8, mainSize: 50 }, [sized(30), sized(30)]);
     expect(patches).toEqual([{ target: 1, side: "left", delta: 8 }]);
+  });
+});
+
+describe("layoutStyleText", () => {
+  it("transform・transition・opacity だけの変化は同じ並びとして扱う（FLIP の書き換えで付け直さない）", () => {
+    const before = "margin-left: 12px; gap: 0px;";
+    const during = "margin-left: 12px; gap: 0px; transition: transform 200ms cubic-bezier(0.2, 0, 0, 1); transform: translate(-19px, 0px); opacity: 0;";
+    expect(layoutStyleText(during)).toBe(layoutStyleText(before));
+    expect(layoutStyleText("transition-duration: 1ms; transform-origin: top left; will-change: transform;")).toBe("");
+  });
+
+  it("並びに効くプロパティ（display・margin など）の変化は見分ける", () => {
+    expect(layoutStyleText("display: none;")).not.toBe(layoutStyleText(""));
+    expect(layoutStyleText("margin-left: 12px; transform: none;")).not.toBe(layoutStyleText("margin-left: 0px; transform: none;"));
+    expect(layoutStyleText(null)).toBe("");
   });
 });

@@ -431,7 +431,6 @@
             <span class="chipBtn__text">{{ tag.name }}</span>
           </button>
           <button
-            v-if="customTags.length"
             class="chipBtn boxCustomTagFilters__manage"
             :class="{ 'boxCustomTagFilters__manage--open': bulkTagOpen }"
             type="button"
@@ -455,24 +454,44 @@
 
         <section v-if="bulkTagOpen" class="boxTagBulk" data-testid="box-tag-bulk">
           <span class="boxTagBulk__title">{{ t("box.tags.bulkTitle", { count: sortedBoxEntries.length }) }}</span>
-          <div class="boxTagBulk__controls">
-            <select
-              v-model="bulkTagId"
+          <!-- 2行で1つのグリッドにして、上下の入力欄とボタンの幅をそろえる。
+               入力欄で Enter を押したとき（送信）は「追加して登録」になる。 -->
+          <form class="boxTagBulk__controls" @submit.prevent="addAndAssignBulkTag">
+            <template v-if="customTags.length">
+              <select
+                v-model="bulkTagId"
+                class="field__input"
+                data-testid="box-tag-bulk-select"
+                :aria-label="t('box.tags.bulkTitle', { count: sortedBoxEntries.length })"
+                @change="bulkTagStatus = ''"
+              >
+                <option v-for="tag in customTags" :key="tag.id" :value="tag.id">{{ tag.name }}</option>
+              </select>
+              <button
+                class="btn btn--primary btn--sm"
+                type="button"
+                data-testid="box-tag-bulk-apply"
+                :disabled="!bulkTagId || bulkAssignableCount === 0"
+                @click="assignTagToFiltered"
+              >{{ t("box.tags.bulkApply") }}</button>
+            </template>
+            <input
+              v-model="bulkNewTagName"
               class="field__input"
-              data-testid="box-tag-bulk-select"
-              :aria-label="t('box.tags.bulkTitle', { count: sortedBoxEntries.length })"
-              @change="bulkTagStatus = ''"
-            >
-              <option v-for="tag in customTags" :key="tag.id" :value="tag.id">{{ tag.name }}</option>
-            </select>
+              data-testid="box-tag-bulk-name-input"
+              :maxlength="box.maxCustomTagNameLength"
+              :placeholder="t('box.tags.namePlaceholder')"
+              :aria-label="t('box.tags.namePlaceholder')"
+              @input="bulkTagError = ''"
+            />
             <button
               class="btn btn--primary btn--sm"
-              type="button"
-              data-testid="box-tag-bulk-apply"
-              :disabled="!bulkTagId || bulkAssignableCount === 0"
-              @click="assignTagToFiltered"
-            >{{ t("box.tags.bulkApply") }}</button>
-          </div>
+              type="submit"
+              data-testid="box-tag-bulk-add"
+              :disabled="!bulkNewTagName.trim() || customTags.length >= box.maxCustomTags || sortedBoxEntries.length === 0"
+            >{{ t("box.tags.bulkAddApply") }}</button>
+          </form>
+          <p v-if="bulkTagError" class="field__error boxTagBulk__error" role="alert">{{ bulkTagError }}</p>
           <p v-if="bulkTagStatus" class="boxTagBulk__status" role="status">{{ bulkTagStatus }}</p>
         </section>
 
@@ -642,15 +661,20 @@
               {{ t("box.list.sortDesc") }}
             </button>
           </div>
-          <div class="boxSortRow__undoRedo">
-            <button class="btn btn--ghost btn--sm" type="button" data-testid="box-clear-all" @click="clearConfirmRef?.open($event.currentTarget)" :disabled="!boxEntries.length || clearConfirmRef?.isOpen">
+          <div class="boxSortRow__actions">
+            <button
+              ref="calcVisibleButtonRef"
+              class="btn btn--sm"
+              :class="calcVisibleFlash ? 'btn--done' : 'btn--ghost'"
+              type="button"
+              data-testid="box-calc-visible"
+              :disabled="!visibleNotInCalcIds.length || calcVisibleConfirmRef?.isOpen"
+              @click="onCalcVisibleRequest($event.currentTarget)"
+            >
+              {{ calcVisibleFlash ? calcVisibleLabel : t("box.list.calcVisible") }}
+            </button>
+            <button ref="clearAllButtonRef" class="btn btn--ghost btn--sm" type="button" data-testid="box-clear-all" @click="openClearConfirm($event.currentTarget)" :disabled="!boxEntries.length || clearConfirmRef?.isOpen">
               {{ t("box.clearAll") }}
-            </button>
-            <button ref="undoButtonRef" class="btn" :class="canUndo ? 'btn--primary' : 'btn--ghost'" type="button" data-testid="box-undo" @click="box.onUndo" :disabled="!canUndo" :title="t('box.list.undoTitle')">
-              {{ t("common.undo") }}
-            </button>
-            <button class="btn" :class="canRedo ? 'btn--primary' : 'btn--ghost'" type="button" data-testid="box-redo" @click="box.onRedo" :disabled="!canRedo">
-              {{ t("common.redo") }}
             </button>
           </div>
         </div>
@@ -670,8 +694,31 @@
           cancel-test-id="box-clear-confirm-no"
           :disabled="!boxEntries.length"
           close-when-disabled
-          :confirm-focus-target="undoButtonRef"
+          :confirm-focus-target="historyUndoButton"
           @confirm="onClearBoxWithCalc"
+        />
+
+        <InlineConfirm
+          ref="calcVisibleConfirmRef"
+          id-prefix="box-calc-visible-confirm"
+          container-class="boxClearConfirm"
+          :question="t('box.list.calcVisibleWarn', { total: calcRowCountAfterAddAll })"
+          :note="t(calcVisibleRoomUnderLimit > 0 ? 'box.list.calcVisibleWarnNote' : 'box.list.calcVisibleWarnNoteFull', { limit: CALC_ROW_SOFT_LIMIT })"
+          :confirm-label="t('box.list.calcVisibleAll', { count: visibleNotInCalcIds.length })"
+          confirm-variant="primary"
+          :alt-label="calcVisibleRoomUnderLimit > 0
+            ? t('box.list.calcVisibleUpToLimit', { limit: CALC_ROW_SOFT_LIMIT, count: calcVisibleRoomUnderLimit })
+            : ''"
+          :cancel-label="t('common.cancel')"
+          test-id="box-calc-visible-confirm"
+          confirm-test-id="box-calc-visible-confirm-all"
+          alt-test-id="box-calc-visible-confirm-limit"
+          cancel-test-id="box-calc-visible-confirm-no"
+          :disabled="!visibleNotInCalcIds.length"
+          close-when-disabled
+          :confirm-focus-target="visibleNotInCalcIds.length ? calcVisibleButtonRef : clearAllButtonRef"
+          @confirm="addVisibleToCalc(visibleNotInCalcIds)"
+          @alt="addVisibleToCalc(visibleNotInCalcIds.slice(0, calcVisibleRoomUnderLimit))"
         />
 
         <div class="boxList" ref="boxListRef" v-if="sortedBoxEntries.length">
@@ -694,9 +741,9 @@
                 @click="onTileSelectClick($event, e.id)"
               >
                 <div class="boxTile__topRow">
-                  <span class="boxTile__lv">Lv{{ e.planner?.level ?? e.derived?.level ?? "-" }}</span>
+                  <span class="boxTile__lv">Lv{{ individualById.get(e.id)?.level }}</span>
                   <!-- 未設定・0h は表示しない。aria-label は付けない（付けるとタイル名から時間が消える） -->
-                  <span v-if="e.planner?.sleepHours" class="boxTile__sleep" :title="t('box.detail.sleepHours')">{{ e.planner.sleepHours }}h</span>
+                  <span v-if="individualById.get(e.id)?.sleepHours" class="boxTile__sleep" :title="t('box.detail.sleepHours')">{{ individualById.get(e.id)?.sleepHours }}h</span>
                   <div class="boxTile__iconRow">
                     <span v-if="calcLinkedBoxIds.has(e.id)" class="boxTile__calcMark" :aria-label="t('box.list.inCalculator')" :title="t('box.list.inCalculator')" v-html="iconCheckSvg"></span>
                     <span v-if="e.favorite" class="boxTile__fav" :aria-label="t('box.list.favorite')" :title="t('box.list.favorite')" v-html="iconStarSvg"></span>
@@ -726,7 +773,7 @@
                     data-testid="box-detail-calc"
                     @click="onApplyToCalcWithFlash()"
                   >
-                    {{ calcBtnFlash ? calcBtnLabel : t("box.add.toCalc") }}
+                    {{ calcBtnFlash ? calcBtnLabel : calcLinkedBoxIds.has(selectedBox.id) ? t("box.add.removeFromCalc") : t("box.add.toCalc") }}
                   </button>
                   <button
                     class="btn btn--danger"
@@ -1007,11 +1054,14 @@
                         min="0"
                         step="1"
                         class="field__input"
-                        :value="sleepHoursInput"
+                        :value="sleepHoursText"
                         data-testid="box-detail-sleep-hours-input"
                         v-keypad="t('box.detail.sleepHours')"
                         placeholder=""
+                        @focus="onSleepHoursFocus"
                         @input="onSleepHoursInput(($event.target as HTMLInputElement).value)"
+                        @blur="onSleepHoursBlur"
+                        @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
                       />
                       <button
                         type="button"
@@ -1105,7 +1155,7 @@
                             :value="boxEditSubInputs[String(lv)] ?? ''"
                             class="field__input"
                             :class="{ 'field__input--error': !!boxEditSubErrors[String(lv)] }"
-                            @change="box.onBoxEditSubInput(lv, ($event.target as HTMLSelectElement).value)"
+                            @change="box.onBoxEditSubInput(lv, ($event.target as HTMLSelectElement).value); box.onBoxEditSubBlur(lv)"
                           >
                             <option value=""></option>
                             <option v-for="label in subSkillOptionLabels" :key="label" :value="label">{{ label }}</option>
@@ -1149,8 +1199,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, onBeforeUnmount } from "vue";
-import type { ComponentPublicInstance } from "vue";
+import { ref, watch, nextTick, computed, onBeforeUnmount, inject } from "vue";
+import type { ComponentPublicInstance, Ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { localizeNature } from "../i18n/terms";
 import { IngredientTypes } from "../domain/box/nitoyon";
@@ -1158,8 +1208,10 @@ import { getPokemonType } from "../domain/pokesleep/pokemon-names";
 import { getPokemonNameLocalized } from "../domain/pokesleep/pokemon-name-localize";
 import NatureSelect from "./NatureSelect.vue";
 import { useDismissOnScroll } from "../composables/useDismissOnScroll";
+import { useDraftField } from "../composables/useDraftField";
 import { placeNearAnchor } from "../utils/anchoredPlacement";
 import InlineConfirm from "./InlineConfirm.vue";
+import { HISTORY_UNDO_BUTTON_KEY } from "../composables/historyUndoButton";
 
 import type { BoxStore } from "../composables/useBoxStore";
 import type { CalcStore } from "../composables/useCalcStore";
@@ -1187,8 +1239,9 @@ const props = defineProps<{
   gt: (s: string) => string;
 }>();
 const emit = defineEmits<{
-  (e: "apply-to-calc"): void;
+  (e: "apply-to-calc", boxId: string): void;
   (e: "toggle-calc", boxId: string): void;
+  (e: "add-many-to-calc", boxIds: string[]): void;
   (e: "open-settings"): void;
 }>();
 
@@ -1197,13 +1250,20 @@ const box = props.box;
 const calc = props.calc;
 const gt = props.gt;
 
-const undoButtonRef = ref<HTMLButtonElement | null>(null);
+// 全消去やタグ削除のあとは、すぐ戻せるよう「元に戻す」へフォーカスを移す
+const historyUndoButton = inject(HISTORY_UNDO_BUTTON_KEY, ref(null));
 const clearConfirmRef = ref<InstanceType<typeof InlineConfirm> | null>(null);
+const calcVisibleConfirmRef = ref<InstanceType<typeof InlineConfirm> | null>(null);
+// 「表示中のポケモンを計算する」の確認を閉じたあとのフォーカス先。
+// 全員追加してボタンが押せなくなったら、同じ列の隣（全消去）へ移す。
+const calcVisibleButtonRef = ref<HTMLButtonElement | null>(null);
+const clearAllButtonRef = ref<HTMLButtonElement | null>(null);
 const deleteConfirmRef = ref<InstanceType<typeof InlineConfirm> | null>(null);
 const tagManagerRef = ref<HTMLElement | null>(null);
 
 // Aliases for v-model so the template compiler updates `.value` correctly.
 const boxEntries = box.boxEntries;
+const individualById = box.individualById;
 const selectedBoxId = box.selectedBoxId;
 const addLookup = box.addLookup;
 const addNameSuggestList = box.addNameSuggestList;
@@ -1221,8 +1281,6 @@ const boxSortDir = box.boxSortDir;
 const selectedSpecialties = box.selectedSpecialties;
 const customTags = box.customTags;
 const selectedCustomTagIds = box.selectedCustomTagIds;
-const canUndo = box.canUndo;
-const canRedo = box.canRedo;
 const relinkFound = box.relinkFound;
 const relinkSuggestList = box.relinkSuggestList;
 const showRelinkSuggest = box.showRelinkSuggest;
@@ -1255,6 +1313,8 @@ const boxAddNewTagName = ref("");
 const boxAddTagError = ref("");
 const bulkTagId = ref("");
 const bulkTagStatus = ref("");
+const bulkNewTagName = ref("");
+const bulkTagError = ref("");
 
 const bulkAssignableCount = computed(() => {
   const id = bulkTagId.value;
@@ -1274,28 +1334,42 @@ function toggleBoxAddTag(id: string): void {
   boxAddSelectedTagIds.value = [...next];
 }
 
-function addAndSelectBoxAddTag(): void {
-  const name = boxAddNewTagName.value.trim();
-  boxAddTagError.value = "";
+/** 入力欄の名前でタグを作る。作れないときはエラー文言を error に入れて null を返す。 */
+function createCustomTag(nameRef: Ref<string>, error: Ref<string>): string | null {
+  const name = nameRef.value.trim();
+  error.value = "";
   if (customTags.value.length >= box.maxCustomTags) {
-    boxAddTagError.value = t("box.tags.limit", { count: box.maxCustomTags });
-    return;
+    error.value = t("box.tags.limit", { count: box.maxCustomTags });
+    return null;
   }
   if (duplicateTagName(name)) {
-    boxAddTagError.value = t("box.tags.duplicate");
-    return;
+    error.value = t("box.tags.duplicate");
+    return null;
   }
   const id = box.addCustomTag(name);
+  if (id) nameRef.value = "";
+  return id;
+}
+
+function addAndSelectBoxAddTag(): void {
+  const id = createCustomTag(boxAddNewTagName, boxAddTagError);
+  if (id) boxAddSelectedTagIds.value = [...boxAddSelectedTagIds.value, id];
+}
+
+/** 新しいタグを作り、表示中の個体へそのまま一括登録する。Undo はタグ作成と登録の2回に分かれる。 */
+function addAndAssignBulkTag(): void {
+  bulkTagStatus.value = "";
+  if (!sortedBoxEntries.value.length) return;
+  const id = createCustomTag(bulkNewTagName, bulkTagError);
   if (!id) return;
-  boxAddSelectedTagIds.value = [...boxAddSelectedTagIds.value, id];
-  boxAddNewTagName.value = "";
+  bulkTagId.value = id;
+  assignTagToFiltered();
 }
 
 watch(customTags, (tags) => {
   const validIds = new Set(tags.map((tag) => tag.id));
   boxAddSelectedTagIds.value = boxAddSelectedTagIds.value.filter((id) => validIds.has(id));
   if (!validIds.has(bulkTagId.value)) bulkTagId.value = tags[0]?.id ?? "";
-  if (!tags.length) bulkTagOpen.value = false;
 }, { immediate: true });
 
 function assignTagToFiltered(): void {
@@ -1313,6 +1387,7 @@ function toggleTagManager(): void {
 function toggleBulkTagPanel(): void {
   bulkTagOpen.value = !bulkTagOpen.value;
   bulkTagStatus.value = "";
+  bulkTagError.value = "";
   if (bulkTagOpen.value) tagManagerOpen.value = false;
 }
 
@@ -1323,18 +1398,7 @@ watch(
 );
 
 function addCustomTag(): void {
-  const name = newTagName.value.trim();
-  tagManagerError.value = "";
-  if (customTags.value.length >= box.maxCustomTags) {
-    tagManagerError.value = t("box.tags.limit", { count: box.maxCustomTags });
-    return;
-  }
-  if (duplicateTagName(name)) {
-    tagManagerError.value = t("box.tags.duplicate");
-    return;
-  }
-  if (!box.addCustomTag(name)) return;
-  newTagName.value = "";
+  createCustomTag(newTagName, tagManagerError);
 }
 
 function startTagRename(id: string, name: string): void {
@@ -1374,7 +1438,7 @@ function confirmDeleteTag(id: string): void {
   box.deleteCustomTag(id);
   pendingDeleteTagId.value = null;
   if (editingTagId.value === id) cancelTagRename();
-  nextTick(() => undoButtonRef.value?.focus());
+  nextTick(() => historyUndoButton.value?.focus());
 }
 
 /* ===== Custom tags: 並べ替え ===== */
@@ -1503,7 +1567,6 @@ function onBoxExpRemainingBlur() {
 /* ===== Sleep milestone calc (local state) ===== */
 const showSleepCalc = ref(false);
 const tempDailySleepHours = ref<number | null>(null);
-const sleepHoursInput = ref("");
 
 function onDailySleepBlur() {
   if (normalizeDailySleepInput(tempDailySleepHours.value) == null) {
@@ -1511,15 +1574,23 @@ function onDailySleepBlur() {
   }
 }
 
-function syncSleepHoursInput() {
-  const raw = selectedDetail.value?.sleepHours;
-  sleepHoursInput.value = normalizeSleepHoursInput(String(raw ?? "")) != null ? String(Math.floor(raw!)) : "";
-}
-
-function onSleepHoursInput(v: string) {
-  sleepHoursInput.value = v;
-  box.setBoxSleepHours(v);
-}
+// 累計睡眠時間: 確定（blur）で書き込む。保存値を直接読むので、計算機での編集や Undo にも追従する。
+// 不正値（空欄・負数・数値以外）は blur で捨てて保存値の表示に戻す。
+const {
+  text: sleepHoursText,
+  focus: onSleepHoursFocus,
+  input: onSleepHoursInput,
+  blur: onSleepHoursBlur,
+} = useDraftField(
+  () => {
+    const raw = selectedDetail.value?.sleepHours;
+    return normalizeSleepHoursInput(String(raw ?? "")) != null ? String(Math.floor(raw!)) : "";
+  },
+  (v) => {
+    if (normalizeSleepHoursInput(v) === undefined) return;
+    box.setBoxSleepHours(v);
+  },
+);
 
 const effectiveDailySleep = computed(() =>
   normalizeDailySleepInput(tempDailySleepHours.value) ?? calc.sleepSettings.value.dailySleepHours
@@ -1624,14 +1695,6 @@ onBeforeUnmount(disconnectSleepTrackObserver);
 // マイルストーンデータ変更時にも再判定（ラベル幅が変わりうる）
 watch(sleepMilestones, () => checkMilestoneCollision(), { deep: true, flush: "post" });
 
-watch(
-  () => [selectedBox.value?.id, selectedBox.value?.planner?.sleepHours] as const,
-  () => {
-    syncSleepHoursInput();
-  },
-  { immediate: true }
-);
-
 /** 展開時に 1日の睡眠時間へ設定のデフォルトを表示（空欄にしない）。閉じたらオフセットをリセット */
 watch(showSleepCalc, (open) => {
   if (open) {
@@ -1666,6 +1729,45 @@ const calcLinkedBoxIds = computed(() => {
 });
 
 watch(calcLinkedBoxIds, (boxIds) => box.setCalculatorBoxIds(boxIds), { immediate: true });
+
+/* ===== 表示中のポケモンを計算する ===== */
+/** これを超えると計算が重くなりやすいので、追加前に確認する行数。 */
+const CALC_ROW_SOFT_LIMIT = 10;
+const calcVisibleFlash = ref(false);
+const calcVisibleLabel = ref("");
+/** 表示順のまま、計算機（表示中スロット）にまだ無い個体。 */
+const visibleNotInCalcIds = computed(() =>
+  sortedBoxEntries.value.filter((entry) => !calcLinkedBoxIds.value.has(entry.id)).map((entry) => entry.id),
+);
+const calcRowCountAfterAddAll = computed(() => calc.rows.value.length + visibleNotInCalcIds.value.length);
+/** 上限まで追加するときに足せる数。既に上限以上なら 0。 */
+const calcVisibleRoomUnderLimit = computed(() =>
+  Math.min(visibleNotInCalcIds.value.length, Math.max(0, CALC_ROW_SOFT_LIMIT - calc.rows.value.length)),
+);
+
+function openClearConfirm(trigger: EventTarget | null): void {
+  calcVisibleConfirmRef.value?.close();
+  clearConfirmRef.value?.open(trigger);
+}
+
+function onCalcVisibleRequest(trigger: EventTarget | null): void {
+  if (calcRowCountAfterAddAll.value > CALC_ROW_SOFT_LIMIT) {
+    clearConfirmRef.value?.close();
+    calcVisibleConfirmRef.value?.open(trigger);
+    return;
+  }
+  addVisibleToCalc(visibleNotInCalcIds.value);
+}
+
+function addVisibleToCalc(boxIds: string[]): void {
+  if (!boxIds.length) return;
+  // 確認を開いている間に計算機側が変わると、渡した数と実際に足された数がずれる。
+  // 親の処理は同期なので、行数の差で実際の数を数える。
+  const before = calc.rows.value.length;
+  emit("add-many-to-calc", boxIds);
+  const added = calc.rows.value.length - before;
+  if (added > 0) flashBtn(calcVisibleFlash, calcVisibleLabel, `✓ ${t("box.list.calcVisibleDone", { count: added })}`, 1500);
+}
 
 const importText = box.importText;
 const importStatus = box.importStatus;
@@ -1861,8 +1963,12 @@ const boxListRef = ref<HTMLElement | null>(null);
 watch(boxListRef, (el) => { box.boxListEl.value = el; }, { immediate: true });
 
 function onApplyToCalcWithFlash() {
-  emit("apply-to-calc");
-  flashBtn(calcBtnFlash, calcBtnLabel, `✓ ${t("status.reflected")}`, 1500);
+  const boxId = selectedBox.value?.id;
+  if (!boxId) return;
+  // 未追加なら計算機へ追加し、追加済みなら外す。フラッシュには押した結果を出す
+  const removing = calcLinkedBoxIds.value.has(boxId);
+  emit("apply-to-calc", boxId);
+  flashBtn(calcBtnFlash, calcBtnLabel, `✓ ${t(removing ? "status.removedFromCalc" : "status.addedToCalc")}`, 1500);
 }
 
 function onDeleteSelectedRequest(trigger: EventTarget | null): void {
@@ -1873,17 +1979,20 @@ function onDeleteSelectedRequest(trigger: EventTarget | null): void {
   box.onDeleteSelected();
 }
 
+// 個体の削除を先に行う（履歴は個体と計算機の行を組で記録するので、行を消す前の状態が1件目に入る）。
+// 続けて全スロットの連動行を消すと、削除の Undo で個体と行が一緒に戻る。
 function onDeleteSelectedWithCalc(): void {
   const boxId = selectedBox.value?.id;
   if (!boxId) return;
-  calc.removeRowsByBoxIds([boxId]);
   box.onDeleteSelected();
+  calc.removeRowsByBoxIds([boxId]);
 }
 
 function onClearBoxWithCalc(): void {
   if (!boxEntries.value.length) return;
-  calc.removeRowsByBoxIds(boxEntries.value.map((entry) => entry.id));
+  const boxIds = boxEntries.value.map((entry) => entry.id);
   box.onClearBox();
+  calc.removeRowsByBoxIds(boxIds);
 }
 
 function onImportWithFlash() {
@@ -1894,22 +2003,28 @@ function onImportWithFlash() {
 }
 
 function onCreateToBox() {
-  // Save species candy stock if a value was entered and species is known
-  if (addLookup.value) {
-    const rawCandy = String(addSpeciesCandy.value).trim();
-    const parsedCandy = rawCandy === "" ? undefined : Math.max(0, Math.floor(Number(rawCandy) || 0));
-    if (parsedCandy !== undefined) {
-      calc.updateSpeciesCandy(addLookup.value.pokedexId, parsedCandy);
-    }
-  }
-
-  const existingIds = new Set(boxEntries.value.map((entry) => entry.id));
+  // 作成すると名前欄が書き換わって種族の判定が変わりうるので、在庫の入力値は作成前に確定させておく
+  const lookup = addLookup.value;
+  const rawCandy = String(addSpeciesCandy.value).trim();
   const mode = addToCalcChecked.value ? "toCalc" : "toBox";
-  box.onCreateManual({ mode, tagIds: boxAddSelectedTagIds.value });
-  const created = boxEntries.value.some((entry) => !existingIds.has(entry.id));
-  if (!created) return;
+  // 計算機への追加（親が "apply-to-calc" で行う）まで含めて履歴1件にする。
+  // 断られた（名前が空・上限など）ときは、在庫・計算機・フォームを何も変えない
+  const createdId = box.recordAddAsOne(() => {
+    const id = box.onCreateManual({ mode, tagIds: boxAddSelectedTagIds.value });
+    if (id === null) return null;
 
-  if (addToCalcChecked.value) emit("apply-to-calc");
+    // Save species candy stock if a value was entered and species is known
+    if (lookup) {
+      const parsedCandy = rawCandy === "" ? undefined : Math.max(0, Math.floor(Number(rawCandy) || 0));
+      if (parsedCandy !== undefined) {
+        calc.updateSpeciesCandy(lookup.pokedexId, parsedCandy);
+      }
+    }
+
+    if (addToCalcChecked.value) emit("apply-to-calc", id);
+    return id;
+  });
+  if (createdId === null) return;
 
   // Reset candy input for next add
   addSpeciesCandy.value = "";

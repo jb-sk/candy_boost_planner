@@ -6,6 +6,7 @@ import { BoxPanelPage } from './pages/BoxPanelPage';
 import { CalcPanelPage } from './pages/CalcPanelPage';
 import { SettingsModalPage } from './pages/SettingsModalPage';
 import { AddPokemonModalPage } from './pages/AddPokemonModalPage';
+import { ThemePickerPage } from './pages/ThemePickerPage';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const testConfig = JSON.parse(
@@ -35,13 +36,12 @@ test.describe('responsive panel tabs', () => {
   });
 
   test('全テーマ共通でモバイル・タブレットのパネル外枠を表示しない', async ({ page }) => {
-    const themeSelect = page.locator('.design-switch-select');
+    const themePicker = new ThemePickerPage(page);
     const calcPanel = page.locator('#neo-calc');
     const boxPanel = page.locator('#neo-box');
 
     for (const theme of ['blue', 'booklet', 'candy', 'cyberpunk', 'dark', 'green', 'vivid']) {
-      await themeSelect.selectOption(theme);
-      await expect(themeSelect).toHaveValue(theme);
+      await themePicker.select(theme);
       for (const panel of [calcPanel, boxPanel]) {
         await expect(panel).toHaveCSS('border-top-width', '0px');
         await expect(panel).toHaveCSS('border-right-width', '0px');
@@ -56,10 +56,86 @@ test.describe('responsive panel tabs', () => {
     await expect(calcPanel).not.toHaveCSS('border-top-width', '0px');
   });
 
+  test('テーマの一覧はボタンの真下に同じ幅で隙間なくつながり、キーボードでも選べる', async ({ page }) => {
+    const themePicker = new ThemePickerPage(page);
+    // 古い iOS Safari はボタンに既定の margin を付ける。それを再現しても一覧がずれない（CSS で 0 に決めている）こと
+    // 開発サーバーはテーマを替えるとページを読み込み直すので、読み込みのたびに足す
+    await page.addInitScript(() => {
+      document.addEventListener('DOMContentLoaded', () => {
+        const style = document.createElement('style');
+        style.textContent = 'button { margin: 2px; }';
+        document.head.appendChild(style);
+      });
+    });
+    await page.reload();
+    for (const theme of ['booklet', 'cyberpunk']) {
+      await themePicker.select(theme);
+      const widthBefore = (await themePicker.trigger.boundingBox())!.width;
+      await themePicker.trigger.click();
+      await expect(themePicker.list).toBeVisible();
+      const trigger = (await themePicker.trigger.boundingBox())!;
+      const list = (await themePicker.list.boundingBox())!;
+      expect(trigger.width, theme).toBe(widthBefore);
+      expect(list.x, theme).toBeCloseTo(trigger.x, 1);
+      expect(list.width, theme).toBeCloseTo(trigger.width, 1);
+      expect(list.y, theme).toBeCloseTo(trigger.y + trigger.height, 1);
+      await expect(themePicker.trigger).toHaveCSS('border-bottom-left-radius', '0px');
+      await expect(themePicker.trigger).toHaveCSS('border-bottom-right-radius', '0px');
+      // 開いた上の角は閉じたときと同じ丸み（cyberpunk は角張ったまま）。
+      // 1.5px の線は端末の画素に合わせて細く描かれ、高さが CSS の計算より最大 1px ほど低くなるので 1px まで許す
+      const topRadius = await themePicker.trigger.evaluate((el) => parseFloat(getComputedStyle(el).borderTopLeftRadius));
+      expect(Math.abs(topRadius - (theme === 'cyberpunk' ? 2 : trigger.height / 2)), theme).toBeLessThan(1);
+      await page.mouse.click(5, 5);
+      await expect(themePicker.list).toHaveCount(0);
+    }
+
+    // Blue はすべてのボタンに影を付け、押すと沈ませるが、テーマ選択は一覧とずれないよう付けない
+    await themePicker.select('blue');
+    await expect(themePicker.trigger).toHaveCSS('box-shadow', 'none');
+    const before = (await themePicker.trigger.boundingBox())!;
+    await themePicker.trigger.hover();
+    await page.mouse.down();
+    await expect(themePicker.trigger).toHaveCSS('transform', 'none');
+    expect((await themePicker.trigger.boundingBox())!.y).toBe(before.y);
+    await page.mouse.up();
+    await page.keyboard.press('Escape');
+    await expect(themePicker.list).toHaveCount(0);
+    await themePicker.select('cyberpunk');
+
+    // キーボード: ↓ で開いて選択中の行へ、Esc で閉じてボタンへ戻る。↓ で次へ、Enter で選ぶ
+    // （選んだ後のフォーカスは見ない。開発サーバーではテーマを替えるとページを読み込み直す）
+    await themePicker.trigger.focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(themePicker.option('cyberpunk')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(themePicker.list).toHaveCount(0);
+    await expect(themePicker.trigger).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    await expect(themePicker.option('dark')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await themePicker.expectValue('dark');
+    await expect(themePicker.list).toHaveCount(0);
+  });
+
+  test('キーボードで画面の外の行へ移っても、その行が見えるまでスクロールする', async ({ page }) => {
+    // 横向きのスマホ。一覧の下の方は画面の外になる
+    await page.setViewportSize({ width: 667, height: 320 });
+    const themePicker = new ThemePickerPage(page);
+    await themePicker.trigger.focus();
+    await page.keyboard.press('Enter');
+    await expect(themePicker.list).toBeVisible();
+    await page.keyboard.press('End');
+    const last = themePicker.option('vivid');
+    await expect(last).toBeFocused();
+    // スクロールはブラウザ標準の focus に任せる。端数で 1px 未満はみ出すことがあるので、ほぼ全体が見えれば足りる
+    await expect(last).toBeInViewport({ ratio: 0.9 });
+    await page.keyboard.press('Home');
+    await expect(themePicker.option('blue')).toBeInViewport({ ratio: 0.9 });
+  });
+
   test('bookletの外枠用タブ装飾はモバイル・タブレットだけ非表示にする', async ({ page }) => {
-    const themeSelect = page.locator('.design-switch-select');
-    await themeSelect.selectOption('booklet');
-    await expect(themeSelect).toHaveValue('booklet');
+    await new ThemePickerPage(page).select('booklet');
 
     const decorationDisplay = () => page.locator('.hero').evaluate(
       element => getComputedStyle(element, '::before').display,
@@ -71,14 +147,13 @@ test.describe('responsive panel tabs', () => {
   });
 
   test('全テーマ共通でタブバーの影を消し、選択背景をナビ内に収める', async ({ page }) => {
-    const themeSelect = page.locator('.design-switch-select');
+    const themePicker = new ThemePickerPage(page);
     const nav = page.locator('.mobileNav');
     const navButtons = page.locator('.mobileNav button');
-    await expect(navButtons).toHaveCount(4);
+    // ホーム・設定・タブ2つ・元に戻す・やり直す
+    await expect(navButtons).toHaveCount(6);
     for (const theme of ['blue', 'booklet', 'candy', 'cyberpunk', 'dark', 'green', 'vivid']) {
-      await themeSelect.selectOption(theme);
-      await expect(themeSelect).toHaveValue(theme);
-      await expect(themeSelect).toBeEnabled();
+      await themePicker.select(theme);
       await expect(nav).toHaveCSS('box-shadow', 'none');
       const navSurface = await nav.evaluate(element => {
         const style = getComputedStyle(element);
@@ -177,6 +252,86 @@ test.describe('responsive panel tabs', () => {
     expect(summaryBox!.y).toBeGreaterThanOrEqual(navBox!.y + navBox!.height - 1);
   });
 
+  test('元に戻す・やり直すはナビの右端にあり、スクロールしてもどちらのパネルからも押せる', async ({ page }) => {
+    const box = new BoxPanelPage(page);
+    const calc = new CalcPanelPage(page);
+    const nav = page.locator('.mobileNav');
+    await page.getByRole('tab', { name: 'ポケモンボックス' }).click();
+    await box.openImportPanel();
+    await box.fillImportText(testConfig.importData.singlePokemon);
+    await box.clickImport();
+    await expect(box.boxTiles).toHaveCount(1);
+
+    // 計算機・ボックスの中には置かない
+    await expect(page.locator('#neo-calc, #neo-box').getByTestId('history-undo-button')).toHaveCount(0);
+
+    await page.locator('#neo-calc').evaluate((panel) => {
+      const spacer = document.createElement('div');
+      spacer.style.height = '1400px';
+      panel.appendChild(spacer);
+    });
+    await page.getByTestId('mobile-nav-calc').click();
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+
+    const [navBox, undoBox, redoBox] = await Promise.all([
+      nav.boundingBox(),
+      calc.undoButton.boundingBox(),
+      calc.redoButton.boundingBox(),
+    ]);
+    expect(navBox!.y).toBeCloseTo(0, 0);
+    expect(undoBox!.y).toBeGreaterThanOrEqual(navBox!.y);
+    expect(undoBox!.y + undoBox!.height).toBeLessThanOrEqual(navBox!.y + navBox!.height);
+    // 右端にやり直す、その左に元に戻す
+    expect(redoBox!.x + redoBox!.width).toBeCloseTo(navBox!.x + navBox!.width, 0);
+    expect(undoBox!.x).toBeLessThan(redoBox!.x);
+
+    // 計算機を表示したまま、ボックスの取り込みを戻せる（履歴は1本）
+    await calc.clickUndo();
+    await expect(page.locator('.appToast').first()).toHaveText('インポートを元に戻しました');
+    await expect(calc.undoButton).toBeDisabled();
+    await page.getByTestId('mobile-nav-box').click();
+    await expect(box.boxTiles).toHaveCount(0);
+  });
+
+  test('ボックスの全消去のあとは、その幅で見えている「元に戻す」へフォーカスする', async ({ page }) => {
+    const box = new BoxPanelPage(page);
+    const calc = new CalcPanelPage(page);
+    const importAndClear = async () => {
+      await box.openImportPanel();
+      await box.fillImportText(testConfig.importData.singlePokemon);
+      await box.clickImport();
+      await expect(box.boxTiles).toHaveCount(1);
+      await box.clickClearAllBox();
+      await expect(box.boxTiles).toHaveCount(0);
+    };
+
+    await page.getByRole('tab', { name: 'ポケモンボックス' }).click();
+    await importAndClear();
+    await expect(page.locator('.mobileNav').getByTestId('history-undo-button')).toBeFocused();
+
+    // 幅を変えて PC の2列表示になったら、画面下中央の帯の方へ移す
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await importAndClear();
+    await expect(page.locator('.historyDock').getByTestId('history-undo-button')).toBeFocused();
+    await calc.clickUndo();
+    await expect(box.boxTiles).toHaveCount(1);
+  });
+
+  test('狭い画面ではボックスのタブを短い名前にし、読み上げは正式名のままにする', async ({ page }) => {
+    const boxTab = page.getByTestId('mobile-nav-box');
+    await page.setViewportSize({ width: 320, height: 640 });
+    // 正式名と短い名前の両方が DOM にあり、見えている方だけを比べる
+    await expect(boxTab).toHaveText('ボックス', { useInnerText: true });
+    await expect(boxTab).toHaveAccessibleName('ポケモンボックス');
+    // タブの文字が切れずに収まる
+    const fits = await boxTab.evaluate((tab) => tab.scrollWidth <= tab.clientWidth);
+    expect(fits).toBe(true);
+
+    await page.setViewportSize({ width: 430, height: 640 });
+    await expect(boxTab).toHaveText('ポケモンボックス', { useInnerText: true });
+    expect(await boxTab.evaluate((tab) => tab.scrollWidth <= tab.clientWidth)).toBe(true);
+  });
+
   test('hero表示中から選択中タブを押してもナビとパネルの間を空けない', async ({ page }) => {
     for (const selector of ['#neo-calc', '#neo-box']) {
       await page.locator(selector).evaluate((panel) => {
@@ -213,8 +368,12 @@ test.describe('responsive panel tabs', () => {
     await expect(page.locator('#neo-calc')).toBeVisible();
     await expect(page.locator('#neo-box')).toBeHidden();
 
+    await expect(page.locator('.historyDock')).toBeHidden();
+
     await page.setViewportSize({ width: 1400, height: 844 });
     await expect(page.locator('.mobileNav__panelTabs')).toBeHidden();
+    // ナビが無い PC では、元に戻す・やり直すは画面下中央の帯に出る
+    await expect(page.locator('.historyDock')).toBeVisible();
     await expect(page.locator('#neo-calc')).toBeVisible();
     await expect(page.locator('#neo-box')).toBeVisible();
     await expect(page.locator('#neo-calc')).not.toHaveAttribute('role', 'tabpanel');
@@ -686,17 +845,19 @@ test.describe('responsive panel tabs', () => {
       await expect(page.getByTestId('calc-hint-popover')).toHaveCount(0);
 
       // 選択欄（テーマ）も入力欄として通す。捨てると1回目がテンキーを閉じるだけになり、2回押す必要がある
-      const themeSelect = page.locator('.design-switch-select');
+      const themePicker = new ThemePickerPage(page);
       await page.evaluate(() => {
         const w = window as unknown as { __themeClicks: number };
         w.__themeClicks = 0;
-        document.querySelector('.design-switch-select')!.addEventListener('click', () => { w.__themeClicks++; });
+        document.querySelector('[data-testid="theme-select-trigger"]')!.addEventListener('click', () => { w.__themeClicks++; });
       });
       await calc.getRowCandyTargetInput(row).tap();
       await expect(keypad).toBeVisible();
-      await themeSelect.tap();
+      await themePicker.trigger.tap();
       await expect(keypad).toHaveCount(0);
       expect(await page.evaluate(() => (window as unknown as { __themeClicks: number }).__themeClicks)).toBe(1);
+      // 1回で一覧も開く
+      await expect(themePicker.list).toBeVisible();
     });
 
     test('アメブ個数の ? のアメブ上限も、規定値を「デフォルト」の札付きで薄く出す', async ({ page }) => {
@@ -936,6 +1097,56 @@ test.describe('responsive panel tabs', () => {
       await expect(level).toHaveValue('40');
     });
 
+    test('累計睡眠時間はテンキーを閉じるまでボックスに反映されず、「閉じる」で取り消せる', async ({ page }) => {
+      const keypad = page.getByTestId('numeric-keypad');
+      const sleepHours = page.getByTestId('box-detail-sleep-hours-input');
+      const tileSleep = page.locator('.boxTile__sleep');
+      const before = await sleepHours.inputValue();
+      await expect(tileSleep).toHaveCount(0);
+
+      // 打っている間はタイルに出ない（1文字ごとに反映しない）
+      await sleepHours.tap();
+      for (const key of ['3', '0', '0']) await page.getByTestId(`numeric-keypad-key-${key}`).tap();
+      await expect(page.getByTestId('numeric-keypad-display')).toHaveText('300');
+      await expect(tileSleep).toHaveCount(0);
+
+      // 「閉じる」は開いたときの値へ戻す
+      await page.getByTestId('numeric-keypad-close').tap();
+      await expect(keypad).toHaveCount(0);
+      await expect(sleepHours).toHaveValue(before);
+      await expect(tileSleep).toHaveCount(0);
+
+      // 確定すると反映される
+      await sleepHours.tap();
+      for (const key of ['3', '0', '0']) await page.getByTestId(`numeric-keypad-key-${key}`).tap();
+      await page.getByTestId('numeric-keypad-confirm').tap();
+      await expect(tileSleep).toHaveText('300h');
+    });
+
+    test('成長のお香の手持ち数はテンキーを閉じるまで反映されず、「閉じる」で取り消せる', async ({ page }) => {
+      const settings = new SettingsModalPage(page);
+      const keypad = page.getByTestId('numeric-keypad');
+      await settings.openSettingsFromMobile();
+      await expect(settings.growthIncenseStockInput).toHaveValue('');
+
+      await settings.growthIncenseStockInput.tap();
+      for (const key of ['1', '2']) await page.getByTestId(`numeric-keypad-key-${key}`).tap();
+      await page.getByTestId('numeric-keypad-close').tap();
+      await expect(keypad).toHaveCount(0);
+      await expect(settings.growthIncenseStockInput).toHaveValue('');
+
+      await settings.growthIncenseStockInput.tap();
+      for (const key of ['1', '2']) await page.getByTestId(`numeric-keypad-key-${key}`).tap();
+      await page.getByTestId('numeric-keypad-confirm').tap();
+      await expect(settings.growthIncenseStockInput).toHaveValue('12');
+
+      // 取り消しは確定済みの値を壊さない
+      await settings.growthIncenseStockInput.tap();
+      await page.getByTestId('numeric-keypad-key-9').tap();
+      await page.getByTestId('numeric-keypad-close').tap();
+      await expect(settings.growthIncenseStockInput).toHaveValue('12');
+    });
+
     test('1日の睡眠時間は小数点を打てる', async ({ page }) => {
       await page.getByTestId('box-detail-sleep-calc-toggle').click();
       const daily = page.getByTestId('box-sleep-daily-input');
@@ -1140,6 +1351,17 @@ test.describe('responsive panel tabs', () => {
       await page.getByTestId('numeric-keypad-confirm').tap();
       await expect(page.getByTestId('numeric-keypad')).toHaveCount(0);
       await expect(settings.modal).toBeVisible();
+    });
+
+    // 名前欄へフォーカスするとキーボードが出て画面が上へずれ、「追加しました」が見えなくなる
+    test('ポケモンを追加した後は名前欄へフォーカスせず、「追加しました」が見える', async ({ page }) => {
+      const addModal = new AddPokemonModalPage(page);
+      await addModal.open();
+      await addModal.fillAndPickName('ピカ');
+      await addModal.submitButton.tap();
+      await expect(addModal.addedMessage).toBeInViewport();
+      await expect(addModal.nameInput).toHaveValue('');
+      await expect(addModal.nameInput).not.toBeFocused();
     });
 
     test('ポケモン追加の数値欄をテンキーで入力できる', async ({ page }) => {

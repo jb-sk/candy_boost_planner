@@ -30,6 +30,7 @@ export class ExportPanelPage {
   readonly csvMenu: Locator;
   readonly csvDownloadButton: Locator;
   readonly csvCopyButton: Locator;
+  readonly tsvCopyButton: Locator;
   readonly closeButton: Locator;
 
   // === ステータス ===
@@ -70,6 +71,7 @@ export class ExportPanelPage {
     this.csvMenu = page.getByTestId('export-csv-menu');
     this.csvDownloadButton = page.getByTestId('csvDownloadButton');
     this.csvCopyButton = page.getByTestId('csvCopyButton');
+    this.tsvCopyButton = page.getByTestId('tsvCopyButton');
     this.closeButton = page.getByTestId('closeButton');
 
     // ステータス
@@ -127,6 +129,10 @@ export class ExportPanelPage {
 
   async clickCsvCopy(): Promise<void> {
     await this.csvCopyButton.click();
+  }
+
+  async clickTsvCopy(): Promise<void> {
+    await this.tsvCopyButton.click();
   }
 
   // === 画像保存の厳格検証ヘルパー（fbl03 Phase 0） ===

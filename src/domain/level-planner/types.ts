@@ -259,46 +259,6 @@ export type LevelPlannerInput = {
   options?: Partial<PlannerOptions>;
 };
 
-/**
- * レベルプランナーの自動再計算方針。表示中結果の計算モードとは別物。
- *
- * autoExact: 自動再計算でもまず exact を試す。
- * autoMixed: 互換名。現在は exact を試さず fbl01d feasibility witness 計算へ流す。
- */
-export type CalculationPolicy = 'autoExact' | 'autoMixed';
-
-export type StructuralProbeStatus =
-  | 'idle'
-  | 'running'
-  | 'exactCompleted'
-  | 'deadlineExceeded'
-  | 'aborted';
-
-/**
- * 実際に走らせる計算方式。
- *
- * prefixLocalMixed: 互換名。現在の通常経路では fbl01d feasibility witness 計算を表す。
- */
-export type CalculationMode = 'exact' | 'prefixLocalMixed';
-export type MixedCalculationSource = 'mixed' | 'feasibility';
-
-export type MixedCalculationMeta = {
-  source: MixedCalculationSource;
-  exactPrefixCount: number;
-  localSuffixCount: number;
-};
-
-export type DeadlineExceededMeta = {
-  deadlineExceeded: true;
-  elapsedMs: number;
-  reachedIndex: number;
-  expansions: number;
-  maxNextStates: number;
-  maxOutputStates: number;
-  /** deadline超過時点で完全処理済みのprefix長。処理中indexは含まない。 */
-  completedPrefixCount: number;
-};
-
 export type PlannerTuning = {
   maxSupplyCandidates: number;
   maxSharedSpeciesSupplyCandidates: number;
@@ -306,20 +266,6 @@ export type PlannerTuning = {
   maxStatesBeforeFinalIndex: number;
   maxExpansions: number;
 };
-
-export type PlannerSolveOptions = {
-  deadlineMs?: number;
-  /** CIで安定して deadlineExceeded を再現する決定的budget。maxExpansionsとは別物。 */
-  abortAfterExpansions?: number;
-  /** prefixLocalMixedで再利用する完走済みprefix長。処理中indexは含めない。 */
-  mixedPrefixCount?: number;
-  tuning?: Partial<PlannerTuning>;
-  calculationMode?: CalculationMode;
-};
-
-export type PlannerSolveOutcome =
-  | { kind: 'result'; result: LevelPlannerResult; durationMs: number; mixedMeta?: MixedCalculationMeta }
-  | { kind: 'deadlineExceeded'; meta: DeadlineExceededMeta; mixedResult: LevelPlannerResult; durationMs: number; mixedMeta: MixedCalculationMeta };
 
 export type CandySupplyBreakdown = {
   species: number;

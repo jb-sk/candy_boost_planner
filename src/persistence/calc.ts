@@ -1,5 +1,6 @@
 import { normalizeBlueSeedIncenseDays, normalizeBlueSeedPlantWeekday, normalizeUseProjectedEvents, SLEEP_TARGET_HOURS_OPTIONS, type BoostEvent, type ExpGainNature, type ExpType, type ManualEventBonus, type SleepSettings } from "../domain/types";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
+import { isSleepTargetMode, type SleepTargetMode } from "../domain/sleep-target";
 import { normalizeTargetExpInLevel } from "../domain/level-planner/deriveTarget";
 import { defaultBoostKind, normalizeDefaultBoostReachLevel } from "../domain/pokesleep/boost-config";
 import type { ItemCompareMode } from "../domain/level-planner/types";
@@ -57,7 +58,7 @@ export type CalcRowV1 = {
    * - `all`: アメを1個も使わず、必要な睡眠時間だけを表示する
    * - `stock`: 手持ちの種族アメだけを使い（万能アメ・タイプアメは使わない）、残りを睡眠で賄う
    */
-  sleepTargetMode?: "all" | "stock";
+  sleepTargetMode?: SleepTargetMode;
 };
 
 // 既存 import 元との互換を保つ。正本は domain/types。
@@ -78,12 +79,18 @@ export type CalcSaveSlotV1 = {
 };
 
 
-type CalcSlotsStoreV2 = {
-  schemaVersion: 2;
+type CalcSlotsStore = {
+  schemaVersion: typeof CALC_SLOTS_SCHEMA_VERSION;
   slots: Array<CalcSaveSlotV1 | null>;
 };
 
-export const CALC_SLOTS_SCHEMA_VERSION = 2 as const;
+/**
+ * 3: 行の個体属性が「ボックスを正本とした基準値」になった。形は 2 と同じ。
+ * 2 以下の保存データは、起動時に `migrateStoredIndividuals` が個体属性をボックスへ移してから 3 で保存し直す。
+ */
+/** 1スロットに載せられる行の上限（読み込み時はこれを超えた分を切り捨てる） */
+export const MAX_CALC_ROWS_PER_SLOT = 60;
+export const CALC_SLOTS_SCHEMA_VERSION = 3 as const;
 export const CALC_SLOTS_STORAGE_KEY = "candy-boost-planner:calc:slots:v1";
 export const TOTAL_SHARDS_KEY = "candy-boost-planner:calc:totalShards";
 export const ACTIVE_SLOT_STORAGE_KEY = "candy-boost-planner:calc:activeSlot";
@@ -100,7 +107,8 @@ export function loadCalcSlots(): Array<CalcSaveSlotV1 | null> {
     const root = json && typeof json === "object" && !Array.isArray(json)
       ? json as Record<string, unknown>
       : null;
-    const sourceSchemaVersion = root?.schemaVersion === CALC_SLOTS_SCHEMA_VERSION ? 2 : 1;
+    // 2 と 3 は行の形が同じ（アメブ個数の導出と明示を区別できる）。1 だけが区別できない
+    const sourceSchemaVersion = root?.schemaVersion === 2 || root?.schemaVersion === CALC_SLOTS_SCHEMA_VERSION ? 2 : 1;
     const arr: unknown[] | null = Array.isArray(json)
       ? json
       : root && Array.isArray(root.slots)
@@ -129,7 +137,7 @@ export function saveCalcSlots(v: Array<CalcSaveSlotV1 | null>) {
 export function serializeCalcSlots(v: Array<CalcSaveSlotV1 | null>): string {
   const a = Array.isArray(v) ? v.slice(0, 3) : [];
   while (a.length < 3) a.push(null);
-  const store: CalcSlotsStoreV2 = { schemaVersion: CALC_SLOTS_SCHEMA_VERSION, slots: a };
+  const store: CalcSlotsStore = { schemaVersion: CALC_SLOTS_SCHEMA_VERSION, slots: a };
   return JSON.stringify(store);
 }
 
@@ -329,7 +337,7 @@ function normalizeItemCompareMode(value: unknown): ItemCompareMode {
 }
 
 
-function toRows(v: unknown, sourceSchemaVersion: 1 | 2): CalcRowV1[] {
+export function toRows(v: unknown, sourceSchemaVersion: 1 | 2): CalcRowV1[] {
   if (!Array.isArray(v)) return [];
   const out: CalcRowV1[] = [];
   for (const x of v) {
@@ -358,7 +366,7 @@ function toRows(v: unknown, sourceSchemaVersion: 1 | 2): CalcRowV1[] {
       : undefined;
     // candyTarget: undefined = 個数指定なし（目標Lvが anchor）、0以上 = 個数指定あり
     const storedCandyTarget = typeof o.candyTarget === "number" && o.candyTarget >= 0 ? Math.floor(o.candyTarget) : undefined;
-    const sleepTargetMode = o.sleepTargetMode === "all" || o.sleepTargetMode === "stock"
+    const sleepTargetMode = isSleepTargetMode(o.sleepTargetMode)
       ? o.sleepTargetMode
       : undefined;
     // どちらのモードも個数指定を持たない（`all` はアメを配らず、`stock` は在庫が個数を決める）。
@@ -412,7 +420,7 @@ function toRows(v: unknown, sourceSchemaVersion: 1 | 2): CalcRowV1[] {
       sleepTargetMode,
     });
   }
-  return out.slice(0, 60);
+  return out.slice(0, MAX_CALC_ROWS_PER_SLOT);
 }
 
 /**

@@ -1,9 +1,9 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
-import themeCSS from "./vite-plugin-theme-css";
+import themeCSS from "./vite-plugin-theme-css.ts";
 
 /** ES モジュール・動的 import・import.meta が使える最も古い範囲（Vite の「Browser Compatibility」）。 */
-const LEGACY_BROWSER_TARGET = ["chrome64", "edge79", "firefox67", "safari11.1"];
+export const LEGACY_BROWSER_TARGET = ["chrome64", "edge79", "firefox67", "safari11.1"];
 
 export default defineConfig(() => {
   // 独自ドメイン (candy.jb-sk.com) 移行に伴いルートパスに固定
@@ -26,21 +26,15 @@ export default defineConfig(() => {
         // 実行時の機能（メソッドなど）は変換されない。新しい機能を使うときは対応開始の版を確かめること。
         target: LEGACY_BROWSER_TARGET,
         cssTarget: LEGACY_BROWSER_TARGET,
-        rollupOptions: {
+        rolldownOptions: {
           output: {
-            manualChunks(id) {
-              if (!id.includes("node_modules")) return;
-
-              const vendorPackages = [
-                "/node_modules/vue/",
-                "/node_modules/@vue/",
-                "/node_modules/vue-i18n/",
-                "/node_modules/@intlify/",
-              ];
-
-              if (vendorPackages.some((pkg) => id.includes(pkg))) {
-                return "vendor";
-              }
+            codeSplitting: {
+              groups: [
+                {
+                  name: "vendor",
+                  test: /[\\/]node_modules[\\/](?:vue|@vue|vue-i18n|@intlify)[\\/]/,
+                },
+              ],
             },
           },
         },

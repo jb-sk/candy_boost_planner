@@ -3,6 +3,7 @@ import { isPerfWallClockEnabled } from '../../helpers/isPerfWallClockEnabled';
 import { perfBudgetMs } from './perfBudget';
 import { solveFeasibilityForFixedRows } from '../../../src/domain/level-planner/core/feasibilityWitness';
 import { solveLevelPlan } from '../../../src/domain/level-planner/core/solveLevelPlan';
+import { getCandyFamilyKey } from '../../../src/domain/pokesleep/candy-family';
 import type {
   CandyInventory,
   FeasibilityDemandRow,
@@ -36,7 +37,7 @@ function demandRow(
   return {
     pokemonId,
     pokedexId,
-    candyFamilyKey: String(pokedexId),
+    candyFamilyKey: getCandyFamilyKey(pokedexId),
     type,
     totalCandy,
     boostCandy: 0,
@@ -121,7 +122,7 @@ function reportedLegacyTenRowFixture(mode: SolverItemCompareMode = 'legacyImprov
     pokemonList: rows.map(([pokemonId, pokedexId, type, currentLevel, currentExpInLevel, targetLevel, expType, nature, requestedBoostCandy], priorityIndex) => ({
       pokemonId,
       pokedexId,
-      candyFamilyKey: String(pokedexId),
+      candyFamilyKey: getCandyFamilyKey(pokedexId),
       name: pokemonId,
       type,
       currentLevel,
@@ -143,8 +144,8 @@ function reportedLegacyTenRowFixture(mode: SolverItemCompareMode = 'legacyImprov
         '245': 478,
         '442': 0,
         '702': 0,
-        '738': 0,
-        '317': 272,
+        '736': 0,
+        '316': 272,
         '214': 0,
         '488': 500,
       },

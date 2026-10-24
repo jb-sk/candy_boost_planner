@@ -1,9 +1,11 @@
 import { MAX_GROWTH_INCENSE_STOCK, normalizeBlueSeedIncenseDays, normalizeBlueSeedPlantWeekday, normalizeUseProjectedEvents, type BoxCustomTag, type BoxSubSkillSlotV1, type IngredientType, type ManualEventBonus, type PokemonSpecialty, type SleepSettings } from "../domain/types";
 import { MAX_BOX_CUSTOM_TAG_NAME_LENGTH, MAX_BOX_CUSTOM_TAGS } from "../persistence/box";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
+import { SLEEP_TARGET_MODES, type SleepTargetMode } from "../domain/sleep-target";
 import { maxTargetExpInLevel } from "../domain/level-planner/deriveTarget";
 import { pokemonMaster } from "../domain/pokesleep/pokemon-master";
 import { PokemonTypes } from "../domain/pokesleep/pokemon-types";
+import { applyIndividualMigration, migrateLegacyIndividuals } from "../persistence/legacyIndividuals";
 import { DEFAULT_SLEEP_SETTINGS, migrateLegacyPeakCandyTarget, SLEEP_TARGET_HOURS_OPTIONS, type CalcRowV1, type CalcSaveSlotV1 } from "../persistence/calc";
 import { compareGameDates, normalizeGameDate, normalizeTimeZone } from "../domain/pokesleep/game-date";
 import {
@@ -27,7 +29,7 @@ import {
   type BackupBoxEntryV1,
   type BackupMigrationNotice,
   type BackupWarning,
-  type CandyBoostPlannerBackupV3,
+  type CandyBoostPlannerBackupV4,
   type ValidatedBackup,
 } from "./types";
 
@@ -38,7 +40,7 @@ const natures = new Set(["down", "normal", "up"]);
 const boostKinds = new Set(["none", "mini", "full"]);
 const compareModes = new Set(["surplusFirst", "surplusGateFirst", "legacyImproved"]);
 const sleepTargetHoursValues = new Set<number>(SLEEP_TARGET_HOURS_OPTIONS);
-const sleepTargetModes = new Set<"all" | "stock">(["all", "stock"]);
+const sleepTargetModes = new Set<SleepTargetMode>(SLEEP_TARGET_MODES);
 const specialties = new Set(["Berries", "Ingredients", "Skills", "All", "unknown"]);
 const ingredientTypes = new Set(["AAA", "AAB", "AAC", "ABA", "ABB", "ABC"]);
 const subSkillLevels = new Set([10, 25, 50, 70, 80]);
@@ -262,7 +264,7 @@ function validateBoxCustomTags(value: unknown, path: string): BoxCustomTag[] {
   });
 }
 
-function validateRow(value: unknown, path: string, sourceSchemaVersion: 1 | 2 | 3): CalcRowV1 {
+function validateRow(value: unknown, path: string, sourceSchemaVersion: 1 | 2 | 3 | 4): CalcRowV1 {
   const row = objectAt(value, path);
   const srcLevel = numberAt(row.srcLevel, `${path}.srcLevel`, 1, MAX_LEVEL);
   const dstLevel = numberAt(row.dstLevel, `${path}.dstLevel`, srcLevel, MAX_LEVEL);
@@ -324,7 +326,7 @@ function validateRow(value: unknown, path: string, sourceSchemaVersion: 1 | 2 | 
   };
 }
 
-function validateSlot(value: unknown, path: string, sourceSchemaVersion: 1 | 2 | 3): CalcSaveSlotV1 | null {
+function validateSlot(value: unknown, path: string, sourceSchemaVersion: 1 | 2 | 3 | 4): CalcSaveSlotV1 | null {
   if (value === null) return null;
   const slot = objectAt(value, path);
   const rawRows = arrayAt(slot.rows, `${path}.rows`);
@@ -398,10 +400,10 @@ function validateCandy(
  * **省略を許すのは旧形式（V2 以前）だけ。** 現行形式は必ず書き出すので、
  * 欠けているなら壊れた入力であり、黙って未設定へ寄せると原因が見えなくなる。
  */
-function validateDefaultBoostReachLevel(value: unknown, sourceSchemaVersion: 1 | 2 | 3): number | null {
+function validateDefaultBoostReachLevel(value: unknown, sourceSchemaVersion: 1 | 2 | 3 | 4): number | null {
   const path = "$.data.globalSettings.defaultBoostReachLevel";
   if (value === undefined || value === null) {
-    if (sourceSchemaVersion >= BACKUP_SCHEMA_VERSION && value === undefined) {
+    if (sourceSchemaVersion >= 3 && value === undefined) {
       fail(path, "is required");
     }
     return null;
@@ -428,11 +430,12 @@ export function parseBackup(text: string): ValidatedBackup {
   if (
     root.schemaVersion !== 1
     && root.schemaVersion !== 2
+    && root.schemaVersion !== 3
     && root.schemaVersion !== BACKUP_SCHEMA_VERSION
   ) {
     fail("$.schemaVersion", "schema version is not supported");
   }
-  const sourceSchemaVersion = root.schemaVersion as 1 | 2 | 3;
+  const sourceSchemaVersion = root.schemaVersion as 1 | 2 | 3 | 4;
   // candyInventory 自体のスキーマは V2 のまま（V3 の変更対象は計算機行とグローバル設定）。
   const candyInventorySchemaVersion: 1 | 2 = sourceSchemaVersion === 1 ? 1 : 2;
   const data = objectAt(root.data, "$.data");
@@ -441,9 +444,9 @@ export function parseBackup(text: string): ValidatedBackup {
   const tagIds = new Set(tags.map((tag) => tag.id));
   const rawEntries = arrayAt(box.entries, "$.data.box.entries");
   if (rawEntries.length > BACKUP_MAX_BOX_ENTRIES) fail("$.data.box.entries", `maximum is ${BACKUP_MAX_BOX_ENTRIES}`);
-  const entries = rawEntries.map((entry, index) => validateBoxEntry(entry, `$.data.box.entries[${index}]`));
+  const validatedEntries = rawEntries.map((entry, index) => validateBoxEntry(entry, `$.data.box.entries[${index}]`));
   const boxIds = new Set<string>();
-  entries.forEach((entry, index) => {
+  validatedEntries.forEach((entry, index) => {
     if (boxIds.has(entry.id)) fail(`$.data.box.entries[${index}].id`, "duplicate id");
     boxIds.add(entry.id);
     const seenTagIds = new Set<string>();
@@ -473,13 +476,18 @@ export function parseBackup(text: string): ValidatedBackup {
       });
     });
   }
+  const activeSlotIndex = numberAt(calculator.activeSlotIndex, "$.data.calculator.activeSlotIndex", 0, 2) as 0 | 1 | 2;
+  // V3 以前は行が個体属性を持っていた。ボックスを正本にするため、勝つ値をボックスの個体へ移す（行は取り込み後の同期が揃える）
+  const entries = sourceSchemaVersion < 4
+    ? applyIndividualMigration(validatedEntries, migrateLegacyIndividuals(box, calculator, activeSlotIndex), new Date())
+    : validatedEntries;
   const slotIds = new Set<string>();
   slots.forEach((slot, index) => {
     if (!slot?.slotId) return;
     if (slotIds.has(slot.slotId)) fail(`$.data.calculator.slots[${index}].slotId`, "duplicate id");
     slotIds.add(slot.slotId);
   });
-  const backup: CandyBoostPlannerBackupV3 = {
+  const backup: CandyBoostPlannerBackupV4 = {
     format: BACKUP_FORMAT,
     schemaVersion: BACKUP_SCHEMA_VERSION,
     exportedAt: validateIso(root.exportedAt, "$.exportedAt"),
@@ -525,7 +533,7 @@ export function parseBackup(text: string): ValidatedBackup {
         ),
       },
       calculator: {
-        activeSlotIndex: numberAt(calculator.activeSlotIndex, "$.data.calculator.activeSlotIndex", 0, 2) as 0 | 1 | 2,
+        activeSlotIndex,
         slots,
       },
     },
@@ -549,6 +557,6 @@ export function parseBackup(text: string): ValidatedBackup {
   return { backup, warnings, migrationNotices };
 }
 
-export function stringifyBackup(backup: CandyBoostPlannerBackupV3): string {
+export function stringifyBackup(backup: CandyBoostPlannerBackupV4): string {
   return JSON.stringify(backup, null, 2);
 }

@@ -1,10 +1,11 @@
+import type { DeepReadonly } from "vue";
 import type { BoxCustomTag, PokemonBoxEntryV1, SleepSettings } from "../domain/types";
 import type { CalcSaveSlotV1 } from "../persistence/calc";
 import type { CandyInventoryV2 } from "../persistence/candy";
-import { BACKUP_FORMAT, BACKUP_SCHEMA_VERSION, type BackupBoxEntryV1, type CandyBoostPlannerBackupV3 } from "./types";
+import { BACKUP_FORMAT, BACKUP_SCHEMA_VERSION, type BackupBoxEntryV1, type CandyBoostPlannerBackupV4 } from "./types";
 
 export type BackupSnapshotSources = {
-  boxEntries: readonly PokemonBoxEntryV1[];
+  boxEntries: ReadonlyArray<DeepReadonly<PokemonBoxEntryV1>>;
   customTags?: readonly BoxCustomTag[];
   totalShards: number;
   sleepSettings: SleepSettings;
@@ -30,13 +31,13 @@ function clone<T>(value: T): T {
   return value;
 }
 
-function toBackupBoxEntry(entry: PokemonBoxEntryV1): BackupBoxEntryV1 {
+function toBackupBoxEntry(entry: DeepReadonly<PokemonBoxEntryV1>): BackupBoxEntryV1 {
   const copy = clone(entry) as unknown as Record<string, unknown>;
   delete copy.source;
   return copy as BackupBoxEntryV1;
 }
 
-export function createBackup(sources: BackupSnapshotSources, now = new Date()): CandyBoostPlannerBackupV3 {
+export function createBackup(sources: BackupSnapshotSources, now = new Date()): CandyBoostPlannerBackupV4 {
   return {
     format: BACKUP_FORMAT,
     schemaVersion: BACKUP_SCHEMA_VERSION,

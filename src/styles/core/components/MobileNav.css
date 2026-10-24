@@ -1,4 +1,5 @@
-/* Mobile/tablet panel navigation — flows after the hero, then sticks on top. */
+/* Mobile/tablet navigation — flows after the hero, then sticks on top.
+   Left: home / settings. Center: panel tabs. Right: undo / redo. */
 
 .mobileNav {
   display: flex;
@@ -94,7 +95,51 @@
   background: rgba(var(--accent-rgb), 0.08);
 }
 
-/* Hide bottom nav on desktop 2-column layout */
+/* 狭い画面は右端に元に戻す・やり直すが並ぶので、ボックスのタブを短い名前にする。
+   short も .mobileNav__itemLabel を持つので、同じ詳細度の後の規則で上書きする */
+.mobileNav__itemLabel {
+  display: none;
+}
+
+.mobileNav__itemLabel--short {
+  display: inline;
+}
+
+@media (min-width: 430px) {
+  .mobileNav__itemLabel {
+    display: inline;
+  }
+
+  .mobileNav__itemLabel--short {
+    display: none;
+  }
+}
+
+/* ===== 元に戻す・やり直す（ボタン本体は HistoryButtons.css） ===== */
+.mobileNav__history {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.mobileNav .historyBtn {
+  width: 40px;
+  height: 100%;
+}
+
+/* タブレットはタブの幅に余裕があるので、アイコンに名前を添える */
+@media (min-width: 680px) {
+  .mobileNav .historyBtn {
+    width: auto;
+    padding: 0 10px;
+  }
+
+  .mobileNav .historyBtn__label {
+    display: inline;
+  }
+}
+
+/* PC の2列表示は両方のパネルが見えているのでナビを出さない。
+   元に戻す・やり直すは画面下中央の帯（HistoryDock.css）に出す */
 @media (min-width: 1400px) {
   .mobileNav {
     display: none;

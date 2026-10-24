@@ -1,3 +1,4 @@
+import type { DeepReadonly } from "vue";
 import type {
   BoxCustomTag,
   BoxEntrySource,
@@ -12,6 +13,8 @@ import { perfSpan } from "../utils/perf";
 export const BOX_STORAGE_KEY = "candy-boost-planner:box:v1";
 const SCHEMA_VERSION = 2 as const;
 
+/** ボックスに入れられる個体数の上限。 */
+export const MAX_BOX_ENTRIES = 300;
 export const MAX_BOX_CUSTOM_TAGS = 30;
 export const MAX_BOX_CUSTOM_TAG_NAME_LENGTH = 20;
 
@@ -52,14 +55,14 @@ export function loadBoxData(): LoadedBoxData {
     const entries = arr
       .filter((x: unknown): x is Record<string, unknown> => x != null && typeof x === "object")
       .map((x) => normalizeEntry(x, tagIds))
-      .slice(0, 300);
+      .slice(0, MAX_BOX_ENTRIES);
     return { entries, tags };
   } catch {
     return { entries: [], tags: [] };
   }
 }
 
-export function saveBox(entries: PokemonBoxEntryV1[], tags: BoxCustomTag[] = []) {
+export function saveBox(entries: ReadonlyArray<DeepReadonly<PokemonBoxEntryV1>>, tags: BoxCustomTag[] = []) {
   try {
     const serialized = perfSpan("persist.box.serialize", () => serializeBox(entries, tags));
     perfSpan("persist.box.write", () => localStorage.setItem(BOX_STORAGE_KEY, serialized));
@@ -68,8 +71,8 @@ export function saveBox(entries: PokemonBoxEntryV1[], tags: BoxCustomTag[] = [])
   }
 }
 
-export function serializeBox(entries: PokemonBoxEntryV1[], tags: BoxCustomTag[] = []): string {
-  const v: BoxStoreV2 = { schemaVersion: SCHEMA_VERSION, entries, tags };
+export function serializeBox(entries: ReadonlyArray<DeepReadonly<PokemonBoxEntryV1>>, tags: BoxCustomTag[] = []): string {
+  const v: DeepReadonly<BoxStoreV2> = { schemaVersion: SCHEMA_VERSION, entries, tags };
   return JSON.stringify(v);
 }
 
@@ -95,7 +98,7 @@ function normalizeTags(value: unknown): BoxCustomTag[] {
   return tags;
 }
 
-function normalizeEntry(x: Record<string, unknown>, validTagIds = new Set<string>()): PokemonBoxEntryV1 {
+export function normalizeEntry(x: Record<string, unknown>, validTagIds = new Set<string>()): PokemonBoxEntryV1 {
   const now = new Date().toISOString();
   const source: BoxEntrySource = x.source === "manual" ? "manual" : "nitoyon";
 
@@ -175,7 +178,8 @@ export function toSubSkills(v: unknown): BoxSubSkillSlotV1[] | undefined {
     if (migrated !== 10 && migrated !== 25 && migrated !== 50 && migrated !== 70 && migrated !== 80) continue;
     out.push({ lv: migrated as 10 | 25 | 50 | 70 | 80, nameEn });
   }
-  return out.length ? out : undefined;
+  // 空の配列はボックス詳細で全削除した値なので残す。中身が全部不正なときだけ未設定に戻す
+  return out.length || v.length === 0 ? out : undefined;
 }
 
 export function cryptoRandomId(): string {

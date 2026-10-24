@@ -72,8 +72,8 @@
 
 .calcSumInline__k {
   font-size: 12px;
-  font-weight: 600;
-  color: var(--ink);
+  font-weight: 500;
+  color: var(--muted);
 }
 
 .calcSumInline__v {
@@ -88,19 +88,26 @@
   color: var(--danger);
 }
 
-/* No-stock warning inline link */
+/* 在庫が未設定の知らせ。押すと設定を開くので、赤い下線の文字ではなく小さな札にする */
 .calcSticky__noStock {
-  display: inline;
-  background: none;
-  border: none;
-  padding: 0;
+  display: inline-block;
+  margin: 0;
+  padding: 2px 10px;
+  border: 1px solid rgba(var(--danger-rgb), 0.35);
+  border-radius: var(--radius-pill);
+  background: rgba(var(--danger-rgb), 0.08);
+  box-shadow: none;
+  font-family: var(--font-body);
   font-size: 12px;
   font-weight: 700;
+  line-height: 1.4;
   color: var(--danger);
   cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
   white-space: nowrap;
+}
+
+.calcSticky__noStock:hover {
+  background: rgba(var(--danger-rgb), 0.14);
 }
 
 .calcSumInline--candy .calcSumInline__v {
@@ -127,6 +134,14 @@
   transform: translateY(-50%);
   cursor: pointer;
   z-index: 1;
+}
+
+/*
+ * 押している間も上下の中央寄せを保つ。Blue の「押すと沈む」`:where(button, .btn):active` は
+ * `:active` の分だけ上の規則と同じ詳細度になり、後から読むテーマが勝って中央寄せが外れ、約16px 沈んでいた。
+ */
+.calcSticky__toggle:active {
+  transform: translateY(-50%);
 }
 
 .calcSticky__toggle::before {
@@ -306,6 +321,13 @@
   gap: 4px;
 }
 
+.calcActions__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
 /* ?perf=1 のデバッグ用「現在日時」。隠した入力欄を重ねるためのアンカー。 */
 .calcActions__debugNow {
   position: relative;
@@ -337,21 +359,6 @@
   color: var(--accent-strong);
 }
 
-.calcPlanStatus {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 6px;
-  color: var(--accent-strong);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.calcPlanStatus > :last-child {
-  color: rgba(var(--ink-rgb), 0.68);
-  font-weight: 600;
-}
-
 /* ===== Slot Tabs ===== */
 .calcSlots {
   display: flex;
@@ -367,24 +374,29 @@
 .slotTabs {
   display: flex;
   align-items: flex-end;
-  gap: 1px;
+  gap: 4px;
   width: 100%;
   padding: 0 10px;
   touch-action: pan-y;
 }
 
+/*
+ * 選んでいないタブは枠を付けず、薄い色の札にする（灰色の箱が並ぶと重く見えた。2026-10-20 ユーザー指摘）。
+ * 選択中のタブだけが枠を持ち、下の計算機の枠とつながる。
+ */
 .slotTab {
   -webkit-appearance: none;
   appearance: none;
   font: inherit;
-  border: 2px solid rgba(var(--ink-rgb), 0.14);
+  border: 2px solid transparent;
   border-bottom: none;
-  border-radius: 8px 8px 0 0;
-  background: rgba(var(--ink-rgb), 0.08);
-  color: rgba(var(--ink-rgb), 0.72);
+  border-radius: 10px 10px 0 0;
+  background: rgba(var(--accent-rgb), 0.07);
+  /* テーマがボタンに付ける影（Blue）を付けない。タブは下の枠とつながる面なので浮かせない */
+  box-shadow: none;
+  color: var(--muted);
   padding: 6px 8px;
   cursor: pointer;
-  margin-right: -1px;
   position: relative;
   top: 2px;
   font-weight: 700;
@@ -400,18 +412,10 @@
   transition: background 0.2s, color 0.2s, flex 0.2s;
 }
 
-.slotTab:first-child {
-  border-top-left-radius: 8px;
-}
-
-.slotTab:last-child {
-  border-top-right-radius: 8px;
-  margin-right: 0;
-}
-
 @media (hover: hover) {
   .slotTab:hover {
-    background: rgba(var(--ink-rgb), 0.12);
+    background: rgba(var(--accent-rgb), 0.14);
+    color: var(--accent);
   }
 }
 
@@ -420,7 +424,6 @@
   color: var(--accent);
   border: 2px solid var(--accent);
   border-bottom: 2px solid var(--paper);
-  padding-top: 6px;
   flex: 1.8;
 }
 
@@ -428,6 +431,8 @@
 .slotTab__select {
   -webkit-appearance: none;
   appearance: none;
+  /* テーマが入力欄に付ける影（Blue・Vivid の内側の影）を付けない。タブの面にそのまま文字を置く */
+  box-shadow: none;
   width: 100%;
   padding: 2px 20px 2px 4px;
   font-family: var(--font-body);
@@ -514,6 +519,29 @@
 
 .calcRow--active {
   background: rgba(var(--accent-rgb), 0.06);
+}
+
+/* リンク切れの行: 計算エリア全体を赤で囲んで塗る。選択中の下地やテーマの上書きに負けないようクラスを2つ重ねる。 */
+.calcRow.calcRow--linkBroken {
+  background: rgba(var(--link-broken-rgb), 0.12);
+  outline: 2px solid var(--link-broken);
+  outline-offset: -2px;
+}
+
+/* リンク切れで無効にした入力欄。睡眠の頭打ち（`--sleepCapped`）と同じ破線＋薄い文字で、有効な欄と区別する。 */
+.calcRow.calcRow--linkBroken .field__input:disabled,
+.calcRow.calcRow--linkBroken .levelPick__input:disabled {
+  border-style: dashed;
+  color: rgba(var(--ink-rgb), 0.7);
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.calcRow__linkBroken {
+  margin: 0 0 6px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--link-broken);
 }
 
 .calcRow--dragOver {
@@ -1675,6 +1703,11 @@ body.calcRowReordering * {
     font-size: 13px;
   }
 
+  /* 補助の操作は右へ寄せ、設定・育成プランと分ける（狭い画面では折り返した行の左から並べる） */
+  .calcActions__tools {
+    margin-left: auto;
+  }
+
   .calcSumInline__v {
     font-size: 18px;
   }
@@ -1686,6 +1719,11 @@ body.calcRowReordering * {
   /* 幅に余裕があるので、シェブロンを右端から左の余白（14px）と同じだけ離す */
   .calcSticky__toggle {
     right: 3px;
+  }
+
+  /* シェブロンが項目の上に重ならないよう、その分（位置 3px + 印 10px + すき間 4px）だけ右を空ける */
+  .calcSticky__summary {
+    padding-right: 17px;
   }
 
   /*
@@ -1714,24 +1752,53 @@ body.calcRowReordering * {
     /* document scroll has no padded scrollport to offset; keep the full
        summary, including its top padding, inside the viewport. */
     top: 0;
-    padding: 12px 10px;
+    /* 左右は下のボタンの左端（パネルの余白 16px）にそろえる。項目名を数字の上に置いて幅に余裕ができたので詰めない（2026-10-20 ユーザー指摘） */
+    padding: 12px 16px;
   }
 
-  /* 左の余白が 10px になるので、シェブロンも右端から 10px にそろえる */
+  /* シェブロンも右端から左の余白と同じ 16px にそろえる（余白の内側から測るので、余白を変えても位置の値は同じ） */
   .calcSticky__toggle {
     right: -1px;
   }
 
-  .calcSumInline__k {
-    font-size: 14px;
+  /* シェブロンの分（位置 -1px + 印 10px + すき間 4px）だけ右を空ける */
+  .calcSticky__summary {
+    padding-right: 13px;
   }
 
   .calcSumInline__v {
-    font-size: 26px;
+    font-size: 24px;
+    line-height: 1.15;
   }
 
   .calcSumInline--candy .calcSumInline__v {
-    font-size: 25px;
+    font-size: 24px;
+  }
+
+  /*
+   * 項目名は数字の上に小さく置く（数字の横に2行で添えると窮屈に見えた。2026-10-20 ユーザー指摘）。
+   * 項目の幅は「名前と数字の広い方」になり、横に並べるより細いので、結果で数字が変わっても行数が変わりにくい。
+   * 数字の幅を取っておく最小幅は、名前の下に置くと間が空くので外す（位置の変化は FLIP で滑らかに見せる）。
+   */
+  .calcSticky__summaryBody {
+    align-items: flex-end;
+    gap: 6px 22px;
+  }
+
+  .calcSumInline {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .calcSumInline__k {
+    font-size: 11px;
+    line-height: 1.3;
+  }
+
+  .calcSticky__noStock {
+    align-self: center;
   }
 }
 

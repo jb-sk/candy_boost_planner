@@ -11,6 +11,20 @@
         <path d="M10 2.5 L2 9.5 L4 9.5 L4 16 L8 16 L8 11 L12 11 L12 16 L16 16 L16 9.5 L18 9.5 Z" />
       </svg>
     </button>
+    <button
+      class="mobileNav__utility"
+      type="button"
+      data-testid="settings-open-button-mobile"
+      :aria-label="t('common.settings')"
+      @click="$emit('open-settings')"
+    >
+      <svg class="mobileNav__utilityIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+        <path d="M4 6h10m4 0h2M4 12h2m4 0h10M4 18h8m4 0h4" />
+        <circle cx="16" cy="6" r="2" />
+        <circle cx="8" cy="12" r="2" />
+        <circle cx="14" cy="18" r="2" />
+      </svg>
+    </button>
     <div class="mobileNav__panelTabs" role="tablist" :aria-label="t('nav.panels')">
       <button
         id="mobile-panel-tab-calc"
@@ -28,6 +42,7 @@
       >
         {{ t("nav.calc") }}
       </button>
+      <!-- 狭い画面では右端に元に戻す・やり直すが並ぶので、短い名前に切り替える。読み上げは正式名のまま -->
       <button
         id="mobile-panel-tab-box"
         ref="boxTab"
@@ -37,39 +52,33 @@
         type="button"
         role="tab"
         aria-controls="neo-box"
+        :aria-label="t('nav.box')"
         :aria-selected="activePanel === 'box'"
         :tabindex="activePanel === 'box' ? 0 : -1"
         @click="emit('select-panel', 'box')"
         @keydown="onKeydown($event, 'box')"
       >
-        {{ t("nav.box") }}
+        <span class="mobileNav__itemLabel">{{ t("nav.box") }}</span>
+        <span class="mobileNav__itemLabel mobileNav__itemLabel--short">{{ t("nav.boxShort") }}</span>
       </button>
     </div>
-    <button
-      class="mobileNav__utility"
-      type="button"
-      data-testid="settings-open-button-mobile"
-      :aria-label="t('common.settings')"
-      @click="$emit('open-settings')"
-    >
-      <svg class="mobileNav__utilityIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-        <path d="M4 6h10m4 0h2M4 12h2m4 0h10M4 18h8m4 0h4" />
-        <circle cx="16" cy="6" r="2" />
-        <circle cx="8" cy="12" r="2" />
-        <circle cx="14" cy="18" r="2" />
-      </svg>
-    </button>
+    <div class="mobileNav__history">
+      <HistoryButtons ref="historyButtons" :history="history" />
+    </div>
   </nav>
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import HistoryButtons from "./HistoryButtons.vue";
+import type { History } from "../composables/useHistory";
 
 type PanelId = 'calc' | 'box';
 
 defineProps<{
   activePanel: PanelId;
+  history: History;
 }>();
 
 const emit = defineEmits<{
@@ -81,6 +90,7 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const calcTab = ref<HTMLButtonElement | null>(null);
 const boxTab = ref<HTMLButtonElement | null>(null);
+const historyButtons = ref<InstanceType<typeof HistoryButtons> | null>(null);
 
 function onKeydown(event: KeyboardEvent, current: PanelId): void {
   let next: PanelId | null = null;
@@ -102,4 +112,6 @@ function onKeydown(event: KeyboardEvent, current: PanelId): void {
   emit("select-panel", next);
   (next === "calc" ? calcTab.value : boxTab.value)?.focus();
 }
+
+defineExpose({ undoButton: computed(() => historyButtons.value?.undoButton ?? null) });
 </script>

@@ -112,6 +112,25 @@ test.describe('07-level-planner-inventory', () => {
 
   });
 
+  test('不足がある行では、目標Lvに届かなくても睡眠到達Lvを出す', async ({ page }) => {
+    // 不足があると睡眠のあとどこまで上がるのか読めないので、目標未満の着地点も出す（2026-10-13 ユーザー指示）。
+    // 不足が無い行は従来どおり、目標を超えるときだけ出す（calcSleepReachLevel）
+    await page.goto('/');
+    const { calc, row } = await setupShardsLimitedRow(page);
+    await expect.poll(async () => (await calc.getRowUsedRow(row).textContent()) ?? '').toContain('かけら不足');
+
+    await calc.chooseSleepTarget(row, { base: 'hours', hours: 2000 });
+    await expect.poll(async () => calc.getRowSleepReachLevel(row)).toMatch(/^約\d+\.\d（2000時間）$/);
+    const level = Number((await calc.getRowSleepReachLevel(row)).match(/^約(\d+)/)![1]);
+    expect(level).toBeLessThan(60);
+
+    // 育成プランの zzZ も目標Lv（60）ではなく、実際の着地点を出す（寝れば届くと読めないように）
+    await calc.clickExport();
+    const lvWrap = page.getByTestId('listRow').first().locator('.exportList__lvWrap');
+    await expect(lvWrap.locator('.exportList__sleepMark')).toHaveText('zzZ');
+    await expect(lvWrap.locator('.exportList__lvVal').last()).toHaveText(String(level));
+  });
+
   test('レベルピッカーは律速要因を文字で示す（かけら律速）', async ({ page }) => {
     // 🍬アイコン1種だった頃は、かけら律速の行でマークが消えて「不足が悪化したのに表示が減る」
     // 状態になっていた。律速に応じてラベルが入れ替わる形にする。設計書§10.15

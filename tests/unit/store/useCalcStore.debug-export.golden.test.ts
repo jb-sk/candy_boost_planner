@@ -29,7 +29,8 @@ vi.mock("../../../src/domain/pokesleep/_generated/sleep-exp-events", () => ({
   wikiKnownThrough: "2026-08-30",
 }));
 
-import { useCalcStore } from "../../../src/composables/useCalcStore";
+import type { CalcStore } from "../../../src/composables/useCalcStore";
+import { addBoxRow, createCalcStore } from "../../helpers/fakeIndividuals";
 import { useCandyStore } from "../../../src/composables/useCandyStore";
 import { cancelPersist } from "../../../src/persistence/deferredPersist";
 
@@ -74,8 +75,8 @@ function normalizeRuntimeMeasurements(tsv: string): string {
   return lines.join("\n");
 }
 
-function addStandardRow(store: ReturnType<typeof useCalcStore>, suffix: string): string {
-  store.upsertFromBox({
+function addStandardRow(store: CalcStore, suffix: string): string {
+  addBoxRow(store, {
     boxId: `golden-${suffix}`,
     title: `Golden ${suffix}`,
     pokedexId: 25,
@@ -90,15 +91,15 @@ function addStandardRow(store: ReturnType<typeof useCalcStore>, suffix: string):
 }
 
 function createGoldenStore(
-  options: Parameters<typeof useCalcStore>[0],
-): ReturnType<typeof useCalcStore> {
-  const store = useCalcStore(options);
+  options: Parameters<typeof createCalcStore>[0],
+): CalcStore {
+  const store = createCalcStore(options);
   // ゴールデンは日本時間を前提にしているため、実行ホストのタイムゾーンを継承しない。
   store.updateSleepSettings({ timeZone: "Asia/Tokyo" });
   return store;
 }
 
-async function goldenTsv(store: ReturnType<typeof useCalcStore>): Promise<string> {
+async function goldenTsv(store: CalcStore): Promise<string> {
   await vi.waitFor(() => {
     expect(store.planResultPending.value).toBe(false);
     expect(store.planResult.value?.pokemonResults).toHaveLength(store.rows.value.length);
@@ -152,6 +153,17 @@ describe("useCalcStore debug-export golden contract", () => {
     });
 
     await expect(await goldenTsv(store)).toMatchFileSnapshot(`${GOLDEN_DIR}/all-sleep.tsv`);
+  });
+
+  it("keeps nap-island rows out of the sleep section and puts their time in the NAP_ISLAND section", async () => {
+    const store = createGoldenStore({ locale: ref("ja"), t, currentGameDate: "2026-08-24" });
+    const ticketId = addStandardRow(store, "nap-ticket");
+    store.setRowSleepTarget(ticketId, "napTicket");
+    const upId = addStandardRow(store, "nap-up");
+    store.setNature(upId, "up");
+    store.setRowSleepTarget(upId, "nap");
+
+    await expect(await goldenTsv(store)).toMatchFileSnapshot(`${GOLDEN_DIR}/nap-island.tsv`);
   });
 
   it("keeps weekly-only incense on high-multiplier days while all GSD incense flags stay off", async () => {

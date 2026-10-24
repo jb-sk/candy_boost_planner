@@ -20,6 +20,13 @@
   pointer-events: none;
 }
 
+/* PC は画面下中央に元に戻す・やり直すがあるので、その上に出す（押した結果が押した場所のすぐ上に見える） */
+@media (min-width: 1400px) {
+  .shell > .appToastStack {
+    bottom: calc(var(--history-dock-bottom) + var(--history-dock-height) + 8px);
+  }
+}
+
 .appToastStack .appToast {
   max-width: 100%;
   padding: 7px 16px;

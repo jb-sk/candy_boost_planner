@@ -80,7 +80,12 @@ const configs = new WeakMap<HTMLInputElement, KeypadConfig>();
 const registered = new Set<HTMLInputElement>();
 let mediaQuery: MediaQueryList | null = null;
 
-function isTouchDevice(): boolean {
+/**
+ * タッチ端末か（主なポインターが粗く、ホバーできない端末。OS のキーボードが画面に出る端末の近似）。
+ * テンキーを出すかと同じ判定を、ほかの部品（ポケモン追加の「追加後に名前欄へフォーカスしない」）でも使う。
+ */
+export function isTouchDevice(): boolean {
+  ensureMediaQuery();
   return mediaQuery?.matches === true;
 }
 
@@ -232,8 +237,10 @@ const TEXT_INPUT_TYPES = new Set(["text", "search", "number", "email", "tel", "u
 /**
  * 押しても次の入力へ移るだけの欄（テンキーの欄・文字の欄・選択欄）。ボタンやチェックボックスは含めない。
  * 選択欄（テーマなど）を含めないと、テンキーを開いたまま押したとき1回目が閉じるだけになり、2回押す必要がある。
+ * 自作の選択欄（テーマ）はボタンなので、一覧を開くボタン（`aria-haspopup="listbox"`）も選択欄として扱う。
  */
 function isInputField(target: Element): boolean {
+  if (target.closest('[aria-haspopup="listbox"]')) return true;
   const field = target.closest("input, textarea, select");
   if (field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement) return true;
   return field instanceof HTMLInputElement && (registered.has(field) || TEXT_INPUT_TYPES.has(field.type));

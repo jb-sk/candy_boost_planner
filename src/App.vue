@@ -2,47 +2,56 @@
   <main class="shell" :data-locale="locale">
     <div class="shell__scroll">
     <header class="hero">
-      <div>
-        <p class="kicker">{{ t("app.kicker") }}</p>
-        <h1 class="title">{{ t("app.title") }}</h1>
-        <p class="lede">
-          {{ t("app.lede") }}
-        </p>
+      <p class="kicker">{{ t("app.kicker") }}</p>
+      <h1 class="title">{{ t("app.title") }}</h1>
+      <p class="lede">
+        {{ t("app.lede") }}
+      </p>
+      <!-- 言語・使い方の行。タブレット以上は支援とテーマを同じ行の右端に置く -->
+      <div class="hero__bar">
         <div class="lang">
-          <button class="lang__btn" type="button" :class="{ 'lang__btn--on': uiLocale === 'ja' }" :disabled="localeSwitching" @click="setLocale('ja')">JP</button>
-          <button class="lang__btn" type="button" :class="{ 'lang__btn--on': uiLocale === 'en' }" :disabled="localeSwitching" @click="setLocale('en')">EN</button>
-          <button class="lang__btn lang__btn--help" type="button" @click="showHelp = true">{{ t("common.help") }}</button>
-          <button class="lang__btn lang__btn--help" type="button" data-testid="open-event-history" @click="showEventHistory = true">{{ t("common.eventHistory") }}</button>
-        </div>
-      </div>
-      <div class="heroMeta">
-        <div class="support" v-if="supportLinks.length">
-          <p class="support__label">{{ t("common.support") }}</p>
-          <div class="support__links">
-            <a
-              v-for="l in supportLinks"
-              :key="l.id"
-              class="support__link"
-              :href="l.href"
-              target="_blank"
-              rel="noopener noreferrer"
-              :aria-label="l.ariaLabel"
-            >
-              {{ l.label }}
-            </a>
+          <div class="lang__switch" role="group" aria-label="Language">
+            <button class="lang__btn" type="button" :class="{ 'lang__btn--on': uiLocale === 'ja' }" :aria-pressed="uiLocale === 'ja'" :disabled="localeSwitching" @click="setLocale('ja')">JP</button>
+            <button class="lang__btn" type="button" :class="{ 'lang__btn--on': uiLocale === 'en' }" :aria-pressed="uiLocale === 'en'" :disabled="localeSwitching" @click="setLocale('en')">EN</button>
           </div>
+          <button class="heroLink" type="button" @click="showHelp = true">{{ t("common.help") }}</button>
+          <button class="heroLink" type="button" data-testid="open-event-history" @click="showEventHistory = true">{{ t("common.eventHistory") }}</button>
         </div>
-        <div class="themePicker" v-if="availableThemes.length">
-          <p class="themePicker__label">{{ t("common.theme") }}</p>
-          <select class="design-switch-select" :value="currentDesign" :disabled="themeSwitching" @change="onDesignChange($event)">
-            <option v-for="th in availableThemes" :key="th.id" :value="th.id">{{ th.label }}</option>
-          </select>
+        <div class="heroMeta">
+          <div class="support" v-if="supportLinks.length">
+            <p class="support__label">{{ t("common.support") }}</p>
+            <div class="support__links">
+              <a
+                v-for="l in supportLinks"
+                :key="l.id"
+                class="support__link"
+                :href="l.href"
+                target="_blank"
+                rel="noopener noreferrer"
+                :aria-label="l.ariaLabel"
+              >
+                {{ l.label }}
+              </a>
+            </div>
+          </div>
+          <div class="themePicker" v-if="availableThemes.length">
+            <p id="themePickerLabel" class="themePicker__label">{{ t("common.theme") }}</p>
+            <DesignSwitcher
+              :themes="availableThemes"
+              :model-value="currentDesign"
+              :disabled="themeSwitching"
+              labelledby="themePickerLabel"
+              @change="onDesignChange"
+            />
+          </div>
         </div>
       </div>
     </header>
 
     <MobileNav
+      ref="mobileNavRef"
       :active-panel="activePanel"
+      :history="history"
       @select-panel="selectPanel($event)"
       @open-settings="openSettings"
       @scroll-top="scrollToTop"
@@ -52,12 +61,10 @@
       <CalcPanel
         v-show="isDesktopLayout || activePanel === 'calc'"
         :calc="calc"
-        :resolve-pokedex-id-by-box-id="resolvePokedexIdByBoxId"
         :role="isDesktopLayout ? undefined : 'tabpanel'"
         :aria-labelledby="isDesktopLayout ? undefined : 'mobile-panel-tab-calc'"
         :aria-hidden="!isDesktopLayout && activePanel !== 'calc' ? 'true' : undefined"
         :inert="!isDesktopLayout && activePanel !== 'calc'"
-        @apply-to-box="applyCalculatorToBox($event)"
         @open-help="showHelp = true"
         @open-settings="openSettings"
         @open-add-modal="showAddModal = true"
@@ -73,8 +80,9 @@
         :aria-labelledby="isDesktopLayout ? undefined : 'mobile-panel-tab-box'"
         :aria-hidden="!isDesktopLayout && activePanel !== 'box' ? 'true' : undefined"
         :inert="!isDesktopLayout && activePanel !== 'box'"
-        @apply-to-calc="applyBoxToCalculator()"
+        @apply-to-calc="applyBoxToCalculator($event)"
         @toggle-calc="toggleBoxInCalculator($event)"
+        @add-many-to-calc="addBoxEntriesToCalculator($event)"
         @open-settings="showSettings = true"
       />
       <div
@@ -95,12 +103,17 @@
     </div>
     </div>
 
+    <!-- PC の2列表示の元に戻す・やり直す（ナビが無いので画面下中央に浮かせる。1400px 未満は CSS で隠す） -->
+    <div class="historyDock" role="group" :aria-label="t('nav.history')">
+      <HistoryButtons ref="historyDockButtons" :history="history" />
+    </div>
     <AppToast />
     <NumericKeypad />
 
     <ExportOverlay
       v-if="calc.exportOpen.value"
       :rows="calc.exportRows.value"
+      :table-rows="calc.exportTableRows.value"
       :totals="calc.exportActualTotals.value"
       :boost-used="calc.totalBoostCandyUsed.value"
       :boost-unused="calc.boostCandyUnused.value"
@@ -125,7 +138,7 @@
 
     <SettingsOverlay v-if="showSettings" :calc="calc" :box="box" @close="showSettings = false" />
 
-    <AddPokemonModal v-if="showAddModal" :box="box" :calc="calc" @close="showAddModal = false" @added="onAddModalAdded($event)" />
+    <AddPokemonModal v-if="showAddModal" :box="box" :calc="calc" @close="showAddModal = false" @added="onAddModalAdded" />
 
     <OnboardingTour v-if="onboarding.isActive.value" :onboarding="onboarding" />
   </main>
@@ -137,16 +150,19 @@ import type { Component } from "vue";
 import { useI18n } from "vue-i18n";
 import { ensureLocaleMessagesLoaded } from "./i18n";
 import { localizeGameTerm } from "./i18n/terms";
-import type { ExpGainNature, ExpType, PokemonBoxEntryV1 } from "./domain/types";
-import { getPokemonType } from "./domain/pokesleep/pokemon-names";
 
 import CalcPanel from "./components/CalcPanel.vue";
 import BoxPanel from "./components/BoxPanel.vue";
 import MobileNav from "./components/MobileNav.vue";
+import HistoryButtons from "./components/HistoryButtons.vue";
+import DesignSwitcher from "./components/DesignSwitcher.vue";
 import AppToast from "./components/AppToast.vue";
 import NumericKeypad from "./components/NumericKeypad.vue";
 import SettingsOverlay from "./components/SettingsOverlay.vue";
 import { useBoxStore } from "./composables/useBoxStore";
+import { stepHistoryWithToast, useHistory } from "./composables/useHistory";
+import { useHistoryShortcuts } from "./composables/useHistoryShortcuts";
+import { HISTORY_UNDO_BUTTON_KEY } from "./composables/historyUndoButton";
 import { useCalcStore } from "./composables/useCalcStore";
 import { useCandyStore } from "./composables/useCandyStore";
 import { useOnboarding } from "./composables/useOnboarding";
@@ -290,9 +306,9 @@ function openSettings() {
   showSettings.value = true;
 }
 
-function onAddModalAdded(dstLevel: number) {
-  // AddPokemonModal → Box追加済み → selectedBox が新エントリを指している
-  applyBoxToCalculator(dstLevel);
+function onAddModalAdded(boxId: string, dstLevel: number) {
+  // AddPokemonModal → Box追加済み（作った個体の ID が渡る）
+  applyBoxToCalculator(boxId, dstLevel);
   // モーダルは閉じない（連続追加を可能にする）
 }
 
@@ -331,34 +347,23 @@ const supportLinks = computed<SupportLink[]>(() => {
   return out;
 });
 
-const box = useBoxStore({ locale, t });
+const history = useHistory();
+const box = useBoxStore({ locale, t, history });
 const candyStore = useCandyStore();
 
-/**
- * ボックスが数百〜最大1000体のとき、計算機の rowsView / plan が毎回 boxId を線形探索すると重くなるため Map で O(1) 解決する。
- * boxEntries が変わったときだけ再構築（計算のみのフレームでは触れない）。
- */
-const boxEntryById = computed(() => {
-  const m = new Map<string, PokemonBoxEntryV1>();
-  for (const e of box.boxEntries.value) {
-    m.set(e.id, e);
-  }
-  return m;
-});
-
-function resolvePokedexIdByBoxId(boxId: string): number | undefined {
-  return boxEntryById.value.get(boxId)?.derived?.pokedexId;
-}
-
+// 個体の読み書きは、ボックスストアの個体 Map と `updateIndividual` だけを渡す（計算機は PokemonBoxEntryV1 を知らない）
 const calc = useCalcStore({
   locale,
   t,
-  resolveTitleByBoxId: (boxId) => {
-    const e = boxEntryById.value.get(boxId);
-    return e ? box.displayBoxTitle(e) : null;
-  },
-  resolvePokedexIdByBoxId,
+  individuals: box,
+  history,
 });
+
+const mobileNavRef = ref<InstanceType<typeof MobileNav> | null>(null);
+const historyDockButtons = ref<InstanceType<typeof HistoryButtons> | null>(null);
+provide(HISTORY_UNDO_BUTTON_KEY, computed(() => (
+  isDesktopLayout.value ? historyDockButtons.value?.undoButton : mobileNavRef.value?.undoButton
+) ?? null));
 
 const overlayOpen = computed(() => (
   calc.exportOpen.value
@@ -489,6 +494,12 @@ watch(overlayOpen, (locked) => {
   releaseDocumentScrollLock = null;
 }, { flush: "post" });
 
+// モーダルの表示中は背面の画面が見えないので、何が戻ったか分からない操作をさせない
+useHistoryShortcuts({
+  isBlocked: () => overlayOpen.value,
+  step: (direction) => stepHistoryWithToast(history, direction, t),
+});
+
 function nextAnimationFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
@@ -577,15 +588,14 @@ function restoreReloadScrollPosition(saved: SavedScrollPosition): void {
   })();
 }
 
-function applyBoxToCalculator(dstLevelDefault?: number) {
-  const e = box.selectedBox.value;
-  if (!e) return;
+/** 詳細パネルのボタン・追加フォーム: 未追加なら計算機（表示中スロット）へ追加し、追加済みなら外す。 */
+function applyBoxToCalculator(boxId: string, dstLevelDefault?: number) {
   // viewport変更直後はMediaQueryListのchange通知より先にクリックされる場合がある。
   // 画面区分では分岐せず、表示中の詳細パネルそのものをアンカーにする。
   const detailPanel = document.querySelector<HTMLElement>('[data-testid="box-detail-panel"]');
   const detailTop = detailPanel?.getBoundingClientRect().top;
 
-  applyBoxEntryToCalculator(e, dstLevelDefault);
+  toggleBoxInCalculator(boxId, dstLevelDefault);
 
   if (!detailPanel || detailTop === undefined) return;
   void restoreElementViewportTop(detailPanel, detailTop);
@@ -663,58 +673,25 @@ async function restoreElementViewportTop(element: HTMLElement, top: number): Pro
   }
 }
 
-function applyBoxEntryToCalculator(e: PokemonBoxEntryV1, dstLevelDefault?: number) {
-  const lvl = e.planner?.level ?? e.derived?.level ?? 10;
-  const expT = (e.planner?.expType ?? e.derived?.expType ?? 600) as ExpType;
-  const nat = (e.planner?.expGainNature ?? e.derived?.expGainNature ?? "normal") as ExpGainNature;
-  const pokedexId = e.derived?.pokedexId;
-  const pokemonType = pokedexId ? getPokemonType(pokedexId) : undefined;
+/** ボックスの表示順のまま、計算機（表示中スロット）に無い個体を追加する。 */
+function addBoxEntriesToCalculator(boxIds: string[]) {
+  // 計算機はボックスより上にあるので、行が増えても押したボタンを同じ位置に保つ。
+  const button = document.querySelector<HTMLElement>('[data-testid="box-calc-visible"]');
+  const buttonTop = button?.getBoundingClientRect().top;
 
-  calc.upsertFromBox({
-    boxId: e.id,
-    title: box.displayBoxTitle(e),
-    srcLevel: Number(lvl),
-    expType: expT,
-    nature: nat,
-    expRemaining: e.planner?.expRemaining,
-    sleepHours: e.planner?.sleepHours,
-    dstLevelDefault,
-    pokedexId,
-    pokemonType,
-  });
+  calc.addRows(boxIds);
+
+  if (!button || buttonTop === undefined) return;
+  void restoreElementViewportTop(button, buttonTop);
 }
 
-function toggleBoxInCalculator(boxId: string) {
+function toggleBoxInCalculator(boxId: string, dstLevelDefault?: number) {
   const existing = calc.rows.value.find((row) => row.boxId === boxId);
   if (existing) {
     calc.removeRowById(existing.id);
     return;
   }
-  const entry = box.boxEntries.value.find((candidate) => candidate.id === boxId);
-  if (entry) applyBoxEntryToCalculator(entry);
-}
-
-function applyCalculatorToBox(rowId: string) {
-  const patch = calc.buildPlannerPatchFromRow(rowId);
-  if (!patch) return;
-  const e = box.boxEntries.value.find((x) => x.id === patch.boxId) ?? null;
-  if (!e) return;
-  const now = new Date().toISOString();
-  box.boxEntries.value = box.boxEntries.value.map((x) => {
-    if (x.id !== e.id) return x;
-    return {
-      ...x,
-      planner: {
-        ...(x.planner ?? {}),
-        level: patch.level,
-        expRemaining: patch.expRemaining,
-        sleepHours: patch.sleepHours,
-      },
-      updatedAt: now,
-    };
-  });
-  box.selectedBoxId.value = e.id;
-  box.importStatus.value = t("status.applyCalcToBox");
+  calc.addRow(boxId, { dstLevelDefault });
 }
 
 function captureActivePanelScroll(): void {
@@ -791,8 +768,7 @@ const themeStyleUrls = entriesToObject(
     .filter(([id]) => id && id !== "base") as [string, string][],
 ) as Record<string, string>;
 const currentDesign = ref(localStorage.getItem(DESIGN_STORAGE_KEY) || DEFAULT_THEME_ID);
-async function onDesignChange(ev: Event) {
-  const next = (ev.target as HTMLSelectElement).value;
+async function onDesignChange(next: string) {
   if (next === currentDesign.value || themeSwitching.value) return;
 
   localStorage.setItem(DESIGN_STORAGE_KEY, next);

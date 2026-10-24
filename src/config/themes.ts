@@ -11,7 +11,7 @@
 export interface ThemeDef {
   /** Unique key — matches the CSS filename (without extension) */
   id: string;
-  /** Display label shown in the design-switch combo-box */
+  /** Display label shown in the theme picker (DesignSwitcher.vue) */
   label: string;
 }
 

@@ -21,6 +21,9 @@
   --accent-strong: #ff1070;
   --danger: #FF4500;
   --danger-rgb: 255, 69, 0;
+  /* リンク切れの行の強調色（文字にも使うので紙の上で読める濃さにする） */
+  --link-broken: #FF4500;
+  --link-broken-rgb: 255, 69, 0;
   --paper-rgb: 31, 31, 31;
   --muted-rgb: 176, 176, 176;
 
@@ -245,6 +248,12 @@ input:focus, select:focus, textarea:focus {
 /* ===== Mobile Nav ===== */
 .mobileNav {
   background-color: #101010;
+}
+
+/* PC の元に戻す・やり直す。既定の黄緑の枠とピンクの影では色が多いので、枠をピンク1色にし、影は色を持たせない */
+.shell > .historyDock {
+  border: 2px solid var(--accent);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
 }
 
 /* 既定の 8% だと黒地に沈んで暗い赤紫に見えるので、ピンクを濃く重ねる（濃くしすぎるとピンクの文字が読みづらい） */

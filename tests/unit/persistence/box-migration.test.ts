@@ -72,9 +72,9 @@ describe('toSubSkills マイグレーション', () => {
     ]);
   });
 
-  // 空配列 → undefined
-  it('空配列はundefinedを返す', () => {
-    expect(toSubSkills([])).toBeUndefined();
+  // 空配列 → 空配列（全削除）
+  it('空配列は全削除として空配列のまま返す', () => {
+    expect(toSubSkills([])).toEqual([]);
   });
 
   // 非配列 → undefined

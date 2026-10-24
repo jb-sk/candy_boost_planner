@@ -16,7 +16,9 @@
 @import "./components/BoxPanel.css";
 @import "./components/CalcPanel.css";
 @import "./components/Modal.css";
+@import "./components/HistoryButtons.css";
 @import "./components/MobileNav.css";
+@import "./components/HistoryDock.css";
 @import "./components/AppToast.css";
 @import "./components/ExportOverlay.css";
 @import "./components/SettingsOverlay.css";
@@ -25,6 +27,7 @@
 @import "./components/LevelPicker.css";
 @import "./components/NumericKeypad.css";
 @import "./components/NatureSelect.css";
+@import "./components/SleepTargetSelect.css";
 @import "./components/OnboardingTour.css";
 @import "../../components/DesignSwitcher.css";
 
@@ -73,102 +76,118 @@
   color: var(--muted);
 }
 
+/*
+ * 言語・使い方・イベント履歴の行。ボタンの形をしているのは言語の切り替えだけにして、
+ * 使い方・イベント履歴は文字のリンクにする（同じ重さのボタンが並ぶと hero が騒がしい。2026-10-20 ユーザー指摘）。
+ */
+.hero__bar {
+  margin-top: 10px;
+}
+
 .lang {
   display: flex;
-  gap: 6px;
-  margin-top: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+}
+
+/* JP / EN はつないで1つの切り替えにする */
+.lang__switch {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid rgba(var(--ink-rgb), 0.16);
+  border-radius: var(--radius-pill);
+  background: var(--paper);
 }
 
 .lang__btn {
-  padding: 4px 10px;
-  border: 1px solid rgba(var(--ink-rgb), 0.12);
-  border-radius: 99px;
+  min-width: 34px;
+  margin: 0;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: var(--radius-pill);
   background: transparent;
-  font-size: 0.75rem;
-  font-weight: 600;
+  box-shadow: none;
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.4;
   color: var(--muted);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
 
 .lang__btn:hover:not(.lang__btn--on) {
-  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--accent);
 }
 
 .lang__btn--on {
   background: var(--btn-bg);
   color: var(--btn-ink);
-  border-color: var(--btn-bg);
 }
 
-.lang__btn--help {
-  margin-left: 16px;
-  background: var(--accent);
-  color: var(--paper);
-  border-color: var(--accent);
-}
-
-.lang__btn--help:hover {
+.heroLink {
+  margin: 0;
+  padding: 4px 0;
+  border: 0;
   background: transparent;
+  box-shadow: none;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.4;
   color: var(--accent);
+  cursor: pointer;
 }
 
-/* Hero meta row: support + theme picker side by side */
+.heroLink:hover {
+  text-decoration: underline;
+}
+
+/*
+ * 支援とテーマ。名前は小さく横に添えて、1行に収める。
+ * 名前（10.4px）とリンク・テーマ名（12px 前後）は文字の大きさが違うので、上下の中央ではなくベースラインでそろえる。
+ * 中央だと大きい方の文字の下端が下がって見えた（2026-10-20 ユーザー指摘）。
+ */
 .heroMeta {
   display: flex;
-  gap: 16px;
-  margin-top: 10px;
-  align-items: flex-start;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 20px;
+  margin-top: 12px;
 }
 
-/* Support links */
-.support {
-  /* no margin-top — heroMeta handles it */
+.support,
+.themePicker {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
 
-.support__label {
+.support__label,
+.themePicker__label {
   margin: 0;
-  font-size: 0.7rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   color: var(--muted);
 }
 
 .support__links {
   display: flex;
-  gap: 8px;
-  margin-top: 4px;
+  gap: 12px;
 }
 
 .support__link {
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ink);
   text-decoration: none;
-  padding: 4px 10px;
-  border: 1.5px solid var(--accent);
-  border-radius: var(--radius-pill);
-  transition: background 0.15s, color 0.15s;
 }
 
 .support__link:hover {
-  background: var(--accent);
-  color: var(--paper);
-  text-decoration: none;
-}
-
-/* Theme picker */
-.themePicker {
-}
-
-.themePicker__label {
-  margin: 0;
-  font-size: 0.7rem;
-  color: var(--muted);
-}
-
-.themePicker .design-switch-select {
-  margin-top: 4px;
+  color: var(--accent);
+  text-decoration: underline;
 }
 
 /* ===== Panel (card base) ===== */
@@ -332,6 +351,27 @@ select.field__input {
   background: var(--surface-alt);
 }
 
+/*
+ * 補助の操作。枠も影も付けず、アクセント色を薄く敷くだけにして主ボタンより目立たせない。
+ * テーマの `.btn`（Booklet の塗りと墨の枠）は後から読まれて同じ詳細度なら勝つので、`.btn` を重ねて上げる。
+ */
+.btn.btn--soft {
+  padding: 6px 12px;
+  border-color: transparent;
+  background: rgba(var(--accent-rgb), 0.1);
+  box-shadow: none;
+  color: var(--accent-strong);
+}
+
+.btn.btn--soft:hover:not(:disabled) {
+  background: rgba(var(--accent-rgb), 0.18);
+}
+
+.btn.btn--soft:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .btn--neutral {
   color: var(--ink);
   background: var(--paper);
@@ -352,22 +392,6 @@ select.field__input {
 .btn--xs {
   padding: 2px 8px;
   font-size: 11px;
-}
-
-.btn--icon {
-  padding: 6px;
-  line-height: 0;
-}
-
-.btn__icon {
-  display: inline-flex;
-  width: 18px;
-  height: 18px;
-}
-
-.btn__icon > svg {
-  width: 100%;
-  height: 100%;
 }
 
 /* ===== Link Buttons ===== */
@@ -452,6 +476,26 @@ select.field__input {
     border-radius: 0;
     box-shadow: none;
   }
+
+  /* ナビのすぐ下なので、見出しの上はパネルの余白だけにする（h2 の既定の余白でナビとの間が空きすぎた。2026-10-20 ユーザー指摘） */
+  .dashboard > .panel .panel__title {
+    margin: 0 0 12px;
+  }
+}
+
+/* タブレット以上: 支援とテーマを言語の行の右端へ寄せ、hero を低くする */
+@media (min-width: 680px) {
+  .hero__bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 24px;
+  }
+
+  .heroMeta {
+    margin-top: 0;
+  }
 }
 
 /* ===== PC desktop card treatment (≥ 1400px) ===== */
@@ -485,7 +529,7 @@ select.field__input {
     margin-top: 6px;
   }
 
-  .lang {
+  .hero__bar {
     margin-top: 12px;
   }
 

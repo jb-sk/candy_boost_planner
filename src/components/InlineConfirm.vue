@@ -13,12 +13,21 @@
     <div class="inlineConfirm__actions">
       <button
         ref="confirmButtonRef"
-        class="btn btn--danger btn--sm"
+        class="btn btn--sm"
+        :class="confirmVariant === 'primary' ? 'btn--primary' : 'btn--danger'"
         type="button"
         :data-testid="confirmTestId"
         :aria-describedby="`${questionId} ${noteId}`"
         @click="confirm"
       >{{ confirmLabel }}</button>
+      <button
+        v-if="altLabel"
+        class="btn btn--ghost btn--sm"
+        type="button"
+        :data-testid="altTestId"
+        :aria-describedby="`${questionId} ${noteId}`"
+        @click="chooseAlt"
+      >{{ altLabel }}</button>
       <button
         class="btn btn--neutral btn--sm"
         type="button"
@@ -45,15 +54,23 @@ const props = withDefaults(defineProps<{
   disabled?: boolean;
   closeWhenDisabled?: boolean;
   confirmFocusTarget?: HTMLElement | null;
+  /** 取り消せる操作の確認では primary にする。既定は削除などの danger。 */
+  confirmVariant?: "danger" | "primary";
+  /** 確定とキャンセルの間に置く別の選択肢。空なら出さない。 */
+  altLabel?: string;
+  altTestId?: string;
 }>(), {
   idPrefix: "",
   containerClass: "",
   disabled: false,
   closeWhenDisabled: false,
   confirmFocusTarget: null,
+  confirmVariant: "danger",
+  altLabel: "",
+  altTestId: undefined,
 });
 
-const emit = defineEmits<{ (e: "confirm"): void }>();
+const emit = defineEmits<{ (e: "confirm"): void; (e: "alt"): void }>();
 const uid = useId();
 const idBase = props.idPrefix || uid;
 const questionId = `${idBase}-question`;
@@ -80,6 +97,17 @@ function confirm() {
   nextTick(() => props.confirmFocusTarget?.focus());
 }
 
+function chooseAlt() {
+  isOpen.value = false;
+  emit("alt");
+  nextTick(() => props.confirmFocusTarget?.focus());
+}
+
+/** フォーカスを戻さずに閉じる（同じ場所に別の確認を開くとき）。 */
+function close() {
+  isOpen.value = false;
+}
+
 function onWindowKeydown(e: KeyboardEvent) {
   if (e.key !== "Escape") return;
   // ページ側の確認は、前面にモーダルがある間そのモーダルへ Escape を譲る。
@@ -103,5 +131,5 @@ watch(() => props.disabled, (disabled) => {
 
 onBeforeUnmount(() => window.removeEventListener("keydown", onWindowKeydown, true));
 
-defineExpose({ open, isOpen });
+defineExpose({ open, close, isOpen });
 </script>
