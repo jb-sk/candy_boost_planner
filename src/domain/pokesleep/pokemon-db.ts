@@ -1515,6 +1515,28 @@ export const pokemonDb: PokemonDbEntry[] = [
   },
   {
     "dexNo": 133,
+    "nameJa": "イーブイ(ハロウィン)",
+    "specialtyJa": "スキル",
+    "sleepTypeJa": "すやすや",
+    "berryJa": [
+      "キーのみ"
+    ],
+    "ingAJa": [
+      "ずっしりカボチャ"
+    ],
+    "ingBJa": [
+      "リラックスカカオ"
+    ],
+    "ingCJa": [
+      "モーモーミルク"
+    ],
+    "mainSkillJa": "食材ゲットS",
+    "fp": 5,
+    "helpSeconds": 3200,
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%A4%E3%83%BC%E3%83%96%E3%82%A4%28%E3%83%8F%E3%83%AD%E3%82%A6%E3%82%A3%E3%83%B3%29"
+  },
+  {
+    "dexNo": 133,
     "nameJa": "イーブイ(ホリデー)",
     "specialtyJa": "きのみ",
     "sleepTypeJa": "すやすや",
@@ -2304,6 +2326,28 @@ export const pokemonDb: PokemonDbEntry[] = [
     "fp": 20,
     "helpSeconds": 3400,
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A4%E3%83%89%E3%82%AD%E3%83%B3%E3%82%B0"
+  },
+  {
+    "dexNo": 200,
+    "nameJa": "ムウマ",
+    "specialtyJa": "スキル",
+    "sleepTypeJa": "うとうと",
+    "berryJa": [
+      "ブリーのみ"
+    ],
+    "ingAJa": [
+      "ほっこりポテト"
+    ],
+    "ingBJa": [
+      "めざましコーヒー"
+    ],
+    "ingCJa": [
+      "あんみんトマト"
+    ],
+    "mainSkillJa": "料理パワーアップS",
+    "fp": 16,
+    "helpSeconds": 2800,
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A0%E3%82%A6%E3%83%9E"
   },
   {
     "dexNo": 202,
@@ -3866,6 +3910,28 @@ export const pokemonDb: PokemonDbEntry[] = [
     "fp": 12,
     "helpSeconds": 2500,
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%95%E3%83%AF%E3%83%A9%E3%82%A4%E3%83%89"
+  },
+  {
+    "dexNo": 429,
+    "nameJa": "ムウマージ",
+    "specialtyJa": "スキル",
+    "sleepTypeJa": "うとうと",
+    "berryJa": [
+      "ブリーのみ"
+    ],
+    "ingAJa": [
+      "ほっこりポテト"
+    ],
+    "ingBJa": [
+      "めざましコーヒー"
+    ],
+    "ingCJa": [
+      "あんみんトマト"
+    ],
+    "mainSkillJa": "マジカルフレイム(料理アドバンスS)",
+    "fp": 20,
+    "helpSeconds": 2400,
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A0%E3%82%A6%E3%83%9E%E3%83%BC%E3%82%B8"
   },
   {
     "dexNo": 430,

@@ -1267,6 +1267,24 @@ export const pokemonMaster: PokemonMasterEntry[] = [
   {
     "dexNo": 133,
     "pokedexId": 133,
+    "form": 1,
+    "formLabelJa": "ハロウィン",
+    "nameJa": "イーブイ(ハロウィン)",
+    "baseNameJa": "イーブイ",
+    "specialty": "Skills",
+    "type": "Normal",
+    "typeJa": "ノーマル",
+    "expType": 600,
+    "ingredients": {
+      "a": "pumpkin",
+      "b": "cacao",
+      "c": "milk"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%A4%E3%83%BC%E3%83%96%E3%82%A4%28%E3%83%8F%E3%83%AD%E3%82%A6%E3%82%A3%E3%83%B3%29"
+  },
+  {
+    "dexNo": 133,
+    "pokedexId": 133,
     "form": 2,
     "formLabelJa": "ホリデー",
     "nameJa": "イーブイ(ホリデー)",
@@ -1907,6 +1925,24 @@ export const pokemonMaster: PokemonMasterEntry[] = [
       "c": "tomato"
     },
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A4%E3%83%89%E3%82%AD%E3%83%B3%E3%82%B0"
+  },
+  {
+    "dexNo": 200,
+    "pokedexId": 200,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "ムウマ",
+    "baseNameJa": "ムウマ",
+    "specialty": "Skills",
+    "type": "Ghost",
+    "typeJa": "ゴースト",
+    "expType": 600,
+    "ingredients": {
+      "a": "potato",
+      "b": "coffee",
+      "c": "tomato"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A0%E3%82%A6%E3%83%9E"
   },
   {
     "dexNo": 202,
@@ -3185,6 +3221,24 @@ export const pokemonMaster: PokemonMasterEntry[] = [
       "c": "potato"
     },
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%95%E3%83%AF%E3%83%A9%E3%82%A4%E3%83%89"
+  },
+  {
+    "dexNo": 429,
+    "pokedexId": 429,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "ムウマージ",
+    "baseNameJa": "ムウマージ",
+    "specialty": "Skills",
+    "type": "Ghost",
+    "typeJa": "ゴースト",
+    "expType": 600,
+    "ingredients": {
+      "a": "potato",
+      "b": "coffee",
+      "c": "tomato"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A0%E3%82%A6%E3%83%9E%E3%83%BC%E3%82%B8"
   },
   {
     "dexNo": 430,
