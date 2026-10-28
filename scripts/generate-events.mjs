@@ -124,19 +124,23 @@ export function readExistingGenerated(source) {
   }));
   const historyBody = source.match(/export const eventHistory[^=]*=\s*(\[[\s\S]*?\])\s+as const;/)?.[1];
   const history = historyBody ? JSON.parse(historyBody) : [];
-  return { knownThrough: through, segments, history };
+  const checkedBody = source.match(/export const wikiCheckedOccurrences[^=]*=\s*(\[[\s\S]*?\])\s+as const;/)?.[1];
+  // wikiCheckedOccurrences が無い旧形式の生成物では、履歴に載っている回だけを確認済みとみなす
+  const checked = checkedBody ? JSON.parse(checkedBody) : history.map(({ name, from }) => ({ name, from }));
+  return { knownThrough: through, segments, history, checked };
 }
 
 /**
  * ページを取らず前回の生成物から引き継いでよい開催回か。
  * 到達日は全イベントの最大終了日で「その回を確認済み」の証拠にならないため、
- * 前回の履歴に同じ開催回があることも要る（新しく追加された回は必ず取りに行く）。
+ * 前回ページを確認した開催回（checked）に同じ回があることも要る（新しく追加された回は必ず取りに行く）。
+ * history はボーナスのある回しか持たないので証拠に使わない（ボーナスなしの回を毎回取り直してしまう）。
  * 期間を訂正した回（periodFixes）は引き継ぎ元とずれうるので取り直す。
  */
 export function canReuseGroup(existing, latest, group) {
   return Boolean(existing)
     && compareDates(latest.to, existing.knownThrough) < 0
-    && existing.history.some((entry) => entry.name === latest.name && entry.from === latest.from)
+    && existing.checked.some((entry) => entry.name === latest.name && entry.from === latest.from)
     && !group.some((occurrence) => occurrence.fixed);
 }
 
@@ -330,7 +334,7 @@ export function readOverrides(overridesPath) {
   return { ignore, segments, periodFixes, anchors, flowers, nameEn };
 }
 
-function renderOutput({ sleepExpRows, history, wikiKnownThrough, meta }) {
+function renderOutput({ sleepExpRows, history, checked, wikiKnownThrough, meta }) {
   const lines = sleepExpRows.map((row) => {
     const fields = [
       `name: ${JSON.stringify(row.name)}`,
@@ -393,6 +397,12 @@ export const eventHistory: readonly EventHistoryEntry[] = ${JSON.stringify(histo
 
 /** Wikiのイベント一覧が把握している最後のゲーム日。仮イベントの写し元窓の右端。 */
 export const wikiKnownThrough: string = ${JSON.stringify(wikiKnownThrough)};
+
+/**
+ * ページを確認済みの開催回。generate-events の差分取得（過去回のページを取り直さない）判定にだけ使う。
+ * ボーナスのない回も含む。アプリからは参照しない。
+ */
+export const wikiCheckedOccurrences: readonly { readonly name: string; readonly from: string }[] = ${JSON.stringify(checked)} as const;
 `;
 }
 
@@ -439,6 +449,10 @@ async function main() {
 
   const rows = [];
   const skipped = [];
+  /** ページを読めず次回も取り直すべき wikiPath */
+  const failedPaths = new Set();
+  /** ページを取得または引き継ぎで確認した wikiPath（ignore / 手動 segments は含まない） */
+  const checkedPaths = new Set();
   let reusedPages = 0;
 
   for (const [wikiPath, group] of byPath) {
@@ -459,6 +473,7 @@ async function main() {
 
     // 新しい順に並ぶので先頭が最新回。ページの記述は最新回のもの。
     const latest = [...group].sort((a, b) => compareDates(b.from, a.from))[0];
+    checkedPaths.add(wikiPath);
 
     // 前回確認済みで、到達日より前に終わった回は確定済みなので、ページは取らず生成物の区間を引き継ぐ。
     let latestRows;
@@ -474,6 +489,7 @@ async function main() {
         parsed = parseEventPage(html, latest);
       } catch (error) {
         warnings.push(`${pageName}: ${error.message}`);
+        failedPaths.add(wikiPath);
         continue;
       }
       for (const warning of parsed.warnings) warnings.push(`${pageName}: ${warning}`);
@@ -563,9 +579,13 @@ async function main() {
     .map(value => value.entry);
 
   const wikiKnownThrough = deriveWikiKnownThrough(occurrences);
+  const checked = occurrences
+    .filter((occurrence) => checkedPaths.has(occurrence.wikiPath) && !failedPaths.has(occurrence.wikiPath))
+    .map(({ name, from }) => ({ name, from }));
   const content = renderOutput({
     sleepExpRows: rows,
     history: historyWithIndex,
+    checked,
     wikiKnownThrough,
     meta: { listUrl, anchors: overrides.anchors, flowers: overrides.flowers },
   });
