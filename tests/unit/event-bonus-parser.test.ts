@@ -290,7 +290,32 @@ describe('readExistingGenerated', () => {
       knownThrough: '2026-10-11',
       segments: [{ name: 'A"B', from: '2026-03-02', to: '2026-03-08', multiplier: 1.5, source: 'wiki' }],
       history: [],
+      checked: [],
     });
+  });
+
+  it('確認済みの開催回を読む（ボーナスのない回も含む）', () => {
+    const source = [
+      'export const sleepExpEventSegments: readonly SleepExpEventSegment[] = [',
+      '] as const;',
+      'export const eventHistory: readonly EventHistoryEntry[] = [{"name":"A","from":"2026-09-01","to":"2026-09-07","boost":"mini"}] as const;',
+      'export const wikiKnownThrough: string = "2026-10-11";',
+      'export const wikiCheckedOccurrences: readonly { readonly name: string; readonly from: string }[] = [{"name":"A","from":"2026-09-01"},{"name":"B","from":"2026-08-01"}] as const;',
+    ].join('\n');
+    expect(readExistingGenerated(source)?.checked).toEqual([
+      { name: 'A', from: '2026-09-01' },
+      { name: 'B', from: '2026-08-01' },
+    ]);
+  });
+
+  it('確認済み一覧のない旧形式は履歴の回を確認済みとみなす', () => {
+    const source = [
+      'export const sleepExpEventSegments: readonly SleepExpEventSegment[] = [',
+      '] as const;',
+      'export const eventHistory: readonly EventHistoryEntry[] = [{"name":"A","from":"2026-09-01","to":"2026-09-07","boost":"mini"}] as const;',
+      'export const wikiKnownThrough: string = "2026-10-11";',
+    ].join('\n');
+    expect(readExistingGenerated(source)?.checked).toEqual([{ name: 'A', from: '2026-09-01' }]);
   });
 
   it('読めない生成物は null（全ページ取り直しになる）', () => {
@@ -299,11 +324,21 @@ describe('readExistingGenerated', () => {
 });
 
 describe('canReuseGroup', () => {
-  const existing = { knownThrough: '2026-10-25', segments: [], history: [{ name: 'A', from: '2026-09-01', to: '2026-09-07' }] };
+  const existing = {
+    knownThrough: '2026-10-25',
+    segments: [],
+    history: [{ name: 'A', from: '2026-09-01', to: '2026-09-07' }],
+    checked: [{ name: 'A', from: '2026-09-01' }, { name: 'B', from: '2026-08-01' }],
+  };
   const known = { name: 'A', from: '2026-09-01', to: '2026-09-07' };
 
   it('前回確認済みで到達日より前に終わった回だけ引き継ぐ', () => {
     expect(canReuseGroup(existing, known, [known])).toBe(true);
+  });
+
+  it('ボーナスがなく履歴に載らない回も、確認済みなら引き継ぐ', () => {
+    const noBonus = { name: 'B', from: '2026-08-01', to: '2026-08-07' };
+    expect(canReuseGroup(existing, noBonus, [noBonus])).toBe(true);
   });
 
   it('到達日が先でも、履歴に無い新しい回は取りに行く', () => {
