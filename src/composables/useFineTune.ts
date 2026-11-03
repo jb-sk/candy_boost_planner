@@ -6,8 +6,6 @@ import {
   DIAGNOSIS_DIRECTION,
   diagnose,
   receiverNotices,
-  settleDiagnosis,
-  type Diagnosis,
   type ReceiverNotice,
   type RowAdviceEntry,
 } from "../domain/fine-tune/advice";
@@ -35,24 +33,19 @@ import {
 import {
   buildRowViews,
   buildSummary,
-  previewGiver,
   type FineTuneRowView,
   type FineTuneSummary,
-  type GiverPreview,
 } from "../domain/fine-tune/rowView";
 import { createPlannerRunner, type PlannerRunner } from "../workers/plannerRunner";
 import type { CalcRow, CalcStore } from "./useCalcStore";
 import type { HistoryControls } from "./useHistory";
 
-/** 1回に動かす量の選択肢（§4.3）。 */
-export const FINE_TUNE_STEP_OPTIONS = [1, 10, 100] as const;
-export const FINE_TUNE_DEFAULT_STEP = 10;
-/** プレビューを間引く待ち時間（§8.3。通常の計算は 150ms） */
+/** プレビューを間引く待ち時間（通常の計算は 150ms） */
 export const FINE_TUNE_PREVIEW_DELAY_MS = 300;
 
 export interface UseFineTuneOptions {
   t: Composer["t"];
-  /** テストで差し替える。既定は `createPlannerRunner`（通常の計算とは別の実行役、§8.3）。 */
+  /** テストで差し替える。既定は `createPlannerRunner`（通常の計算とは別の実行役）。 */
   createRunner?: () => PlannerRunner;
   now?: () => number;
   previewDelayMs?: number;
@@ -61,12 +54,12 @@ export interface UseFineTuneOptions {
 export type FineTuneApplyResult = "applied" | "empty" | "stale" | "notReady";
 
 /**
- * やりくりモーダルの組み立て（設計書 §10.4）。基準の固定、下書き、op を reducer に通すこと、下書きの履歴、
+ * かんたんモードの組み立て。基準の固定、下書き、op を reducer に通すこと、下書きの履歴、
  * プレビュー（間引きと実行役）、最新の結果、適用、ゲーム内の日付の停止と再開を持つ。
- * 上限・順位・診断の計算は持たず、ドメイン（draft / advice / rowView）を呼ぶだけ。
+ * 上限・おすすめ量の計算は持たず、ドメイン（draft / advice / rowView）を呼ぶだけ。
  *
  * 日付の停止と実行役の破棄は、呼び出したコンポーネントの寿命（スコープ）に結びつける。
- * 適用・キャンセル・×・Escape・背景のタップのどれで閉じても unmount でスコープが止まり、必ず再開・破棄される（§10.3）。
+ * 適用・×・Escape・背景のタップのどれで閉じても unmount でスコープが止まり、必ず再開・破棄される。
  */
 export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
   const now = options.now ?? (() => Date.now());
@@ -87,15 +80,14 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
   const history = shallowRef<FineTuneHistory>(EMPTY_FINE_TUNE_HISTORY);
   const latest = shallowRef<FineTuneLatest | null>(null);
   const previewFailed = ref(false);
-  const step = ref<number>(FINE_TUNE_DEFAULT_STEP);
 
   // ===== 基準 =====
-  // 開いたときに計算機が計算中なら、終わるまで基準を作らない（一覧を出さない、§4.1）。
+  // 開いたときに計算機が計算中なら、終わるまで基準を作らない（一覧を出さない）。
   function captureBase(): void {
     if (base.value !== null) return;
     const result = calc.planResult.value;
     if (calc.planResultPending.value || result === null) return;
-    // 写しを取らない。差し替えの検出に参照の同一性を使う（§10.3）
+    // 写しを取らない。差し替えの検出に参照の同一性を使う
     const rows: readonly CalcRow[] = toRaw(calc.rows.value);
     const captured: FineTuneBase = {
       rows,
@@ -139,7 +131,7 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     const ev = evaluated.value;
     if (b === null || s === null || ev === null) return;
     previewFailed.value = false;
-    // 下書きが空なら実行役を呼ばず、基準の結果を使う（§8.3）
+    // 下書きが空なら実行役を呼ばず、基準の結果を使う
     if (isDraftEmpty(b, s)) {
       latest.value = { version: s.version, result: b.result };
       return;
@@ -165,7 +157,7 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
   watch(state, schedulePreview, { flush: "sync" });
 
   /**
-   * 最新の結果が今の下書きの版と違う（§8.4）。結果から出す値を薄くし、結果に頼る操作を押せなくする。
+   * 最新の結果が今の下書きの版と違う。結果から出す値を薄くし、結果に頼る操作を押せなくする。
    * 計算に失敗しても、次の op で計算し直すまで古いまま。
    */
   const stale = computed(() => (
@@ -182,14 +174,14 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     if (b === null || s === null || ev === null) return { rejected: "notReady" };
     const out = reduceFineTune(b, s, op, deps, ev, latest.value);
     if ("rejected" in out) return out;
-    // 中身が変わらない op は、状態も履歴も動かさない（版も進めない、§9.1）
+    // 中身が変わらない op は、状態も履歴も動かさない（版も進めない）
     if (isSameDraftContent(s, out.state)) return { state: s };
     history.value = recordDraft(history.value, s, coalesceKeyOf(op), now());
     state.value = out.state;
     return out;
   }
 
-  // ===== 下書きの元に戻す・やり直す（D34、D41。操作名もトーストも出さない） =====
+  // ===== 下書きの元に戻す・やり直す（操作名もトーストも出さない） =====
   function undo(): null {
     const s = state.value;
     if (s === null) return null;
@@ -217,7 +209,7 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     redo,
   };
 
-  // ===== 診断・順位・表示 =====
+  // ===== おすすめ量・表示 =====
   const adviceContext = computed(() => {
     const b = base.value;
     const s = state.value;
@@ -227,8 +219,8 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     return createAdviceContext({ deps, base: b, state: s, evaluated: ev, result: l.result });
   });
 
-  /** 最新の結果から出した診断。向き（`DIAGNOSIS_DIRECTION`）はこれで決める。 */
-  const rawDiagnosis = computed<Diagnosis | null>(() => {
+  /** 最新の結果から出した診断。おすすめ量を出す向き（`DIAGNOSIS_DIRECTION`）をこれで決める。画面には出さない。 */
+  const diagnosis = computed(() => {
     const b = base.value;
     const s = state.value;
     const ev = evaluated.value;
@@ -238,28 +230,19 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
   });
 
   /**
-   * 順位・効果・おすすめ量は行ごとに需要の評価を何度も走らせる（`boostMarginal`）ので、モード1の間だけ求める。
-   * プレビュー計算中は直前の値を使い回す（結果が届くまで古い結果で2度求めない。表示は薄くなっている、§8.4）。
+   * 効果・おすすめ量は行ごとに需要の評価を何度も走らせる（`boostMarginal`）。
+   * プレビュー計算中は直前の値を使い回す（結果が届くまで古い結果で2度求めない。おすすめは押せなくなっている）。
    */
-  const adviceActive = ref(true);
   const NO_ADVICE: ReadonlyMap<string, RowAdviceEntry> = new Map();
   let settledAdvice: ReadonlyMap<string, RowAdviceEntry> = NO_ADVICE;
   const advice = computed<ReadonlyMap<string, RowAdviceEntry>>(() => {
-    if (!adviceActive.value) return NO_ADVICE;
     if (stale.value) return settledAdvice;
     const ctx = adviceContext.value;
-    const d = rawDiagnosis.value;
+    const d = diagnosis.value;
     if (ctx === null || d === null) return NO_ADVICE;
     const direction = DIAGNOSIS_DIRECTION[d.kind];
-    settledAdvice = direction === null ? NO_ADVICE : adviseRows(ctx, direction, step.value);
+    settledAdvice = direction === null ? NO_ADVICE : adviseRows(ctx, direction);
     return settledAdvice;
-  });
-
-  /** 表示する診断。モード1では、どの行のアメブを動かしても伸びないとき、そう出す（`settleDiagnosis`）。 */
-  const diagnosis = computed<Diagnosis | null>(() => {
-    const d = rawDiagnosis.value;
-    if (d === null || !adviceActive.value) return d;
-    return settleDiagnosis(d, advice.value);
   });
 
   const rowViews = computed<FineTuneRowView[]>(() => {
@@ -276,41 +259,6 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
       hasBoost: hasBoost.value,
       reachAfterRemaining: (rowId, expToTarget) => calc.rowReachAfterRemainingFor(rowId, expToTarget),
     });
-  });
-
-  // ===== ゆずる側のスライダーを動かしている間の棒（§6.2、§13 Q12。ソルバーは呼ばない） =====
-  const givePreviewRequest = shallowRef<{ rowId: string; m: number } | null>(null);
-  /** 離したあと、その op の結果が届くまで動かしている間の棒を保つ（古い結果へ一度戻ってから動くのを避ける） */
-  const givePreviewReleased = ref(false);
-  /** スライダーを動かしている間 true（離すと計算する、の案内に使う） */
-  const giveDragging = computed(() => givePreviewRequest.value !== null && !givePreviewReleased.value);
-
-  function setGivePreview(rowId: string, m: number): void {
-    givePreviewRequest.value = { rowId, m };
-    givePreviewReleased.value = false;
-  }
-  /** 離した。op を投げたあとに呼ぶ。結果が今の版なら今すぐ、計算中なら届いたときに止める。 */
-  function releaseGivePreview(): void {
-    if (givePreviewRequest.value === null) return;
-    if (previewing.value) givePreviewReleased.value = true;
-    else givePreviewRequest.value = null;
-  }
-  watch(previewing, (value) => {
-    if (!value && givePreviewReleased.value) {
-      givePreviewRequest.value = null;
-      givePreviewReleased.value = false;
-    }
-  });
-
-  const givePreview = computed<GiverPreview | null>(() => {
-    const request = givePreviewRequest.value;
-    const b = base.value;
-    const s = state.value;
-    const ev = evaluated.value;
-    if (request === null || b === null || s === null || ev === null) return null;
-    const view = rowViews.value.find((r) => r.id === request.rowId);
-    if (view === undefined) return null;
-    return previewGiver({ base: b, state: s, evaluated: ev, deps, view, m: request.m });
   });
 
   const summary = computed<FineTuneSummary | null>(() => {
@@ -341,10 +289,10 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     return state.value?.rows.find((r) => r.id === rowId)?.title ?? "";
   }
 
-  // ===== 適用（§10.2） =====
+  // ===== 適用 =====
   /**
-   * 下書きを計算機へ書き込む。履歴は `replaceRows` の1件だけ（D11）。
-   * 基準が今の計算機と別物なら何も書かず "stale" を返す（黙って当て直さない、§10.3）。
+   * 下書きを計算機へ書き込む。計算機の履歴は `replaceRows` の1件だけ。
+   * 基準が今の計算機と別物なら何も書かず "stale" を返す（黙って当て直さない）。
    */
   function apply(): FineTuneApplyResult {
     const b = base.value;
@@ -377,15 +325,8 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     previewFailed,
     isEmpty,
     hasBoost,
-    step,
-    adviceActive,
     history: historyControls,
-    diagnosis,
     rowViews,
-    giveDragging,
-    givePreview,
-    setGivePreview,
-    releaseGivePreview,
     summary,
     notices,
     receiver,

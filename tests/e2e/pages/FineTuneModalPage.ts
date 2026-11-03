@@ -1,11 +1,19 @@
 /**
- * FineTuneModal Page Object
- * やりくりモーダルのセレクタと操作をまとめる
- * すべてのセレクタはdata-testidベースで統一（接頭辞は fine-tune-）
+ * FineTuneModal Page Object（かんたんモード）
+ * セレクタと操作をまとめる。すべてのセレクタは data-testid ベース（接頭辞は fine-tune-）
  */
 import { type Page, type Locator, expect } from '@playwright/test';
 
-export type FineTuneMode = 'raise' | 'yield';
+/** 表で押せる欄。`row` は名前（行の詳細） */
+export type FineTuneField = 'row' | 'target' | 'boost' | 'candy';
+
+const CELL_TEST_ID: Record<Exclude<FineTuneField, 'row'> | 'reach' | 'shards', string> = {
+  target: 'fine-tune-row-target',
+  boost: 'fine-tune-row-boost',
+  candy: 'fine-tune-row-candy',
+  reach: 'fine-tune-row-reach',
+  shards: 'fine-tune-row-shards',
+};
 
 export class FineTuneModalPage {
   readonly page: Page;
@@ -18,33 +26,37 @@ export class FineTuneModalPage {
   readonly modal: Locator;
   readonly closeButton: Locator;
   readonly loading: Locator;
-  readonly tabRaise: Locator;
-  readonly tabYield: Locator;
 
   // === 上部 ===
   readonly summary: Locator;
   readonly summaryReached: Locator;
   readonly summaryBoost: Locator;
   readonly summaryShards: Locator;
-  readonly summaryCandy: Locator;
   readonly calculating: Locator;
-  readonly diagnosis: Locator;
   readonly receiver: Locator;
   readonly receiverName: Locator;
   readonly receiverClear: Locator;
-  readonly receiverHint: Locator;
   readonly notices: Locator;
-  readonly giveHint: Locator;
 
   // === 一覧 ===
   readonly list: Locator;
   readonly rows: Locator;
 
+  // === 調整バー ===
+  readonly editor: Locator;
+  readonly editorName: Locator;
+  readonly editorChange: Locator;
+  readonly editorInfo: Locator;
+  readonly editorNote: Locator;
+  readonly editorInput: Locator;
+  readonly editorReceive: Locator;
+  readonly editorRecommend: Locator;
+  readonly editorClose: Locator;
+
   // === フッター ===
+  readonly hint: Locator;
   readonly undoButton: Locator;
   readonly redoButton: Locator;
-  readonly resetButton: Locator;
-  readonly cancelButton: Locator;
   readonly applyButton: Locator;
   readonly discardConfirm: Locator;
   readonly discardConfirmYes: Locator;
@@ -59,31 +71,34 @@ export class FineTuneModalPage {
     this.modal = page.getByTestId('fine-tune-modal');
     this.closeButton = page.getByTestId('fine-tune-close');
     this.loading = page.getByTestId('fine-tune-loading');
-    this.tabRaise = page.getByTestId('fine-tune-tab-raise');
-    this.tabYield = page.getByTestId('fine-tune-tab-yield');
 
     this.summary = page.getByTestId('fine-tune-summary');
     this.summaryReached = page.getByTestId('fine-tune-summary-reached');
     this.summaryBoost = page.getByTestId('fine-tune-summary-boost');
     this.summaryShards = page.getByTestId('fine-tune-summary-shards');
-    this.summaryCandy = page.getByTestId('fine-tune-summary-candy');
     this.calculating = page.getByTestId('fine-tune-calculating');
-    this.diagnosis = page.getByTestId('fine-tune-diagnosis');
     this.receiver = page.getByTestId('fine-tune-receiver');
     this.receiverName = page.getByTestId('fine-tune-receiver-name');
     this.receiverClear = page.getByTestId('fine-tune-receiver-clear');
-    this.receiverHint = page.getByTestId('fine-tune-receiver-hint');
     this.notices = page.getByTestId('fine-tune-notice');
-    this.giveHint = page.getByTestId('fine-tune-give-hint');
 
     this.list = page.getByTestId('fine-tune-list');
     this.rows = page.getByTestId('fine-tune-row');
 
+    this.editor = page.getByTestId('fine-tune-editor');
+    this.editorName = page.getByTestId('fine-tune-editor-name');
+    this.editorChange = page.getByTestId('fine-tune-editor-change');
+    this.editorInfo = page.getByTestId('fine-tune-editor-info');
+    this.editorNote = page.getByTestId('fine-tune-editor-note');
+    this.editorInput = page.getByTestId('fine-tune-editor-input');
+    this.editorReceive = page.getByTestId('fine-tune-editor-receive');
+    this.editorRecommend = page.getByTestId('fine-tune-editor-recommend');
+    this.editorClose = page.getByTestId('fine-tune-editor-close');
+
+    this.hint = page.getByTestId('fine-tune-hint');
     // 計算機のボタン（history-undo-button）と取り違えないよう、モーダル専用の testid を使う
     this.undoButton = page.getByTestId('fine-tune-undo-button');
     this.redoButton = page.getByTestId('fine-tune-redo-button');
-    this.resetButton = page.getByTestId('fine-tune-reset');
-    this.cancelButton = page.getByTestId('fine-tune-cancel');
     this.applyButton = page.getByTestId('fine-tune-apply');
     this.discardConfirm = page.getByTestId('fine-tune-discard-confirm');
     this.discardConfirmYes = page.getByTestId('fine-tune-discard-confirm-yes');
@@ -101,27 +116,16 @@ export class FineTuneModalPage {
     await expect(this.rows.first()).toBeVisible();
   }
 
-  async cancel(): Promise<void> {
-    await this.cancelButton.click();
-    await expect(this.overlay).toHaveCount(0);
-  }
-
   async apply(): Promise<void> {
     await this.applyButton.click();
     await expect(this.overlay).toHaveCount(0);
   }
 
-  async selectMode(mode: FineTuneMode): Promise<void> {
-    const tab = mode === 'raise' ? this.tabRaise : this.tabYield;
-    await tab.click();
-    await expect(tab).toHaveAttribute('aria-selected', 'true');
-  }
-
-  /** 1回に動かす量（1 / 10 / 100）を選ぶ。 */
-  async selectStep(step: 1 | 10 | 100): Promise<void> {
-    const choice = this.page.getByTestId(`fine-tune-step-${step}`);
-    await choice.click();
-    await expect(choice).toHaveAttribute('aria-checked', 'true');
+  /** × で閉じる。下書きがあれば確認で「破棄して閉じる」を押す。 */
+  async discardAndClose(): Promise<void> {
+    await this.closeButton.click();
+    if (await this.discardConfirm.isVisible()) await this.discardConfirmYes.click();
+    await expect(this.overlay).toHaveCount(0);
   }
 
   // === 行へのアクセス ===
@@ -136,64 +140,94 @@ export class FineTuneModalPage {
     return (await this.page.getByTestId('fine-tune-row-title').allTextContents()).map((s) => s.trim());
   }
 
-  // === 行内の値 ===
-
-  /** 棒の塗り（%、四捨五入）。結果が無いときは null。 */
-  async barPercent(row: Locator): Promise<number | null> {
-    const value = await row.getByTestId('fine-tune-row-bar').getAttribute('data-percent');
-    return value === null ? null : Number(value);
+  cell(row: Locator, name: keyof typeof CELL_TEST_ID): Locator {
+    return row.getByTestId(CELL_TEST_ID[name]);
   }
 
-  /** 到達Lvの表示（`Lv67` など。変更後だけ）。 */
-  async reachLevelText(row: Locator): Promise<string> {
-    return ((await row.getByTestId('fine-tune-row-reach-level').textContent()) ?? '').trim();
-  }
-
-  /** 到達Lv（変更後）。 */
-  async reachLevel(row: Locator): Promise<number> {
-    const text = await this.reachLevelText(row);
-    const last = text.match(/Lv(\d+)\s*$/);
-    if (last === null) throw new Error(`到達Lvを読めません: ${text}`);
-    return Number(last[1]);
-  }
-
-  /**
-   * 到達点（到達Lv + 棒の塗り/100）。棒は到達Lvの中の進みなので、Lv をまたぐ比較はこれで行う。
-   * 例: Lv26 で塗り 40% なら 26.4。
-   */
-  async reachPoint(row: Locator): Promise<number> {
-    return (await this.reachLevel(row)) + ((await this.barPercent(row)) ?? 0) / 100;
+  /** 欄の数字（桁区切りを外す）。「-」は NaN。 */
+  async cellNumber(row: Locator, name: keyof typeof CELL_TEST_ID): Promise<number> {
+    const text = ((await this.cell(row, name).textContent()) ?? '').replace(/[,\s]/g, '');
+    return Number(text);
   }
 
   async targetLevel(row: Locator): Promise<number> {
-    return Number((await row.getByTestId('fine-tune-row-target-level').textContent())?.trim());
+    return this.cellNumber(row, 'target');
   }
 
-  /** アメブの個数（変更後）。アメブの列が無いスロットでは使わない。 */
   async boostValue(row: Locator): Promise<number> {
-    const input = row.getByTestId('fine-tune-row-boost-input');
-    return Number(await input.inputValue());
+    return this.cellNumber(row, 'boost');
   }
 
-
-  // === 行の操作 ===
-
-  /** モード1のアメブ ▲（1回に動かす量ぶん）。 */
-  async boostUp(row: Locator): Promise<void> {
-    await row.getByTestId('fine-tune-row-boost-up').click();
+  async candyValue(row: Locator): Promise<number> {
+    return this.cellNumber(row, 'candy');
   }
 
-  async boostDown(row: Locator): Promise<void> {
-    await row.getByTestId('fine-tune-row-boost-down').click();
+  /** アメで届く到達Lv（最新の結果）。 */
+  async reachLevel(row: Locator): Promise<number> {
+    return Number(await row.getAttribute('data-reach-level'));
   }
 
-  async targetUp(row: Locator): Promise<void> {
-    await row.getByTestId('fine-tune-row-target-up').click();
+  /**
+   * 到達点を比べられる数（到達Lv が上、同じ Lv なら次までのEXPが少ないほど大きい）。
+   * 例: Lv26 あと483 と Lv26 あと100 なら後者が大きい。
+   */
+  async reachPoint(row: Locator): Promise<number> {
+    const level = await this.reachLevel(row);
+    const left = Number(await row.getAttribute('data-exp-left'));
+    return level * 1e8 - left;
   }
 
-  async targetDown(row: Locator): Promise<void> {
-    await row.getByTestId('fine-tune-row-target-down').click();
+  // === 選ぶ・調整バー ===
+
+  /** 欄を押して調整バーを開く。すでにその欄の調整バーが出ていれば押さない（同じ欄を押すと閉じるため）。 */
+  async select(row: Locator, field: FineTuneField): Promise<void> {
+    const rowId = await row.getAttribute('data-row-id');
+    const open = await this.editor.count() > 0
+      && await this.editor.getAttribute('data-row-id') === rowId
+      && await this.editor.getAttribute('data-field') === field;
+    if (!open) {
+      const target = field === 'row' ? row.getByTestId('fine-tune-row-name') : this.cell(row, field);
+      await target.click();
+    }
+    await expect(this.editor).toBeVisible();
   }
+
+  /** 調整バーの刻みのボタン（-100 / -10 / -1 / +1 / +10 / +100、目標Lvは ±1 / ±5）を押す。 */
+  async step(delta: number): Promise<void> {
+    await this.editor.locator(`[data-testid="fine-tune-editor-step"][data-delta="${delta}"]`).click();
+  }
+
+  stepButton(delta: number): Locator {
+    return this.editor.locator(`[data-testid="fine-tune-editor-step"][data-delta="${delta}"]`);
+  }
+
+  /** 調整バーの個数欄に打って Enter で確定する（PC幅。スマホはテンキーの読み取り専用欄）。 */
+  async typeValue(value: number): Promise<void> {
+    await this.editorInput.fill(String(value));
+    await this.editorInput.press('Enter');
+  }
+
+  /** 欄を選んで刻みを押す。 */
+  async adjust(row: Locator, field: Exclude<FineTuneField, 'row'>, delta: number): Promise<void> {
+    await this.select(row, field);
+    await expect(this.editor).toHaveAttribute('data-field', field);
+    await this.step(delta);
+  }
+
+  /** 欄を選んで値を打つ。 */
+  async setValue(row: Locator, field: Exclude<FineTuneField, 'row'>, value: number): Promise<void> {
+    await this.select(row, field);
+    await expect(this.editor).toHaveAttribute('data-field', field);
+    await this.typeValue(value);
+  }
+
+  /** 受け取る側に選ぶ（行の名前を押して、調整バーの「受け取る」）。 */
+  async receive(row: Locator): Promise<void> {
+    await this.select(row, 'row');
+    await this.editorReceive.click();
+  }
+
+  // === 並べ替え ===
 
   /** 取っ手にフォーカスして ↑ キー（1つ上へ）。 */
   async moveUp(row: Locator): Promise<void> {
@@ -245,40 +279,6 @@ export class FineTuneModalPage {
       document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: id, clientY }));
     }, { id: pointerId, clientY: targetY });
     await expect(this.reorderNav).toBeHidden();
-  }
-
-  getGiveSlider(row: Locator): Locator {
-    return row.getByTestId('fine-tune-row-give-slider');
-  }
-
-  /** 受け取る側に選ぶ（受け取る側が決まっていないときの `[受け取る]`）。 */
-  async receive(row: Locator): Promise<void> {
-    await row.getByTestId('fine-tune-row-receive').click();
-  }
-
-  /**
-   * ゆずる側のスライダーを動かしている間の状態にする（input だけ。離していない）。
-   * `fill` は離したとき（change）まで起こすので、値を直接入れて input だけを起こす。
-   */
-  async dragGiveSlider(row: Locator, value: number): Promise<void> {
-    await this.getGiveSlider(row).evaluate((el, v) => {
-      const input = el as HTMLInputElement;
-      input.value = String(v);
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    }, value);
-  }
-
-  /** スライダーを離す（change）。直前に `dragGiveSlider` で入れた値で確定する。 */
-  async releaseGiveSlider(row: Locator): Promise<void> {
-    await this.getGiveSlider(row).evaluate((el) => {
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-  }
-
-  /** スライダーを動かして離す。 */
-  async setGiveSlider(row: Locator, value: number): Promise<void> {
-    await this.dragGiveSlider(row, value);
-    await this.releaseGiveSlider(row);
   }
 
   /** プレビュー計算が終わる（「計算中…」が消える）まで待つ。 */

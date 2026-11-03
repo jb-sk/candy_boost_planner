@@ -10,121 +10,92 @@
       :aria-label="t('calc.fineTune.title')"
       data-testid="fine-tune-modal"
     >
-      <header class="modal__header">
+      <header class="modal__header fineTuneModal__header">
         <h2 class="modal__title">{{ t("calc.fineTune.title") }}</h2>
         <button ref="closeButtonRef" class="modal__close" data-testid="fine-tune-close" type="button" :aria-label="t('common.close')" @click="requestClose">×</button>
       </header>
 
-      <div class="fineTuneModal__tabsBar">
-        <div class="modalTabs" role="tablist" :aria-label="t('calc.fineTune.modeTabs')" data-testid="fine-tune-tabs">
-          <button
-            v-for="tab in TABS"
-            :key="tab.id"
-            class="modalTab"
-            :class="{ 'modalTab--active': mode === tab.id }"
-            role="tab"
-            type="button"
-            :aria-selected="mode === tab.id"
-            :data-testid="`fine-tune-tab-${tab.id}`"
-            @click="mode = tab.id"
-          >{{ t(tab.label) }}</button>
-        </div>
-      </div>
-
       <p v-if="!fineTune.ready.value" class="fineTuneModal__loading" data-testid="fine-tune-loading" role="status">{{ t("calc.fineTune.loading") }}</p>
 
       <template v-else>
-        <section class="fineTuneModal__top" data-testid="fine-tune-top">
-          <dl v-if="summary !== null" class="fineTuneSummary" data-testid="fine-tune-summary">
-            <div class="fineTuneSummary__item">
-              <dt>{{ t("calc.fineTune.summary.reached") }}</dt>
-              <dd data-testid="fine-tune-summary-reached">{{ summaryChange(summary.reached, (n) => `${n}/${summary!.total}`) }}</dd>
-            </div>
-            <div v-if="summary.boostRemaining !== null" class="fineTuneSummary__item">
-              <dt>{{ t("calc.fineTune.summary.boostRemaining") }}</dt>
-              <dd data-testid="fine-tune-summary-boost">{{ summaryChange(summary.boostRemaining, calc.fmtNum) }}</dd>
-            </div>
-            <div class="fineTuneSummary__item">
-              <dt>{{ t("calc.fineTune.summary.shardsRemaining") }}</dt>
-              <dd data-testid="fine-tune-summary-shards">{{ summaryChange(summary.shardsRemaining, calc.fmtNum) }}</dd>
-            </div>
-            <div class="fineTuneSummary__item">
-              <dt>{{ t("calc.fineTune.summary.candyShortage") }}</dt>
-              <dd data-testid="fine-tune-summary-candy">{{ summaryChange(summary.candyShortage, calc.fmtNum) }}</dd>
-            </div>
-          </dl>
-          <p v-if="boostOver > 0" class="fineTuneModal__warn" data-testid="fine-tune-boost-over">{{ t("calc.fineTune.summary.boostOver", { over: calc.fmtNum(boostOver) }) }}</p>
+        <div v-if="summary !== null" class="fineTuneSummary" data-testid="fine-tune-summary">
+          <span class="fineTuneSummary__item" :title="t('calc.fineTune.summary.reachedTitle')">
+            <span class="fineTuneSummary__k">{{ t("calc.fineTune.summary.reached") }}</span>
+            <span class="fineTuneSummary__v" data-testid="fine-tune-summary-reached">{{ summaryValue(summary.reached, (n) => `${n}/${summary!.total}`) }}</span>
+            <span v-if="delta(summary.reached)" class="fineTuneSummary__d">{{ delta(summary.reached) }}</span>
+          </span>
+          <span
+            v-if="summary.boostRemaining !== null"
+            class="fineTuneSummary__item"
+            :class="{ 'fineTuneSummary__item--over': summary.boostRemaining.value < 0 }"
+            :title="summary.boostRemaining.value < 0 ? t('calc.fineTune.summary.boostOverTitle') : undefined"
+          >
+            <span class="fineTuneSummary__k">{{ t("calc.fineTune.summary.boostRemaining") }}</span>
+            <span class="fineTuneSummary__v" data-testid="fine-tune-summary-boost">{{ summaryValue(summary.boostRemaining, calc.fmtNum) }}</span>
+            <span v-if="delta(summary.boostRemaining)" class="fineTuneSummary__d">{{ delta(summary.boostRemaining) }}</span>
+          </span>
+          <span class="fineTuneSummary__item">
+            <span class="fineTuneSummary__k">{{ t("calc.fineTune.summary.shardsRemaining") }}</span>
+            <span class="fineTuneSummary__v" data-testid="fine-tune-summary-shards">{{ summaryValue(summary.shardsRemaining, calc.fmtNum) }}</span>
+            <span v-if="delta(summary.shardsRemaining)" class="fineTuneSummary__d">{{ delta(summary.shardsRemaining) }}</span>
+          </span>
+          <span v-if="fineTune.previewing.value" class="fineTuneSummary__calculating" data-testid="fine-tune-calculating" role="status">{{ t("calc.fineTune.calculating") }}</span>
+        </div>
 
-          <div class="fineTuneModal__stepLine">
-            <span class="fineTuneModal__stepLabel" id="fine-tune-step-label">{{ t("calc.fineTune.step.label") }}</span>
-            <div class="fineTuneModal__stepChoices" role="radiogroup" aria-labelledby="fine-tune-step-label">
-              <button
-                v-for="option in FINE_TUNE_STEP_OPTIONS"
-                :key="option"
-                class="fineTuneModal__stepChoice"
-                :class="{ 'fineTuneModal__stepChoice--on': fineTune.step.value === option }"
-                type="button"
-                role="radio"
-                :aria-checked="fineTune.step.value === option"
-                :data-testid="`fine-tune-step-${option}`"
-                @click="fineTune.step.value = option"
-              >{{ option }}</button>
-            </div>
-            <span v-if="fineTune.previewing.value" class="fineTuneModal__calculating" data-testid="fine-tune-calculating" role="status">{{ t("calc.fineTune.calculating") }}</span>
+        <p v-if="fineTune.previewFailed.value" class="fineTuneModal__warn" data-testid="fine-tune-preview-failed" role="alert">{{ t("calc.fineTune.previewFailed") }}</p>
+
+        <div v-if="fineTune.receiver.value !== null" class="fineTuneReceiver" data-testid="fine-tune-receiver">
+          <div class="fineTuneReceiver__line">
+            <span class="fineTuneReceiver__name" data-testid="fine-tune-receiver-name">{{ t("calc.fineTune.receiver", { name: fineTune.receiver.value.title }) }}</span>
+            <button class="btn btn--soft btn--xs" type="button" data-testid="fine-tune-receiver-clear" @click="dispatch({ kind: 'receiverClear' })">{{ t("calc.fineTune.receiverClear") }}</button>
           </div>
+          <p v-for="(notice, i) in noticeTexts" :key="i" class="fineTuneReceiver__notice" data-testid="fine-tune-notice" :data-kind="notice.kind">{{ notice.text }}</p>
+        </div>
 
-          <p v-if="fineTune.previewFailed.value" class="fineTuneModal__warn" data-testid="fine-tune-preview-failed" role="alert">{{ t("calc.fineTune.previewFailed") }}</p>
-
-          <div v-if="diagnosisView !== null" class="fineTuneModal__diagnosis" data-testid="fine-tune-diagnosis" :data-kind="diagnosisView.kind">
-            <p>{{ diagnosisView.text }}</p>
-            <p v-for="line in diagnosisView.also" :key="line" class="fineTuneModal__also">{{ line }}</p>
-          </div>
-
-          <div v-if="mode === 'yield'" class="fineTuneReceiver" data-testid="fine-tune-receiver">
-            <div v-if="fineTune.receiver.value !== null" class="fineTuneReceiver__line">
-              <span class="fineTuneReceiver__name" data-testid="fine-tune-receiver-name">{{ t("calc.fineTune.receiver", { name: fineTune.receiver.value.title }) }}</span>
-              <button class="btn btn--soft" type="button" data-testid="fine-tune-receiver-clear" @click="dispatch({ kind: 'receiverClear' })">{{ t("calc.fineTune.receiverClear") }}</button>
-            </div>
-            <p v-else class="fineTuneReceiver__hint" data-testid="fine-tune-receiver-hint">{{ t("calc.fineTune.pickReceiver") }}</p>
-            <p v-for="(notice, i) in noticeTexts" :key="i" class="fineTuneReceiver__notice" data-testid="fine-tune-notice" :data-kind="notice.kind">{{ notice.text }}</p>
-            <p v-if="fineTune.giveDragging.value" class="fineTuneReceiver__notice" data-testid="fine-tune-give-hint">{{ t("calc.fineTune.giveReleaseHint") }}</p>
-          </div>
-        </section>
-
-        <div class="modal__body fineTuneModal__list" :class="{ 'fineTuneModal__list--sleep': hasSleep }" data-testid="fine-tune-list" :data-pending="fineTune.stale.value ? 'true' : undefined">
-          <div class="fineTuneHead" :class="{ 'fineTuneHead--noBoost': !fineTune.hasBoost.value, 'fineTuneHead--yield': mode === 'yield' }" aria-hidden="true">
-            <span class="fineTuneHead__cell fineTuneHead__cell--move"></span>
-            <span class="fineTuneHead__cell fineTuneHead__cell--name">{{ t("calc.fineTune.colPokemon") }}</span>
-            <span v-if="mode === 'raise' && fineTune.hasBoost.value" class="fineTuneHead__cell fineTuneHead__cell--advice">{{ t("calc.fineTune.colAdvice") }}</span>
-            <span class="fineTuneHead__cell fineTuneHead__cell--target">{{ t("calc.row.dstLevel") }}</span>
-            <span class="fineTuneHead__cell fineTuneHead__cell--exp">{{ t("calc.fineTune.colExpLeft") }}</span>
-            <span v-if="hasSleep" class="fineTuneHead__cell fineTuneHead__cell--sleep">{{ t("calc.row.sleepReachedLv") }}</span>
-            <span v-if="fineTune.hasBoost.value" class="fineTuneHead__cell fineTuneHead__cell--boost">{{ t("calc.row.breakdownBoost") }}</span>
-            <span class="fineTuneHead__cell fineTuneHead__cell--candy">{{ t("calc.row.candy") }}</span>
-            <span class="fineTuneHead__cell fineTuneHead__cell--shards">{{ t("calc.row.shards") }}</span>
+        <div
+          ref="listRef"
+          class="modal__body fineTuneModal__list"
+          data-testid="fine-tune-list"
+          :data-pending="fineTune.stale.value ? 'true' : undefined"
+        >
+          <div class="fineTuneHead" :class="{ 'fineTuneHead--noBoost': !fineTune.hasBoost.value }" aria-hidden="true">
+            <span class="fineTuneHead__cell"></span>
+            <span class="fineTuneHead__cell fineTuneHead__cell--name">{{ t("calc.fineTune.col.pokemon") }}</span>
+            <span class="fineTuneHead__cell" :title="t('calc.fineTune.field.target')">{{ t("calc.fineTune.col.target") }}</span>
+            <span class="fineTuneHead__cell" :title="t('calc.fineTune.col.reachTitle')">{{ t("calc.fineTune.col.reach") }}</span>
+            <span v-if="fineTune.hasBoost.value" class="fineTuneHead__cell">{{ t("calc.fineTune.col.boost") }}</span>
+            <span class="fineTuneHead__cell">{{ t("calc.fineTune.col.candy") }}</span>
+            <span class="fineTuneHead__cell">{{ t("calc.fineTune.col.shards") }}</span>
           </div>
           <FineTuneRow
             v-for="(row, i) in fineTune.rowViews.value"
             :key="row.id"
             :row="row"
-            :mode="mode"
             :has-boost="fineTune.hasBoost.value"
-            :has-sleep="hasSleep"
+            :selected-field="selected?.rowId === row.id ? selected.field : null"
             :pending="fineTune.stale.value"
-            :step="fineTune.step.value"
             :is-first="i === 0"
             :is-last="i === fineTune.rowViews.value.length - 1"
             :dragging="rowDrag.draggingId.value === row.id"
             :drag-over="rowDrag.overId.value === row.id && rowDrag.draggingId.value !== row.id"
             :fmt="calc.fmtNum"
-            :title-of="fineTune.titleOf"
             @op="dispatch"
+            @select="(field) => select(row.id, field)"
             @handle-press="rowDrag.onHandlePress"
-            :live="fineTune.givePreview.value?.rowId === row.id ? fineTune.givePreview.value : null"
-            @give-input="fineTune.setGivePreview"
-            @give-release="fineTune.releaseGivePreview"
           />
         </div>
+
+        <FineTuneEditor
+          v-if="selectedRow !== null && selected !== null"
+          :key="`${selectedRow.id}:${selected.field}`"
+          :row="selectedRow"
+          :field="selected.field"
+          :pending="fineTune.stale.value"
+          :fmt="calc.fmtNum"
+          :title-of="fineTune.titleOf"
+          @op="dispatch"
+          @close="selected = null"
+        />
       </template>
 
       <div class="fineTuneModal__confirm">
@@ -145,19 +116,9 @@
       <footer class="fineTuneModal__footer">
         <div class="fineTuneModal__history">
           <HistoryButtons :history="fineTune.history" undo-test-id="fine-tune-undo-button" redo-test-id="fine-tune-redo-button" />
-          <button
-            class="btn btn--soft"
-            type="button"
-            data-testid="fine-tune-reset"
-            :title="t('calc.fineTune.resetTitle')"
-            :disabled="fineTune.isEmpty.value"
-            @click="dispatch({ kind: 'resetAll' })"
-          >{{ t("calc.fineTune.reset") }}</button>
         </div>
-        <div class="fineTuneModal__actions">
-          <button class="btn btn--soft" type="button" data-testid="fine-tune-cancel" @click="emit('close')">{{ t("calc.fineTune.cancel") }}</button>
-          <button class="btn btn--primary" type="button" data-testid="fine-tune-apply" :disabled="fineTune.isEmpty.value" @click="applyDraft">{{ t("calc.fineTune.apply") }}</button>
-        </div>
+        <p v-if="fineTune.ready.value && selected === null" class="fineTuneModal__hint" data-testid="fine-tune-hint">{{ t("calc.fineTune.hint") }}</p>
+        <button class="btn btn--primary fineTuneModal__apply" type="button" data-testid="fine-tune-apply" :disabled="fineTune.isEmpty.value" @click="applyDraft">{{ t("calc.fineTune.apply") }}</button>
       </footer>
     </div>
     <RowReorderNav :nav="rowDrag.nav" :set-list="rowDrag.setNavList" />
@@ -165,27 +126,29 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import type { Diagnosis, ReceiverNotice } from "../domain/fine-tune/advice";
+import type { ReceiverNotice } from "../domain/fine-tune/advice";
 import type { FineTuneOp } from "../domain/fine-tune/draft";
 import type { Change } from "../domain/fine-tune/rowView";
-import { useFineTune, FINE_TUNE_STEP_OPTIONS } from "../composables/useFineTune";
+import { useFineTune } from "../composables/useFineTune";
 import { useFocusTrap } from "../composables/useFocusTrap";
 import { useHistoryShortcuts } from "../composables/useHistoryShortcuts";
 import { useRowReorderDrag } from "../composables/useRowReorderDrag";
 import { showToast } from "../composables/useToast";
 import type { CalcStore } from "../composables/useCalcStore";
+import type { FineTuneField } from "../utils/fineTuneView";
+import FineTuneEditor from "./FineTuneEditor.vue";
 import FineTuneRow from "./FineTuneRow.vue";
 import HistoryButtons from "./HistoryButtons.vue";
 import InlineConfirm from "./InlineConfirm.vue";
 import RowReorderNav from "./RowReorderNav.vue";
 
 /**
- * やりくりモーダル（設計書 やりくりモーダル_設計書.md）。表示と op を投げることだけを持つ。
+ * かんたんモード。計算機の全員を数字だけの表で見渡し、押した欄を下の調整バーで動かす。
+ * 目標Lv・アメブ（全体のLvを上げる）と、使うアメ・受け取る（ゆずる・受け取る）を同じ画面で扱う。
  * 状態・プレビュー・適用・日付の停止と再開は `useFineTune`。コンポーネントが外れる（unmount）と、
- * どの閉じ方でもその寿命に結びついた日付の再開と実行役の破棄が走る（§10.3）。
- * 上限・順位・診断はドメインが出す。ここでは kind から文言を引く表で分岐する。
+ * どの閉じ方でもその寿命に結びついた日付の再開と実行役の破棄が走る。
  */
 const props = defineProps<{
   calc: CalcStore;
@@ -197,25 +160,54 @@ const { t, locale } = useI18n();
 const calc = props.calc;
 const fineTune = useFineTune(calc, { t });
 
-const TABS = [
-  { id: "raise", label: "calc.fineTune.tabRaise" },
-  { id: "yield", label: "calc.fineTune.tabYield" },
-] as const;
-const mode = ref<"raise" | "yield">("raise");
-// 順位・効果・おすすめ量はモード1だけで使う。モード2の間は重い計算を求めない
-watch(mode, (value) => { fineTune.adviceActive.value = value === "raise"; }, { immediate: true });
-
 const modalRef = ref<HTMLElement | null>(null);
 useFocusTrap(modalRef);
 const closeButtonRef = ref<HTMLButtonElement | null>(null);
 const discardConfirmRef = ref<InstanceType<typeof InlineConfirm> | null>(null);
+const listRef = ref<HTMLElement | null>(null);
 
 // ===== op =====
 function dispatch(op: FineTuneOp): void {
   fineTune.dispatch(op);
 }
 
-// ===== 並べ替え（取っ手をつかんで動かすのは useRowReorderDrag、取っ手の ↑↓ キーは行。確定は move の op、D33） =====
+// ===== 選んだ欄（同じ欄をもう一度押すと閉じる） =====
+const selected = ref<{ rowId: string; field: FineTuneField } | null>(null);
+const selectedRow = computed(() => {
+  const s = selected.value;
+  return s === null ? null : fineTune.rowViews.value.find((row) => row.id === s.rowId) ?? null;
+});
+
+function select(rowId: string, field: FineTuneField): void {
+  const current = selected.value;
+  if (current !== null && current.rowId === rowId && current.field === field) {
+    selected.value = null;
+    return;
+  }
+  selected.value = { rowId, field };
+  // 調整バーが出ると一覧が縮むので、選んだ行が隠れないよう寄せる
+  void nextTick(() => revealRow(rowId));
+}
+
+/**
+ * 行が一覧の見えている範囲（見出しの下）に入るよう、一覧だけをスクロールする。
+ * scrollIntoView の block: "nearest" は iOS 13 以前の Safari に無く（先頭へ揃えてしまう）、ページ側も動かしうるので使わない。
+ */
+function revealRow(rowId: string): void {
+  const list = listRef.value;
+  if (list === null) return;
+  const row = [...list.querySelectorAll<HTMLElement>("[data-row-id]")].find((el) => el.dataset.rowId === rowId);
+  if (row === undefined) return;
+  const headHeight = list.querySelector<HTMLElement>(".fineTuneHead")?.offsetHeight ?? 0;
+  const listRect = list.getBoundingClientRect();
+  const rowRect = row.getBoundingClientRect();
+  const above = rowRect.top - (listRect.top + headHeight);
+  const below = rowRect.bottom - listRect.bottom;
+  if (above < 0) list.scrollTop += above;
+  else if (below > 0) list.scrollTop += below;
+}
+
+// ===== 並べ替え（取っ手をつかんで動かすのは useRowReorderDrag、取っ手の ↑↓ キーは行。確定は move の op） =====
 const rowDrag = useRowReorderDrag({
   items: () => fineTune.rowViews.value.map((row) => ({ id: row.id, title: row.title })),
   onCommit: (rowId, toIndex) => dispatch({ kind: "move", rowId, toIndex }),
@@ -230,7 +222,7 @@ useHistoryShortcuts({
   },
 });
 
-// ===== 閉じる（下書きがあれば確認、§9.4） =====
+// ===== 閉じる（下書きがあれば確認） =====
 function requestClose(): void {
   if (rowDrag.draggingId.value !== null) {
     rowDrag.cancel();
@@ -244,13 +236,23 @@ function requestClose(): void {
 }
 
 function onKeydown(event: KeyboardEvent): void {
-  if (event.key === "Escape") requestClose();
+  if (event.key !== "Escape") return;
+  // 調整バーが出ていれば、先にそれを閉じる
+  if (selected.value !== null && discardConfirmRef.value?.isOpen !== true) {
+    selected.value = null;
+    return;
+  }
+  requestClose();
 }
 onMounted(() => window.addEventListener("keydown", onKeydown));
 onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 
-// ===== 適用（§10.2）。適用してから閉じる。日付の再開は unmount 側 =====
+// ===== 適用。適用してから閉じる。日付の再開は unmount 側 =====
 function applyDraft(): void {
+  // 個数欄に打ちかけの値があれば、先に確定させる（blur で op が通る）
+  if (document.activeElement instanceof HTMLInputElement && modalRef.value?.contains(document.activeElement)) {
+    document.activeElement.blur();
+  }
   const result = fineTune.apply();
   if (result === "applied") showToast(t("calc.fineTune.applied"));
   else if (result === "stale") showToast(t("calc.fineTune.applyStale"));
@@ -261,64 +263,19 @@ function applyDraft(): void {
 // ===== 表示 =====
 const summary = fineTune.summary;
 
-/** `基準 → 変更後`。変わっていなければ1つだけ。結果がまだ無いとき（変更後が null）は基準のまま。 */
-function summaryChange(change: Change<number | null>, format: (n: number) => string): string {
-  const { base, value } = change;
-  if (base === null) return "-";
-  if (value === null || value === base) return format(base);
-  return `${format(base)} → ${format(value)}`;
+/** 今の値。結果がまだ無いとき（変更後が null）は基準のまま。 */
+function summaryValue(change: Change<number | null>, format: (n: number) => string): string {
+  const value = change.value ?? change.base;
+  return value === null ? "-" : format(value);
 }
 
-/** 睡眠到達Lv の列は、睡眠（島）のある行が1匹でもいるときだけ出す */
-const hasSleep = computed(() => fineTune.rowViews.value.some((row) => row.sleepReach !== null));
-
-const boostOver = computed(() => {
-  const remaining = summary.value?.boostRemaining?.value;
-  return remaining !== undefined && remaining < 0 ? -remaining : 0;
-});
-
-const DIAGNOSIS_TEXT: Readonly<Record<Diagnosis["kind"], string>> = {
-  allReachedRoom: "calc.fineTune.diagnosis.allReachedRoom",
-  allReachedNoRoom: "calc.fineTune.diagnosis.allReachedNoRoom",
-  candyShortRoom: "calc.fineTune.diagnosis.candyShortRoom",
-  candyShortNoSlot: "calc.fineTune.diagnosis.candyShortNoSlot",
-  candyShortNoShards: "calc.fineTune.diagnosis.candyShortNoShards",
-  shardsShort: "calc.fineTune.diagnosis.shardsShort",
-  boostCapShort: "calc.fineTune.diagnosis.boostCapShort",
-  noBoostAllReached: "calc.fineTune.diagnosis.noBoostAllReached",
-  noBoostShort: "calc.fineTune.diagnosis.noBoostShort",
-  boostCannotHelp: "calc.fineTune.diagnosis.boostCannotHelp",
-};
-
-const FACTOR_TEXT = {
-  candy: "calc.fineTune.factor.candy",
-  shards: "calc.fineTune.factor.shards",
-  boost: "calc.fineTune.factor.boost",
-} as const;
-
-/** 先頭の未達行より下にも同じもので止まっている行があるときの文言（「〇〇以下は」） */
-const DIAGNOSIS_TEXT_MANY: Readonly<Partial<Record<Diagnosis["kind"], string>>> = {
-  candyShortRoom: "calc.fineTune.diagnosis.candyShortRoomMany",
-  shardsShort: "calc.fineTune.diagnosis.shardsShortMany",
-  boostCapShort: "calc.fineTune.diagnosis.boostCapShortMany",
-  noBoostShort: "calc.fineTune.diagnosis.noBoostShortMany",
-  boostCannotHelp: "calc.fineTune.diagnosis.boostCannotHelpMany",
-};
-
-const diagnosisView = computed(() => {
-  const diagnosis = fineTune.diagnosis.value;
-  if (diagnosis === null) return null;
-  const name = "firstShortId" in diagnosis ? fineTune.titleOf(diagnosis.firstShortId) : "";
-  const key = ("moreShort" in diagnosis && diagnosis.moreShort ? DIAGNOSIS_TEXT_MANY[diagnosis.kind] : undefined)
-    ?? DIAGNOSIS_TEXT[diagnosis.kind];
-  const also = "alsoShort" in diagnosis
-    ? diagnosis.alsoShort.map((item) => t("calc.fineTune.diagnosis.alsoShort", {
-      name: fineTune.titleOf(item.rowId),
-      factor: t(FACTOR_TEXT[item.factor]),
-    }))
-    : [];
-  return { kind: diagnosis.kind, text: t(key, { name }), also };
-});
+/** 基準からの増減（変わっていなければ空） */
+function delta(change: Change<number | null>): string {
+  const { base, value } = change;
+  if (base === null || value === null || base === value) return "";
+  const d = value - base;
+  return `${d > 0 ? "+" : "−"}${calc.fmtNum(Math.abs(d))}`;
+}
 
 const NOTICE_TEXT: Readonly<Record<ReceiverNotice["kind"], string>> = {
   noGivers: "calc.fineTune.notice.noGivers",

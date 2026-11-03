@@ -1,6 +1,6 @@
 /**
- * やりくりモーダルの診断・順位・おすすめ量・モード2の注意（設計書 §5、§6、§10.4）。
- * 機械はポケモンを選ばない。順位・効果・おすすめ量を出すだけ（D4）。
+ * かんたんモードの診断・効果・おすすめ量（「〇〇のLvを上げる」）・受け取る側の注意。
+ * 機械はポケモンを選ばない。効果とおすすめ量を出すだけ。
  * ストア・Vue を値で import しない。ストアの関数は `AdviceDeps` で受け取る。
  * 文言は画面側（i18n）で引く。ここは `kind` と行IDなどのデータだけを返す。
  * 診断・効果・おすすめ量は最新の結果から出す。基準の結果は使わない（§8.4）。
@@ -20,10 +20,9 @@ import { simulateCandyBudget, simulateCandyRun } from "../pokesleep/simulateCand
 import { maxLevel } from "../pokesleep/tables";
 import { sleepTargetTraits } from "../sleep-target";
 import {
-  canAdjustInMode1,
+  canAdjustCandy,
+  canAdjustLevel,
   candyUnitsOf,
-  clampToRange,
-  isGiverControlShown,
   opRange,
   type FineTuneBase,
   type FineTuneDeps,
@@ -45,10 +44,9 @@ export interface AlsoShort {
 }
 
 /**
- * 表の9行に対応する判別共用体（§5.1）。向き・文言・案内は `kind` から引く（`DIAGNOSIS_DIRECTION` など）。
+ * 全体の状態の判別共用体。おすすめ量を出す向きを `DIAGNOSIS_DIRECTION` で引く（画面には出さない）。
  * 1 `allReachedRoom` / 2 `allReachedNoRoom` / 3 `candyShortRoom` / 4 `candyShortNoSlot` / 5 `candyShortNoShards` /
  * 6 `shardsShort` / 7 `boostCapShort` / 8 `noBoostAllReached` / 9 `noBoostShort`。
- * `boostCannotHelp` は `diagnose` が返さない。3・6 でどの行にもおすすめ量が無いとき `settleDiagnosis` が置き換える。
  */
 export type Diagnosis =
   | { kind: "allReachedRoom" }
@@ -61,8 +59,7 @@ export type Diagnosis =
         | "candyShortNoShards"
         | "shardsShort"
         | "boostCapShort"
-        | "noBoostShort"
-        | "boostCannotHelp";
+        | "noBoostShort";
       /** 先頭の未達行 */
       firstShortId: string;
       /** 先頭の未達行より下に、同じもので止まっている届かない行がある（「〇〇以下は」） */
@@ -71,10 +68,7 @@ export type Diagnosis =
       alsoShort: AlsoShort[];
     };
 
-/**
- * 診断の kind から向きを引く表。null は順位・効果・おすすめ量を出さない（案内のみ・増やせない）。
- * 画面に向きの if を書かず、この表を引く（§10.4）。
- */
+/** 診断の kind から向きを引く表。null は効果・おすすめ量を出さない（アメブで伸ばせない）。 */
 export const DIAGNOSIS_DIRECTION: Readonly<Record<Diagnosis["kind"], RankDirection | null>> = {
   allReachedRoom: "increase",
   allReachedNoRoom: null,
@@ -85,7 +79,6 @@ export const DIAGNOSIS_DIRECTION: Readonly<Record<Diagnosis["kind"], RankDirecti
   boostCapShort: null,
   noBoostAllReached: null,
   noBoostShort: null,
-  boostCannotHelp: null,
 };
 
 const isReached = (p: PokemonPlanResult): boolean => p.reachableLine.effectiveTargetReached;
@@ -183,7 +176,7 @@ export interface AdviceContext extends AdviceInput {
   readonly demandCache: Map<string, DemandPoint | null>;
 }
 
-/** 順位・効果・おすすめ量の入力をまとめる。同じ版の間は使い回してよい。 */
+/** 効果・おすすめ量の入力をまとめる。同じ版の間は使い回してよい。 */
 export function createAdviceContext(input: AdviceInput): AdviceContext {
   const rowById = new Map<string, CalcRow>();
   for (const row of input.state.rows) rowById.set(row.id, row);
@@ -225,10 +218,6 @@ export interface BoostMarginal {
   deltaExp: number;
   /** 節約アメ = −deltaCandy */
   savedCandy: number;
-  /** 増やす向きの c_i = deltaShards ÷ 節約アメ。節約アメが 0 以下のとき null（順位を付けない） */
-  shardsPerSavedCandy: number | null;
-  /** 画面の「1個あたり」= deltaShards ÷ (to − from)。to = from のとき null。減らす向きの r_i は −これ */
-  shardsPerBoost: number | null;
 }
 
 function pointFrom(evaluated: EvaluatedRows, row: CalcRow): DemandPoint | null {
@@ -289,17 +278,7 @@ export function boostMarginal(ctx: AdviceContext, rowId: string, to: number): Bo
     deltaShards,
     deltaExp: b.expGained - a.expGained,
     savedCandy,
-    shardsPerSavedCandy: savedCandy > 0 ? deltaShards / savedCandy : null,
-    shardsPerBoost: to === from ? null : deltaShards / (to - from),
   };
-}
-
-/** その行の ▲▼ を `by` ぶん押したときに実際に入るアメブ（`opRange` に収めた n'、D36・D37）。行が無ければ null。 */
-export function boostAfterStep(ctx: AdviceContext, rowId: string, by: number): number | null {
-  const item = ctx.evaluated.byId.get(rowId);
-  if (item === undefined) return null;
-  const range = opRange(ctx.base, ctx.state, ctx.evaluated, { kind: "boost", rowId });
-  return clampToRange(item.effectiveBoost + by, range);
 }
 
 // ============================================================
@@ -314,7 +293,7 @@ export type NoEffectReason =
   | "boostCapLimited"
   | "atFullBoost";
 
-/** 行の効果（§5.2）。札の文言・順位の対象か・おすすめ量の出し方は `kind` から引く。 */
+/** 行の効果（§5.2）。おすすめ量の出し方は `kind` から引く。 */
 export type RowAdvice =
   /** 自分の不足が減る（増やす: アメ不足、減らす: かけら不足） */
   | { kind: "selfShort" }
@@ -325,12 +304,6 @@ export type RowAdvice =
   /** 全員届いていて、アメの節約 */
   | { kind: "saving" }
   | { kind: "noEffect"; reason: NoEffectReason };
-
-/** 順位を付ける効果の kind（向きごと、§5.2、§5.3）。 */
-export const RANKED_ADVICE_KINDS: Readonly<Record<RankDirection, readonly RowAdvice["kind"][]>> = {
-  increase: ["selfShort", "feedsBelow", "saving"],
-  decrease: ["selfShort", "feedsBelow"],
-};
 
 /** 供給（アメの使い方）のうち、taker が使える種類（§2.5）。 */
 interface UsableKinds {
@@ -696,81 +669,32 @@ export function recommendBoost(
 export interface RowAdviceEntry {
   rowId: string;
   advice: RowAdvice;
-  /**
-   * 順位を付けた量での変化。おすすめ量がある行は今の値からおすすめ量へ、無い行は ▲▼ を1回押したときに入る値 n' へ。
-   * n' = 今の値のときは変化が全て 0
-   */
-  marginal: BoostMarginal | null;
-  /** 順位（1位から）。順位を付けない行は null */
-  rank: number | null;
   /** 「〇〇のLvを上げる」。出さないとき null */
   recommendation: BoostRecommendation | null;
 }
 
 /**
- * モード1の全行の効果・順位・おすすめ量（§5.2、§5.3、§5.5）。操作できる行（`canAdjustInMode1`）だけが入る。
- * アメブなしのスロットでは空。`step` は「1回に動かす量」。順位は一覧を並べ替えず札で出す（D17）。
- * 順位は「〇〇のLvを上げる」で入る量での効率で付ける（押したときに入る量と、順位を付けた量を揃える）。
- * おすすめ量の無い `selfShort` / `feedsBelow` の行（頂上にいる行）には付けない。`saving`（全員届いている）は
- * おすすめ量が無いので「1回に動かす量」での効率で付ける。
- * - 増やす: 節約アメ1個あたりのかけら（c_i）の小さい順。節約アメが 0 以下の行は最後。
- * - 減らす: 1個あたり浮くかけら（r_i）の大きい順。
- * 同点は下書きの順。
+ * 目標Lv・アメブを動かせる全行（`canAdjustLevel`）の効果とおすすめ量（§5.2、§5.3、§5.5）。
+ * アメブなしのスロットでは空。
  */
-export function adviseRows(
-  ctx: AdviceContext,
-  direction: RankDirection,
-  step: number,
-): Map<string, RowAdviceEntry> {
+export function adviseRows(ctx: AdviceContext, direction: RankDirection): Map<string, RowAdviceEntry> {
   const entries = new Map<string, RowAdviceEntry>();
   if (ctx.boostKind === null || ctx.boostKind === "none") return entries;
-  const sign = direction === "increase" ? 1 : -1;
-  const ranked: Array<{ rowId: string; key: number; index: number }> = [];
   for (const row of ctx.state.rows) {
-    if (!canAdjustInMode1(ctx.state, ctx.evaluated, row)) continue;
+    if (!canAdjustLevel(ctx.state, ctx.evaluated, row)) continue;
     const advice = adviseRow(ctx, row.id, direction);
     if (advice === null) continue;
-    const recommendation = recommendBoost(ctx, row.id, direction, advice);
-    const to = recommendation?.boost ?? boostAfterStep(ctx, row.id, sign * step);
-    const marginal = to === null ? null : boostMarginal(ctx, row.id, to);
-    entries.set(row.id, { rowId: row.id, advice, marginal, rank: null, recommendation });
-    if (marginal === null || !RANKED_ADVICE_KINDS[direction].includes(advice.kind)) continue;
-    if (advice.kind !== "saving" && recommendation === null) continue;
-    if (direction === "increase") {
-      if (marginal.to > marginal.from) {
-        ranked.push({ rowId: row.id, key: marginal.shardsPerSavedCandy ?? Infinity, index: ranked.length });
-      }
-    } else if (marginal.to < marginal.from && marginal.shardsPerBoost !== null) {
-      ranked.push({ rowId: row.id, key: -marginal.shardsPerBoost, index: ranked.length });
-    }
+    entries.set(row.id, { rowId: row.id, advice, recommendation: recommendBoost(ctx, row.id, direction, advice) });
   }
-  // 小さい順（減らす向きは key が負なので、浮くかけらの大きい順）。同点は下書きの順（古い端末の sort は安定と限らない）
-  ranked.sort((a, b) => (a.key === b.key ? a.index - b.index : a.key < b.key ? -1 : 1));
-  ranked.forEach((item, i) => {
-    entries.get(item.rowId)!.rank = i + 1;
-  });
   return entries;
 }
 
-/**
- * 表示する診断。アメブで伸ばせるはずの診断（アメ不足で余りがある・かけら不足）なのに、どの行にも
- * 「〇〇のLvを上げる」が無い（どの行のアメブを動かしても先頭の未達行が伸びない＝頂上にいる）ときは、
- * 「アメブを動かしても伸びません」（`boostCannotHelp`）に置き換える。向きの判定（`DIAGNOSIS_DIRECTION`）には元の診断を使う。
- */
-export function settleDiagnosis(diagnosis: Diagnosis, entries: ReadonlyMap<string, RowAdviceEntry>): Diagnosis {
-  if (diagnosis.kind !== "candyShortRoom" && diagnosis.kind !== "shardsShort") return diagnosis;
-  for (const entry of entries.values()) {
-    if (entry.recommendation !== null) return diagnosis;
-  }
-  return { ...diagnosis, kind: "boostCannotHelp" };
-}
-
 // ============================================================
-// モード2の上部の欄の注意（§6.1、§6.2、D43）
+// 受け取る側の注意（§6.1、§6.2）
 // ============================================================
 
 /**
- * 上部の受け取る側の欄にまとめて出す注意。記録のある行（実際に減らした行）についてだけ出す（`noGivers` を除く）。
+ * 受け取る側の欄にまとめて出す注意。記録のある行（実際に減らした行）についてだけ出す（`noGivers` を除く）。
  * - noGivers: 受け取る側より上にゆずれるポケモンがいない
  * - belowReceiver: 記録のある行が受け取る側より下なので届かない（D7）
  * - takenFirst: 受け取る側が受け取れるものを、間の届かない行が先に受け取る。giverIds は対象の記録のある行
@@ -786,7 +710,7 @@ interface ReceivableKinds extends UsableKinds {
 }
 
 /**
- * モード2の注意。受け取る側がいなければ空。`latest` が null のときは結果に頼らない注意（noGivers、belowReceiver）だけ。
+ * 受け取る側の注意。受け取る側がいなければ空。`latest` が null のときは結果に頼らない注意（noGivers、belowReceiver）だけ。
  * 受け取れるもの: giver が使っているアメのうち B が使えるもの（B が在庫のみの行なら giver と同じ進化系の種族アメだけ）。
  * B がかけらで止まっているなら、giver が使っているかけら。間の届かない行 X が先に取るのは、X が同じものを使える
  * （アメは X がアメで止まっている、かけらは X がかけらで止まっている）とき。
@@ -803,7 +727,7 @@ export function receiverNotices(
   if (receiverIndex < 0) return [];
   const notices: ReceiverNotice[] = [];
 
-  if (!rows.slice(0, receiverIndex).some((row) => isGiverControlShown(state, evaluated, row))) {
+  if (!rows.slice(0, receiverIndex).some((row) => canAdjustCandy(state, evaluated, row))) {
     notices.push({ kind: "noGivers", receiverId });
   }
   const giverRows = rows.filter((r) => state.givers[r.id] !== undefined);

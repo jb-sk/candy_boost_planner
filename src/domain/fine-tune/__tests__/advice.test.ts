@@ -15,15 +15,13 @@ import {
   createAdviceContext,
   diagnose,
   receiverNotices,
-  settleDiagnosis,
   type AdviceContext,
   type Diagnosis,
   type RankDirection,
-  type RowAdviceEntry,
 } from "../advice";
 import { initialFineTuneState, type FineTuneBase, type FineTuneState, type GiverRecord } from "../draft";
 
-/** 作り物の結果と評価で、診断・効果・モード2の注意の判定だけを確かめる（planner と store は使わない）。 */
+/** 作り物の結果と評価で、診断・効果・受け取る側の注意の判定だけを確かめる（planner と store は使わない）。 */
 
 function makeRow(id: string, extra: Partial<CalcRow> = {}): CalcRow {
   return { id, title: id, pokedexId: 25, srcLevel: 10, dstLevel: 50, expRemaining: 0, expType: 600, nature: "normal", boostReachLevel: 50, ...extra };
@@ -194,7 +192,7 @@ describe("diagnose（§5.1）", () => {
     expect(diagnose(t.result, reversed, "full", room)).toMatchObject({ kind: "candyShortRoom", firstShortId: "b" });
   });
 
-  it("向きの表: 増やすのは 1 と 3、減らすのは 6、ほかは案内のみ", () => {
+  it("向きの表: 増やすのは 1 と 3、減らすのは 6、ほかはおすすめ量を出さない", () => {
     expect(DIAGNOSIS_DIRECTION).toEqual({
       allReachedRoom: "increase",
       allReachedNoRoom: null,
@@ -205,37 +203,7 @@ describe("diagnose（§5.1）", () => {
       boostCapShort: null,
       noBoostAllReached: null,
       noBoostShort: null,
-      boostCannotHelp: null,
     });
-  });
-});
-
-describe("settleDiagnosis: どの行にもおすすめ量が無いとき（頂上にいる）", () => {
-  const head = { firstShortId: "b", moreShort: true, alsoShort: [] };
-  const entry = (rowId: string, withRecommendation: boolean): [string, RowAdviceEntry] => [rowId, {
-    rowId,
-    advice: { kind: "selfShort" },
-    marginal: null,
-    rank: null,
-    recommendation: withRecommendation ? { rowId, targetRowId: rowId, andOthers: false, boost: 10, insufficient: false } : null,
-  }];
-
-  it("アメ不足で余りがある・かけら不足で、おすすめ量が1つも無ければ boostCannotHelp に置き換える（先頭の未達行と「以下は」は保つ）", () => {
-    const none = new Map([entry("a", false), entry("b", false)]);
-    for (const kind of ["candyShortRoom", "shardsShort"] as const) {
-      expect(settleDiagnosis({ kind, ...head }, none)).toEqual({ kind: "boostCannotHelp", ...head });
-      expect(settleDiagnosis({ kind, ...head }, new Map())).toEqual({ kind: "boostCannotHelp", ...head });
-    }
-  });
-
-  it("おすすめ量が1つでもあれば、そのまま", () => {
-    const some = new Map([entry("a", false), entry("b", true)]);
-    expect(settleDiagnosis({ kind: "candyShortRoom", ...head }, some)).toEqual({ kind: "candyShortRoom", ...head });
-  });
-
-  it("ほかの kind はおすすめ量が無くてもそのまま（全員届いているときの節約など、おすすめ量を出さない診断）", () => {
-    expect(settleDiagnosis({ kind: "allReachedRoom" }, new Map())).toEqual({ kind: "allReachedRoom" });
-    expect(settleDiagnosis({ kind: "candyShortNoSlot", ...head }, new Map())).toEqual({ kind: "candyShortNoSlot", ...head });
   });
 });
 

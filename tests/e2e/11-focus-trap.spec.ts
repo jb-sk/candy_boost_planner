@@ -8,7 +8,7 @@
  *   - 外へ出たフォーカスは器へ戻る
  *   - 閉じると開く前の要素へ戻る
  *   - 追加モーダルは今までどおり名前欄へフォーカスする
- *   - やりくりモーダルにも同じ検査（開く・端から端へ回る・外へ出たら戻る・閉じたら戻る）
+ *   - かんたんモードにも同じ検査（開く・端から端へ回る・外へ出たら戻る・閉じたら戻る）
  */
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { SettingsModalPage } from './pages/SettingsModalPage';
@@ -98,7 +98,7 @@ test.describe('useFocusTrap', () => {
   });
 });
 
-test.describe('useFocusTrap（やりくりモーダル）', () => {
+test.describe('useFocusTrap（かんたんモード）', () => {
   /** 1匹を足して計算機から開く（スマホ幅では FineTuneModalPage.open が計算機のタブへ移る）。 */
   async function openFineTune(page: Page) {
     await page.goto('/');

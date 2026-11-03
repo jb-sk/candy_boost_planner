@@ -587,7 +587,7 @@ describe("stepHistoryWithToast（HistoryControls）", () => {
     expect(toasts.value.length).toBe(before + 1);
   });
 
-  it("ラベルが常に null の履歴（やりくりモーダル）ではトーストを出さない", () => {
+  it("ラベルが常に null の履歴（かんたんモード）ではトーストを出さない", () => {
     const before = toasts.value.length;
     stepHistoryWithToast(controls(null), "undo", t);
     stepHistoryWithToast(controls(null), "redo", t);

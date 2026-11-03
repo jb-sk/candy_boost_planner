@@ -85,7 +85,7 @@ describe("下書きの履歴（§9.1、§10.1）", () => {
     const s = session();
     s.op({ kind: "move", rowId: "c", toIndex: 0 }, 0);
     s.op({ kind: "giverStep", rowId: "x", by: 1 }, 10); // rejected
-    s.op({ kind: "resetAll" }, 20);
+    s.op({ kind: "move", rowId: "c", toIndex: 2 }, 20); // 元の並びへ
     expect(s.history.undo).toHaveLength(2);
 
     const afterMove = s.history.undo[1]!.state;
@@ -104,13 +104,13 @@ describe("下書きの履歴（§9.1、§10.1）", () => {
     expect(s.redo(80)).toBe(false);
   });
 
-  it("受け取る側の選択・選択を外す・resetAll も1件ずつ戻る", () => {
+  it("受け取る側の選択・選択を外す・並べ替えも1件ずつ戻る", () => {
     const s = session();
     s.op({ kind: "receiverSelect", rowId: "b" }, 0);
     expect(s.state.receiverId).toBe("b");
     s.op({ kind: "receiverClear" }, 10);
     s.op({ kind: "move", rowId: "c", toIndex: 0 }, 20);
-    s.op({ kind: "resetAll" }, 30);
+    s.op({ kind: "move", rowId: "c", toIndex: 2 }, 30);
     expect(s.history.undo).toHaveLength(4);
     s.undo(40);
     expect(s.state.rows.map((r) => r.id)).toEqual(["c", "a", "b"]);
@@ -128,7 +128,7 @@ describe("下書きの履歴（§9.1、§10.1）", () => {
     expect(s.op({ kind: "receiverSelect", rowId: "b" }, 0, false)).toBe(false);
     s.op({ kind: "step", rowId: "a", by: -1 }, 10); // 0 のまま
     s.op({ kind: "move", rowId: "a", toIndex: 0 }, 20); // 同じ位置
-    s.op({ kind: "resetAll" }, 30); // 空のまま: 中身が変わらない
+    s.op({ kind: "receiverClear" }, 30); // 選んでいない: 中身が変わらない
     expect(s.history.undo).toHaveLength(0);
   });
 
@@ -197,17 +197,15 @@ describe("下書きの履歴（§9.1、§10.1）", () => {
     expect(s.state.version).toBe(versionBefore + 4);
   });
 
-  it("resetAll のあと、と元に戻すで最初の状態まで戻ったあとが空になる", () => {
+  it("元の並びに戻したあと、と元に戻すで最初の状態まで戻ったあとが空になる", () => {
     const s = session();
     s.op({ kind: "move", rowId: "c", toIndex: 0 }, 0);
-    s.op({ kind: "step", rowId: "a", by: 3 }, 10);
     expect(isDraftEmpty(base, s.state)).toBe(false);
-    s.op({ kind: "resetAll" }, 20);
+    s.op({ kind: "move", rowId: "c", toIndex: 2 }, 10);
     expect(isDraftEmpty(base, s.state)).toBe(true);
-    s.undo(30);
+    s.undo(20);
     expect(isDraftEmpty(base, s.state)).toBe(false);
-    s.undo(40);
-    s.undo(50);
+    s.undo(30);
     expect(isDraftEmpty(base, s.state)).toBe(true);
   });
 

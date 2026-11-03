@@ -71,11 +71,11 @@ function makeDeps(info: Record<string, RowInfo>) {
   return { deps, calls };
 }
 
-function resultOf(reached: Record<string, boolean>): LevelPlannerResult {
+function resultOf(reached: Record<string, boolean>, used: Record<string, number> = {}): LevelPlannerResult {
   return {
     pokemonResults: Object.entries(reached).map(([pokemonId, ok]) => ({
       pokemonId,
-      reachableLine: { effectiveTargetReached: ok },
+      reachableLine: { effectiveTargetReached: ok, totalCandyUnitsUsed: used[pokemonId] ?? 0 },
     })),
   } as unknown as LevelPlannerResult;
 }
@@ -102,7 +102,7 @@ function setup(rows: CalcRow[], info: Record<string, RowInfo>, boostLimit = 1000
 
 const ids = (state: FineTuneState) => state.rows.map((r) => r.id);
 
-describe("opRange / reduceFineTune: モード1のアメブ（D36、D37）", () => {
+describe("opRange / reduceFineTune: アメブ（D36、D37）", () => {
   it("set と step が、全アメブ点と「今の値 + 残り枠」の小さい方で同じ値に止まる", () => {
     // 残り枠 = 100 - 30 = 70。今の値 30 + 70 = 100 が全アメブ点 90 より大きいので 90 で止まる
     const t = setup([makeRow("a", { boostOrExpAdjustment: 30 })], { a: { full: 90, need: 200 } }, 100);
@@ -173,7 +173,7 @@ describe("opRange / reduceFineTune: モード1のアメブ（D36、D37）", () =
     expect(t.ok(t.initial, { kind: "set", rowId: "a", boost: 0 }).rows[0]!.boostOrExpAdjustment).toBe(0);
   });
 
-  it("対象外の行（§7）とゆずる側の行には、モード1の op を拒否する", () => {
+  it("対象外の行（§7）には、目標Lv・アメブの op を拒否する", () => {
     const rows = [makeRow("c", { candyTarget: 100 }), makeRow("n", { sleepTargetMode: "all" }), makeRow("s", { sleepTargetHours: 1000 }), makeRow("m", { srcLevel: MAX_LEVEL, dstLevel: MAX_LEVEL })];
     const t = setup(rows, {
       c: { full: 10, need: 10 }, n: { full: 0, need: 0 }, s: { full: 0, need: 0 }, m: { full: 0, need: 0 }, u: { full: 0, need: 1 },
@@ -182,6 +182,7 @@ describe("opRange / reduceFineTune: モード1のアメブ（D36、D37）", () =
       expect(t.run(t.initial, { kind: "step", rowId, by: 1 })).toEqual({ rejected: "excluded" });
       expect(t.run(t.initial, { kind: "set", rowId, boost: 1 })).toEqual({ rejected: "excluded" });
       expect(t.run(t.initial, { kind: "targetStep", rowId, by: 1 })).toEqual({ rejected: "excluded" });
+      expect(t.run(t.initial, { kind: "targetSet", rowId, level: 40 })).toEqual({ rejected: "excluded" });
     }
     expect(rows.map((r) => rowExclusion(r, t.deps.evaluateRows(rows)))).toEqual(["candyTarget", "noCandy", "sleepOnly", "maxLevel"]);
     expect(rowExclusion(makeRow("u", { pokedexId: 0 }), t.deps.evaluateRows([makeRow("u")]))).toBe("unknownPokemon");
@@ -223,11 +224,16 @@ describe("hasFineTuneTarget: 入口のボタン（§4.1）", () => {
 });
 
 describe("reduceFineTune: 目標Lv（D28）", () => {
-  it("範囲の端（現在Lv・MAX_LEVEL）で rejected になる", () => {
-    const rows = [makeRow("lo", { srcLevel: 10, dstLevel: 10 }), makeRow("hi", { dstLevel: MAX_LEVEL })];
-    const t = setup(rows, { lo: { full: 1, need: 1 }, hi: { full: 1, need: 1 } });
-    expect(t.run(t.initial, { kind: "targetStep", rowId: "lo", by: -1 })).toEqual({ rejected: "outOfRange" });
-    expect(t.run(t.initial, { kind: "targetStep", rowId: "hi", by: 1 })).toEqual({ rejected: "outOfRange" });
+  it("現在Lv〜MAX_LEVEL に収める。端から外へ動かしても状態は変わらない", () => {
+    const rows = [makeRow("lo", { srcLevel: 10, dstLevel: 10 }), makeRow("hi", { dstLevel: MAX_LEVEL }), makeRow("mid", { srcLevel: 10, dstLevel: 12 })];
+    const t = setup(rows, { lo: { full: 1, need: 1 }, hi: { full: 1, need: 1 }, mid: { full: 1, need: 1 } });
+    expect(t.run(t.initial, { kind: "targetStep", rowId: "lo", by: -1 })).toEqual({ state: t.initial });
+    expect(t.run(t.initial, { kind: "targetStep", rowId: "hi", by: 5 })).toEqual({ state: t.initial });
+    expect(t.ok(t.initial, { kind: "targetStep", rowId: "mid", by: -5 }).rows[2]!.dstLevel).toBe(10);
+    expect(t.ok(t.initial, { kind: "targetSet", rowId: "mid", level: 999 }).rows[2]!.dstLevel).toBe(MAX_LEVEL);
+    expect(t.ok(t.initial, { kind: "targetSet", rowId: "mid", level: 33.7 }).rows[2]!.dstLevel).toBe(33);
+    expect(t.run(t.initial, { kind: "targetSet", rowId: "mid", level: Number.NaN })).toEqual({ rejected: "invalidValue" });
+    expect(t.range(t.initial, { kind: "target", rowId: "mid" })).toEqual({ min: 10, max: MAX_LEVEL });
   });
 
   it("今の下書きの行の目標 ±1 を、今の行一覧とともに withTargetLevel へ渡す", () => {
@@ -265,7 +271,7 @@ describe("reduceFineTune: 並べ替え（move）と isDraftEmpty", () => {
     expect(ids(t.ok(t.initial, { kind: "move", rowId: "a", toIndex: 99 }))).toEqual(["b", "a"]);
   });
 
-  it("基準と同じ値に戻したモード1の行は、新しい行なので空にならない（D35）", () => {
+  it("基準と同じ値に戻した行は、新しい行なので空にならない（D35）", () => {
     const t = setup([makeRow("a")], { a: { full: 90, need: 200 } });
     const up = t.ok(t.initial, { kind: "step", rowId: "a", by: 5 });
     const down = t.ok(up, { kind: "step", rowId: "a", by: -5 });
@@ -341,18 +347,31 @@ describe("reduceFineTune: ゆずる側（giverStep / giverSet、D31、D38、D42�
   const rows = () => [makeRow("G1", { boostOrExpAdjustment: 7 }), makeRow("G2"), makeRow("Z"), makeRow("S", { sleepTargetMode: "stock" }), makeRow("B"), makeRow("L")];
   const withReceiver = (t: ReturnType<typeof setup>): FineTuneState => ({ ...t.initial, receiverId: "B" });
 
-  it("記録の無い行で受け付けるのは、受け取る側がいて、受け取る側より上の、使うアメが1個以上で、睡眠目標モードでない行だけ", () => {
+  it("記録の無い行で受け付けるのは、使うアメが1個以上で、睡眠目標モードでない、受け取る側でない行。受け取る側の有無と位置は問わない", () => {
     const t = setup(rows(), info);
-    expect(t.run(t.initial, { kind: "giverSet", rowId: "G1", candy: 10 })).toEqual({ rejected: "notGiver" });
+    expect("state" in t.run(t.initial, { kind: "giverSet", rowId: "G1", candy: 10 })).toBe(true);
     const s = withReceiver(t);
-    expect(t.run(s, { kind: "giverSet", rowId: "L", candy: 10 })).toEqual({ rejected: "notGiver" });
+    // 受け取る側より下の行も減らせる（注意 belowReceiver が出る）
+    expect("state" in t.run(s, { kind: "giverSet", rowId: "L", candy: 10 })).toBe(true);
     expect(t.run(s, { kind: "giverSet", rowId: "B", candy: 10 })).toEqual({ rejected: "notGiver" });
     expect(t.run(s, { kind: "giverSet", rowId: "Z", candy: 0 })).toEqual({ rejected: "notGiver" });
     expect(t.run(s, { kind: "giverStep", rowId: "S", by: -1 })).toEqual({ rejected: "notGiver" });
     expect("state" in t.run(s, { kind: "giverStep", rowId: "G2", by: -1 })).toBe(true);
   });
 
-  it("個数指定の行・モード1で変えた行もゆずる側になれる", () => {
+  it("記録の無い行は、最新の結果で使えた数（m0 を超えない）から動かす。m0 まで増やしても記録は作らない", () => {
+    const t = setup(rows(), info);
+    const latest = { version: t.initial.version, result: resultOf({ G1: false, G2: true }, { G1: 70, G2: 999 }) };
+    const down = t.ok(t.initial, { kind: "giverStep", rowId: "G1", by: -10 }, latest);
+    expect(down.givers.G1).toMatchObject({ m0: 100, candy: 60 });
+    // 使えた数が m0 を超えていても m0 から
+    expect(t.ok(t.initial, { kind: "giverStep", rowId: "G2", by: -10 }, latest).givers.G2).toMatchObject({ m0: 60, candy: 50 });
+    // 使えた数より多く m0 より少ない数は記録する。m0 は記録しない
+    expect(t.ok(t.initial, { kind: "giverStep", rowId: "G1", by: 5 }, latest).givers.G1).toMatchObject({ candy: 75 });
+    expect(t.run(t.initial, { kind: "giverSet", rowId: "G1", candy: 100 }, latest)).toEqual({ state: t.initial });
+  });
+
+  it("個数指定の行・目標Lvやアメブを変えた行もゆずる側になれる", () => {
     const t = setup([makeRow("P", { candyTarget: 40 }), makeRow("B")], { P: { full: 1, need: 40 }, B: { full: 1, need: 1 } });
     const s = { ...t.initial, receiverId: "B" };
     expect(canStartGiving(s, t.deps.evaluateRows(s.rows), s.rows[0]!)).toBe(true);
@@ -437,12 +456,13 @@ describe("reduceFineTune: ゆずる側（giverStep / giverSet、D31、D38、D42�
     expect(reselected.givers.G1).toBe(cleared.givers.G1);
   });
 
-  it("ゆずる側の行に step / set / targetStep が来たら rejected。m0 に戻したあとは通る（D23）", () => {
+  it("ゆずる側の行に step / set / targetStep / targetSet が来たら rejected。m0 に戻したあとは通る（D23）", () => {
     const t = setup(rows(), info);
     const s = t.ok(withReceiver(t), { kind: "giverSet", rowId: "G1", candy: 60 });
     expect(t.run(s, { kind: "step", rowId: "G1", by: 1 })).toEqual({ rejected: "giverLocked" });
     expect(t.run(s, { kind: "set", rowId: "G1", boost: 1 })).toEqual({ rejected: "giverLocked" });
     expect(t.run(s, { kind: "targetStep", rowId: "G1", by: -1 })).toEqual({ rejected: "giverLocked" });
+    expect(t.run(s, { kind: "targetSet", rowId: "G1", level: 20 })).toEqual({ rejected: "giverLocked" });
     const back = t.ok(s, { kind: "giverSet", rowId: "G1", candy: 100 });
     expect("state" in t.run(back, { kind: "step", rowId: "G1", by: 1 })).toBe(true);
   });
@@ -468,21 +488,7 @@ describe("reduceFineTune: ゆずる側（giverStep / giverSet、D31、D38、D42�
   });
 });
 
-describe("reduceFineTune: resetAll とその他", () => {
-  it("rows が base.rows（同じ参照）、givers と選択が空に戻る。どの状態からでも通り、version は進む", () => {
-    const rows = [makeRow("G"), makeRow("B")];
-    const t = setup(rows, { G: { full: 1, need: 50 }, B: { full: 1, need: 1 } });
-    let s = t.ok({ ...t.initial, receiverId: "B" }, { kind: "giverSet", rowId: "G", candy: 10 });
-    s = t.ok(s, { kind: "move", rowId: "B", toIndex: 0 });
-    const reset = t.ok(s, { kind: "resetAll" });
-    expect(reset.rows).toBe(t.base.rows);
-    expect(reset.givers).toEqual({});
-    expect(reset.receiverId).toBeNull();
-    expect(reset.version).toBe(s.version + 1);
-    expect(isDraftEmpty(t.base, reset)).toBe(true);
-    expect("state" in t.run(t.initial, { kind: "resetAll" })).toBe(true);
-  });
-
+describe("reduceFineTune: その他", () => {
   it("rejected の op では version が進まない", () => {
     const t = setup([makeRow("a", { candyTarget: 5 })], { a: { full: 1, need: 5 } });
     expect(t.run(t.initial, { kind: "step", rowId: "a", by: 1 })).toEqual({ rejected: "excluded" });
@@ -492,11 +498,11 @@ describe("reduceFineTune: resetAll とその他", () => {
     expect(coalesceKeyOf({ kind: "step", rowId: "a", by: 1 })).toBe("boost:a");
     expect(coalesceKeyOf({ kind: "set", rowId: "a", boost: 1 })).toBe("boost:a");
     expect(coalesceKeyOf({ kind: "targetStep", rowId: "a", by: 1 })).toBe("target:a");
+    expect(coalesceKeyOf({ kind: "targetSet", rowId: "a", level: 30 })).toBe("target:a");
     expect(coalesceKeyOf({ kind: "giverStep", rowId: "a", by: 1 })).toBe("giver:a");
     expect(coalesceKeyOf({ kind: "giverSet", rowId: "a", candy: 1 })).toBe("giver:a");
     expect(coalesceKeyOf({ kind: "move", rowId: "a", toIndex: 0 })).toBeUndefined();
     expect(coalesceKeyOf({ kind: "receiverClear" })).toBeUndefined();
-    expect(coalesceKeyOf({ kind: "resetAll" })).toBeUndefined();
   });
 
   it("isSameDraftContent は version を見ず、rows・givers・receiverId を比べる", () => {

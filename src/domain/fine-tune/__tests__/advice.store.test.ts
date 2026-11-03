@@ -12,7 +12,6 @@ import { simulateCandyBudget } from "../../pokesleep/simulateCandyBudget";
 import {
   adviseRow,
   adviseRows,
-  boostAfterStep,
   boostMarginal,
   createAdviceContext,
   diagnose,
@@ -27,7 +26,7 @@ import {
   type FineTuneState,
 } from "../draft";
 
-/** 設計書 §12.1: 本物のストアとソルバーで、boostMarginal・順位・おすすめ量・診断を独立に求めた値と突き合わせる。 */
+/** 本物のストアとソルバーで、boostMarginal・効果・おすすめ量・診断を独立に求めた値と突き合わせる。 */
 
 const t = ((key: string) => key) as unknown as Composer["t"];
 
@@ -159,8 +158,6 @@ describe("advice: 本物のストアとソルバー", () => {
       expect(direct(row, "full", 1)).toMatchObject({ total: 17, shards: 1980 });
       const m = boostMarginal(ctx, ids[0]!, 1)!;
       expect(m).toMatchObject({ rowId: ids[0], from: 0, to: 1, deltaCandy: -2, deltaShards: 178, savedCandy: 2 });
-      expect(m.shardsPerSavedCandy).toBe(89);
-      expect(m.shardsPerBoost).toBe(178);
     });
 
     it.each(["full", "mini"] as const)("%s: いくつもの (n, n') で、独立に求めた総アメ・かけら・EXPの差と一致する（先端が Lv をまたぐ範囲を含む）", (kind) => {
@@ -202,11 +199,11 @@ describe("advice: 本物のストアとソルバー", () => {
       expect(found).toBeGreaterThan(0);
     });
 
-    it("to が今の値のときは変化がすべて 0（順位を付けない）", () => {
+    it("to が今の値のときは変化がすべて 0", () => {
       const { store, ids, boostLimit } = build({ rows: [{ boxId: "a", pokedexId: 25, src: 10, dst: 40, boost: 20 }] });
       const { ctx } = marginalContext(store, boostLimit);
       const m = boostMarginal(ctx, ids[0]!, 20)!;
-      expect(m).toMatchObject({ deltaCandy: 0, deltaShards: 0, deltaExp: 0, savedCandy: 0, shardsPerSavedCandy: null, shardsPerBoost: null });
+      expect(m).toMatchObject({ deltaCandy: 0, deltaShards: 0, deltaExp: 0, savedCandy: 0 });
     });
 
     it("行が無ければ null。評価は同じ文脈で使い回す", () => {
@@ -278,26 +275,22 @@ describe("advice: 本物のストアとソルバー", () => {
       expect(before.deltaExp).toBeGreaterThan(0);
       expect(before.deltaShards).toBeGreaterThan(0);
       expect(before.savedCandy).toBe(0);
-      expect(before.shardsPerSavedCandy).toBeNull();
 
       const across = boostMarginal(ctx, id, crossing + 3)!;
       expect(across.deltaCandy).toBe(Math.min(stock, need(crossing + 3)) - stock);
       expect(across.deltaCandy).toBeLessThanOrEqual(0);
     });
 
-    it("effect は sameStockMoreExp。順位もおすすめ量も付かない", () => {
+    it("effect は sameStockMoreExp。おすすめ量は付かない", () => {
       const { store, ids, boostLimit } = stockWorld();
       const id = ids[0]!;
       const { ctx, result } = contextOf(store, boostLimit);
       // 在庫のみの行は届く行として扱われる（先頭の未達行にならない）
       expect(result.pokemonResults[0]!.reachableLine.effectiveTargetReached).toBe(true);
       expect(adviseRow(ctx, id, "increase")).toEqual({ kind: "sameStockMoreExp" });
-      const entry = adviseRows(ctx, "increase", 10).get(id)!;
+      const entry = adviseRows(ctx, "increase").get(id)!;
       expect(entry.advice).toEqual({ kind: "sameStockMoreExp" });
-      expect(entry.rank).toBeNull();
       expect(entry.recommendation).toBeNull();
-      expect(entry.marginal!.deltaCandy).toBe(0);
-      expect(entry.marginal!.deltaExp).toBeGreaterThan(0);
     });
   });
 
@@ -341,115 +334,63 @@ describe("advice: 本物のストアとソルバー", () => {
     return world;
   }
 
-  describe("adviseRows: 順位と1回に動かす量（§5.2、§5.3）", () => {
-    it("増やす: 効果の kind が下へ回る・自分の不足・自分の不足。順位はおすすめ量のある行だけに付く", () => {
+  describe("adviseRows: 効果とおすすめ量（§5.2、§5.3）", () => {
+    it("増やす: 効果の kind が下へ回る・自分の不足・自分の不足。おすすめ量は先頭の未達行を伸ばす行だけに付く", () => {
       const { store, ids, boostLimit } = candyShortWorld();
       const [a, b, c] = ids as [string, string, string];
       const { ctx, result } = contextOf(store, boostLimit);
       expect(result.pokemonResults.map((p) => p.reachableLine.effectiveTargetReached)).toEqual([true, false, false]);
-      const entries = adviseRows(ctx, "increase", 10);
+      const entries = adviseRows(ctx, "increase");
       expect(entries.get(a)!.advice).toEqual({ kind: "feedsBelow", beneficiaryIds: [b, c] });
       expect(entries.get(b)!.advice).toEqual({ kind: "selfShort" });
       expect(entries.get(c)!.advice).toEqual({ kind: "selfShort" });
       // b は使えるアメが0（万能アメは上の a が取る）なので、自分のアメブを増やしても伸びない。
       // c は先頭の未達行 b より下なので、伸びる見積もりでも出さない（浮いた分は先に b が受け取る）
+      expect(entries.get(a)!.recommendation).toMatchObject({ targetRowId: b });
+      expect(entries.get(a)!.recommendation!.boost).toBeGreaterThan(0);
       expect(entries.get(b)!.recommendation).toBeNull();
       expect(entries.get(c)!.recommendation).toBeNull();
-      expect([a, b, c].map((id) => entries.get(id)!.rank)).toEqual([1, null, null]);
-      // 順位を付けた量は、おすすめ量（押したときに入る量）
-      expect(entries.get(a)!.marginal).toMatchObject({ from: 0, to: entries.get(a)!.recommendation!.boost });
     });
 
-    it("増やす: 順位はおすすめ量で入れたときの c_i（節約アメ1個あたりのかけら）の小さい順", () => {
-      // a・d はどちらも種族アメだけでは足りず万能アメを使って届く。b は残りの万能アメで止まる
-      const { store, ids, boostLimit } = build({
-        species: [[25, 150], [1, 150]],
-        universalS: 120,
-        rows: [
-          { boxId: "a", pokedexId: 25, src: 10, dst: 30, boost: 0 },
-          { boxId: "d", pokedexId: 1, src: 10, dst: 28, boost: 0 },
-          { boxId: "b", pokedexId: 133, src: 10, dst: 40, boost: 60 },
-        ],
-      });
-      const [a, d, b] = ids as [string, string, string];
-      const { ctx, result, rows } = contextOf(store, boostLimit);
-      expect(result.pokemonResults.map((p) => p.reachableLine.effectiveTargetReached)).toEqual([true, true, false]);
-      const entries = adviseRows(ctx, "increase", 10);
-      const ci = (id: string) => {
-        const row = rowOf(rows, id);
-        const rec = entries.get(id)!.recommendation!;
-        const x = direct(row, "full", 0);
-        const y = direct(row, "full", rec.boost);
-        return (y.shards - x.shards) / (x.total - y.total);
-      };
-      for (const id of [a, d]) {
-        expect(entries.get(id)!.advice).toEqual({ kind: "feedsBelow", beneficiaryIds: [b] });
-        expect(entries.get(id)!.recommendation).not.toBeNull();
-      }
-      const keys = [a, d].map((id) => ({ id, key: ci(id) }));
-      expect(keys[0]!.key).not.toBe(keys[1]!.key);
-      keys.slice().sort((p, q) => p.key - q.key).forEach((e, i) => expect(entries.get(e.id)!.rank).toBe(i + 1));
-    });
-
-    it("n' は opRange の値: 残り枠が1回に動かす量より小さければ残り枠まで。全アメブ点にいる行は ▲ が無効で順位が付かない", () => {
+    it("全アメブ点にいる行は atFullBoost でおすすめ量が付かない", () => {
       const { store, ids } = build({
         boostLimit: 20,
         species: [[25, 100]],
         universalL: 2,
         rows: [
           { boxId: "a", pokedexId: 25, src: 10, dst: 30, boost: 5 },
-          { boxId: "b", pokedexId: 133, src: 10, dst: 40, boost: 0 },
           { boxId: "c", pokedexId: 7, src: 10, dst: 12, boost: 0 },
         ],
       });
-      const [a, b, c] = ids as [string, string, string];
-      // c は全アメブ点にしておく（枠のうち full を使う）
+      const c = ids[1]!;
       store.onRowBoostCandy(c, String(store.evaluateRows(store.rows.value).byId.get(c)!.fullBoost));
-      const { ctx, base, state, evaluated } = contextOf(store, 20);
-      const remaining = boostSlotRemaining(base, evaluated);
-      expect(remaining).toBeGreaterThan(0);
-      expect(remaining).toBeLessThan(100);
-      const entries = adviseRows(ctx, "increase", 100);
-      for (const id of [a, b]) {
-        const range = opRange(base, state, evaluated, { kind: "boost", rowId: id });
-        const from = evaluated.byId.get(id)!.effectiveBoost;
-        expect(range.max).toBe(from + remaining);
-        expect(entries.get(id)!.marginal!.to).toBe(range.max);
-        expect(boostAfterStep(ctx, id, 100)).toBe(range.max);
-      }
-      // c は全アメブ点なので ▲ は動かず、順位も付かない
-      const full = evaluated.byId.get(c)!.fullBoost;
-      expect(entries.get(c)!.advice).toEqual({ kind: "noEffect", reason: "atFullBoost" });
-      expect(entries.get(c)!.marginal).toMatchObject({ from: full, to: full, deltaShards: 0 });
-      expect(entries.get(c)!.rank).toBeNull();
-      // 残り枠が 0 になれば、どの行も n' = n で順位が付かない
-      store.onRowBoostCandy(a, String(5 + remaining));
-      const none = contextOf(store, 20);
-      expect(boostSlotRemaining(none.base, none.evaluated)).toBe(0);
-      expect([...adviseRows(none.ctx, "increase", 10).values()].map((e) => e.rank)).toEqual([null, null, null]);
+      const { ctx } = contextOf(store, 20);
+      const entry = adviseRows(ctx, "increase").get(c)!;
+      expect(entry.advice).toEqual({ kind: "noEffect", reason: "atFullBoost" });
+      expect(entry.recommendation).toBeNull();
     });
 
-    it("操作できない行（個数指定）は入らない。アメブなしのスロットでは空", () => {
+    it("目標Lv・アメブを動かせない行（個数指定）は入らない。アメブなしのスロットでは空", () => {
       const { store, ids, boostLimit } = candyShortWorld();
       store.onRowCandyTarget(ids[2]!, "50");
       const { ctx } = contextOf(store, boostLimit);
-      expect([...adviseRows(ctx, "increase", 10).keys()]).toEqual([ids[0], ids[1]]);
+      expect([...adviseRows(ctx, "increase").keys()]).toEqual([ids[0], ids[1]]);
 
       const none = build({ rows: [{ boxId: "a", pokedexId: 25, src: 10, dst: 30 }] });
       none.store.setSlotBoostKind("none");
-      expect(adviseRows(contextOf(none.store, 0).ctx, "increase", 10).size).toBe(0);
+      expect(adviseRows(contextOf(none.store, 0).ctx, "increase").size).toBe(0);
     });
 
-    it("操作できない行（ゆずる側の記録のある行）は入らない", () => {
+    it("目標Lv・アメブを動かせない行（ゆずる側の記録のある行）は入らない", () => {
       const { store, ids, boostLimit } = candyShortWorld();
       const first = contextOf(store, boostLimit);
       const record = { before: first.rows[0]!, m0: 100, boost: 0, candy: 50 };
       const state: FineTuneState = { ...first.state, givers: { [ids[0]!]: record } };
       const { ctx } = contextOf(store, boostLimit, state, first.result);
-      expect([...adviseRows(ctx, "increase", 10).keys()]).toEqual([ids[1], ids[2]]);
+      expect([...adviseRows(ctx, "increase").keys()]).toEqual([ids[1], ids[2]]);
     });
 
-    it("全員届いているとき: 節約アメが正の行に saving と順位が付き、おすすめ量は出ない", () => {
+    it("全員届いているとき: saving で、おすすめ量は出ない", () => {
       const { store, ids, boostLimit } = build({
         species: [[25, 100_000], [133, 100_000]],
         rows: [
@@ -459,40 +400,32 @@ describe("advice: 本物のストアとソルバー", () => {
       });
       const { ctx, result } = contextOf(store, boostLimit);
       expect(result.pokemonResults.every((p) => p.reachableLine.effectiveTargetReached)).toBe(true);
-      const entries = adviseRows(ctx, "increase", 10);
+      const entries = adviseRows(ctx, "increase");
       for (const id of ids) {
         expect(entries.get(id)!.advice).toEqual({ kind: "saving" });
         expect(entries.get(id)!.recommendation).toBeNull();
       }
-      expect(ids.map((id) => entries.get(id)!.rank).sort()).toEqual([1, 2]);
     });
 
-    it("減らす: かけらで止まる行が selfShort、上の行は feedsBelow。順位はおすすめ量で入れたときの1個あたり浮くかけらの大きい順", () => {
+    it("減らす: かけらで止まる行が selfShort、上の行は feedsBelow で、どれも減らすおすすめ量が付く。アメブ0の行は noBoost", () => {
       const { store, ids, boostLimit } = shardShortWorld();
       const [a, b, c] = ids as [string, string, string];
-      const { ctx, result, rows } = contextOf(store, boostLimit);
+      const { ctx, result, evaluated } = contextOf(store, boostLimit);
       expect(result.pokemonResults.map((p) => p.constraintDiagnosis.limitingFactor)).toEqual([null, null, "shards"]);
-      const entries = adviseRows(ctx, "decrease", 10);
+      const entries = adviseRows(ctx, "decrease");
       expect(entries.get(a)!.advice).toEqual({ kind: "feedsBelow", beneficiaryIds: [c] });
       expect(entries.get(b)!.advice).toEqual({ kind: "feedsBelow", beneficiaryIds: [c] });
       expect(entries.get(c)!.advice).toEqual({ kind: "selfShort" });
-
-      // 独立に求めた r_i = 浮くかけら ÷ 動かした個数（おすすめ量まで減らしたとき）
-      const evaluated = store.evaluateRows(rows);
-      const ri = (id: string) => {
-        const n = evaluated.byId.get(id)!.effectiveBoost;
-        const to = entries.get(id)!.recommendation!.boost;
-        return (direct(rowOf(rows, id), "full", n).shards - direct(rowOf(rows, id), "full", to).shards) / (n - to);
-      };
-      const keys = [a, b, c].map((id) => ({ id, key: ri(id) }));
-      expect(new Set(keys.map((e) => e.key)).size).toBe(3);
-      keys.slice().sort((p, q) => q.key - p.key).forEach((e, i) => expect(entries.get(e.id)!.rank).toBe(i + 1));
-      // アメブが0の行は noBoost で順位が付かない
+      for (const id of [a, b, c]) {
+        const rec = entries.get(id)!.recommendation!;
+        expect(rec.targetRowId).toBe(c);
+        expect(rec.boost).toBeLessThan(evaluated.byId.get(id)!.effectiveBoost);
+      }
       store.onRowBoostCandy(b, "0");
       const zero = contextOf(store, boostLimit);
-      const zeroEntries = adviseRows(zero.ctx, "decrease", 10);
+      const zeroEntries = adviseRows(zero.ctx, "decrease");
       expect(zeroEntries.get(b)!.advice).toEqual({ kind: "noEffect", reason: "noBoost" });
-      expect(zeroEntries.get(b)!.rank).toBeNull();
+      expect(zeroEntries.get(b)!.recommendation).toBeNull();
     });
   });
 
@@ -601,7 +534,7 @@ describe("advice: 本物のストアとソルバー", () => {
         const direction = before.result.pokemonResults.some((p) => p.constraintDiagnosis.limitingFactor === "shards" && !p.reachableLine.effectiveTargetReached)
           ? "decrease" as const
           : "increase" as const;
-        const rec = adviseRows(before.ctx, direction, 10).get(rowId)!.recommendation!;
+        const rec = adviseRows(before.ctx, direction).get(rowId)!.recommendation!;
         expect(rec).not.toBeNull();
         const from = before.evaluated.byId.get(rowId)!.effectiveBoost;
         store.onRowBoostCandy(rowId, String(rec.boost));
@@ -609,7 +542,7 @@ describe("advice: 本物のストアとソルバー", () => {
         const reach = (r: LevelPlannerResult) => r.pokemonResults.find((p) => p.pokemonId === rec.targetRowId)!.reachableLine;
         const d = diagnose(after.result, after.rows, "full", boostSlotRemaining(after.base, after.evaluated));
         const nextDirection = d.kind === "shardsShort" ? "decrease" : d.kind === "candyShortRoom" ? "increase" : null;
-        const next = nextDirection === null ? new Map() : adviseRows(after.ctx, nextDirection, 10);
+        const next = nextDirection === null ? new Map() : adviseRows(after.ctx, nextDirection);
         return { rec, from, before: reach(before.result), after: reach(after.result), next, nextDirection, direction };
       }
       const progressed = (a: { level: number; expInLevel: number }, b: { level: number; expInLevel: number }) =>
@@ -728,14 +661,14 @@ describe("advice: 本物のストアとソルバー", () => {
       const { store, ids, boostLimit } = candyShortWorld();
       const [a, b, c] = ids as [string, string, string];
       const { ctx } = contextOf(store, boostLimit);
-      const entries = adviseRows(ctx, "increase", 10);
+      const entries = adviseRows(ctx, "increase");
       expect(entries.get(a)!.recommendation).toMatchObject({ targetRowId: b });
       expect(entries.get(b)!.recommendation).toBeNull();
       expect(entries.get(c)!.recommendation).toBeNull();
       const stock = build({ species: [[26, 200]], rows: [{ boxId: "z", pokedexId: 26, src: 10, dst: 30, boost: 0 }] });
       stock.store.setRowSleepTarget(stock.ids[0]!, "stock");
       const stockCtx = contextOf(stock.store, stock.boostLimit);
-      expect(adviseRows(stockCtx.ctx, "increase", 10).get(stock.ids[0]!)!.recommendation).toBeNull();
+      expect(adviseRows(stockCtx.ctx, "increase").get(stock.ids[0]!)!.recommendation).toBeNull();
     });
   });
 

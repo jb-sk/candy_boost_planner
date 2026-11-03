@@ -474,7 +474,7 @@ export type CalcStore = {
   evaluateRows: (rowList: readonly CalcRow[]) => EvaluatedRows;
   /**
    * 計算機の個数欄でアメブを n にしたときと同じ行を返す（`normalizeRowState` を通す）。
-   * やりくりは `preserveTargetForExplicitBoost: true` を渡し、目標を押し上げない。
+   * かんたんモードは `preserveTargetForExplicitBoost: true` を渡し、目標を押し上げない。
    */
   withExplicitBoost: (row: CalcRow, n: number, options?: { preserveTargetForExplicitBoost?: boolean }) => CalcRow;
   /** 計算機の目標Lvピッカーで lv を選んだときと同じ行を返す。`rowList` はその行を含む行一覧。 */
@@ -543,7 +543,7 @@ export type CalcStore = {
   rowRemainingTimeFor: (rowId: string, expToTarget: number) => RowRemainingTime | null;
   /**
    * 残EXPを埋めたあとの着地点を出すための値。計画が無ければ null。
-   * `expToTarget` を渡すと、島のEXPを計算機の計画ではなくその残EXPで出す（やりくりの下書きの結果）。
+   * `expToTarget` を渡すと、島のEXPを計算機の計画ではなくその残EXPで出す（かんたんモードの下書きの結果）。
    */
   rowReachAfterRemainingFor: (rowId: string, expToTarget?: number) => RowReachAfterRemaining | null;
 };

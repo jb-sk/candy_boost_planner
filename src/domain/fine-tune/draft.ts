@@ -1,7 +1,9 @@
 /**
- * やりくりモーダルの下書き（設計書 §10.1）。
- * 下書きは行一覧そのもの（D40）。各 op は今の下書きの行に計算機と同じ関数を当てて、その行だけを差し替える。
- * ストア・Vue を import しない（§10.4）。ストアの関数は `FineTuneDeps` で受け取る。
+ * かんたんモードの下書き。
+ * 下書きは行一覧そのもの。各 op は今の下書きの行に計算機と同じ関数を当てて、その行だけを差し替える。
+ * 行ごとに動かせるのは「目標Lv・アメブ」か「使うアメ（ゆずる）」のどちらか。使うアメを減らした行は
+ * 個数指定の行になるので、目標Lv・アメブは動かせない（使うアメを元の数に戻すと動かせるようになる）。
+ * ストア・Vue を import しない。ストアの関数は `FineTuneDeps` で受け取る。
  */
 import type { CalcRow, EvaluatedRows } from "../../composables/useCalcStore";
 import { isValidPokedexId } from "../pokesleep/candy-family";
@@ -22,7 +24,7 @@ export interface FineTuneBase {
   boostLimit: number;
 }
 
-/** ゆずる前の行と範囲（§6.2、D42）。 */
+/** ゆずる前の行と範囲。 */
 export interface GiverRecord {
   /** ゆずる前の行。m を変えるたびにここから作り直す。 */
   before: CalcRow;
@@ -39,22 +41,22 @@ export interface FineTuneState {
   version: number;
   /** 下書きの行一覧（順番を含む、D40）。開いた直後は base.rows。 */
   rows: readonly CalcRow[];
-  /** ゆずる側ごとの記録。入っているのは candy < m0 の行だけ（D42）。選択を外しても残る。 */
+  /** ゆずる側ごとの記録。入っているのは candy < m0 の行だけ。受け取る側の選択を外しても残る。 */
   givers: Readonly<Record<string, GiverRecord>>;
-  /** モード2の受け取る側（D38）。選んでいなければ null。 */
+  /** 受け取る側。選んでいなければ null。 */
   receiverId: string | null;
 }
 
 export type FineTuneOp =
   | { kind: "step"; rowId: string; by: number }
   | { kind: "set"; rowId: string; boost: number }
-  | { kind: "targetStep"; rowId: string; by: 1 | -1 }
+  | { kind: "targetStep"; rowId: string; by: number }
+  | { kind: "targetSet"; rowId: string; level: number }
   | { kind: "move"; rowId: string; toIndex: number }
   | { kind: "receiverSelect"; rowId: string }
   | { kind: "receiverClear" }
   | { kind: "giverStep"; rowId: string; by: number }
-  | { kind: "giverSet"; rowId: string; candy: number }
-  | { kind: "resetAll" };
+  | { kind: "giverSet"; rowId: string; candy: number };
 
 /** ストアの関数。ドメインはストアを import しないので引数で受け取る（§10.1）。 */
 export interface FineTuneDeps {
@@ -73,15 +75,13 @@ export interface FineTuneLatest {
   result: LevelPlannerResult;
 }
 
-/** op を受け付けない理由。op 自身の範囲の外だけ（D37）。 */
+/** op を受け付けない理由。数値は範囲に収めるので、範囲の外は理由にならない。 */
 export type RejectReason =
   | "unknownRow"
   | "invalidValue"
-  /** 目標Lvが現在Lv〜MAX_LEVELの外 */
-  | "outOfRange"
-  /** 対象外の行（§7）にモード1の操作 */
+  /** 対象外の行に目標Lv・アメブの操作 */
   | "excluded"
-  /** ゆずる側の行（記録のある行）にモード1の操作（D23） */
+  /** ゆずる側の行（記録のある行）に目標Lv・アメブの操作 */
   | "giverLocked"
   /** 受け取る側がいるのに receiverSelect */
   | "receiverExists"
@@ -89,16 +89,17 @@ export type RejectReason =
   | "notReceivable"
   /** 最新の結果が今の版でない（プレビュー計算中） */
   | "previewPending"
-  /** 記録が無く、ゆずる側にもなれない行 */
+  /** 記録が無く、ゆずる側にもなれない行（受け取る側の行を含む） */
   | "notGiver";
 
 export type FineTuneReduceResult = { state: FineTuneState } | { rejected: RejectReason };
 
-/** 対象外の行の理由（§7）。表の上から順に判定する。 */
+/** 目標Lv・アメブを動かせない行の理由。上から順に判定する。 */
 export type RowExclusion = "candyTarget" | "noCandy" | "sleepOnly" | "maxLevel" | "unknownPokemon";
 
 export type OpRangeTarget =
   | { kind: "boost"; rowId: string }
+  | { kind: "target"; rowId: string }
   | { kind: "giver"; rowId: string };
 
 export interface OpRange {
@@ -124,7 +125,7 @@ function replaceRowAt(rows: readonly CalcRow[], index: number, next: CalcRow): C
   return copy;
 }
 
-/** 残り枠 = アメブ上限 − 評価した全行の実効アメブの合計（D26）。負になりうる（D37）。 */
+/** 残り枠 = アメブ上限 − 評価した全行の実効アメブの合計。負になりうる（ほかの行の都合で op を拒否しない）。 */
 export function boostSlotRemaining(base: Pick<FineTuneBase, "boostLimit">, evaluated: EvaluatedRows): number {
   let used = 0;
   for (const item of evaluated.byId.values()) used += item.effectiveBoost;
@@ -132,7 +133,7 @@ export function boostSlotRemaining(base: Pick<FineTuneBase, "boostLimit">, evalu
 }
 
 /**
- * 使うアメの数 m0。プランナーへ渡す総アメ数と同じもの（§6.2）。
+ * 使うアメの数 m0。プランナーへ渡す総アメ数と同じもの。
  * プランナー入力の行に個数があればそれ、無ければ目標までに要る数。
  */
 export function candyUnitsOf(row: CalcRow, evaluated: EvaluatedRows): number {
@@ -142,7 +143,7 @@ export function candyUnitsOf(row: CalcRow, evaluated: EvaluatedRows): number {
 }
 
 /**
- * 対象外の行の理由（§7）。操作できる行は null。
+ * 目標Lv・アメブを動かせない理由。動かせる行は null。
  * 評価が要るのは時間の睡眠目標の行（総アメ数が 0 か）だけなので、`evaluated` は関数でも渡せる（入口のボタンの判定で遅らせる）。
  */
 export function rowExclusion(row: CalcRow, evaluated: EvaluatedRows | (() => EvaluatedRows)): RowExclusion | null {
@@ -157,7 +158,7 @@ export function rowExclusion(row: CalcRow, evaluated: EvaluatedRows | (() => Eva
 }
 
 /**
- * 入口のボタンを出すか（§4.1）。操作の対象にできる行（ゆずる側にだけなれる個数指定の行を含む）が1行以上ある。
+ * 入口のボタンを出すか。操作の対象にできる行（ゆずる側にだけなれる個数指定の行を含む）が1行以上ある。
  * 行一覧の評価は、時間の睡眠目標の行があって初めて必要になるときだけ、1回行う。
  */
 export function hasFineTuneTarget(
@@ -174,7 +175,7 @@ export function hasFineTuneTarget(
 }
 
 /**
- * ゆずる側になれる行の、位置（受け取る側より上か）に関係しない条件（§6.1）。
+ * ゆずる側（使うアメを減らせる行）になれる条件。
  * 睡眠目標モードでない・対象外でない（個数指定の行はなれる）・使うアメが1個以上。
  * 評価が要るのは対象外の判定の一部と使うアメの数なので、`evaluated` は関数でも渡せる。
  */
@@ -185,37 +186,58 @@ function canGiveCandy(row: CalcRow, evaluated: EvaluatedRows | (() => EvaluatedR
   return candyUnitsOf(row, typeof evaluated === "function" ? evaluated() : evaluated) >= 1;
 }
 
-/** モード1（アメブ・目標Lv）の操作ができる行。対象外の行とゆずる側の行は不可（§7、D23）。 */
-export function canAdjustInMode1(state: FineTuneState, evaluated: EvaluatedRows, row: CalcRow): boolean {
+/** 目標Lv・アメブを動かせる行。対象外の行とゆずる側の行は不可。 */
+export function canAdjustLevel(state: FineTuneState, evaluated: EvaluatedRows, row: CalcRow): boolean {
   return state.givers[row.id] === undefined && rowExclusion(row, evaluated) === null;
 }
 
-/** 受け取る側になれる行（§6.1）。対象外でない行。受け取る側が決まっていないときだけ選べる。 */
+/** 受け取る側になれる行。対象外でもゆずる側でもない行。受け取る側が決まっていないときだけ選べる。 */
 export function canReceive(state: FineTuneState, evaluated: EvaluatedRows, row: CalcRow): boolean {
   return state.receiverId === null && state.givers[row.id] === undefined && rowExclusion(row, evaluated) === null;
 }
 
 /**
- * ゆずる側として使うアメを初めて減らせる行（§6.1）。受け取る側がいて、下書きの順番で受け取る側より上にあり、
- * 使うアメが1個以上で、睡眠目標モードでない行（個数指定の行はなれる）。記録のある行は含めない。
+ * 使うアメを初めて減らせる行。位置（受け取る側より上か）は問わない（下にある行は注意 `belowReceiver` を出す）。
+ * 受け取る側の行と、記録のある行は含めない。
  */
 export function canStartGiving(state: FineTuneState, evaluated: EvaluatedRows, row: CalcRow): boolean {
-  if (state.receiverId === null || state.givers[row.id] !== undefined) return false;
-  const receiverIndex = rowIndexOf(state.rows, state.receiverId);
-  const index = rowIndexOf(state.rows, row.id);
-  if (receiverIndex < 0 || index < 0 || index >= receiverIndex) return false;
+  if (state.receiverId === row.id || state.givers[row.id] !== undefined) return false;
   return canGiveCandy(row, evaluated);
 }
 
-/** モード2でスライダーと ▲▼ を出す行 = 記録のある行 + 初めて減らせる行（D42）。 */
-export function isGiverControlShown(state: FineTuneState, evaluated: EvaluatedRows, row: CalcRow): boolean {
+/** 使うアメを動かせる行 = 記録のある行 + 初めて減らせる行。 */
+export function canAdjustCandy(state: FineTuneState, evaluated: EvaluatedRows, row: CalcRow): boolean {
   return state.givers[row.id] !== undefined || canStartGiving(state, evaluated, row);
 }
 
+/** 最新の結果でその行が使えたアメの数。結果が無い・行が無ければ null。 */
+function candyUsedOf(latest: FineTuneLatest | null, rowId: string): number | null {
+  const planned = latest?.result.pokemonResults.find((p) => p.pokemonId === rowId);
+  return planned === undefined ? null : planned.reachableLine.totalCandyUnitsUsed;
+}
+
 /**
- * 数値の op が動ける範囲（§10.1）。評価は渡された `evaluated`（今の下書きを評価した値）の1回だけで、ほかの行は見ない（D37）。
+ * 使うアメの今の値。記録のある行は記録の値、無い行は最新の結果で使えた数（m0 を超えない）。
+ * 足りずに m0 まで使えていない行でも、表に出ている数から減らし始められる。
+ */
+export function giverValueOf(
+  state: FineTuneState,
+  evaluated: EvaluatedRows,
+  latest: FineTuneLatest | null,
+  row: CalcRow,
+): number {
+  const record = state.givers[row.id];
+  if (record !== undefined) return record.candy;
+  const m0 = candyUnitsOf(row, evaluated);
+  const used = candyUsedOf(latest, row.id);
+  return used === null ? m0 : Math.min(m0, used);
+}
+
+/**
+ * 数値の op が動ける範囲。評価は渡された `evaluated`（今の下書きを評価した値）の1回だけで、ほかの行は見ない。
  * - boost: 0〜min(全アメブ点, 今の値 + max(0, 残り枠))。今の値が全アメブ点を超えているときは増やせない（max = 今の値）。
- * - giver: 0〜m0。記録が無い行は今の評価から出す m0（今の値も m0）。
+ * - target: 現在Lv〜MAX_LEVEL。
+ * - giver: 0〜m0。記録が無い行は今の評価から出す m0。
  * 行が見つからないときは { min: 0, max: 0 }。
  */
 export function opRange(
@@ -230,19 +252,23 @@ export function opRange(
     const row = state.rows.find((r) => r.id === target.rowId);
     return { min: 0, max: row === undefined ? 0 : candyUnitsOf(row, evaluated) };
   }
+  if (target.kind === "target") {
+    const row = state.rows.find((r) => r.id === target.rowId);
+    return row === undefined ? { min: 0, max: 0 } : { min: row.srcLevel, max: MAX_LEVEL };
+  }
   const item = evaluated.byId.get(target.rowId);
   if (item === undefined) return { min: 0, max: 0 };
   const cap = Math.min(item.fullBoost, item.effectiveBoost + Math.max(0, boostSlotRemaining(base, evaluated)));
   return { min: 0, max: Math.max(item.effectiveBoost, cap) };
 }
 
-/** 下書きの行が基準と同じか（同じ順番で各行が同じ参照）。受け取る側の選択・ゆずる側の記録は見ない（§10.1）。 */
+/** 下書きの行が基準と同じか（同じ順番で各行が同じ参照）。受け取る側の選択・ゆずる側の記録は見ない。 */
 export function isDraftEmpty(base: Pick<FineTuneBase, "rows">, state: Pick<FineTuneState, "rows">): boolean {
   if (state.rows.length !== base.rows.length) return false;
   return state.rows.every((row, i) => row === base.rows[i]);
 }
 
-/** 下書きの中身（rows・givers・receiverId）が同じか。version は見ない。履歴に記録するかの判定に使う（§10.1）。 */
+/** 下書きの中身（rows・givers・receiverId）が同じか。version は見ない。履歴に記録するかの判定に使う。 */
 export function isSameDraftContent(a: FineTuneState, b: FineTuneState): boolean {
   if (a.receiverId !== b.receiverId) return false;
   if (a.rows.length !== b.rows.length || !a.rows.every((row, i) => row === b.rows[i])) return false;
@@ -251,13 +277,14 @@ export function isSameDraftContent(a: FineTuneState, b: FineTuneState): boolean 
   return aKeys.every((id) => a.givers[id] === b.givers[id]);
 }
 
-/** 数値の op だけに付く、履歴でまとめる相手の目印（§10.1）。 */
+/** 数値の op だけに付く、履歴でまとめる相手の目印。 */
 export function coalesceKeyOf(op: FineTuneOp): string | undefined {
   switch (op.kind) {
     case "step":
     case "set":
       return `boost:${op.rowId}`;
     case "targetStep":
+    case "targetSet":
       return `target:${op.rowId}`;
     case "giverStep":
     case "giverSet":
@@ -267,7 +294,7 @@ export function coalesceKeyOf(op: FineTuneOp): string | undefined {
   }
 }
 
-/** 値を `opRange` の範囲に収める（整数に切り捨てる）。reducer と、順位・おすすめ量の n' が同じ止め方をするための口。 */
+/** 値を `opRange` の範囲に収める（整数に切り捨てる）。reducer と、おすすめ量が同じ止め方をするための口。 */
 export function clampToRange(value: number, range: OpRange): number {
   return Math.min(range.max, Math.max(range.min, Math.floor(value)));
 }
@@ -280,7 +307,7 @@ function planResultOf(result: LevelPlannerResult, rowId: string): PokemonPlanRes
   return result.pokemonResults.find((p) => p.pokemonId === rowId);
 }
 
-/** 受け取る側 B より上の届かない行を、順番を保ったまま B のすぐ下へ動かした行一覧（D39）。動かさないときは同じ配列。 */
+/** 受け取る側 B より上の届かない行を、順番を保ったまま B のすぐ下へ動かした行一覧。動かさないときは同じ配列。 */
 function rowsAfterReceiverSelect(
   rows: readonly CalcRow[],
   receiverIndex: number,
@@ -302,9 +329,9 @@ function rowsAfterReceiverSelect(
 }
 
 /**
- * 下書きを変える唯一の入口（D21、D37）。ほかの行の都合で拒否しない。数値の op は `opRange` に収め、
+ * 下書きを変える唯一の入口。ほかの行の都合で拒否しない。数値の op は `opRange` に収め、
  * 値が変わらなければ状態を変えない（同じ state を返す）。通った op は version を1つ進める。
- * `evaluated` は `deps.evaluateRows(state.rows)`、`latest` は最新の結果（§8.4）。
+ * `evaluated` は `deps.evaluateRows(state.rows)`、`latest` は最新の結果（計算中なら古い版のもの）。
  */
 export function reduceFineTune(
   base: FineTuneBase,
@@ -314,9 +341,6 @@ export function reduceFineTune(
   evaluated: EvaluatedRows,
   latest: FineTuneLatest | null,
 ): FineTuneReduceResult {
-  if (op.kind === "resetAll") {
-    return advanced(state, { rows: base.rows, givers: {}, receiverId: null });
-  }
   if (op.kind === "receiverClear") {
     if (state.receiverId === null) return { state };
     return advanced(state, { receiverId: null });
@@ -340,11 +364,14 @@ export function reduceFineTune(
         rows: replaceRowAt(state.rows, index, deps.withExplicitBoost(row, next, { preserveTargetForExplicitBoost: true })),
       });
     }
-    case "targetStep": {
+    case "targetStep":
+    case "targetSet": {
       if (state.givers[row.id] !== undefined) return { rejected: "giverLocked" };
       if (rowExclusion(row, evaluated) !== null) return { rejected: "excluded" };
-      const lv = row.dstLevel + op.by;
-      if (lv < row.srcLevel || lv > MAX_LEVEL) return { rejected: "outOfRange" };
+      const requested = op.kind === "targetStep" ? row.dstLevel + op.by : op.level;
+      if (!Number.isFinite(requested)) return { rejected: "invalidValue" };
+      const lv = clampToRange(requested, opRange(base, state, evaluated, { kind: "target", rowId: row.id }));
+      if (lv === row.dstLevel) return { state };
       return advanced(state, { rows: replaceRowAt(state.rows, index, deps.withTargetLevel(row, lv, state.rows)) });
     }
     case "move": {
@@ -370,15 +397,16 @@ export function reduceFineTune(
       const record = state.givers[row.id];
       if (record === undefined && !canStartGiving(state, evaluated, row)) return { rejected: "notGiver" };
       const m0 = record?.m0 ?? candyUnitsOf(row, evaluated);
-      const current = record?.candy ?? m0;
+      const current = giverValueOf(state, evaluated, latest, row);
       const requested = op.kind === "giverStep" ? current + op.by : op.candy;
       if (!Number.isFinite(requested)) return { rejected: "invalidValue" };
       const next = clampToRange(requested, { min: 0, max: m0 });
       if (next === current) return { state };
       if (next === m0) {
-        // record があるのは current < m0 のときだけ（next === current で戻っている）
+        // 記録の無い行を m0 にしても何も変わらない（使えた数が m0 より少ない行で、増やして m0 に届いたとき）
+        if (record === undefined) return { state };
         const { [row.id]: _removed, ...rest } = state.givers;
-        return advanced(state, { rows: replaceRowAt(state.rows, index, record!.before), givers: rest });
+        return advanced(state, { rows: replaceRowAt(state.rows, index, record.before), givers: rest });
       }
       const before = record?.before ?? row;
       const boost = record?.boost ?? evaluated.byId.get(row.id)?.effectiveBoost ?? 0;

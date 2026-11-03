@@ -1028,7 +1028,7 @@ const props = defineProps<{
 const calc = props.calc;
 const { t, locale } = useI18n();
 
-/** やりくりの入口を出すか（対象にできる行が1行以上、設計書 §4.1） */
+/** かんたんモードの入口を出すか（対象にできる行が1行以上） */
 const canFineTune = computed(() => hasFineTuneTarget(calc.rows.value, calc.evaluateRows));
 
 /** 行ごとの計画結果（テンプレートで getPokemonResult を繰り返さず Map を O(1) 参照） */

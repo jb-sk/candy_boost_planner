@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { effectScope, nextTick, ref, toRaw } from "vue";
+import { effectScope, ref, toRaw } from "vue";
 import type { Composer } from "vue-i18n";
 import { addBoxRow, createCalcStore } from "../../tests/helpers/fakeIndividuals";
 import { cancelPersist } from "../persistence/deferredPersist";
-import { calcExp } from "../domain/pokesleep/exp";
 import { calcSleepLandingLevel } from "../domain/level-planner/sleepReachLevel";
 import { hasFineTuneTarget } from "../domain/fine-tune/draft";
 import type { LevelPlannerInput, LevelPlannerResult } from "../domain/level-planner/types";
@@ -136,14 +135,12 @@ describe("useFineTune（設計書 §10.4）", () => {
     expect(counts.replaced).toBe(0);
   });
 
-  it("診断: モード1でどの行のアメブを動かしても先頭の未達行が伸びなければ boostCannotHelp、モード2では元の診断", async () => {
-    // b（ピカチュウ）はアメが1個も無く、a（イーブイ）の種族アメは使えない。どの行にもおすすめ量が出ない
+  it("どの行のアメブを動かしても先頭の未達行が伸びなければ、どの行にもおすすめ量が出ない", async () => {
+    // b（ピカチュウ）はアメが1個も無く、a（イーブイ）の種族アメは使えない
     const { store, b } = await makeStore("100000000");
     const { fineTune } = open(store);
-    expect(fineTune.diagnosis.value).toMatchObject({ kind: "boostCannotHelp", firstShortId: b });
+    expect(fineTune.rowViews.value.find((row) => row.id === b)!).toMatchObject({ reached: { value: false }, limitingFactor: "candy" });
     expect(fineTune.rowViews.value.every((row) => row.advice?.recommendation == null)).toBe(true);
-    fineTune.adviceActive.value = false;
-    expect(fineTune.diagnosis.value).toMatchObject({ kind: "candyShortRoom", firstShortId: b });
   });
 
   it("計算機の計算が終わっていなければ、終わるまで基準を作らない", async () => {
@@ -255,7 +252,7 @@ describe("useFineTune（設計書 §10.4）", () => {
     const version = fineTune.state.value!.version;
     fineTune.dispatch({ kind: "step", rowId: a, by: 0 });
     expect("rejected" in fineTune.dispatch({ kind: "move", rowId: "no-such-row", toIndex: 0 })).toBe(true);
-    fineTune.dispatch({ kind: "resetAll" });
+    fineTune.dispatch({ kind: "receiverClear" });
     expect(fineTune.state.value!.version).toBe(version);
     expect(fineTune.history.canUndo.value).toBe(false);
   });
@@ -264,14 +261,14 @@ describe("useFineTune（設計書 §10.4）", () => {
     const { store, a, b } = await makeStore();
     const { fineTune } = open(store);
     const first = fineTune.rowViews.value[0]!;
-    expect(first).toMatchObject({ id: a, index: 0, baseIndex: 0, mode1: true, giverLocked: false, exclusion: null });
+    expect(first).toMatchObject({ id: a, index: 0, levelAdjustable: true, candyAdjustable: true, giverLocked: false, exclusion: null });
     expect(first.boost).not.toBeNull();
     const baseBoost = first.boost!.base;
     const baseRemaining = fineTune.summary.value!.boostRemaining!.base;
 
     fineTune.dispatch({ kind: "move", rowId: b, toIndex: 0 });
     const moved = fineTune.rowViews.value.find((r) => r.id === b)!;
-    expect(moved).toMatchObject({ index: 0, baseIndex: 1 });
+    expect(moved).toMatchObject({ index: 0 });
 
     fineTune.dispatch({ kind: "set", rowId: a, boost: 10 });
     const edited = fineTune.rowViews.value.find((r) => r.id === a)!;
@@ -322,68 +319,24 @@ describe("useFineTune（設計書 §10.4）", () => {
     expect(hasFineTuneTarget(store.rows.value, store.evaluateRows)).toBe(true);
   });
 
-  it("ゆずる側のスライダーを動かしている間は、ソルバーを呼ばずに A の棒の塗りと目標の印を出し、離したあとの印と一致する", async () => {
-    const { store } = await makeStore("1000000");
-    // 上の行 b がゆずる側、下の行 a が受け取る側
-    const [b, a] = store.rows.value.map((r) => r.id) as [string, string];
-    const { fineTune, runs } = open(store);
-    expect(fineTune.dispatch({ kind: "receiverSelect", rowId: a })).toHaveProperty("state");
-    expect(fineTune.state.value!.rows.map((r) => r.id)).toEqual([b, a]);
-    const view = () => fineTune.rowViews.value.find((r) => r.id === b)!;
-    const m0 = view().giver!.m0;
-    const fill0 = view().bars.progress.value!;
-    const level0 = view().reachLevel.value!;
-    expect(view().giver!.usable).not.toBeNull();
-    const m = Math.floor(m0 / 2);
-    expect(m).toBeLessThan(view().giver!.usable!);
+  it("使うアメ: 受け取る側がいなくても減らせ、減らした行は目標Lv・アメブを動かせない。元の数に戻すと動かせる", async () => {
+    const { store, a } = await makeStore("100000000");
+    const { fineTune } = open(store);
+    const view = () => fineTune.rowViews.value.find((r) => r.id === a)!;
+    expect(view()).toMatchObject({ candyAdjustable: true, levelAdjustable: true, giverLocked: false });
+    const { value, m0 } = view().giver!;
+    // 表に出ている使えた数から減らし始める
+    expect(value).toBe(Math.min(m0, view().candy.value!));
+    expect(value).toBeGreaterThan(10);
 
-    fineTune.setGivePreview(b, m);
-    expect(fineTune.giveDragging.value).toBe(true);
-    const live = fineTune.givePreview.value!;
-    expect(live.rowId).toBe(b);
-    // 到達点は m 個ぶんに下がる（棒は到達Lvの中の進みなので、Lv が下がれば Lv で比べる）。目標の印は到達Lvの中に出る
-    expect(live.level!).toBeLessThanOrEqual(level0);
-    if (live.level === level0) expect(live.fill!).toBeLessThan(fill0);
-    expect(live.expToNext!).toBeGreaterThan(0);
-    expect(live.target).not.toBeNull();
-    // 動かしている間は op も実行役も動かない
-    expect(fineTune.state.value!.givers[b]).toBeUndefined();
-    expect(runs).toHaveLength(0);
+    expect(fineTune.dispatch({ kind: "giverStep", rowId: a, by: -10 })).toHaveProperty("state");
+    expect(view()).toMatchObject({ giverLocked: true, levelAdjustable: false, candyAdjustable: true, giver: { value: value - 10, m0 } });
+    expect(fineTune.dispatch({ kind: "step", rowId: a, by: 1 })).toEqual({ rejected: "giverLocked" });
+    expect(fineTune.state.value!.rows.find((r) => r.id === a)!.candyTarget).toBe(value - 10);
 
-    // 離すと同じ値の op が通り、印は reducer が作った行の目標と一致する
-    fineTune.dispatch({ kind: "giverSet", rowId: b, candy: m });
-    const given = fineTune.state.value!.rows.find((r) => r.id === b)!;
-    expect(given.dstLevel).toBe(live.level);
-    expect(live.target).toBeCloseTo(((given.dstExpInLevel ?? 0) / calcExp(given.dstLevel, given.dstLevel + 1, given.expType)) * 100, 6);
-    fineTune.releaseGivePreview();
-    // 結果が届くまで動かしている間の棒を保ち、届いたら止める
-    expect(fineTune.givePreview.value).not.toBeNull();
-    expect(fineTune.giveDragging.value).toBe(false);
-    await vi.waitFor(() => expect(runs).toHaveLength(1));
-    runs[0]!.onResult({ result: store.planResult.value!, durationMs: 1 });
-    await nextTick();
-    expect(fineTune.givePreview.value).toBeNull();
-  });
-
-  it("ゆずる側のスライダーを離したあとプレビューが失敗しても、動かしている間の棒は止まる", async () => {
-    const { store } = await makeStore("1000000");
-    const [b, a] = store.rows.value.map((r) => r.id) as [string, string];
-    const { fineTune, runs } = open(store);
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      expect(fineTune.dispatch({ kind: "receiverSelect", rowId: a })).toHaveProperty("state");
-      const m = Math.floor(fineTune.rowViews.value.find((r) => r.id === b)!.giver!.m0 / 2);
-      fineTune.setGivePreview(b, m);
-      fineTune.dispatch({ kind: "giverSet", rowId: b, candy: m });
-      fineTune.releaseGivePreview();
-      expect(fineTune.givePreview.value).not.toBeNull();
-      await vi.waitFor(() => expect(runs).toHaveLength(1));
-      runs[0]!.onError("boom");
-      await nextTick();
-      expect(fineTune.givePreview.value).toBeNull();
-    } finally {
-      errorSpy.mockRestore();
-    }
+    expect(fineTune.dispatch({ kind: "giverSet", rowId: a, candy: m0 })).toHaveProperty("state");
+    expect(view()).toMatchObject({ giverLocked: false, levelAdjustable: true });
+    expect(fineTune.isEmpty.value).toBe(true);
   });
 
   it("入口のボタン: 実ストアでも、個数指定の行はゆずる側になれるときだけ数える", () => {
