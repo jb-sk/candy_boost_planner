@@ -221,13 +221,10 @@ const infoItems = computed(() => {
   return items;
 });
 
-/** 動かせない理由と、アメの数を変えると個数指定になること */
+/** 目標Lv・アメブを動かせない理由（アメの欄では出さない） */
 const noteText = computed(() => {
   const { row, field } = props;
-  if (field === "candy") {
-    // もとから個数指定の行は、数を変えても個数指定のまま
-    return row.candyEdit !== null && row.exclusion === null ? t("calc.fineTune.candyNote") : null;
-  }
+  if (field === "candy") return null;
   if (row.candyEdited) return t("calc.fineTune.candyEdited");
   return row.exclusion === null ? null : t(EXCLUSION_TEXT[row.exclusion]);
 });

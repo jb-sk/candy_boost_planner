@@ -261,7 +261,8 @@ test.describe('12-fine-tune（PC）', () => {
     expect(await fineTune.cellNumber(pikachu, 'shardsPerCandy')).toBeGreaterThan(0);
 
     await fineTune.select(pikachu, 'candy');
-    await expect(fineTune.editorNote).toContainText('個数指定');
+    // アメの欄では注意書きを出さない
+    await expect(fineTune.editorNote).toHaveCount(0);
     await fineTune.step(-100);
     expect(await fineTune.candyValue(pikachu)).toBe(candy - 100);
     await expect(fineTune.editorChange).toHaveText(`${candy} → ${candy - 100}`);

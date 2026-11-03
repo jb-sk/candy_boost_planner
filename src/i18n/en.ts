@@ -166,7 +166,6 @@ export const en = {
         candy: "Candy",
       },
       shardsTotal: "{shards} shards in total",
-      candyNote: "Changing it sets a candy count, so target Lv and boost become fixed (restore the count to clear it)",
       candyEdited: "Candy count is changed, so target Lv and boost are fixed (restore the count to change them)",
       reach: "Reaches Lv{level}",
       expLeft: "{exp} to next",

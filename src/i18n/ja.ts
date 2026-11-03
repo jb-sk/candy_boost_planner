@@ -165,7 +165,6 @@ export const ja = {
         candy: "アメ",
       },
       shardsTotal: "使うかけら {shards}",
-      candyNote: "変えると個数指定になり、目標Lv・アメブは固定されます（元の数に戻すと外れます）",
       candyEdited: "アメの数を変えているため、目標Lv・アメブは動かせません（元の数に戻すと動かせます）",
       reach: "到達 Lv{level}",
       expLeft: "あと{exp}",
