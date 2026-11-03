@@ -40,7 +40,7 @@ function makeDeps(info: Record<string, RowInfo>) {
   const calls = { explicit: 0, target: 0 };
   const deps: FineTuneDeps = {
     evaluateRows(rowList): EvaluatedRows {
-      const byId = new Map<string, { effectiveBoost: number; fullBoost: number; candyNeed: number; stockCandyAvailable: number | undefined; minimizeShortCandy: boolean }>();
+      const byId = new Map<string, { effectiveBoost: number; fullBoost: number; candyNeed: number; stockCandyAvailable: number | undefined; minimizeShortCandy: boolean; minimizeNeededCandy: number | undefined }>();
       for (const r of rowList) {
         const row = info[r.id]!;
         byId.set(r.id, {
@@ -49,6 +49,7 @@ function makeDeps(info: Record<string, RowInfo>) {
           candyNeed: r.candyTarget ?? row.need,
           stockCandyAvailable: undefined,
           minimizeShortCandy: row.minimizeShortCandy ?? false,
+          minimizeNeededCandy: row.minimizeShortCandy === true ? 999 : undefined,
         });
       }
       return { byId, plannerInput: null };

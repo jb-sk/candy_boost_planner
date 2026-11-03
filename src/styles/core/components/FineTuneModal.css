@@ -1,4 +1,4 @@
-/* FineTuneModal — かんたん。
+/* FineTuneModal — シンプル。
    全員を数字だけの1行の表で並べ、押した欄を下の調整バー（FineTuneEditor）で動かす。
    スマホは全画面。680px 以上は中央のカード。表は同じ列のまま、列の幅・文字・押す部品を大きくする。
    色は CSS 変数だけで書き、テーマの装飾は各テーマの CSS 側に置く。
@@ -29,7 +29,7 @@
   }
 }
 
-/* かんたんの中だけで使う線と下地 */
+/* シンプルの中だけで使う線と下地 */
 .fineTuneModal {
   --ft-line: rgba(var(--ink-rgb), 0.07);
   --ft-line-strong: rgba(var(--ink-rgb), 0.14);
@@ -228,10 +228,9 @@
   background: var(--paper);
 }
 
-/* 選んだ行は左に色の帯を付け、うっすら色を敷く */
+/* 選んだ行は、うっすら色を敷くだけにする（押した欄は塗りで分かる） */
 .fineTuneRow--selected {
   background: rgba(var(--accent-rgb), 0.05);
-  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .fineTuneRow--dragging {
@@ -814,6 +813,14 @@ button.fineTuneRow__cell {
   color: var(--btn-ink);
 }
 
+/* 入れられないとき。押せない見た目にする（押すと理由のトーストだけ出す） */
+.fineTuneEditor__tool--off,
+.fineTuneEditor__tool--off:hover {
+  border-color: var(--ft-control-border);
+  opacity: 0.4;
+  cursor: default;
+}
+
 .fineTuneEditor__recommend {
   display: flex;
   align-items: center;
@@ -951,7 +958,7 @@ button.fineTuneRow__cell {
   }
 
   .fineTuneEditor__step:hover:not(:disabled),
-  .fineTuneEditor__tool:hover:not(:disabled):not(.fineTuneEditor__tool--on),
+  .fineTuneEditor__tool:hover:not(:disabled):not(.fineTuneEditor__tool--on):not(.fineTuneEditor__tool--off),
   .fineTuneEditor__toggle:hover:not(:disabled),
   .fineTuneEditor__resetEdit:hover:not(:disabled) {
     border-color: var(--accent);

@@ -26,9 +26,9 @@ function makeRow(id: string): CalcRow {
 
 const deps: FineTuneDeps = {
   evaluateRows(rowList): EvaluatedRows {
-    const byId = new Map<string, { effectiveBoost: number; fullBoost: number; candyNeed: number; stockCandyAvailable: number | undefined; minimizeShortCandy: boolean }>();
+    const byId = new Map<string, { effectiveBoost: number; fullBoost: number; candyNeed: number; stockCandyAvailable: number | undefined; minimizeShortCandy: boolean; minimizeNeededCandy: number | undefined }>();
     for (const r of rowList) {
-      byId.set(r.id, { effectiveBoost: r.boostOrExpAdjustment ?? 0, fullBoost: 100, candyNeed: r.candyTarget ?? 80, stockCandyAvailable: undefined, minimizeShortCandy: false });
+      byId.set(r.id, { effectiveBoost: r.boostOrExpAdjustment ?? 0, fullBoost: 100, candyNeed: r.candyTarget ?? 80, stockCandyAvailable: undefined, minimizeShortCandy: false, minimizeNeededCandy: undefined });
     }
     return { byId, plannerInput: null };
   },

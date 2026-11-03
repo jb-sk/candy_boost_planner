@@ -2,7 +2,7 @@ import { nextTick, onUnmounted, reactive, ref, computed, type Ref } from "vue";
 import { trackPress, type Press } from "../utils/trackPress";
 
 /**
- * 行をつかんで動かす並べ替え（計算機・かんたんモードで共用）。
+ * 行をつかんで動かす並べ替え（計算機・シンプルモードで共用）。
  *
  * 取っ手の押下を追跡し、画面の横に浮かぶ名前の一覧（RowReorderNav.vue）の位置と、落とす位置を出す。
  * 確定は `onCommit(rowId, toIndex)` で呼び出し側へ返す（計算機は `calc.moveRow`）。

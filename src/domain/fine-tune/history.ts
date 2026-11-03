@@ -1,5 +1,5 @@
 /**
- * かんたんモードの下書きの元に戻す・やり直す。
+ * シンプルモードの下書きの元に戻す・やり直す。
  * 計算機の履歴（`useHistory`）とは別の、モーダルの中だけの履歴。reducer の外の純粋関数で持つ。
  */
 import type { FineTuneState } from "./draft";

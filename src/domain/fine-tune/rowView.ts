@@ -1,5 +1,5 @@
 /**
- * かんたんの表示用データ。画面が上限・状態の計算をしなくて済むよう、
+ * シンプルの表示用データ。画面が上限・状態の計算をしなくて済むよう、
  * 行ごとの「基準 → 変更後」の値と、操作の可否をここで出す。ストア・Vue を値で import しない。
  * 範囲・可否の判定は `draft.ts` の関数を呼ぶだけで、ここでは計算し直さない。
  */
@@ -77,6 +77,8 @@ export interface FineTuneRowView {
     minimized: boolean;
     canMinimize: boolean;
     shortCandy: boolean;
+    /** shortCandy の行が目標へ届くのに要るアメの数（全部アメブで上げたとき）。分からなければ null */
+    neededCandy: number | null;
     manual: boolean;
   }) | null;
   /** 使えたアメ（最新の結果） */
@@ -242,6 +244,7 @@ export function buildRowViews(input: RowViewInput): FineTuneRowView[] {
           minimized: row.boostMinimizeRow === true && row.boostOrExpAdjustment === undefined,
           canMinimize: deps.canMinimizeBoostFor(row),
           shortCandy: item.minimizeShortCandy,
+          neededCandy: item.minimizeNeededCandy ?? null,
           manual: row.boostOrExpAdjustment !== undefined,
         }
         : null,

@@ -133,13 +133,13 @@ export const ja = {
       slotOrder: "スロットの順番",
       candyInventory: "アメ在庫",
       sleepHours: "累計睡眠時間",
-      fineTune: "かんたん",
+      fineTune: "シンプル",
     },
-    // かんたん。動かせない理由・足りないものの文言は kind から引く表（FineTuneEditor.vue）で参照する
+    // シンプル。動かせない理由・足りないものの文言は kind から引く表（FineTuneEditor.vue）で参照する
     fineTune: {
-      open: "かんたん",
+      open: "シンプル",
       openTitle: "全員を一覧で見ながら目標Lv・アメブ・順番を調整し、まとめて計算機に反映します",
-      title: "かんたん",
+      title: "シンプル",
       loading: "計算機の結果を待っています…",
       calculating: "計算中…",
       previewFailed: "計算に失敗しました。もう一度操作してください",
@@ -225,7 +225,7 @@ export const ja = {
       discardQuestion: "変更を破棄して閉じますか？",
       discardNote: "適用していない変更は計算機に反映されません。",
       discardConfirm: "破棄して閉じる",
-      applied: "かんたんで調整した内容を適用しました",
+      applied: "シンプルで調整した内容を適用しました",
       applyStale: "計算機の内容が変わったため適用できませんでした",
     },
     copySlot: "コピー",

@@ -328,9 +328,9 @@ test.describe('04-calculator A. 初期状態', () => {
     await page.mouse.up();
   });
 
-  test('4i. 全テーマで計算機の補助ボタン（クリア・かんたんモード）は枠なしの薄い塗りになる（テーマの .btn の装飾を受けない）', async ({ page }) => {
+  test('4i. 全テーマで計算機の補助ボタン（クリア・シンプルモード）は枠なしの薄い塗りになる（テーマの .btn の装飾を受けない）', async ({ page }) => {
     // Booklet の `.btn` が同じ詳細度で後から勝ち、塗りと墨の枠が付いていた。
-    // かんたんモードの入口は対象にできる行があるときだけ出るので、1匹を計算機に足してから巡回する
+    // シンプルモードの入口は対象にできる行があるときだけ出るので、1匹を計算機に足してから巡回する
     const box = new BoxPanelPage(page);
     await box.openImportPanel();
     await box.fillImportText(testConfig.importData.singlePokemon);

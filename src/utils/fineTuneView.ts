@@ -3,7 +3,7 @@ import type { SleepReach } from "../domain/fine-tune/rowView";
 import type { SleepTargetChoice } from "../domain/sleep-target";
 import { sleepTargetHoursLabel } from "./sleepTimeText";
 
-/** かんたんで選べる欄。`row` は行の詳細（動かせる欄が無い行・名前を押したとき）。 */
+/** シンプルで選べる欄。`row` は行の詳細（動かせる欄が無い行・名前を押したとき）。 */
 export type FineTuneField = "row" | "target" | "sleep" | "boost" | "candy";
 
 /** 調整バーで選べる量（アメブ・アメの個数の刻み）。大きい順。目標Lvは Lvピッカーと同じ形で動かす。 */
@@ -14,6 +14,12 @@ export const FINE_TUNE_STEPS: Readonly<Record<"boost" | "candy", readonly number
 
 /** 目標Lvの丸いボタン（計算機の Lvピッカーと同じ並び） */
 export const LEVEL_PRESETS: readonly number[] = [10, 25, 30, 40, 50, 55, 60, 65, 70];
+
+/**
+ * 押せない見た目のボタン（全体のLvを伸ばす・最小アメブ）を押したときに出す、理由のトーストの表示時間（ふつうのトーストは 2 秒）。
+ * 理由は長いので読み切れるよう長めに出し、折り返し、画面のどこかを押すとすぐ消す。
+ */
+export const FINE_TUNE_REASON_TOAST = { durationMs: 6000, dismissOnPress: true, wrap: true } as const;
 
 /** 睡眠目標でアメ在庫・チケットを使う印（計算機の睡眠目標の欄と同じ絵文字） */
 export const SLEEP_STOCK_EMOJI = "\u{1F36C}";

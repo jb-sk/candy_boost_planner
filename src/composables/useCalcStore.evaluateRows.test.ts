@@ -255,6 +255,9 @@ describe("useCalcStore: evaluateRows / with*（設計書 §8.2）", () => {
     const evaluated = store.evaluateRows(store.rows.value);
     expect(evaluated.byId.get(enough)!.minimizeShortCandy).toBe(false);
     expect(evaluated.byId.get(short)!.minimizeShortCandy).toBe(true);
+    // 届くのに要るアメの数（全部アメブで上げたとき）。在庫より多い
+    expect(evaluated.byId.get(short)!.minimizeNeededCandy).toBeGreaterThan(100);
+    expect(evaluated.byId.get(enough)!.minimizeNeededCandy).toBeUndefined();
 
     // 最小アメブを入れた行も、届かずに既定のアメブへ戻るので true のまま
     const minimized = store.rows.value.map((r) => (r.id === short ? store.withMinimizeBoost(r, true) : r));
@@ -306,8 +309,8 @@ describe("useCalcStore: evaluateRows / with*（設計書 §8.2）", () => {
     const srcBefore = rowOf(store, e).srcLevel;
     const family = store.speciesCandyFamilyOf(rowOf(store, e))!;
     const draft = store.withRowIndividual(store.withRowIndividual(base, e, { level: 15 }), e, { expRemaining: 30 });
-    expect(store.applyFineTuneDraft({ rows: draft, speciesCandy: { [family]: 900 }, label: "かんたん", expectedBase: [...base] })).toBe(false);
-    expect(store.applyFineTuneDraft({ rows: draft, speciesCandy: { [family]: 900 }, label: "かんたん", expectedBase: base })).toBe(true);
+    expect(store.applyFineTuneDraft({ rows: draft, speciesCandy: { [family]: 900 }, label: "シンプル", expectedBase: [...base] })).toBe(false);
+    expect(store.applyFineTuneDraft({ rows: draft, speciesCandy: { [family]: 900 }, label: "シンプル", expectedBase: base })).toBe(true);
     expect(rowOf(store, e)).toMatchObject({ srcLevel: 15, expRemaining: 30 });
     expect(fakeIndividualsOf(store).individualById.value.get("e")).toMatchObject({ level: 15, expRemaining: 30 });
     expect(store.speciesCandyStockOf(family)).toBe(900);

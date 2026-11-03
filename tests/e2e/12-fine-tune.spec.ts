@@ -1,6 +1,6 @@
 /**
  * 12-fine-tune.spec.ts
- * かんたん（FineTuneModal）のE2Eテスト
+ * シンプル（FineTuneModal）のE2Eテスト
  *
  * カバー範囲:
  *   - 表の欄を押して調整バーで動かす（アメブ・目標Lv）→ 適用 → 計算機の元に戻す1回で戻る
@@ -233,8 +233,16 @@ test.describe('12-fine-tune（PC）', () => {
     // 睡眠の詳細（睡眠到達Lv）と足りないもの（かけら・アメ）が出る行もそろえる
     await calc.chooseSleepTarget(calc.getRow(3), { base: 'napIsland', stock: true, ticket: true });
     await calc.waitForPlannerResult();
+    // 入口の名前は「シンプル」
+    await expect(fineTune.openButton).toHaveText('シンプル');
     await fineTune.open();
     await fineTune.waitForSettled();
+    // 選んだ行は薄い下地だけで、左の色の帯は付けない
+    const hitokageRow = fineTune.rowByName('ヒトカゲ');
+    await fineTune.select(hitokageRow, 'target');
+    await expect(hitokageRow).toHaveClass(/fineTuneRow--selected/);
+    expect(await hitokageRow.evaluate((el) => getComputedStyle(el).boxShadow)).toBe('none');
+    await page.keyboard.press('Escape');
     // PC幅の睡眠の欄は詰めた幅でも「おひるね島🎫🍬」が欄からはみ出さない
     const napCell = fineTune.cell(fineTune.rowByName('ヒトカゲ'), 'sleep');
     await expect(napCell).toContainText('おひるね島');
@@ -445,16 +453,24 @@ test.describe('12-fine-tune（PC）', () => {
     await expect(fineTune.minimizeButton).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('アメブ: アメが足りず最小アメブにしても届かない行は、最小アメブを押せない。在庫の足りる行は押せる', async ({ page }) => {
+  test('アメブ: アメが足りず最小アメブにしても届かない行は、最小アメブが押せない見た目になり、押すと要るアメの数を知らせる。在庫の足りる行は押せる', async ({ page }) => {
     const { fineTune } = await setupScenario(page, GIVE_AND_RECEIVE);
     await fineTune.open();
     await fineTune.waitForSettled();
     // フシギダネは種族アメが 100 個しかなく、Lv50 へは最小アメブにしても届かない
     await fineTune.select(fineTune.rowByName('フシギダネ'), 'boost');
-    await expect(fineTune.minimizeButton).toBeDisabled();
-    await expect(fineTune.minimizeButton).toHaveAttribute('title', /アメが足りないため/);
+    await expect(fineTune.minimizeButton).toHaveAttribute('aria-disabled', 'true');
+    await expect(fineTune.minimizeButton).toHaveAttribute('title', /個以上のアメが必要です。現在は既定のアメブ目標Lvを使用しています。/);
+    // 押しても入らず、計算機のヒントと同じ文言のトーストが出る
+    await fineTune.minimizeButton.click({ force: true });
+    const toast = page.locator('.appToast', { hasText: '個以上のアメが必要です' });
+    await expect(toast).toBeVisible();
+    await expect(toast).toHaveText(/^[\d,]+個以上のアメが必要です。現在は既定のアメブ目標Lvを使用しています。$/);
+    await expect(fineTune.minimizeButton).toHaveAttribute('aria-pressed', 'false');
+    await expect(fineTune.applyButton).toBeDisabled();
     // ピカチュウは種族アメが十分ある
     await fineTune.select(fineTune.rowByName('ピカチュウ'), 'boost');
+    await expect(fineTune.minimizeButton).not.toHaveAttribute('aria-disabled', 'true');
     await expect(fineTune.minimizeButton).toBeEnabled();
   });
 
@@ -840,7 +856,7 @@ test.describe('12-fine-tune（スマホ幅）', () => {
       fineTune.stepButton(100),
       fineTune.editorInput,
     ];
-    // blue テーマ（既定）でも、かんたんのボタンに影を付けない
+    // blue テーマ（既定）でも、シンプルのボタンに影を付けない
     expect(await fineTune.stepButton(-100).evaluate((el) => getComputedStyle(el).boxShadow)).toBe('none');
     expect(await fineTune.applyButton.evaluate((el) => getComputedStyle(el).boxShadow)).toBe('none');
     for (const part of editorParts) {

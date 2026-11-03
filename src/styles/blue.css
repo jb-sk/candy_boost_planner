@@ -158,7 +158,7 @@ input, select, textarea {
   box-shadow: 0 0 0 transparent;
 }
 
-/* かんたん（表・調整バー・フッター）では、ボタンの影と押したときの沈みを付けない */
+/* シンプル（表・調整バー・フッター）では、ボタンの影と押したときの沈みを付けない */
 .fineTuneModal :where(button, .btn),
 .fineTuneModal :where(button, .btn):active {
   box-shadow: none;

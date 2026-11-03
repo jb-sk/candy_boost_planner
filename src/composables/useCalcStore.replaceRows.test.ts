@@ -85,7 +85,7 @@ describe("useCalcStore: replaceRows（設計書 §10.2）", () => {
     const draft = makeDraft(store, ids);
     expect(snapshot(draft)).not.toBe(before);
 
-    expect(store.replaceRows(draft, "かんたんモード", base)).toBe(true);
+    expect(store.replaceRows(draft, "シンプルモード", base)).toBe(true);
     expect(store.rows.value.map((r) => r.id)).toEqual([ids.d, ids.a, ids.b, ids.c]);
     expect(rowOf(store, ids.b).candyTarget).toBe(20);
     expect(rowOf(store, ids.c).candyTarget).toBe(25);
@@ -105,7 +105,7 @@ describe("useCalcStore: replaceRows（設計書 §10.2）", () => {
     const sameCount = store.withExplicitBoost(rowOf(store, ids.d), store.evaluateRows(base).byId.get(ids.d)!.effectiveBoost, { preserveTargetForExplicitBoost: true });
     const next = base.map((r) => (r.id === ids.a ? moved : r.id === ids.d ? sameCount : r));
 
-    expect(store.replaceRows(next, "かんたんモード", base)).toBe(true);
+    expect(store.replaceRows(next, "シンプルモード", base)).toBe(true);
     expect(rowOf(store, ids.a).dstLevel).toBe(baseA.dstLevel);
     expect(rowOf(store, ids.a).boostOrExpAdjustment).toBe(120);
     expect(rowOf(store, ids.d).boostOrExpAdjustment).toBeDefined();
@@ -115,7 +115,7 @@ describe("useCalcStore: replaceRows（設計書 §10.2）", () => {
     const { store, ...ids } = makeScenario();
     const base = store.rows.value;
     const draft = makeDraft(store, ids);
-    expect(store.replaceRows(draft, "かんたんモード", base)).toBe(true);
+    expect(store.replaceRows(draft, "シンプルモード", base)).toBe(true);
 
     const viaCalc = createCalcStore({ locale: ref("ja"), t });
     viaCalc.setSlotBoostKind("full");
@@ -143,7 +143,7 @@ describe("useCalcStore: replaceRows（設計書 §10.2）", () => {
     expect(store.rows.value).not.toBe(staleBase);
     const before = snapshot(store.rows.value);
 
-    expect(store.replaceRows(makeDraft(store, ids), "かんたんモード", staleBase)).toBe(false);
+    expect(store.replaceRows(makeDraft(store, ids), "シンプルモード", staleBase)).toBe(false);
     expect(snapshot(store.rows.value)).toBe(before);
   });
 
@@ -154,7 +154,7 @@ describe("useCalcStore: replaceRows（設計書 §10.2）", () => {
     const draftSnapshot = snapshot(draft);
     const previewInput = store.evaluateRows(draft).plannerInput;
 
-    expect(store.replaceRows(draft, "かんたんモード", base)).toBe(true);
+    expect(store.replaceRows(draft, "シンプルモード", base)).toBe(true);
     expect(snapshot(store.rows.value)).toBe(draftSnapshot);
     expect(snapshot(draft)).toBe(draftSnapshot);
     const appliedInput = store.evaluateRows(store.rows.value).plannerInput;

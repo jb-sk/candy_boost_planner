@@ -308,18 +308,20 @@ export type EvaluatedRow = {
   /** 上の行の取り分を除いた、この行が使える種族アメ在庫。種族を解決できない行では undefined。 */
   stockCandyAvailable: number | undefined;
   /**
-   * 最小アメブにしても、この行に回る種族アメ在庫では目標に届かない（`minimizeShortCandyFor`）。
+   * 最小アメブにしても、この行に回る種族アメ在庫では目標に届かない（`minimizeShortageOf`）。
    * すでに最小アメブで、届かずに既定のアメブへ戻った行も含む。
    */
   minimizeShortCandy: boolean;
+  /** `minimizeShortCandy` の行が目標へ届くのに要る最小の総アメ数（全部アメブで上げたとき）。届く行は undefined */
+  minimizeNeededCandy: number | undefined;
 };
 
 /**
- * かんたんの下書きで変えた種族アメの在庫（進化系のキー → 個数）。評価のときだけ在庫の代わりに使い、ストアの在庫は変えない。
+ * シンプルの下書きで変えた種族アメの在庫（進化系のキー → 個数）。評価のときだけ在庫の代わりに使い、ストアの在庫は変えない。
  */
 export type SpeciesCandyOverride = Readonly<Record<string, number>>;
 
-/** かんたんの下書きで行の個体（現在Lv・あとEXP）を変えるときの値。キーが無い項目は変えない。 */
+/** シンプルの下書きで行の個体（現在Lv・あとEXP）を変えるときの値。キーが無い項目は変えない。 */
 export type RowIndividualPatch = { level?: number; expRemaining?: number };
 
 export type EvaluatedRows = {
@@ -485,7 +487,7 @@ export type CalcStore = {
   setDstLevel: (id: string, v: unknown) => void;
   /**
    * 渡された行一覧を、保存されたとおりに評価する。行を書き換えない（正規化しない）。
-   * `speciesCandy` を渡すと、その進化系の種族アメの在庫をその数として評価する（かんたんの下書き）。
+   * `speciesCandy` を渡すと、その進化系の種族アメの在庫をその数として評価する（シンプルの下書き）。
    */
   evaluateRows: (rowList: readonly CalcRow[], options?: { speciesCandy?: SpeciesCandyOverride }) => EvaluatedRows;
   /**
@@ -501,7 +503,7 @@ export type CalcStore = {
   speciesCandyStockOf: (familyKey: string) => number;
   /**
    * 計算機の個数欄でアメブを n にしたときと同じ行を返す（`normalizeRowState` を通す）。
-   * かんたんモードは `preserveTargetForExplicitBoost: true` を渡し、目標を押し上げない。
+   * シンプルモードは `preserveTargetForExplicitBoost: true` を渡し、目標を押し上げない。
    */
   withExplicitBoost: (row: CalcRow, n: number, options?: { preserveTargetForExplicitBoost?: boolean }) => CalcRow;
   /** 計算機の目標Lvピッカーで lv を選んだときと同じ行を返す。`rowList` はその行を含む行一覧。 */
@@ -524,7 +526,7 @@ export type CalcStore = {
    */
   replaceRows: (next: readonly CalcRow[], label: string, expectedBase: readonly CalcRow[]) => boolean;
   /**
-   * かんたんの下書きを入れる。`replaceRows` と同じく expectedBase が今の rows.value と別物なら何もせず false。
+   * シンプルの下書きを入れる。`replaceRows` と同じく expectedBase が今の rows.value と別物なら何もせず false。
    * 現在Lv・あとEXPを変えた行は個体（ボックスの正本）へ、変えた種族アメの在庫は在庫へも書き、
    * 行一覧・個体・在庫を元に戻す1回で戻る1件の履歴にまとめる。
    */
@@ -591,7 +593,7 @@ export type CalcStore = {
   rowRemainingTimeFor: (rowId: string, expToTarget: number) => RowRemainingTime | null;
   /** 残EXPを埋めたあとの着地点を出すための値。計画が無ければ null。 */
   rowReachAfterRemainingFor: (rowId: string) => RowReachAfterRemaining | null;
-  /** 行そのもので求める版（かんたんの下書きの行）。島は渡した残EXPで出す。 */
+  /** 行そのもので求める版（シンプルの下書きの行）。島は渡した残EXPで出す。 */
   reachAfterRemainingForRow: (row: CalcRow, expToTarget: number) => RowReachAfterRemaining;
 };
 
@@ -2927,16 +2929,22 @@ export function useCalcStore(opts: {
   }
 
   /**
-   * 最小アメブにしても、この行に回る種族アメ在庫（上の行の取り分を除いた数）では目標に届かない。
+   * 最小アメブにしても、この行に回る種族アメ在庫（上の行の取り分を除いた数）では目標に届かないか、と届くのに要るアメの数。
    * すでに最小アメブの行は在庫歩きの結果（届かずに戻ったか）、まだの行は最小アメブにした行で同じ在庫を当てて確かめる。
    * 最小アメブにできない行（`canMinimizeBoostFor` が false）は false。
    */
-  function minimizeShortCandyFor(row: CalcRow, stock: StockCandyAllocation): boolean {
-    if (stock.minimizeFallback[row.id] === true) return true;
-    if (row.boostMinimizeRow === true || !canMinimizeBoostFor(row)) return false;
+  function minimizeShortageOf(
+    row: CalcRow,
+    stock: StockCandyAllocation,
+  ): { minimizeShortCandy: boolean; minimizeNeededCandy: number | undefined } {
+    const short = (neededCandy: number | undefined) => ({ minimizeShortCandy: true, minimizeNeededCandy: neededCandy });
+    const enough = { minimizeShortCandy: false, minimizeNeededCandy: undefined };
+    if (stock.minimizeFallback[row.id] === true) return short(stock.minimizeFallbackNeededCandy[row.id]);
+    if (row.boostMinimizeRow === true || !canMinimizeBoostFor(row)) return enough;
     const budget = stock.available[row.id];
-    if (budget === undefined) return false;
-    return minimizeBoostForStockBudget(withMinimizeBoost(row, true), budget)?.status === "unreachable";
+    if (budget === undefined) return enough;
+    const minimized = minimizeBoostForStockBudget(withMinimizeBoost(row, true), budget);
+    return minimized?.status === "unreachable" ? short(minimized.neededCandy) : enough;
   }
 
   /** `setRowMinimizeBoost` が行へ当てる変更（正規化した行）。切り替えられない・変わらないときは同じ行を返す。 */
@@ -3439,7 +3447,7 @@ export function useCalcStore(opts: {
         fullBoost: maxBoostCandyInputFor(r, true, stock),
         candyNeed: candyNeedForRow(r, effectiveBoost),
         stockCandyAvailable: stock.available[r.id],
-        minimizeShortCandy: minimizeShortCandyFor(r, stock),
+        ...minimizeShortageOf(r, stock),
       });
     });
     return { byId, plannerInput: plannerInputOf(views, stock, options.speciesCandy) };

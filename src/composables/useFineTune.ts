@@ -58,7 +58,7 @@ export type FineTuneApplyResult = "applied" | "empty" | "stale" | "notReady";
 export type FineTuneRaiseResult = RaiseOutcome | { kind: "notReady" | "busy" | "failed" };
 
 /**
- * かんたんの組み立て。基準の固定、下書き、op を reducer に通すこと、下書きの履歴、
+ * シンプルの組み立て。基準の固定、下書き、op を reducer に通すこと、下書きの履歴、
  * プレビュー（間引きと実行役）、最新の結果、「全体のLvを伸ばす」、適用、ゲーム内の日付の停止と再開を持つ。
  * 上限・おすすめ量の計算は持たず、ドメイン（draft / advice / rowView）を呼ぶだけ。
  *

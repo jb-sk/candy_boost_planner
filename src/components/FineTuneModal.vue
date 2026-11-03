@@ -148,7 +148,7 @@ import { useRowReorderDrag } from "../composables/useRowReorderDrag";
 import { showToast } from "../composables/useToast";
 import type { CalcRow, CalcStore } from "../composables/useCalcStore";
 import { boostRules } from "../domain/pokesleep/boost-config";
-import type { FineTuneField } from "../utils/fineTuneView";
+import { FINE_TUNE_REASON_TOAST, type FineTuneField } from "../utils/fineTuneView";
 import FineTuneEditor from "./FineTuneEditor.vue";
 import FineTuneRow from "./FineTuneRow.vue";
 import HistoryButtons from "./HistoryButtons.vue";
@@ -156,7 +156,7 @@ import InlineConfirm from "./InlineConfirm.vue";
 import RowReorderNav from "./RowReorderNav.vue";
 
 /**
- * かんたん。計算機の全員を数字だけの表で見渡し、押した欄（目標Lv・アメブ）を下の調整バーで動かす。
+ * シンプル。計算機の全員を数字だけの表で見渡し、押した欄（目標Lv・アメブ）を下の調整バーで動かす。
  * 「全体のLvを伸ばす」は全員のアメブ（とそれで決まる使うアメ）をまとめて動かす。
  * 状態・プレビュー・適用・日付の停止と再開は `useFineTune`。コンポーネントが外れる（unmount）と、
  * どの閉じ方でもその寿命に結びついた日付の再開と実行役の破棄が走る。
@@ -303,8 +303,6 @@ onMounted(() => window.addEventListener("keydown", onKeydown));
 onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 
 // ===== 全体のLvを伸ばす。結果はトーストで知らせる（伸びた行は太字になる） =====
-/** 伸ばせなかった理由のトーストを出す時間（ふつうのトーストは 2 秒） */
-const RAISE_REASON_TOAST_MS = 6000;
 
 const UNCHANGED_TOAST: Readonly<Record<ShortageType, string>> = {
   candy: "calc.fineTune.raiseUnchangedCandy",
@@ -351,7 +349,7 @@ async function raise(): Promise<void> {
   // 伸ばせなかった理由（何が足りないか・どうすれば伸びるか）は長いので、読み切れるよう長めに出し、折り返す。
   // 読んだら画面のどこかを押すとすぐ消える
   const explains = result.kind === "unchanged" && result.limitingFactor !== null;
-  showToast(t(key), explains ? { durationMs: RAISE_REASON_TOAST_MS, dismissOnPress: true, wrap: true } : {});
+  showToast(t(key), explains ? FINE_TUNE_REASON_TOAST : {});
 }
 
 // ===== 適用。適用してから閉じる。日付の再開は unmount 側 =====

@@ -1,5 +1,5 @@
 /**
- * FineTuneModal Page Object（かんたん）
+ * FineTuneModal Page Object（シンプル）
  * セレクタと操作をまとめる。すべてのセレクタは data-testid ベース（接頭辞は fine-tune-）
  */
 import { type Page, type Locator, expect } from '@playwright/test';

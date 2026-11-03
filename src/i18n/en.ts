@@ -134,13 +134,13 @@ export const en = {
       slotOrder: "Slot order",
       candyInventory: "Candy stock",
       sleepHours: "Total Sleep Hours",
-      fineTune: "Easy",
+      fineTune: "Simple",
     },
-    // Easy. Reason / shortage texts are looked up by kind (see FineTuneEditor.vue)
+    // Simple. Reason / shortage texts are looked up by kind (see FineTuneEditor.vue)
     fineTune: {
-      open: "Easy",
+      open: "Simple",
       openTitle: "Adjust target Lv, boost and order while seeing everyone at once, then apply them to the calculator",
-      title: "Easy",
+      title: "Simple",
       loading: "Waiting for the calculator result…",
       calculating: "Calculating…",
       previewFailed: "The calculation failed. Please try again",
@@ -226,7 +226,7 @@ export const en = {
       discardQuestion: "Discard changes and close?",
       discardNote: "Changes you haven't applied won't reach the calculator.",
       discardConfirm: "Discard and close",
-      applied: "Applied the Easy changes",
+      applied: "Applied the Simple changes",
       applyStale: "Couldn't apply because the calculator changed",
     },
     copySlot: "Copy",

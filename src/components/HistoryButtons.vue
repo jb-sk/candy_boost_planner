@@ -46,7 +46,7 @@ import { historyShortcutLabel, type HistoryDirection } from "../composables/useH
  */
 const props = withDefaults(defineProps<{
   history: HistoryControls;
-  /** 同じ画面に複数の組があるとき（かんたんモード）、E2E が取り違えないよう変える。 */
+  /** 同じ画面に複数の組があるとき（シンプルモード）、E2E が取り違えないよう変える。 */
   undoTestId?: string;
   redoTestId?: string;
 }>(), {

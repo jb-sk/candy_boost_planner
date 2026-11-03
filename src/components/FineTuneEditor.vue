@@ -169,15 +169,17 @@
         <div class="fineTuneEditor__line">
           <div v-if="boostTools !== null" class="fineTuneEditor__tools">
             <!-- 最小アメブ（手持ちのアメから最小限のアメブを自動で決める）と再計算（計算機の ↺ と同じ。自動の値へ戻す） -->
+            <!-- 入れられないとき（アメが足りない・設定で全員が最小アメブ・在庫の種族が無い）は押せない見た目にし、押すと理由を出す -->
             <button
               class="fineTuneEditor__tool"
-              :class="{ 'fineTuneEditor__tool--on': boostTools.minimized }"
+              :class="{ 'fineTuneEditor__tool--on': boostTools.minimized, 'fineTuneEditor__tool--off': boostTools.blocked }"
               type="button"
               data-testid="fine-tune-editor-minimize"
               :aria-pressed="boostTools.minimized"
+              :aria-disabled="boostTools.blocked ? 'true' : undefined"
               :title="boostTools.minimizeTitle"
-              :disabled="busy || (!boostTools.minimized && !boostTools.canTurnOn)"
-              @click="emit('op', { kind: 'boostMinimize', rowId: row!.id, on: !boostTools.minimized })"
+              :disabled="busy"
+              @click="toggleMinimize"
             >{{ t("calc.fineTune.boostMinimize") }}</button>
             <button
               class="fineTuneEditor__tool"
@@ -317,7 +319,9 @@ import type { FineTuneOp, RowExclusion } from "../domain/fine-tune/draft";
 import type { FineTuneRowView } from "../domain/fine-tune/rowView";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { vKeypad } from "../composables/useNumericKeypad";
+import { showToast } from "../composables/useToast";
 import {
+  FINE_TUNE_REASON_TOAST,
   FINE_TUNE_STEPS,
   LEVEL_PRESETS,
   SLEEP_STOCK_EMOJI,
@@ -330,7 +334,7 @@ import { SLEEP_TARGET_HOURS_OPTIONS } from "../domain/types";
 import { sleepTargetOfChoice, type SleepTargetChoice } from "../domain/sleep-target";
 
 /**
- * かんたんの調整バー。表で押した欄（目標Lv・アメブ・アメ）を刻みのボタンと個数欄で、睡眠を選択肢で動かす。
+ * シンプルの調整バー。表で押した欄（目標Lv・アメブ・アメ）を刻みのボタンと個数欄で、睡眠を選択肢で動かす。
  * 目標Lvは Lvピッカーと同じ形（Lv の欄・スライダー・◀ ▶・Lv の丸いボタン）。アメブには最小アメブ・再計算も置く。
  * 見出しのリセットは、この欄を押してからの変更を取り消す（戻すのは親。`canReset` と `reset`）。
  * 行の詳細（名前を押したとき）では、現在Lv・あとEXP（個体）とアメ在庫（その行の進化系）を直接打って変えられる。
@@ -550,16 +554,36 @@ const recommendDelta = computed(() => {
 const boostTools = computed(() => {
   const { row, field } = props;
   if (row === null || field !== "boost" || !row.levelAdjustable || row.boost === null) return null;
-  const { minimized, canMinimize, shortCandy, manual } = row.boost;
-  // アメが足りず最小アメブにしても届かない行は入れられない（入れても既定のアメブへ戻るだけ）。入っていれば外せる
-  const canTurnOn = canMinimize && !shortCandy;
-  const minimizeTitle = props.globalMinimize
-    ? t("calc.fineTune.boostMinimizeGlobal")
-    : !canMinimize && !minimized ? t("calc.fineTune.boostMinimizeUnavailable")
-      : shortCandy ? t("calc.fineTune.boostMinimizeShortCandy")
-        : t("calc.fineTune.boostMinimizeTitle");
-  return { minimized, canTurnOn, manual, minimizeTitle };
+  const { minimized, canMinimize, shortCandy, neededCandy, manual } = row.boost;
+  // 入れられない理由（入っていれば外せるので null）。アメが足りず最小アメブにしても届かない行は、入れても既定のアメブへ戻るだけ
+  const blockedReason = minimized ? null
+    : props.globalMinimize ? t("calc.fineTune.boostMinimizeGlobal")
+      : !canMinimize ? t("calc.fineTune.boostMinimizeUnavailable")
+        : shortCandy
+          ? neededCandy === null
+            ? t("calc.fineTune.boostMinimizeShortCandy")
+            // 計算機のヒントと同じ「〇個以上のアメが必要です。現在は既定のアメブ目標Lvを使用しています。」
+            : t("calc.row.boostMinimizeFallbackHint", { count: props.fmt(neededCandy) })
+          : null;
+  return {
+    minimized,
+    manual,
+    blocked: blockedReason !== null,
+    blockedReason,
+    minimizeTitle: blockedReason ?? t("calc.fineTune.boostMinimizeTitle"),
+  };
 });
+
+/** 最小アメブを切り替える。入れられないときは理由だけを出す */
+function toggleMinimize(): void {
+  const tools = boostTools.value;
+  if (tools === null || props.row === null) return;
+  if (tools.blockedReason !== null) {
+    showToast(tools.blockedReason, FINE_TUNE_REASON_TOAST);
+    return;
+  }
+  emit("op", { kind: "boostMinimize", rowId: props.row.id, on: !tools.minimized });
+}
 
 // ===== 睡眠目標 =====
 const sleepEditor = computed(() => {
