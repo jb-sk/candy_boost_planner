@@ -179,6 +179,7 @@ export const ja = {
       boostMinimizeTitle: "手持ちのアメから最小限のアメブを自動で計算します",
       boostMinimizeGlobal: "設定で全員に最小アメブを使っています",
       boostMinimizeUnavailable: "この行は最小アメブにできません（種族アメの在庫を使う行だけ）",
+      boostMinimizeShortCandy: "アメが足りないため、最小アメブにできません（最小アメブにしても目標Lvに届きません）",
       boostReset: "再計算",
       boostResetTitle: "割り当て可能なアメブを再計算します（手で入れた個数を自動の値に戻す）",
       shardsTotal: "使うかけら {shards}",

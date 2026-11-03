@@ -942,6 +942,14 @@ button.fineTuneRow__cell {
   white-space: nowrap;
 }
 
+/* 伸ばせないと分かっているとき。押せない見た目にする（押すと理由のトーストだけ出す） */
+.fineTuneModal__footer .fineTuneModal__raise--off.btn,
+.fineTuneModal__footer .fineTuneModal__raise--off.btn:hover {
+  background: rgba(var(--accent-rgb), 0.1);
+  opacity: 0.45;
+  cursor: default;
+}
+
 /* スマホ幅（375px〜）でも 元に戻す・やり直す・全体のLvを伸ばす・キャンセル・適用 が1段に入るよう、文字と左右を詰める
    （それより狭いときは2段に折り返す） */
 .fineTuneModal__raise.btn,

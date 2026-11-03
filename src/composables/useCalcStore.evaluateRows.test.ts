@@ -239,6 +239,33 @@ describe("useCalcStore: evaluateRows / with*（設計書 §8.2）", () => {
     expect(rowOf(store, stockId)).toEqual(fromUpperFirst);
   });
 
+  it("minimizeShortCandy: 最小アメブにしても在庫で届かない行だけ true。最小アメブで届かず戻った行も true、在庫が足りれば false", () => {
+    const store = createCalcStore({ locale: ref("ja"), t });
+    store.setSlotBoostKind("full");
+    store.onBoostCandyRemainingInput("5000");
+    // ピカチュウの進化系の在庫は 100 個。上の行（Lv10→30）は足り、下の行（Lv10→60）は残りでは届かない
+    store.updateSpeciesCandy(25, 100);
+    const add = (boxId: string, dstLevelDefault: number) => {
+      addBoxRow(store, { boxId, pokedexId: 25, srcLevel: 10, dstLevelDefault, expType: 600, nature: "normal" });
+      return store.rows.value[store.rows.value.length - 1]!.id;
+    };
+    const enough = add("enough", 20);
+    const short = add("short", 60);
+
+    const evaluated = store.evaluateRows(store.rows.value);
+    expect(evaluated.byId.get(enough)!.minimizeShortCandy).toBe(false);
+    expect(evaluated.byId.get(short)!.minimizeShortCandy).toBe(true);
+
+    // 最小アメブを入れた行も、届かずに既定のアメブへ戻るので true のまま
+    const minimized = store.rows.value.map((r) => (r.id === short ? store.withMinimizeBoost(r, true) : r));
+    expect(minimized.find((r) => r.id === short)!.boostMinimizeRow).toBe(true);
+    expect(store.evaluateRows(minimized).byId.get(short)!.minimizeShortCandy).toBe(true);
+
+    // 在庫が足りれば false
+    store.updateSpeciesCandy(25, 99999);
+    expect(store.evaluateRows(store.rows.value).byId.get(short)!.minimizeShortCandy).toBe(false);
+  });
+
   it("withCandyTarget: 計算機の個数指定の欄で確定した行と一致する。睡眠目標モードの行は変えない", () => {
     const { store, a, b, c, e } = makeScenario();
     for (const [id, m] of [[e, 300], [c, 250], [a, 120], [e, 1_000_000]] as const) {

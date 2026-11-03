@@ -60,13 +60,15 @@ export interface FineTuneRowView {
   sleepReachChanged: boolean;
   /**
    * アメブなしのスロットでは null。minimized は最小アメブが効いている（スイッチが入っていて、個数を手で入れていない）、
-   * canMinimize は最小アメブにできる、manual は個数を手で入れている（リセットできる）
+   * canMinimize は最小アメブにできる、shortCandy はアメが足りず最小アメブにしても目標に届かない、
+   * manual は個数を手で入れている（リセットできる）
    */
   boost: (Change<number> & {
     range: OpRange;
     cappedTo: number | null;
     minimized: boolean;
     canMinimize: boolean;
+    shortCandy: boolean;
     manual: boolean;
   }) | null;
   /** 使えたアメ（最新の結果） */
@@ -217,6 +219,7 @@ export function buildRowViews(input: RowViewInput): FineTuneRowView[] {
           cappedTo,
           minimized: row.boostMinimizeRow === true && row.boostOrExpAdjustment === undefined,
           canMinimize: deps.canMinimizeBoostFor(row),
+          shortCandy: item.minimizeShortCandy,
           manual: row.boostOrExpAdjustment !== undefined,
         }
         : null,

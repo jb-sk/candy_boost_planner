@@ -48,6 +48,14 @@ export type RaiseOutcome =
   | { kind: "unavailable" }
   | { kind: "cancelled" };
 
+/**
+ * 解かずに分かる「全体のLvを伸ばす」の見込み（`checkRaise`）。`possible` は試す候補があり、解くまで分からない。
+ * ほかは押しても `raiseLevels` が同じ結果を返す（候補が1つも無ければ解く前に `unchanged` と分かる）。
+ */
+export type RaiseCheck =
+  | { kind: "possible" }
+  | Extract<RaiseOutcome, { kind: "allReached" | "unchanged" | "unavailable" }>;
+
 export const RAISE_MAX_STEPS = 12;
 export const RAISE_TIME_BUDGET_MS = 8000;
 /** 1つの届かない行に対して試す、付け替えの相手の数（アメブの多い順） */
@@ -165,6 +173,14 @@ function transferCandidates(point: Point, targetId: string): Map<string, number>
   return candidates;
 }
 
+/** 先頭の届かない行を止めているもの */
+function limitingFactorOf(point: Point): ShortageType | null {
+  const firstShort = unreachedIds(point)[0];
+  return firstShort === undefined
+    ? null
+    : resultById(point.result).get(firstShort)?.constraintDiagnosis.limitingFactor ?? null;
+}
+
 function unreachedIds(point: Point): string[] {
   const byId = resultById(point.result);
   return point.rows
@@ -173,6 +189,27 @@ function unreachedIds(point: Point): string[] {
       return res !== undefined && !res.reachableLine.effectiveTargetReached;
     })
     .map((row) => row.id);
+}
+
+/**
+ * 今の行一覧とその結果から、ソルバーを使わずに「全体のLvを伸ばす」の見込みを出す。
+ * `raiseLevels` の最初の1歩と同じ候補を作り、1つも無ければ `unchanged`（押しても伸びない）。
+ */
+export function checkRaise(input: {
+  deps: AdviceDeps;
+  base: RaiseInput["base"];
+  rows: readonly CalcRow[];
+  evaluated: EvaluatedRows;
+  result: LevelPlannerResult;
+}): RaiseCheck {
+  const { deps, base, rows, evaluated, result } = input;
+  if (evaluated.plannerInput === null || evaluated.plannerInput.boost.kind === "none") return { kind: "unavailable" };
+  const point: Point = { rows, evaluated, result };
+  const unreached = unreachedIds(point);
+  if (unreached.length === 0) return { kind: "allReached" };
+  if (recommendationCandidates(deps, base, point).length > 0) return { kind: "possible" };
+  if (unreached.slice(0, TRANSFER_TARGETS).some((id) => transferCandidates(point, id).length > 0)) return { kind: "possible" };
+  return { kind: "unchanged", limitingFactor: limitingFactorOf(point) };
 }
 
 export async function raiseLevels(input: RaiseInput): Promise<RaiseOutcome> {
@@ -227,9 +264,5 @@ export async function raiseLevels(input: RaiseInput): Promise<RaiseOutcome> {
   }
   if (cancelled()) return { kind: "cancelled" };
   if (steps > 0) return { kind: "raised", rows: point.rows, result: point.result, steps };
-  const firstShort = unreachedIds(point)[0];
-  const limitingFactor = firstShort === undefined
-    ? null
-    : resultById(point.result).get(firstShort)?.constraintDiagnosis.limitingFactor ?? null;
-  return { kind: "unchanged", limitingFactor };
+  return { kind: "unchanged", limitingFactor: limitingFactorOf(point) };
 }

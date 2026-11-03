@@ -279,10 +279,14 @@ export class FineTuneModalPage {
     return this.rows.and(this.page.locator('[data-reached="true"]')).count();
   }
 
-  /** 「全体のLvを伸ばす」を押し、求め終わる（ボタンが戻り、計算中が消える）まで待つ。 */
+  /**
+   * 「全体のLvを伸ばす」を押し、求め終わる（モーダルの計算中の印が外れ、計算中が消える）まで待つ。
+   * 伸ばせないと分かっているときのボタンは押せない見た目（aria-disabled）だが、押すと理由のトーストが出るので押す。
+   */
   async raise(): Promise<void> {
-    await this.raiseButton.click();
-    await expect(this.raiseButton).toBeEnabled({ timeout: 20_000 });
+    const blocked = await this.raiseButton.getAttribute('aria-disabled') === 'true';
+    await this.raiseButton.click({ force: blocked });
+    await expect(this.modal).not.toHaveAttribute('aria-busy', 'true', { timeout: 20_000 });
     await this.waitForSettled();
   }
 

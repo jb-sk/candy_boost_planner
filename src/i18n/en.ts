@@ -180,6 +180,7 @@ export const en = {
       boostMinimizeTitle: "Automatically uses the least boost your candy stock allows",
       boostMinimizeGlobal: "Min boost is on for everyone in the settings",
       boostMinimizeUnavailable: "This row can't use min boost (only rows using species candy stock)",
+      boostMinimizeShortCandy: "Not enough candy for min boost (it can't reach the target Lv even with min boost)",
       boostReset: "Recalculate",
       boostResetTitle: "Recalculates from available boost candy (returns a typed count to the automatic value)",
       shardsTotal: "{shards} shards in total",

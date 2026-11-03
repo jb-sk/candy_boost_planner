@@ -4,7 +4,8 @@
  *
  * カバー範囲:
  *   - 表の欄を押して調整バーで動かす（アメブ・目標Lv）→ 適用 → 計算機の元に戻す1回で戻る
- *   - 「全体のLvを伸ばす」（全員のアメブをまとめて動かす）、並べ替え、アメブなしのスロット
+ *   - 「全体のLvを伸ばす」（全員のアメブをまとめて動かす）と、伸ばせないときに押せない見た目になること、並べ替え、アメブなしのスロット
+ *   - アメが足りず最小アメブにしても届かない行は、最小アメブを押せないこと
  *   - モーダル内の元に戻す・やり直す（ボタンと Ctrl+Z / Ctrl+Y）と、計算機の履歴が動かないこと
  *   - Escape と × の確認
  *   - 調整バーの高さが、どの欄を選んでも変わらないこと（PC幅・スマホ幅）
@@ -255,6 +256,8 @@ test.describe('12-fine-tune（PC）', () => {
     const boostsBefore = await boosts();
     // アメ1個あたりのかけら（使うかけら ÷ 使うアメ）
     expect(await fineTune.cellNumber(pikachu, 'shardsPerCandy')).toBeGreaterThan(0);
+    // 伸ばせる見込みがあるので、押せる見た目
+    await expect(fineTune.raiseButton).not.toHaveAttribute('aria-disabled', 'true');
 
     await fineTune.raise();
     await expect(page.locator('.appToast')).toContainText('全体のLvを伸ばしました');
@@ -286,6 +289,9 @@ test.describe('12-fine-tune（PC）', () => {
     const { fineTune } = await setupScenario(page, ALL_REACHED);
     await fineTune.open();
     await fineTune.waitForSettled();
+    // 伸ばす行が無いので押せない見た目。押すと理由だけ出る
+    await expect(fineTune.raiseButton).toHaveAttribute('aria-disabled', 'true');
+    await expect(fineTune.raiseButton).toHaveAttribute('title', '全員が目標Lvに届いています');
     await fineTune.raise();
     await expect(page.locator('.appToast')).toContainText('全員が目標Lvに届いています');
     await expect(fineTune.applyButton).toBeDisabled();
@@ -297,6 +303,8 @@ test.describe('12-fine-tune（PC）', () => {
     const { fineTune } = await setupScenario(page, { shards: '12000000', rows: [{ name: 'フシギダネ', dst: 50, candy: '100' }] });
     await fineTune.open();
     await fineTune.waitForSettled();
+    // 付け替える相手もおすすめも無いので、求める前に伸ばせないと分かり、押せない見た目になる
+    await expect(fineTune.raiseButton).toHaveAttribute('aria-disabled', 'true');
     await fineTune.raise();
     const toast = page.locator('.appToast', { hasText: 'アメが足りないため' });
     await expect(toast).toBeVisible();
@@ -434,6 +442,19 @@ test.describe('12-fine-tune（PC）', () => {
     // 元に戻すで1つずつ戻る
     await fineTune.undoButton.click();
     await expect(fineTune.minimizeButton).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('アメブ: アメが足りず最小アメブにしても届かない行は、最小アメブを押せない。在庫の足りる行は押せる', async ({ page }) => {
+    const { fineTune } = await setupScenario(page, GIVE_AND_RECEIVE);
+    await fineTune.open();
+    await fineTune.waitForSettled();
+    // フシギダネは種族アメが 100 個しかなく、Lv50 へは最小アメブにしても届かない
+    await fineTune.select(fineTune.rowByName('フシギダネ'), 'boost');
+    await expect(fineTune.minimizeButton).toBeDisabled();
+    await expect(fineTune.minimizeButton).toHaveAttribute('title', /アメが足りないため/);
+    // ピカチュウは種族アメが十分ある
+    await fineTune.select(fineTune.rowByName('ピカチュウ'), 'boost');
+    await expect(fineTune.minimizeButton).toBeEnabled();
   });
 
   test('アメ: 欄を押して数を変えると個数指定になり、目標Lv・アメブは動かせず、元の数に戻すと戻る。適用で計算機の個数指定へ移る', async ({ page }) => {

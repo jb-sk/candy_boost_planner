@@ -410,6 +410,10 @@ export function reduceFineTune(
     case "boostMinimize": {
       if (rowExclusion(row, evaluated) !== null) return { rejected: "excluded" };
       if (op.on && !deps.canMinimizeBoostFor(row)) return { rejected: "minimizeUnavailable" };
+      // アメが足りず、最小アメブにしても目標に届かない行は入れられない（入れても既定のアメブへ戻るだけ）
+      if (op.on && row.boostMinimizeRow !== true && evaluated.byId.get(row.id)?.minimizeShortCandy === true) {
+        return { rejected: "minimizeUnavailable" };
+      }
       // 最小化が効いている（スイッチが入っていて、個数を手で入れていない）なら、入れても変わらない
       if (op.on && row.boostMinimizeRow === true && row.boostOrExpAdjustment === undefined) return { state };
       const next = deps.withMinimizeBoost(row, op.on);

@@ -169,7 +169,7 @@
               data-testid="fine-tune-editor-minimize"
               :aria-pressed="boostTools.minimized"
               :title="boostTools.minimizeTitle"
-              :disabled="busy || (!boostTools.minimized && !boostTools.canMinimize)"
+              :disabled="busy || (!boostTools.minimized && !boostTools.canTurnOn)"
               @click="emit('op', { kind: 'boostMinimize', rowId: row!.id, on: !boostTools.minimized })"
             >{{ t("calc.fineTune.boostMinimize") }}</button>
             <button
@@ -500,11 +500,15 @@ const recommendDelta = computed(() => {
 const boostTools = computed(() => {
   const { row, field } = props;
   if (row === null || field !== "boost" || !row.levelAdjustable || row.boost === null) return null;
-  const { minimized, canMinimize, manual } = row.boost;
+  const { minimized, canMinimize, shortCandy, manual } = row.boost;
+  // アメが足りず最小アメブにしても届かない行は入れられない（入れても既定のアメブへ戻るだけ）。入っていれば外せる
+  const canTurnOn = canMinimize && !shortCandy;
   const minimizeTitle = props.globalMinimize
     ? t("calc.fineTune.boostMinimizeGlobal")
-    : canMinimize || minimized ? t("calc.fineTune.boostMinimizeTitle") : t("calc.fineTune.boostMinimizeUnavailable");
-  return { minimized, canMinimize, manual, minimizeTitle };
+    : !canMinimize && !minimized ? t("calc.fineTune.boostMinimizeUnavailable")
+      : shortCandy ? t("calc.fineTune.boostMinimizeShortCandy")
+        : t("calc.fineTune.boostMinimizeTitle");
+  return { minimized, canTurnOn, manual, minimizeTitle };
 });
 
 // ===== 睡眠目標 =====

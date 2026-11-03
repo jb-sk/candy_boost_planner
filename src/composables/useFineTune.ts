@@ -28,7 +28,7 @@ import {
   undoDraft,
   type FineTuneHistory,
 } from "../domain/fine-tune/history";
-import { raiseLevels, type RaiseOutcome, type SolvePlan } from "../domain/fine-tune/raise";
+import { checkRaise, raiseLevels, type RaiseCheck, type RaiseOutcome, type SolvePlan } from "../domain/fine-tune/raise";
 import {
   buildRowViews,
   buildSummary,
@@ -287,6 +287,27 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
   }
 
   // ===== 全体のLvを伸ばす =====
+  /** 押して解いたが伸びなかった版と、その結果。同じ版のあいだは、押しても同じ結果になる */
+  const raiseSettled = shallowRef<{ version: number; outcome: RaiseCheck } | null>(null);
+  const RAISE_POSSIBLE: RaiseCheck = { kind: "possible" };
+  let settledRaiseCheck: RaiseCheck = RAISE_POSSIBLE;
+  /**
+   * 押して伸びるかの見込み。伸びないと分かっている（全員届いた・試す候補が無い・この版で押して伸びなかった）なら
+   * その理由、分からなければ possible。プレビュー計算中は直前の見込みを使い回す（結果が届くまで行き来させない）。
+   */
+  const raiseCheck = computed<RaiseCheck>(() => {
+    const b = base.value;
+    const s = state.value;
+    const ev = evaluated.value;
+    const l = latest.value;
+    if (b === null || s === null || ev === null || l === null) return RAISE_POSSIBLE;
+    const settled = raiseSettled.value;
+    if (settled !== null && settled.version === s.version) return settled.outcome;
+    if (l.version !== s.version) return settledRaiseCheck;
+    settledRaiseCheck = checkRaise({ deps, base: b, rows: s.rows, evaluated: ev, result: l.result });
+    return settledRaiseCheck;
+  });
+
   let disposed = false;
   let raiseRunner: PlannerRunner | null = null;
   let rejectPendingSolve: ((reason: unknown) => void) | null = null;
@@ -334,6 +355,11 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
         solve: options.solvePlan ?? runnerSolve,
         isCancelled: () => disposed || state.value?.version !== fromVersion,
       });
+      if (out.kind === "allReached" || out.kind === "unchanged" || out.kind === "unavailable") {
+        // この版のあいだは押しても伸びない。ボタンを押せない見た目にする
+        if (state.value?.version === fromVersion) raiseSettled.value = { version: fromVersion, outcome: out };
+        return out;
+      }
       if (out.kind !== "raised") return out;
       const reduced = dispatch({ kind: "raise", rows: out.rows, fromVersion });
       if (!("state" in reduced)) return { kind: "cancelled" };
@@ -396,6 +422,7 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     rowViews,
     summary,
     raising,
+    raiseCheck,
     raiseAll,
     titleOf,
     dispatch,

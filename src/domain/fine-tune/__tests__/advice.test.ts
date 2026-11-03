@@ -88,7 +88,7 @@ function build(specs: Record<string, Spec>, over: Parameters<typeof summaryOf>[0
   } as unknown as PokemonPlanInput));
   const byId = new Map<string, EvaluatedRows["byId"] extends Map<string, infer V> ? V : never>();
   for (const [id, s] of Object.entries(specs)) {
-    byId.set(id, { effectiveBoost: s.boost ?? 0, fullBoost: s.full ?? 100, candyNeed: s.need ?? 100, stockCandyAvailable: s.stock });
+    byId.set(id, { effectiveBoost: s.boost ?? 0, fullBoost: s.full ?? 100, candyNeed: s.need ?? 100, stockCandyAvailable: s.stock, minimizeShortCandy: false });
   }
   const evaluated: EvaluatedRows = {
     byId,

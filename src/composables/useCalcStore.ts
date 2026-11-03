@@ -307,6 +307,11 @@ export type EvaluatedRow = {
   candyNeed: number;
   /** 上の行の取り分を除いた、この行が使える種族アメ在庫。種族を解決できない行では undefined。 */
   stockCandyAvailable: number | undefined;
+  /**
+   * 最小アメブにしても、この行に回る種族アメ在庫では目標に届かない（`minimizeShortCandyFor`）。
+   * すでに最小アメブで、届かずに既定のアメブへ戻った行も含む。
+   */
+  minimizeShortCandy: boolean;
 };
 
 export type EvaluatedRows = {
@@ -2888,6 +2893,19 @@ export function useCalcStore(opts: {
       && !isBoostInputDisabledBySleep(row);
   }
 
+  /**
+   * 最小アメブにしても、この行に回る種族アメ在庫（上の行の取り分を除いた数）では目標に届かない。
+   * すでに最小アメブの行は在庫歩きの結果（届かずに戻ったか）、まだの行は最小アメブにした行で同じ在庫を当てて確かめる。
+   * 最小アメブにできない行（`canMinimizeBoostFor` が false）は false。
+   */
+  function minimizeShortCandyFor(row: CalcRow, stock: StockCandyAllocation): boolean {
+    if (stock.minimizeFallback[row.id] === true) return true;
+    if (row.boostMinimizeRow === true || !canMinimizeBoostFor(row)) return false;
+    const budget = stock.available[row.id];
+    if (budget === undefined) return false;
+    return minimizeBoostForStockBudget(withMinimizeBoost(row, true), budget)?.status === "unreachable";
+  }
+
   /** `setRowMinimizeBoost` が行へ当てる変更（正規化した行）。切り替えられない・変わらないときは同じ行を返す。 */
   function withMinimizeBoost(row: CalcRow, on: boolean): CalcRow {
     if (!on) return row.boostMinimizeRow === true ? normalizeRowState({ ...row, boostMinimizeRow: undefined }) : row;
@@ -3388,6 +3406,7 @@ export function useCalcStore(opts: {
         fullBoost: maxBoostCandyInputFor(r, true, stock),
         candyNeed: candyNeedForRow(r, effectiveBoost),
         stockCandyAvailable: stock.available[r.id],
+        minimizeShortCandy: minimizeShortCandyFor(r, stock),
       });
     });
     return { byId, plannerInput: plannerInputOf(views, stock) };

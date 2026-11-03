@@ -18,7 +18,7 @@ import {
   type FineTuneState,
 } from "../draft";
 
-type RowInfo = { full: number; need: number; /** 個数指定の上限（既定 500） */ max?: number };
+type RowInfo = { full: number; need: number; /** 個数指定の上限（既定 500） */ max?: number; /** 最小アメブにしても在庫で届かない（既定 false） */ minimizeShortCandy?: boolean };
 
 function makeRow(id: string, extra: Partial<CalcRow> = {}): CalcRow {
   return {
@@ -40,7 +40,7 @@ function makeDeps(info: Record<string, RowInfo>) {
   const calls = { explicit: 0, target: 0 };
   const deps: FineTuneDeps = {
     evaluateRows(rowList): EvaluatedRows {
-      const byId = new Map<string, { effectiveBoost: number; fullBoost: number; candyNeed: number; stockCandyAvailable: number | undefined }>();
+      const byId = new Map<string, { effectiveBoost: number; fullBoost: number; candyNeed: number; stockCandyAvailable: number | undefined; minimizeShortCandy: boolean }>();
       for (const r of rowList) {
         const row = info[r.id]!;
         byId.set(r.id, {
@@ -48,6 +48,7 @@ function makeDeps(info: Record<string, RowInfo>) {
           fullBoost: row.full,
           candyNeed: r.candyTarget ?? row.need,
           stockCandyAvailable: undefined,
+          minimizeShortCandy: row.minimizeShortCandy ?? false,
         });
       }
       return { byId, plannerInput: null };
@@ -383,6 +384,15 @@ describe("reduceFineTune: 睡眠目標・最小アメブ・アメブのリセッ
     expect(t.ok(on, { kind: "boostMinimize", rowId: "a", on: false }).rows[0]!.boostMinimizeRow).toBeUndefined();
     // 対象外の行（ポケモンが不明）は拒否
     expect(t.run(t.initial, { kind: "boostMinimize", rowId: "u", on: true })).toEqual({ rejected: "excluded" });
+  });
+
+  it("最小アメブ: アメが足りず最小アメブにしても届かない行は入れられない。入っている行は外せる", () => {
+    const t = setup(
+      [makeRow("s", { boostOrExpAdjustment: 7 }), makeRow("m", { boostMinimizeRow: true })],
+      { s: { full: 10, need: 100, minimizeShortCandy: true }, m: { full: 10, need: 100, minimizeShortCandy: true } },
+    );
+    expect(t.run(t.initial, { kind: "boostMinimize", rowId: "s", on: true })).toEqual({ rejected: "minimizeUnavailable" });
+    expect(t.ok(t.initial, { kind: "boostMinimize", rowId: "m", on: false }).rows[1]!.boostMinimizeRow).toBeUndefined();
   });
 
   it("アメブのリセット: 手で入れた個数を自動へ戻す。自動の行・対象外の行は変えない", () => {

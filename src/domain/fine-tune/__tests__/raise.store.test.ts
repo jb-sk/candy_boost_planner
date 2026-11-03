@@ -7,7 +7,7 @@ import { cancelPersist } from "../../../persistence/deferredPersist";
 import { addBoxRow, createCalcStore } from "../../../../tests/helpers/fakeIndividuals";
 import { solveLevelPlan } from "../../level-planner/core/solveLevelPlan";
 import type { LevelPlannerInput, LevelPlannerResult } from "../../level-planner/types";
-import { compareResults, raiseLevels, type RaiseInput } from "../raise";
+import { checkRaise, compareResults, raiseLevels, type RaiseInput } from "../raise";
 
 /** 本物のストアとソルバーで「全体のLvを伸ばす」を確かめる。 */
 
@@ -216,6 +216,34 @@ describe("raiseLevels: 本物のストアとソルバー", () => {
     expect(await raiseLevels(run)).toEqual({ kind: "unchanged", limitingFactor: "candy" });
     // 今の結果を渡したので、1回も解かない
     expect(run.solves()).toBe(0);
+    // 解かずに見込みを出しても同じ（ボタンを押せない見た目にできる）
+    expect(checkRaise({ ...run, evaluated: store.evaluateRows(store.rows.value), result: before }))
+      .toEqual({ kind: "unchanged", limitingFactor: "candy" });
+  });
+
+  it("checkRaise: 解かずに、全員届いていれば allReached、アメブなしは unavailable、試す候補があれば possible", () => {
+    const check = (store: CalcStore, boostLimit: number) => checkRaise({
+      ...input(store, boostLimit),
+      evaluated: store.evaluateRows(store.rows.value),
+      result: solveOf(store, store.rows.value),
+    });
+    const all = build({ boostLimit: 3000, shards: 100_000_000, species: [[25, 99_999]], rows: [{ boxId: "a", pokedexId: 25, dst: 30 }] });
+    expect(check(all, 3000)).toEqual({ kind: "allReached" });
+    const none = build({ boostKind: "none", boostLimit: 0, shards: 100, species: [], rows: [{ boxId: "a", pokedexId: 25, dst: 30 }] });
+    expect(checkRaise({ ...input(none, 0), evaluated: none.evaluateRows(none.rows.value), result: { pokemonResults: [] } as unknown as LevelPlannerResult }))
+      .toEqual({ kind: "unavailable" });
+    // アメブ枠が足りず、届いている上の行から付け替えられる
+    candyStore.resetInventory();
+    const limited = build({
+      boostLimit: 450,
+      shards: 12_000_000,
+      species: [[25, 99_999], [4, 600]],
+      rows: [
+        { boxId: "p", pokedexId: 25, dst: 40 },
+        { boxId: "h", pokedexId: 4, dst: 60 },
+      ],
+    });
+    expect(check(limited, 450)).toEqual({ kind: "possible" });
   });
 
   it("途中で止めると cancelled。時間の上限を超えたら、それまでに見つけた一番良い行一覧を返す", async () => {

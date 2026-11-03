@@ -113,13 +113,16 @@
         <div class="fineTuneModal__history">
           <HistoryButtons :history="fineTune.history" undo-test-id="fine-tune-undo-button" redo-test-id="fine-tune-redo-button" />
         </div>
-        <!-- アメブなしのスロットでは動かすアメブが無いので出さない -->
+        <!-- アメブなしのスロットでは動かすアメブが無いので出さない。
+             伸ばせないと分かっているときは押せない見た目にし、押すと理由だけを出す（求め直さない） -->
         <button
           v-if="fineTune.ready.value && fineTune.hasBoost.value"
           class="btn btn--soft fineTuneModal__raise"
+          :class="{ 'fineTuneModal__raise--off': raiseBlocked !== null }"
           type="button"
           data-testid="fine-tune-raise"
-          :title="t('calc.fineTune.raiseTitle')"
+          :title="raiseBlocked ?? t('calc.fineTune.raiseTitle')"
+          :aria-disabled="raiseBlocked !== null ? 'true' : undefined"
           :disabled="fineTune.raising.value"
           @click="raise"
         >{{ fineTune.raising.value ? t("calc.fineTune.raising") : t("calc.fineTune.raise") }}</button>
@@ -306,12 +309,22 @@ function raiseToastKey(result: FineTuneRaiseResult): string | null {
   }
 }
 
+/** 伸ばせないと分かっているときの理由（ボタンのホバーに出す）。伸ばせるかもしれなければ null */
+const raiseBlocked = computed(() => {
+  const check = fineTune.raiseCheck.value;
+  if (check.kind === "possible") return null;
+  const key = raiseToastKey(check);
+  return key === null ? "" : t(key);
+});
+
 async function raise(): Promise<void> {
   // 個数欄に打ちかけの値があれば、先に確定させる（blur で op が通る）
   if (document.activeElement instanceof HTMLInputElement && modalRef.value?.contains(document.activeElement)) {
     document.activeElement.blur();
   }
-  const result = await fineTune.raiseAll();
+  // 伸ばせないと分かっていれば求めず、理由だけを出す
+  const check = fineTune.raiseCheck.value;
+  const result = check.kind === "possible" ? await fineTune.raiseAll() : check;
   // 全員の値が変わるので、選んでいた欄の「押す前の値」は当てにならない。選択を外す
   if (result.kind === "raised") selected.value = null;
   const key = raiseToastKey(result);
