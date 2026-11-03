@@ -250,6 +250,9 @@ onMounted(() => window.addEventListener("keydown", onKeydown));
 onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 
 // ===== 全体のLvを伸ばす。結果はトーストで知らせる（伸びた行は太字になる） =====
+/** 伸ばせなかった理由のトーストを出す時間（ふつうのトーストは 2 秒） */
+const RAISE_REASON_TOAST_MS = 6000;
+
 const UNCHANGED_TOAST: Readonly<Record<ShortageType, string>> = {
   candy: "calc.fineTune.raiseUnchangedCandy",
   shards: "calc.fineTune.raiseUnchangedShards",
@@ -277,8 +280,12 @@ async function raise(): Promise<void> {
   if (document.activeElement instanceof HTMLInputElement && modalRef.value?.contains(document.activeElement)) {
     document.activeElement.blur();
   }
-  const key = raiseToastKey(await fineTune.raiseAll());
-  if (key !== null) showToast(t(key));
+  const result = await fineTune.raiseAll();
+  const key = raiseToastKey(result);
+  if (key === null) return;
+  // 伸ばせなかった理由（何が足りないか・どうすれば伸びるか）は長いので、読み切れるよう長めに出す
+  const explains = result.kind === "unchanged" && result.limitingFactor !== null;
+  showToast(t(key), explains ? { durationMs: RAISE_REASON_TOAST_MS } : {});
 }
 
 // ===== 適用。適用してから閉じる。日付の再開は unmount 側 =====

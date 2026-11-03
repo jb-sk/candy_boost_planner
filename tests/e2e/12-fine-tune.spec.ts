@@ -236,6 +236,21 @@ test.describe('12-fine-tune（PC）', () => {
     await expect(fineTune.undoButton).toBeDisabled();
   });
 
+  test('全体のLvを伸ばす: アメが足りず伸ばせないときは理由を出し、ふつうのトーストより長く表示する', async ({ page }) => {
+    // フシギダネだけで、種族アメが足りない（万能アメも無い）。アメブを動かしても伸びない
+    const { fineTune } = await setupScenario(page, { shards: '12000000', rows: [{ name: 'フシギダネ', dst: 50, candy: '100' }] });
+    await fineTune.open();
+    await fineTune.waitForSettled();
+    await fineTune.raise();
+    const toast = page.locator('.appToast', { hasText: 'アメが足りないため' });
+    await expect(toast).toBeVisible();
+    // ふつうのトーストは 2 秒で消える。理由のトーストは 4 秒後も出ている
+    await page.waitForTimeout(4000);
+    await expect(toast).toBeVisible();
+    await expect(toast).toBeHidden({ timeout: 4000 });
+    await expect(fineTune.applyButton).toBeDisabled();
+  });
+
   test('アメ: 欄を押して数を変えると個数指定になり、目標Lv・アメブは動かせず、元の数に戻すと戻る。適用で計算機の個数指定へ移る', async ({ page }) => {
     const { calc, fineTune } = await setupScenario(page, ALL_REACHED);
     await fineTune.open();
