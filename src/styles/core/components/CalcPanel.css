@@ -307,12 +307,26 @@
 }
 
 /* ===== Calc Actions ===== */
+/*
+ * 狭い画面では、設定・育成プラン・シンプル・アメブ再割当を1行に収めるため、横の間隔とボタンの左右の余白を少し詰める
+ * （英語の「Settings / Plan / Simple / Reassign Boost」で幅 375px に収まる量）。680px 以上では元に戻す。
+ */
 .calcActions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 10px 6px;
   flex-wrap: wrap;
   margin-top: 10px;
+}
+
+.calcActions > .btn {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.calcActions .btn.btn--soft {
+  padding-left: 10px;
+  padding-right: 10px;
 }
 
 .calcActions__group {
@@ -1712,6 +1726,21 @@ body.calcRowReordering * {
 
   .calcSumInline__k {
     font-size: 13px;
+  }
+
+  /* 幅に余裕があるので、狭い画面で詰めた間隔と余白を元に戻す */
+  .calcActions {
+    column-gap: 10px;
+  }
+
+  .calcActions > .btn {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .calcActions .btn.btn--soft {
+    padding-left: 12px;
+    padding-right: 12px;
   }
 
   /* 補助の操作は右へ寄せ、設定・育成プランと分ける。幅に余裕があるのでコピーの前では改行しない */
