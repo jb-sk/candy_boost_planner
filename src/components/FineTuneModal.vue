@@ -123,6 +123,8 @@
           :disabled="fineTune.raising.value"
           @click="raise"
         >{{ fineTune.raising.value ? t("calc.fineTune.raising") : t("calc.fineTune.raise") }}</button>
+        <!-- この画面での変更をすべて捨てて閉じる（押した時点で決めたことなので確認は出さない） -->
+        <button class="btn btn--soft fineTuneModal__cancel" type="button" data-testid="fine-tune-cancel" @click="emit('close')">{{ t("calc.fineTune.cancel") }}</button>
         <button class="btn btn--primary fineTuneModal__apply" type="button" data-testid="fine-tune-apply" :disabled="fineTune.isEmpty.value || fineTune.raising.value" @click="applyDraft">{{ t("calc.fineTune.apply") }}</button>
       </footer>
     </div>

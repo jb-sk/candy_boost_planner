@@ -643,9 +643,10 @@ button.fineTuneRow__cell {
 .fineTuneModal__footer {
   flex-shrink: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 4px;
+  padding: 8px 10px;
   padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--border);
   background: var(--paper);
@@ -659,7 +660,7 @@ button.fineTuneRow__cell {
 
 .fineTuneModal__history .historyBtn {
   height: 36px;
-  padding: 0 6px;
+  padding: 0 4px;
 }
 
 .fineTuneModal__raise {
@@ -669,9 +670,23 @@ button.fineTuneRow__cell {
   white-space: nowrap;
 }
 
+/* スマホ幅（375px〜）でも 元に戻す・やり直す・全体のLvを伸ばす・キャンセル・適用 が1段に入るよう、文字と左右を詰める
+   （それより狭いときは2段に折り返す） */
+.fineTuneModal__raise.btn,
+.fineTuneModal__cancel.btn,
+.fineTuneModal__apply.btn {
+  padding-left: 8px;
+  padding-right: 8px;
+  font-size: 12px;
+}
+
+.fineTuneModal__cancel {
+  flex-shrink: 0;
+}
+
 .fineTuneModal__apply {
   flex-shrink: 0;
-  min-width: 80px;
+  min-width: 64px;
 }
 
 /* ===== 680px 以上は列・文字・押す部品を大きくする ===== */
@@ -900,6 +915,7 @@ button.fineTuneRow__cell {
   }
 
   .fineTuneModal__raise.btn,
+  .fineTuneModal__cancel.btn,
   .fineTuneModal__apply.btn {
     min-height: 44px;
     padding: 10px 20px;

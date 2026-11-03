@@ -58,6 +58,8 @@ export class FineTuneModalPage {
   readonly undoButton: Locator;
   readonly redoButton: Locator;
   readonly applyButton: Locator;
+  /** 適用の隣のキャンセル（この画面での変更をすべて捨てて閉じる） */
+  readonly cancelButton: Locator;
   readonly discardConfirm: Locator;
   readonly discardConfirmYes: Locator;
   readonly discardConfirmNo: Locator;
@@ -95,6 +97,7 @@ export class FineTuneModalPage {
     this.undoButton = page.getByTestId('fine-tune-undo-button');
     this.redoButton = page.getByTestId('fine-tune-redo-button');
     this.applyButton = page.getByTestId('fine-tune-apply');
+    this.cancelButton = page.getByTestId('fine-tune-cancel');
     this.discardConfirm = page.getByTestId('fine-tune-discard-confirm');
     this.discardConfirmYes = page.getByTestId('fine-tune-discard-confirm-yes');
     this.discardConfirmNo = page.getByTestId('fine-tune-discard-confirm-no');

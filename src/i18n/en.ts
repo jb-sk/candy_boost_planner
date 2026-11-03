@@ -220,6 +220,7 @@ export const en = {
       raiseUnchangedShards: "Dream Shards are short, so levels can't go any higher",
       raiseUnchangedBoost: "Boost slots are short, so levels can't go any higher",
       raiseFailed: "The calculation failed. Please try again",
+      cancel: "Cancel",
       apply: "Apply",
       discardQuestion: "Discard changes and close?",
       discardNote: "Changes you haven't applied won't reach the calculator.",

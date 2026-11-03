@@ -547,7 +547,7 @@ test.describe('12-fine-tune（PC）', () => {
     expect(await calc.undoButton.isEnabled()).toBe(calcUndoEnabled);
   });
 
-  test('閉じる: Escape は先に調整バーを閉じ、下書きがあれば × と Escape で確認が出る', async ({ page }) => {
+  test('閉じる: Escape は先に調整バーを閉じ、下書きがあれば × と Escape で確認が出る。キャンセルは確認なしで変更を捨てて閉じる', async ({ page }) => {
     const { calc, fineTune } = await setupScenario(page, ALL_REACHED);
     await fineTune.open();
     await fineTune.waitForSettled();
@@ -581,6 +581,18 @@ test.describe('12-fine-tune（PC）', () => {
     await expect(fineTune.discardConfirm).toBeVisible();
     await fineTune.discardConfirmYes.click();
     await expect(fineTune.overlay).toHaveCount(0);
+    await expect(calc.getRowDstLevelInput(calc.getRow(0))).toHaveValue('40');
+
+    // 適用の隣のキャンセル: この画面での変更（目標Lv・アメブ・並べ替え）をすべて捨てて、確認なしで閉じる
+    await fineTune.open();
+    await fineTune.waitForSettled();
+    await fineTune.adjust(fineTune.rowByName('ピカチュウ'), 'target', 1);
+    await fineTune.adjust(fineTune.rowByName('イーブイ'), 'boost', -10);
+    await fineTune.moveUp(fineTune.rowByName('ヒトカゲ'));
+    await fineTune.cancelButton.click();
+    await expect(fineTune.discardConfirm).toHaveCount(0);
+    await expect(fineTune.overlay).toHaveCount(0);
+    await expectCalcOrder(calc, ['ピカチュウ', 'イーブイ', 'ヒトカゲ']);
     await expect(calc.getRowDstLevelInput(calc.getRow(0))).toHaveValue('40');
   });
 });
@@ -710,12 +722,16 @@ test.describe('12-fine-tune（スマホ幅）', () => {
     }
 
     // フッターの操作が画面内に収まる
-    for (const button of [fineTune.applyButton, fineTune.raiseButton, fineTune.undoButton, fineTune.redoButton]) {
+    const footerTops: number[] = [];
+    for (const button of [fineTune.applyButton, fineTune.cancelButton, fineTune.raiseButton, fineTune.undoButton, fineTune.redoButton]) {
       const rect = (await button.boundingBox())!;
+      footerTops.push(rect.y + rect.height / 2);
       expect(rect.x).toBeGreaterThanOrEqual(0);
       expect(rect.x + rect.width).toBeLessThanOrEqual(viewport.width + 1);
       expect(rect.y + rect.height).toBeLessThanOrEqual(viewport.height + 1);
     }
+    // スマホ幅（390px）でも1段に収まる
+    expect(Math.max(...footerTops) - Math.min(...footerTops)).toBeLessThan(4);
     await phone.close();
   });
 });
