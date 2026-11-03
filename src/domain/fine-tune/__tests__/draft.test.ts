@@ -395,6 +395,30 @@ describe("reduceFineTune: 睡眠目標・最小アメブ・アメブのリセッ
   });
 });
 
+describe("reduceFineTune: 調整バーのキャンセル（revertRow）", () => {
+  it("その行とアメの数の記録だけを、編集を始める前へ戻す。ほかの行・順番は戻さない", () => {
+    const t = setup([makeRow("a", { boostOrExpAdjustment: 7 }), makeRow("b")], { a: { full: 10, need: 100 }, b: { full: 10, need: 100 } });
+    const moved = t.ok(t.initial, { kind: "move", rowId: "b", toIndex: 0 });
+    // a の編集を始めた時点
+    const start = { row: moved.rows[1]!, record: moved.candyRecords.a };
+    let s = t.ok(moved, { kind: "candyStep", rowId: "a", by: -10 });
+    s = t.ok(s, { kind: "candyStep", rowId: "a", by: -10 });
+    s = t.ok(s, { kind: "step", rowId: "b", by: 3 });
+    const reverted = t.ok(s, { kind: "revertRow", rowId: "a", row: start.row, candyRecord: start.record });
+    expect(reverted.rows[1]).toBe(start.row);
+    expect(reverted.candyRecords).toEqual({});
+    // ほかの行の変更と順番は残る
+    expect(ids(reverted)).toEqual(["b", "a"]);
+    expect(reverted.rows[0]!.boostOrExpAdjustment).toBe(3);
+  });
+
+  it("編集を始める前と同じなら変えない。違う行の値は受け付けない", () => {
+    const t = setup([makeRow("a"), makeRow("b")], { a: { full: 10, need: 100 }, b: { full: 10, need: 100 } });
+    expect(t.run(t.initial, { kind: "revertRow", rowId: "a", row: t.initial.rows[0]!, candyRecord: undefined })).toEqual({ state: t.initial });
+    expect(t.run(t.initial, { kind: "revertRow", rowId: "a", row: t.initial.rows[1]!, candyRecord: undefined })).toEqual({ rejected: "invalidValue" });
+  });
+});
+
 describe("reduceFineTune: 全体のLvを伸ばす（raise）", () => {
   it("同じ顔ぶれ・順番の行一覧を1つの op で入れ、版を1つ進める。同じ行一覧なら変えない", () => {
     const t = setup([makeRow("a"), makeRow("b")], { a: { full: 50, need: 100 }, b: { full: 50, need: 100 } });

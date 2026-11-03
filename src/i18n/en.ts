@@ -197,6 +197,7 @@ export const en = {
       stepAria: "{field} {delta}",
       inputAria: "{field} ({name})",
       hint: "Select a number to adjust",
+      cancelEdit: "Cancel",
       recommend: "Raise {name}",
       recommendMany: "Raise {name} and others",
       recommendInsufficient: "Not enough on its own",

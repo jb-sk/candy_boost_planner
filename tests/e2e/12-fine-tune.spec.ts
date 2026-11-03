@@ -156,7 +156,7 @@ test.describe('12-fine-tune（PC）', () => {
     await expect(calc.getRowBoostCandyInput(calc.getRow(1))).toHaveValue(hitokageBefore);
   });
 
-  test('目標Lv: 全員届いているときは「〇〇のLvを上げる」が出ず、刻みと個数欄で動かした目標Lvが計算機へ移る', async ({ page }) => {
+  test('目標Lv: Lvピッカーと同じ形（◀ ▶・スライダー・Lv の丸いボタン）で動かした目標Lvが計算機へ移る。全員届いていれば「〇〇のLvを上げる」は出ない', async ({ page }) => {
     const { calc, fineTune } = await setupScenario(page, ALL_REACHED);
     await fineTune.open();
     await fineTune.waitForSettled();
@@ -171,13 +171,18 @@ test.describe('12-fine-tune（PC）', () => {
     // 全員届いているので、おすすめは出ない
     await expect(fineTune.editorRecommend).toHaveCount(0);
 
-    // 個数欄で打つ。範囲の外は端に収まる（現在Lv 10 より下は 10）
-    await fineTune.typeValue(45);
-    expect(await fineTune.targetLevel(pikachu)).toBe(45);
-    await fineTune.typeValue(3);
+    // Lv の丸いボタン。今の値のボタンが選ばれた形になる
+    await fineTune.levelChip(50).click();
+    expect(await fineTune.targetLevel(pikachu)).toBe(50);
+    await expect(fineTune.levelChip(50)).toHaveClass(/levelChip--on/);
+    // 現在Lv（10）は下の端。◀ は押せない
+    await fineTune.levelChip(10).click();
     expect(await fineTune.targetLevel(pikachu)).toBe(10);
     await expect(fineTune.stepButton(-1)).toBeDisabled();
-    await fineTune.typeValue(45);
+    // スライダー
+    await fineTune.setLevel(45);
+    expect(await fineTune.targetLevel(pikachu)).toBe(45);
+    await expect(fineTune.editorChange).toHaveText('40 → 45');
     await fineTune.waitForSettled();
 
     await fineTune.apply();
@@ -236,7 +241,7 @@ test.describe('12-fine-tune（PC）', () => {
     await expect(fineTune.undoButton).toBeDisabled();
   });
 
-  test('全体のLvを伸ばす: アメが足りず伸ばせないときは理由を出し、ふつうのトーストより長く表示する', async ({ page }) => {
+  test('全体のLvを伸ばす: アメが足りず伸ばせないときは理由を出し、ふつうのトーストより長く表示し、どこかを押すとすぐ消える', async ({ page }) => {
     // フシギダネだけで、種族アメが足りない（万能アメも無い）。アメブを動かしても伸びない
     const { fineTune } = await setupScenario(page, { shards: '12000000', rows: [{ name: 'フシギダネ', dst: 50, candy: '100' }] });
     await fineTune.open();
@@ -244,11 +249,16 @@ test.describe('12-fine-tune（PC）', () => {
     await fineTune.raise();
     const toast = page.locator('.appToast', { hasText: 'アメが足りないため' });
     await expect(toast).toBeVisible();
-    // ふつうのトーストは 2 秒で消える。理由のトーストは 4 秒後も出ている
-    await page.waitForTimeout(4000);
+    // ふつうのトーストは 2 秒で消える。理由のトーストは 3 秒後も出ている
+    await page.waitForTimeout(3000);
     await expect(toast).toBeVisible();
-    await expect(toast).toBeHidden({ timeout: 4000 });
+    // 画面のどこかを押すと、残りの時間を待たずにすぐ消える
+    await fineTune.list.click({ position: { x: 5, y: 5 } });
+    await expect(toast).toBeHidden({ timeout: 1000 });
     await expect(fineTune.applyButton).toBeDisabled();
+    // 理由の説明は長いので折り返す
+    await fineTune.raise();
+    await expect(page.locator('.appToast--wrap', { hasText: 'アメが足りないため' })).toBeVisible();
   });
 
   test('睡眠: 目標の右隣の睡眠の列に睡眠目標が出て、調整バーで 200h〜2000h・全て・おひるね島とアメ在庫・チケットを選べ、適用で計算機へ移る', async ({ page }) => {
@@ -292,6 +302,46 @@ test.describe('12-fine-tune（PC）', () => {
     await calc.waitForPlannerResult();
     await expect(calc.getRowSleepTargetSelect(calc.getRow(2))).toContainText('おひるね島');
     await expect(calc.getRowSleepTargetSelect(calc.getRow(2))).toContainText('🎫🍬');
+  });
+
+  test('キャンセル: その欄を押してからの変更を取り消して押す前の値へ戻し、選択を外す。ほかの行の変更は残る', async ({ page }) => {
+    const { fineTune } = await setupScenario(page, ALL_REACHED);
+    await fineTune.open();
+    await fineTune.waitForSettled();
+    const pikachu = fineTune.rowByName('ピカチュウ');
+    const eevee = fineTune.rowByName('イーブイ');
+    const boost = await fineTune.boostValue(pikachu);
+    const eeveeBoost = await fineTune.boostValue(eevee);
+    await fineTune.adjust(eevee, 'boost', -10);
+
+    // 変えるまではキャンセルできない
+    await fineTune.select(pikachu, 'boost');
+    await expect(fineTune.cancelButton).toBeDisabled();
+    await fineTune.step(-10);
+    await fineTune.step(-100);
+    expect(await fineTune.boostValue(pikachu)).toBe(boost - 110);
+    await fineTune.cancelButton.click();
+    expect(await fineTune.boostValue(pikachu)).toBe(boost);
+    await fineTune.expectIdle();
+    expect(await fineTune.boostValue(eevee)).toBe(eeveeBoost - 10);
+
+    // アメの数（個数指定）・目標Lv・睡眠も同じ
+    const candy = await fineTune.candyValue(pikachu);
+    await fineTune.adjust(pikachu, 'candy', -100);
+    await fineTune.cancelButton.click();
+    expect(await fineTune.candyValue(pikachu)).toBe(candy);
+    await expect(fineTune.cell(pikachu, 'boost')).toHaveClass(/fineTuneRow__cell--input/);
+    await fineTune.select(pikachu, 'target');
+    await fineTune.levelChip(60).click();
+    await fineTune.cancelButton.click();
+    expect(await fineTune.targetLevel(pikachu)).toBe(40);
+    await fineTune.chooseSleep(pikachu, 'h500');
+    await fineTune.cancelButton.click();
+    await expect(fineTune.cell(pikachu, 'sleep')).toHaveText('-');
+
+    // キャンセルも元に戻す1回で取り消せる
+    await fineTune.undoButton.click();
+    await expect(fineTune.cell(pikachu, 'sleep')).toHaveText('500h');
   });
 
   test('アメブ: 最小アメブで手持ちのアメから最小限のアメブになり、リセットで自動の値に戻る', async ({ page }) => {
@@ -473,6 +523,7 @@ test.describe('12-fine-tune（PC）', () => {
     // 個数欄の中の Ctrl+Z は文字の取り消しになり、下書きは戻らない
     await fineTune.adjust(pikachu, 'target', 1);
     expect(await fineTune.targetLevel(pikachu)).toBe(41);
+    await fineTune.select(pikachu, 'boost');
     await fineTune.editorInput.click();
     await page.keyboard.press('End');
     await page.keyboard.type('7');
@@ -634,6 +685,9 @@ test.describe('12-fine-tune（スマホ幅）', () => {
       fineTune.stepButton(100),
       fineTune.editorInput,
     ];
+    // blue テーマ（既定）でも、かんたんのボタンに影を付けない
+    expect(await fineTune.stepButton(-100).evaluate((el) => getComputedStyle(el).boxShadow)).toBe('none');
+    expect(await fineTune.applyButton.evaluate((el) => getComputedStyle(el).boxShadow)).toBe('none');
     for (const part of editorParts) {
       const size = (await part.boundingBox())!;
       expect(size.height).toBeGreaterThanOrEqual(minHeight);

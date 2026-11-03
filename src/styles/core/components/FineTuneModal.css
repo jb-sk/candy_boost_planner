@@ -452,6 +452,38 @@ button.fineTuneRow__cell {
   color: var(--muted);
 }
 
+/* キャンセル（この欄を押す前の値へ戻す） */
+.fineTuneEditor__cancel.btn {
+  flex-shrink: 0;
+}
+
+/* 目標Lv: Lvピッカーと同じ形。◀ ▶ は親指で押せる大きさ、Lv の丸いボタンは1段に9個並べる */
+.fineTuneEditor__level {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fineTuneEditor__levelRow.levelPick__sliderRow {
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  margin-bottom: 0;
+}
+
+.fineTuneEditor__levelRange {
+  height: 44px;
+}
+
+.fineTuneEditor__levelChips.levelPick__chips {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.fineTuneEditor__levelChips .levelChip {
+  width: auto;
+  height: 36px;
+}
+
 /* アメブの最小アメブ・リセット */
 .fineTuneEditor__tools {
   display: flex;
@@ -713,6 +745,26 @@ button.fineTuneRow__cell {
   .fineTuneEditor__options {
     grid-template-columns: repeat(7, minmax(0, 1fr));
     max-width: 680px;
+  }
+
+  .fineTuneEditor__level {
+    max-width: 680px;
+  }
+
+  .fineTuneEditor__levelRow.levelPick__sliderRow {
+    grid-template-columns: 56px minmax(0, 1fr) 56px;
+  }
+
+  /* PC幅は丸いまま（幅を広げると横長になる） */
+  .fineTuneEditor__levelChips.levelPick__chips {
+    grid-template-columns: repeat(9, 48px);
+    gap: 8px;
+  }
+
+  .fineTuneEditor__levelChips .levelChip {
+    width: 48px;
+    height: 48px;
+    font-size: 15px;
   }
 
   .fineTuneEditor__checks {

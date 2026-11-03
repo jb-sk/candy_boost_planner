@@ -196,6 +196,7 @@ export const ja = {
       stepAria: "{field}を{delta}",
       inputAria: "{field}（{name}）",
       hint: "数字を押して調整",
+      cancelEdit: "キャンセル",
       recommend: "{name}のLvを上げる",
       recommendMany: "{name}などのLvを上げる",
       recommendInsufficient: "これだけでは届きません",

@@ -61,6 +61,11 @@ export type FineTuneOp =
   /** アメブ個数をリセット（自動の値へ戻し、残枠から配り直す） */
   | { kind: "boostReset"; rowId: string }
   /**
+   * 調整バーのキャンセル。その行（とアメの数の記録）を、調整バーで編集を始める前の値へ戻す。
+   * ほかの行・順番は戻さない。
+   */
+  | { kind: "revertRow"; rowId: string; row: CalcRow; candyRecord: CandyRecord | undefined }
+  /**
    * 「全体のLvを伸ばす」で求めた行一覧を入れる。`fromVersion` の下書きから求めたもので、
    * その後に下書きが変わっていれば入れない。行の顔ぶれと順番は変えられない（アメブだけを変えた行一覧）。
    */
@@ -410,6 +415,16 @@ export function reduceFineTune(
       const next = deps.withMinimizeBoost(row, op.on);
       if (next === row) return { state };
       return advanced(state, { rows: replaceRowAt(state.rows, index, next) });
+    }
+    case "revertRow": {
+      if (op.row.id !== row.id) return { rejected: "invalidValue" };
+      const sameRecord = state.candyRecords[row.id] === op.candyRecord;
+      if (row === op.row && sameRecord) return { state };
+      const { [row.id]: _current, ...rest } = state.candyRecords;
+      return advanced(state, {
+        rows: replaceRowAt(state.rows, index, op.row),
+        candyRecords: op.candyRecord === undefined ? rest : { ...rest, [row.id]: op.candyRecord },
+      });
     }
     case "boostReset": {
       if (rowExclusion(row, evaluated) !== null) return { rejected: "excluded" };

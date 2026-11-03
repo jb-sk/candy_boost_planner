@@ -45,6 +45,14 @@
   transition: opacity 160ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* 長い説明（伸ばせなかった理由など）は折り返す。1行のままだと狭い画面ではみ出して読めない */
+.appToastStack .appToast--wrap {
+  /* min() は使わない（Chrome 79 から）。外側の .appToastStack が画面の幅で抑える */
+  max-width: 420px;
+  white-space: normal;
+  line-height: 1.5;
+}
+
 /*
   同時に見せるのは新しい3件まで。
 

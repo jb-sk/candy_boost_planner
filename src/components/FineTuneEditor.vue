@@ -13,7 +13,18 @@
         <span class="fineTuneEditor__name" data-testid="fine-tune-editor-name">{{ row.title }}</span>
         <span v-if="stepper !== null" class="fineTuneEditor__field">{{ stepper.label }}</span>
         <span v-else-if="field === 'sleep'" class="fineTuneEditor__field">{{ t("calc.fineTune.field.sleep") }}</span>
+        <!-- 目標Lvは個数欄が無いので、今の値をここに出す -->
+        <span v-if="field === 'target' && stepper !== null && changeText === null" class="fineTuneEditor__change" data-testid="fine-tune-editor-level-value">Lv{{ stepper.value }}</span>
         <span v-if="changeText !== null" class="fineTuneEditor__change" data-testid="fine-tune-editor-change">{{ changeText }}</span>
+        <span class="fineTuneEditor__spacer"></span>
+        <!-- この欄を押してからの変更を取り消して、押す前の値へ戻す -->
+        <button
+          class="btn btn--soft btn--sm fineTuneEditor__cancel"
+          type="button"
+          data-testid="fine-tune-editor-cancel"
+          :disabled="busy || !canCancel"
+          @click="emit('cancel')"
+        >{{ t("calc.fineTune.cancelEdit") }}</button>
       </template>
       <span v-else class="fineTuneEditor__hint" data-testid="fine-tune-hint">{{ t("calc.fineTune.hint") }}</span>
     </div>
@@ -96,6 +107,55 @@
       </div>
     </div>
 
+    <!-- 目標Lv: Lvピッカーと同じ形（スライダーと左右の ◀ ▶、2段目に Lv の丸いボタン） -->
+    <div v-else-if="stepper !== null && field === 'target'" class="fineTuneEditor__level" data-testid="fine-tune-editor-level">
+      <div class="levelPick__sliderRow fineTuneEditor__levelRow">
+        <button
+          class="fineTuneEditor__step fineTuneEditor__levelStep"
+          type="button"
+          data-testid="fine-tune-editor-step"
+          data-delta="-1"
+          :aria-label="t('calc.fineTune.stepAria', { field: stepper.label, delta: '−1' })"
+          :disabled="busy || stepper.value <= stepper.min"
+          @click="stepBy(-1)"
+        >◀</button>
+        <input
+          class="levelPick__range fineTuneEditor__levelRange"
+          type="range"
+          data-testid="fine-tune-editor-level-range"
+          :aria-label="stepper.inputLabel"
+          :min="stepper.min"
+          :max="stepper.max"
+          step="1"
+          :value="stepper.value"
+          :disabled="busy"
+          @input="setLevel(($event.target as HTMLInputElement).value)"
+        />
+        <button
+          class="fineTuneEditor__step fineTuneEditor__levelStep"
+          type="button"
+          data-testid="fine-tune-editor-step"
+          data-delta="1"
+          :aria-label="t('calc.fineTune.stepAria', { field: stepper.label, delta: '+1' })"
+          :disabled="busy || stepper.value >= stepper.max"
+          @click="stepBy(1)"
+        >▶</button>
+      </div>
+      <div class="levelPick__chips fineTuneEditor__levelChips">
+        <button
+          v-for="lv in LEVEL_PRESETS"
+          :key="lv"
+          type="button"
+          class="levelChip"
+          :class="{ 'levelChip--on': lv === stepper.value }"
+          data-testid="fine-tune-editor-level-chip"
+          :data-level="lv"
+          :disabled="busy || lv < stepper.min || lv > stepper.max"
+          @click="setLevel(String(lv))"
+        >{{ lv }}</button>
+      </div>
+    </div>
+
     <div v-else-if="stepper !== null" class="fineTuneEditor__stepper" :class="`fineTuneEditor__stepper--${stepper.steps.length}`">
       <button
         v-for="amount in stepper.steps"
@@ -154,6 +214,7 @@ import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { vKeypad } from "../composables/useNumericKeypad";
 import {
   FINE_TUNE_STEPS,
+  LEVEL_PRESETS,
   SLEEP_STOCK_EMOJI,
   SLEEP_TICKET_EMOJI,
   sleepReachText,
@@ -165,7 +226,8 @@ import { sleepTargetOfChoice, type SleepTargetChoice } from "../domain/sleep-tar
 
 /**
  * かんたんの調整バー。表で押した欄（目標Lv・アメブ・アメ）を刻みのボタンと個数欄で、睡眠を選択肢で動かす。
- * アメブには最小アメブ・リセットも置く。
+ * 目標Lvは Lvピッカーと同じ形（スライダー・◀ ▶・Lv の丸いボタン）。アメブには最小アメブ・リセットも置く。
+ * キャンセルは、この欄を押してからの変更を取り消す（戻すのは親。`canCancel` と `cancel`）。
  * 行の詳細（到達・睡眠のあと・足りないもの・動かせない理由）と「〇〇のLvを上げる」もここに出す。
  * 値と範囲は `FineTuneRowView` に入っているものを使い、op を投げるだけ（範囲に収めるのは reducer）。
  */
@@ -179,12 +241,16 @@ const props = defineProps<{
   busy: boolean;
   /** 設定で全員に最小アメブを使っている（行ごとの最小アメブは切り替えられない） */
   globalMinimize: boolean;
+  /** この欄を押してから変えた（キャンセルで押す前へ戻せる） */
+  canCancel: boolean;
   fmt: (n: number) => string;
   titleOf: (rowId: string) => string;
 }>();
 
 const emit = defineEmits<{
   (e: "op", op: FineTuneOp): void;
+  /** キャンセル（この欄を押す前の値へ戻して、選択を外す） */
+  (e: "cancel"): void;
 }>();
 
 /** 何も選んでいないときに並べる、押せない刻みのボタン */
@@ -234,7 +300,8 @@ const stepper = computed<Stepper | null>(() => {
       base: row.targetLevel.base,
       min: row.targetLevel.range.min,
       max: row.targetLevel.range.max,
-      steps: FINE_TUNE_STEPS.target,
+      // 目標Lvは刻みのボタンでなく、Lvピッカーと同じ形（◀ ▶・スライダー・Lv の丸いボタン）で動かす
+      steps: [],
       stepOp: (by) => ({ kind: "targetStep", rowId, by }),
       setOp: (level) => ({ kind: "targetSet", rowId, level }),
     };
@@ -396,6 +463,13 @@ function toggleSleep(which: "stock" | "ticket"): void {
 function stepBy(by: number): void {
   const s = stepper.value;
   if (s !== null) emit("op", s.stepOp(by));
+}
+
+/** 目標Lvのスライダー・Lv の丸いボタン */
+function setLevel(raw: string): void {
+  const s = stepper.value;
+  const level = Number(raw);
+  if (s !== null && Number.isFinite(level) && level !== s.value) emit("op", s.setOp(level));
 }
 
 const inputRef = ref<HTMLInputElement | null>(null);

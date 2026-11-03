@@ -86,9 +86,11 @@
           :pending="fineTune.stale.value"
           :busy="fineTune.raising.value"
           :global-minimize="calc.minimizeBoost.value"
+          :can-cancel="canCancel"
           :fmt="calc.fmtNum"
           :title-of="fineTune.titleOf"
           @op="dispatch"
+          @cancel="cancelEdit"
         />
       </template>
 
@@ -129,9 +131,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef } from "vue";
 import { useI18n } from "vue-i18n";
-import type { FineTuneOp } from "../domain/fine-tune/draft";
+import type { CandyRecord, FineTuneOp } from "../domain/fine-tune/draft";
 import type { ShortageType } from "../domain/level-planner/types";
 import type { Change } from "../domain/fine-tune/rowView";
 import { useFineTune, type FineTuneRaiseResult } from "../composables/useFineTune";
@@ -139,7 +141,7 @@ import { useFocusTrap } from "../composables/useFocusTrap";
 import { useHistoryShortcuts } from "../composables/useHistoryShortcuts";
 import { useRowReorderDrag } from "../composables/useRowReorderDrag";
 import { showToast } from "../composables/useToast";
-import type { CalcStore } from "../composables/useCalcStore";
+import type { CalcRow, CalcStore } from "../composables/useCalcStore";
 import { boostRules } from "../domain/pokesleep/boost-config";
 import type { FineTuneField } from "../utils/fineTuneView";
 import FineTuneEditor from "./FineTuneEditor.vue";
@@ -189,6 +191,7 @@ function select(rowId: string, field: FineTuneField): void {
     return;
   }
   selected.value = { rowId, field };
+  editStart.value = snapshotOf(rowId);
   // 調整バーが出ると一覧が縮むので、選んだ行が隠れないよう寄せる
   void nextTick(() => revealRow(rowId));
 }
@@ -209,6 +212,31 @@ function revealRow(rowId: string): void {
   const below = rowRect.bottom - listRect.bottom;
   if (above < 0) list.scrollTop += above;
   else if (below > 0) list.scrollTop += below;
+}
+
+// ===== キャンセル（その欄を押す前の値へ戻す） =====
+/** 欄を押した時点の行とアメの数の記録。キャンセルでここへ戻す */
+const editStart = shallowRef<{ rowId: string; row: CalcRow; candyRecord: CandyRecord | undefined } | null>(null);
+
+function snapshotOf(rowId: string): { rowId: string; row: CalcRow; candyRecord: CandyRecord | undefined } | null {
+  const state = fineTune.state.value;
+  const row = state?.rows.find((r) => r.id === rowId);
+  return state === null || row === undefined ? null : { rowId, row, candyRecord: state.candyRecords[rowId] };
+}
+
+/** 欄を押してから、その行を変えた */
+const canCancel = computed(() => {
+  const start = editStart.value;
+  const state = fineTune.state.value;
+  if (start === null || state === null || selected.value?.rowId !== start.rowId) return false;
+  return state.rows.find((r) => r.id === start.rowId) !== start.row || state.candyRecords[start.rowId] !== start.candyRecord;
+});
+
+function cancelEdit(): void {
+  const start = editStart.value;
+  if (start !== null) dispatch({ kind: "revertRow", rowId: start.rowId, row: start.row, candyRecord: start.candyRecord });
+  selected.value = null;
+  editStart.value = null;
 }
 
 // ===== 並べ替え（取っ手をつかんで動かすのは useRowReorderDrag、取っ手の ↑↓ キーは行。確定は move の op） =====
@@ -283,11 +311,14 @@ async function raise(): Promise<void> {
     document.activeElement.blur();
   }
   const result = await fineTune.raiseAll();
+  // 全員の値が変わるので、選んでいた欄の「押す前の値」は当てにならない。選択を外す
+  if (result.kind === "raised") selected.value = null;
   const key = raiseToastKey(result);
   if (key === null) return;
-  // 伸ばせなかった理由（何が足りないか・どうすれば伸びるか）は長いので、読み切れるよう長めに出す
+  // 伸ばせなかった理由（何が足りないか・どうすれば伸びるか）は長いので、読み切れるよう長めに出し、折り返す。
+  // 読んだら画面のどこかを押すとすぐ消える
   const explains = result.kind === "unchanged" && result.limitingFactor !== null;
-  showToast(t(key), explains ? { durationMs: RAISE_REASON_TOAST_MS } : {});
+  showToast(t(key), explains ? { durationMs: RAISE_REASON_TOAST_MS, dismissOnPress: true, wrap: true } : {});
 }
 
 // ===== 適用。適用してから閉じる。日付の再開は unmount 側 =====
