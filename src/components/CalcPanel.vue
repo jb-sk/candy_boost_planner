@@ -171,35 +171,37 @@
         {{ t("calc.export.openShort") }}
       </button>
       <!-- 補助の操作は小さく薄いボタンにまとめ、設定・育成プランより目立たせない。
-           並びはシンプル・アメブ再割当／コピー・ペースト／クリア。破壊的な全体操作のクリアは末尾に離して置く。 -->
-      <div class="calcActions__tools">
-        <div class="calcActions__group">
-          <!-- 全体を見ながらアメブ・目標Lv・順番を試すモーダルの入口。対象にできる行が1行以上のときだけ出す。
-               アメブなしの種別でも出す（目標Lv・並べ替えは動かせる） -->
-          <button
-            v-if="canFineTune"
-            class="btn btn--soft"
-            data-testid="fine-tune-open-button"
-            type="button"
-            @click="$emit('open-fine-tune')"
-            :title="t('calc.fineTune.openTitle')"
-          >
-            {{ t("calc.fineTune.open") }}
-          </button>
-          <!-- 並べ替え・上位削除のあと「最初から考え直す」ための入口。
-               アメブなしの種別では配るものが無いので出さない。 -->
-          <button
-            v-if="calc.boostKind.value !== 'none'"
-            class="btn btn--soft"
-            data-testid="calc-reassign-boost-button"
-            type="button"
-            @click="calc.resetAllBoostCandy()"
-            :disabled="!calc.rowsView.value.length"
-            :title="t('calc.reassignBoostTitle')"
-          >
-            {{ t("calc.reassignBoost") }}
-          </button>
-        </div>
+           並びはシンプル・アメブ再割当／コピー・ペースト／クリア。破壊的な全体操作のクリアは末尾に離して置く。
+           狭い画面ではコピーの前で改行する（コピー・ペースト・クリアを calcActions__tail にまとめ、
+           これだけを次の行へ送る）。設定〜アメブ再割当が1行目、コピー〜クリアが2行目になる。 -->
+      <div class="calcActions__group calcActions__tools">
+        <!-- 全体を見ながらアメブ・目標Lv・順番を試すモーダルの入口。対象にできる行が1行以上のときだけ出す。
+             アメブなしの種別でも出す（目標Lv・並べ替えは動かせる） -->
+        <button
+          v-if="canFineTune"
+          class="btn btn--soft"
+          data-testid="fine-tune-open-button"
+          type="button"
+          @click="$emit('open-fine-tune')"
+          :title="t('calc.fineTune.openTitle')"
+        >
+          {{ t("calc.fineTune.open") }}
+        </button>
+        <!-- 並べ替え・上位削除のあと「最初から考え直す」ための入口。
+             アメブなしの種別では配るものが無いので出さない。 -->
+        <button
+          v-if="calc.boostKind.value !== 'none'"
+          class="btn btn--soft"
+          data-testid="calc-reassign-boost-button"
+          type="button"
+          @click="calc.resetAllBoostCandy()"
+          :disabled="!calc.rowsView.value.length"
+          :title="t('calc.reassignBoostTitle')"
+        >
+          {{ t("calc.reassignBoost") }}
+        </button>
+      </div>
+      <div class="calcActions__tail">
         <div class="calcActions__group">
           <button class="btn btn--soft" data-testid="calc-copy-slot-button" type="button" @click="calc.copySlot()" :disabled="!calc.canCopySlot.value" :title="t('calc.copySlotTitle')">
             {{ t("calc.copySlot") }}

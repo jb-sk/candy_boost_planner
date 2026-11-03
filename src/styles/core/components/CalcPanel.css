@@ -321,8 +321,10 @@
   gap: 4px;
 }
 
-.calcActions__tools {
+/* コピー・ペースト・クリア。狭い画面ではコピーの前で改行させるため、行いっぱいの幅にして次の行へ送る。 */
+.calcActions__tail {
   display: flex;
+  flex-basis: 100%;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 10px;
@@ -1712,9 +1714,13 @@ body.calcRowReordering * {
     font-size: 13px;
   }
 
-  /* 補助の操作は右へ寄せ、設定・育成プランと分ける（狭い画面では折り返した行の左から並べる） */
+  /* 補助の操作は右へ寄せ、設定・育成プランと分ける。幅に余裕があるのでコピーの前では改行しない */
   .calcActions__tools {
     margin-left: auto;
+  }
+
+  .calcActions__tail {
+    flex-basis: auto;
   }
 
   .calcSumInline__v {
