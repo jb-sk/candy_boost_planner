@@ -301,6 +301,12 @@ const SLOT_LOCAL_SCOPES: readonly CalcHistoryScope[] = [
 export type EvaluatedRow = {
   /** プランナーへ渡す実効アメブ（`rowsView` の `ui.boostCandyInput`）。 */
   effectiveBoost: number;
+  /** アメブ目標Lv（`rowsView` の `ui.boostReachLevel`。保存された意図、個数を入れた行は個数が届くLv）。 */
+  boostReachLevel: number;
+  /** アメブ目標Lvの上限（`ui.boostReachLevelMax`）。 */
+  boostReachLevelMax: number;
+  /** 睡眠EXPだけで目標に届き、アメブを1個も使えない（`ui.boostInputDisabled`）。アメブ目標Lvを動かせない。 */
+  boostInputDisabled: boolean;
   /** 全アメブ点。`maxBoostCandyInputFor(row, true)` を、渡された行一覧の在庫の取り分で出した値。 */
   fullBoost: number;
   /** 目標までに要るアメの数（`candyNeedForRow`）。 */
@@ -506,6 +512,11 @@ export type CalcStore = {
    * シンプルモードは `preserveTargetForExplicitBoost: true` を渡し、目標を押し上げない。
    */
   withExplicitBoost: (row: CalcRow, n: number, options?: { preserveTargetForExplicitBoost?: boolean }) => CalcRow;
+  /**
+   * 計算機のアメブ目標Lvピッカーで lv を選んだときと同じ行を返す（個数は未入力へ戻し、目標Lvより上なら目標Lvも上げる）。
+   * 上限と睡眠での無効化は見ない（`evaluateRows` の `boostReachLevelMax` / `boostInputDisabled` で呼び出し側が見る）。
+   */
+  withBoostReachLevel: (row: CalcRow, lv: unknown) => CalcRow;
   /** 計算機の目標Lvピッカーで lv を選んだときと同じ行を返す。`rowList` はその行を含む行一覧。 */
   withTargetLevel: (row: CalcRow, lv: unknown, rowList: readonly CalcRow[]) => CalcRow;
   /** 計算機の個数指定の欄に m を入れたときと同じ行を返す。睡眠目標モードの行は変えない。 */
@@ -2576,25 +2587,27 @@ export function useCalcStore(opts: {
     if (isBoostInputDisabledBySleep(r)) return;
     const mid = clampInt(v, r.srcLevel, MAX_LEVEL, r.srcLevel);
     if (mid > boostReachLevelCapFor(r)) return;
+    commitRowValue(r, withBoostReachLevel(r, mid), rowFieldUndoLabel(r, t("calc.row.boostReachLevel")));
+  }
 
-    if (mid > r.dstLevel) {
-      commitRow(id, {
-        dstLevel: mid,
-        dstExpInLevel: 0,
-        boostReachLevel: mid,
-        boostOrExpAdjustment: undefined,
-        boostReachAuto: false,
-        boostMinimizeRow: undefined,
-        candyTarget: undefined,
-      }, rowFieldUndoLabel(r, t("calc.row.boostReachLevel")));
-      return;
+  /**
+   * アメブ目標Lvピッカーで `v` を選んだときと同じ行を返す（`setBoostLevel` の確定の手順）。
+   * 上限（`boostReachLevelCapFor`）と睡眠での無効化は見ない（呼び出し側が見る）。アメを配らない行はそのまま返す。
+   * 選んだLvを意図として保存し、アメブ個数は未入力（導出モード）へ戻す。目標Lvより上なら目標Lvも上げる。
+   */
+  function withBoostReachLevel(row: CalcRow, v: unknown): CalcRow {
+    if (sleepTargetTraits(row).candy === "none") return row;
+    const mid = clampInt(v, row.srcLevel, MAX_LEVEL, row.srcLevel);
+    const patch: Partial<CalcRow> = {
+      boostReachLevel: mid,
+      boostOrExpAdjustment: undefined,
+      boostReachAuto: false,
+      boostMinimizeRow: undefined,
+    };
+    if (mid > row.dstLevel) {
+      Object.assign(patch, { dstLevel: mid, dstExpInLevel: 0, candyTarget: undefined });
     }
-
-    commitRow(
-      id,
-      { boostReachLevel: mid, boostOrExpAdjustment: undefined, boostReachAuto: false, boostMinimizeRow: undefined },
-      rowFieldUndoLabel(r, t("calc.row.boostReachLevel")),
-    );
+    return normalizeRowState({ ...row, ...patch });
   }
 
   /**
@@ -3442,8 +3455,12 @@ export function useCalcStore(opts: {
     const byId = new Map<string, EvaluatedRow>();
     rowList.forEach((r, i) => {
       const effectiveBoost = views[i]!.ui.boostCandyInput;
+      const ui = views[i]!.ui;
       byId.set(r.id, {
         effectiveBoost,
+        boostReachLevel: ui.boostReachLevel,
+        boostReachLevelMax: ui.boostReachLevelMax,
+        boostInputDisabled: ui.boostInputDisabled,
         fullBoost: maxBoostCandyInputFor(r, true, stock),
         candyNeed: candyNeedForRow(r, effectiveBoost),
         stockCandyAvailable: stock.available[r.id],
@@ -4746,6 +4763,7 @@ export function useCalcStore(opts: {
     speciesCandyFamilyOf: getRowCandyFamilyKey,
     speciesCandyStockOf,
     withExplicitBoost,
+    withBoostReachLevel,
     withTargetLevel,
     withCandyTarget,
     maxCandyTargetFor,

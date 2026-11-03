@@ -18,7 +18,14 @@ import {
   type FineTuneState,
 } from "../draft";
 
-type RowInfo = { full: number; need: number; /** 個数指定の上限（既定 500） */ max?: number; /** 最小アメブにしても在庫で届かない（既定 false） */ minimizeShortCandy?: boolean };
+type RowInfo = {
+  full: number;
+  need: number;
+  /** 個数指定の上限（既定 500） */ max?: number;
+  /** 最小アメブにしても在庫で届かない（既定 false） */ minimizeShortCandy?: boolean;
+  /** アメブ目標Lvの上限（既定 MAX_LEVEL） */ reachMax?: number;
+  /** 睡眠EXPだけで届き、アメブを使えない（既定 false） */ boostDisabled?: boolean;
+};
 
 function makeRow(id: string, extra: Partial<CalcRow> = {}): CalcRow {
   return {
@@ -37,14 +44,17 @@ function makeRow(id: string, extra: Partial<CalcRow> = {}): CalcRow {
 
 /** 差し替えた deps。実効アメブは明示アメブ、個数は個数指定（無ければ info の need）をそのまま返す。 */
 function makeDeps(info: Record<string, RowInfo>) {
-  const calls = { explicit: 0, target: 0 };
+  const calls = { explicit: 0, target: 0, boostLevel: 0 };
   const deps: FineTuneDeps = {
     evaluateRows(rowList): EvaluatedRows {
-      const byId = new Map<string, { effectiveBoost: number; fullBoost: number; candyNeed: number; stockCandyAvailable: number | undefined; minimizeShortCandy: boolean; minimizeNeededCandy: number | undefined }>();
+      const byId: EvaluatedRows["byId"] = new Map();
       for (const r of rowList) {
         const row = info[r.id]!;
         byId.set(r.id, {
           effectiveBoost: r.boostOrExpAdjustment ?? 0,
+          boostReachLevel: Math.min(r.boostReachLevel ?? r.dstLevel, r.dstLevel),
+          boostReachLevelMax: row.reachMax ?? MAX_LEVEL,
+          boostInputDisabled: row.boostDisabled ?? false,
           fullBoost: row.full,
           candyNeed: r.candyTarget ?? row.need,
           stockCandyAvailable: undefined,
@@ -57,6 +67,17 @@ function makeDeps(info: Record<string, RowInfo>) {
     withExplicitBoost(row, n) {
       calls.explicit += 1;
       return { ...row, boostOrExpAdjustment: n };
+    },
+    /** 個数を自動へ戻し、意図を保存する。目標Lvより上なら目標Lvも上げる（計算機と同じ） */
+    withBoostReachLevel(row, lv) {
+      calls.boostLevel += 1;
+      return {
+        ...row,
+        boostReachLevel: lv,
+        boostOrExpAdjustment: undefined,
+        boostMinimizeRow: undefined,
+        dstLevel: Math.max(row.dstLevel, lv),
+      };
     },
     withTargetLevel(row, lv) {
       calls.target += 1;
@@ -252,6 +273,45 @@ describe("hasFineTuneTarget: 入口のボタン（§4.1）", () => {
     // 評価が要るのは時間の睡眠目標の行（睡眠だけで届くか）だけ
     hasFineTuneTarget([makeRow("c", { sleepTargetHours: 100 }), makeRow("m", { sleepTargetHours: 100 })], evaluate);
     expect(evaluations).toBe(1);
+  });
+});
+
+describe("reduceFineTune: アメブ目標Lv（boostLevelSet）", () => {
+  it("選んだLvを意図として保存し、手で入れた個数と最小アメブを外す（計算機のアメブ目標Lvピッカーと同じ deps を呼ぶ）", () => {
+    const { ok, calls, initial } = setup([makeRow("a", { boostReachLevel: 50, boostOrExpAdjustment: 30, boostMinimizeRow: true })], { a: { full: 100, need: 80 } });
+    const next = ok(initial, { kind: "boostLevelSet", rowId: "a", level: 40 });
+    expect(next.rows[0]).toMatchObject({ boostReachLevel: 40, boostOrExpAdjustment: undefined, boostMinimizeRow: undefined, dstLevel: 50 });
+    expect(next.version).toBe(initial.version + 1);
+    expect(calls.boostLevel).toBe(1);
+  });
+
+  it("範囲は現在Lv〜アメブ目標Lvの上限で、外は端に収める。今と同じLvなら下書きを変えない", () => {
+    const { ok, range, initial } = setup([makeRow("a", { srcLevel: 10, dstLevel: 50, boostReachLevel: 50 })], { a: { full: 100, need: 80, reachMax: 45 } });
+    expect(range(initial, { kind: "boostLevel", rowId: "a" })).toEqual({ min: 10, max: 45 });
+    expect(ok(initial, { kind: "boostLevelSet", rowId: "a", level: 60 }).rows[0]!.boostReachLevel).toBe(45);
+    expect(ok(initial, { kind: "boostLevelSet", rowId: "a", level: 3 }).rows[0]!.boostReachLevel).toBe(10);
+    const lowered = ok(initial, { kind: "boostLevelSet", rowId: "a", level: 30 });
+    expect(ok(lowered, { kind: "boostLevelSet", rowId: "a", level: 30 })).toBe(lowered);
+  });
+
+  it("目標Lvより上を選ぶと目標Lvも上がる（計算機と同じ）", () => {
+    const { ok, initial } = setup([makeRow("a", { dstLevel: 40, boostReachLevel: 40 })], { a: { full: 100, need: 80 } });
+    expect(ok(initial, { kind: "boostLevelSet", rowId: "a", level: 55 }).rows[0]).toMatchObject({ dstLevel: 55, boostReachLevel: 55 });
+  });
+
+  it("対象外の行は excluded、睡眠EXPだけで届きアメブを使えない行は boostLevelLocked、数でない Lv は invalidValue で拒否する", () => {
+    const { run, initial } = setup(
+      [makeRow("a", { candyTarget: 50 }), makeRow("b"), makeRow("c")],
+      { a: { full: 100, need: 80 }, b: { full: 100, need: 80, boostDisabled: true }, c: { full: 100, need: 80 } },
+    );
+    expect(run(initial, { kind: "boostLevelSet", rowId: "a", level: 30 })).toEqual({ rejected: "excluded" });
+    expect(run(initial, { kind: "boostLevelSet", rowId: "b", level: 30 })).toEqual({ rejected: "boostLevelLocked" });
+    expect(run(initial, { kind: "boostLevelSet", rowId: "c", level: Number.NaN })).toEqual({ rejected: "invalidValue" });
+  });
+
+  it("履歴でまとめる相手は行ごとのアメブ目標Lv（アメブの個数とは別）", () => {
+    expect(coalesceKeyOf({ kind: "boostLevelSet", rowId: "a", level: 30 })).toBe("boostLevel:a");
+    expect(coalesceKeyOf({ kind: "set", rowId: "a", boost: 30 })).toBe("boost:a");
   });
 });
 

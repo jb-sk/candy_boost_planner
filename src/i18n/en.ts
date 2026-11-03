@@ -222,7 +222,7 @@ export const en = {
       raiseUnchangedBoost: "Boost slots are short, so levels can't go any higher",
       raiseFailed: "The calculation failed. Please try again",
       cancel: "Cancel",
-      apply: "Apply",
+      apply: "OK",
       discardQuestion: "Discard changes and close?",
       discardNote: "Changes you haven't applied won't reach the calculator.",
       discardConfirm: "Discard and close",

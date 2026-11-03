@@ -91,30 +91,22 @@
         </div>
       </template>
 
-      <!-- 目標Lv: Lvピッカーと同じ形。1段目に Lv の欄（直接打つ。タッチ端末はテンキー）と ◀ スライダー ▶、2段目に Lv の丸いボタン -->
+      <!-- 目標Lv: 1段目に Lv の欄（現在Lv・アメブ目標Lvと同じ形。直接打つか ▾ の Lvピッカー）と ◀ スライダー ▶、
+           2段目に Lv の丸いボタン -->
       <template v-else-if="stepper !== null && field === 'target'">
         <div class="fineTuneEditor__line">
           <div class="fineTuneEditor__levelRow" data-testid="fine-tune-editor-level">
-            <label class="fineTuneEditor__levelInput">
-              <span class="fineTuneEditor__levelPrefix" aria-hidden="true">Lv</span>
-              <input
-                ref="inputRef"
-                v-keypad="{ label: stepper.inputLabel, maxLength: 2 }"
-                class="field__input fineTuneEditor__input fineTuneEditor__input--level"
-                data-testid="fine-tune-editor-input"
-                type="text"
-                inputmode="numeric"
-                maxlength="2"
-                autocomplete="off"
-                :aria-label="stepper.inputLabel"
-                :disabled="busy"
-                :value="draft ?? String(stepper.value)"
-                @focus="draft = String(stepper.value)"
-                @input="onInput(($event.target as HTMLInputElement).value)"
-                @blur="onBlur"
-                @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
-              />
-            </label>
+            <FineTuneLevelField
+              kind="target"
+              :label="stepper.label"
+              :value="stepper.value"
+              :base="stepper.base"
+              :min="stepper.min"
+              :max="stepper.max"
+              :from="row!.individual.srcLevel.value"
+              :disabled="busy"
+              @set="setLevel(String($event))"
+            />
             <button
               class="fineTuneEditor__step fineTuneEditor__levelStep"
               type="button"
@@ -168,6 +160,21 @@
       <template v-else-if="stepper !== null">
         <div class="fineTuneEditor__line">
           <div v-if="boostTools !== null" class="fineTuneEditor__tools">
+            <!-- アメブ目標Lv（計算機のアメブ目標Lvと同じ。選ぶと個数は自動へ戻り、そのLvまでをアメブで賄う）。
+                 現在Lv・目標Lvと同じ形の Lv の欄 -->
+            <FineTuneLevelField
+              v-if="boostTools.level !== null"
+              class="fineTuneEditor__boostLevel"
+              kind="boostLevel"
+              :label="t('calc.row.boostReachLevel')"
+              :value="boostTools.level.value"
+              :base="boostTools.level.base"
+              :min="boostTools.level.range.min"
+              :max="boostTools.level.range.max"
+              :from="row!.individual.srcLevel.value"
+              :disabled="busy || boostTools.level.disabled"
+              @set="emit('op', { kind: 'boostLevelSet', rowId: row!.id, level: $event })"
+            />
             <!-- 最小アメブ（手持ちのアメから最小限のアメブを自動で決める）と再計算（計算機の ↺ と同じ。自動の値へ戻す） -->
             <!-- 入れられないとき（アメが足りない・設定で全員が最小アメブ・在庫の種族が無い）は押せない見た目にし、押すと理由を出す -->
             <button
@@ -195,11 +202,15 @@
               type="button"
               data-testid="fine-tune-editor-recommend"
               :title="recommendTitle"
+              :aria-label="recommendTitle"
               :disabled="pending || busy"
               @click="emit('op', { kind: 'set', rowId: row!.id, boost: recommendation.boost })"
             >
+              <!-- アメブ目標Lv・最小アメブ・再計算と同じ段なので、入らないものから丸ごと省く（途中で切らない）。
+                   省く順は名前 →「アメブ」で、増減の数は残す。そのため右から 数・アメブ・名前 の順に並べる（全文は title） -->
+              <span class="fineTuneEditor__recommendAmount" data-testid="fine-tune-editor-recommend-delta">{{ recommendDelta }}</span>
+              <span class="fineTuneEditor__recommendField">{{ t("calc.fineTune.field.boost") }}</span>
               <span class="fineTuneEditor__recommendLabel">{{ recommendLabel }}</span>
-              <span class="fineTuneEditor__recommendDelta" data-testid="fine-tune-editor-recommend-delta">{{ t("calc.fineTune.field.boost") }}{{ recommendDelta }}</span>
             </button>
           </div>
         </div>
@@ -247,11 +258,21 @@
         </div>
       </template>
 
-      <!-- 行の詳細（名前を押したとき）: 1段目に現在Lv・あとEXP・アメ在庫の欄（直接打つ。タッチ端末はテンキー）、
-           2段目に動かせない理由か「〇〇のLvを上げる」 -->
+      <!-- 行の詳細（名前を押したとき）: 1段目に現在Lv（目標Lv・アメブ目標Lvと同じ形の Lv の欄）・あとEXP・アメ在庫の欄
+           （直接打つ。タッチ端末はテンキー）、2段目に動かせない理由か「〇〇のLvを上げる」 -->
       <template v-else-if="rowProps !== null">
         <div class="fineTuneEditor__line">
           <div class="fineTuneEditor__props">
+            <FineTuneLevelField
+              kind="srcLevel"
+              :label="t('calc.row.srcLevel')"
+              :value="row!.individual.srcLevel.value"
+              :base="row!.individual.srcLevel.base"
+              :min="row!.individual.srcLevel.min"
+              :max="row!.individual.srcLevel.max"
+              :disabled="busy || !row!.individual.editable"
+              @set="emit('op', { kind: 'srcLevelSet', rowId: row!.id, level: $event })"
+            />
             <label
               v-for="prop in rowProps"
               :key="prop.key"
@@ -319,6 +340,7 @@ import type { FineTuneOp, RowExclusion } from "../domain/fine-tune/draft";
 import type { FineTuneRowView } from "../domain/fine-tune/rowView";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { vKeypad } from "../composables/useNumericKeypad";
+import FineTuneLevelField from "./FineTuneLevelField.vue";
 import { showToast } from "../composables/useToast";
 import {
   FINE_TUNE_REASON_TOAST,
@@ -335,7 +357,8 @@ import { sleepTargetOfChoice, type SleepTargetChoice } from "../domain/sleep-tar
 
 /**
  * シンプルの調整バー。表で押した欄（目標Lv・アメブ・アメ）を刻みのボタンと個数欄で、睡眠を選択肢で動かす。
- * 目標Lvは Lvピッカーと同じ形（Lv の欄・スライダー・◀ ▶・Lv の丸いボタン）。アメブには最小アメブ・再計算も置く。
+ * 現在Lv・目標Lv・アメブ目標Lvは同じ形の Lv の欄（`FineTuneLevelField`。直接打つか、計算機と同じ Lvピッカー）。
+ * 目標Lvには ◀ スライダー ▶ と Lv の丸いボタンも置く。アメブにはアメブ目標Lv・最小アメブ・再計算も置く（2段に収める）。
  * 見出しのリセットは、この欄を押してからの変更を取り消す（戻すのは親。`canReset` と `reset`）。
  * 行の詳細（名前を押したとき）では、現在Lv・あとEXP（個体）とアメ在庫（その行の進化系）を直接打って変えられる。
  * 到達・睡眠のあと・足りないもの・動かせない理由と「〇〇のLvを上げる」もここに出す。見出しの名前の横に EXP補正（▲▲▼▼）を出す。
@@ -566,6 +589,7 @@ const boostTools = computed(() => {
             : t("calc.row.boostMinimizeFallbackHint", { count: props.fmt(neededCandy) })
           : null;
   return {
+    level: row.boost.level,
     minimized,
     manual,
     blocked: blockedReason !== null,
@@ -639,7 +663,8 @@ function toggleSleep(which: "stock" | "ticket"): void {
 }
 
 // ===== 行の詳細の欄: 現在Lv・あとEXP・アメ在庫（確定は blur。テンキーは ui_spec §8） =====
-type RowPropKey = "srcLevel" | "exp" | "stock";
+/** 現在Lvは Lv の欄（`FineTuneLevelField`）で動かすので、ここには入れない */
+type RowPropKey = "exp" | "stock";
 
 interface RowProp {
   key: RowPropKey;
@@ -658,22 +683,11 @@ const rowProps = computed<RowProp[] | null>(() => {
   const { row, field } = props;
   if (row === null || field !== "row") return null;
   const rowId = row.id;
-  const { srcLevel, expRemaining, editable } = row.individual;
+  const { expRemaining, editable } = row.individual;
   const inputLabelOf = (label: string) => t("calc.fineTune.inputAria", { field: label, name: row.title });
-  const levelLabel = t("calc.row.srcLevel");
   const expLabel = t("calc.row.expRemaining");
   const stockLabel = t("calc.row.speciesCandy");
   return [
-    {
-      key: "srcLevel",
-      label: levelLabel,
-      inputLabel: inputLabelOf(levelLabel),
-      value: srcLevel.value,
-      base: srcLevel.base,
-      disabled: !editable,
-      maxLength: 2,
-      op: (level) => ({ kind: "srcLevelSet", rowId, level }),
-    },
     {
       key: "exp",
       label: expLabel,

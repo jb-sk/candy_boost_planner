@@ -26,13 +26,14 @@ function makeRow(id: string): CalcRow {
 
 const deps: FineTuneDeps = {
   evaluateRows(rowList): EvaluatedRows {
-    const byId = new Map<string, { effectiveBoost: number; fullBoost: number; candyNeed: number; stockCandyAvailable: number | undefined; minimizeShortCandy: boolean; minimizeNeededCandy: number | undefined }>();
+    const byId: EvaluatedRows["byId"] = new Map();
     for (const r of rowList) {
-      byId.set(r.id, { effectiveBoost: r.boostOrExpAdjustment ?? 0, fullBoost: 100, candyNeed: r.candyTarget ?? 80, stockCandyAvailable: undefined, minimizeShortCandy: false, minimizeNeededCandy: undefined });
+      byId.set(r.id, { effectiveBoost: r.boostOrExpAdjustment ?? 0, boostReachLevel: r.dstLevel, boostReachLevelMax: 70, boostInputDisabled: false, fullBoost: 100, candyNeed: r.candyTarget ?? 80, stockCandyAvailable: undefined, minimizeShortCandy: false, minimizeNeededCandy: undefined });
     }
     return { byId, plannerInput: null };
   },
   withExplicitBoost: (row, n) => ({ ...row, boostOrExpAdjustment: n }),
+  withBoostReachLevel: (row, lv) => ({ ...row, boostReachLevel: lv, boostOrExpAdjustment: undefined }),
   withTargetLevel: (row, lv) => ({ ...row, dstLevel: lv }),
   withCandyTarget: (row, m) => ({ ...row, candyTarget: m }),
   maxCandyTargetFor: () => 500,

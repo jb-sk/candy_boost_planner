@@ -80,6 +80,10 @@ export interface FineTuneRowView {
     /** shortCandy の行が目標へ届くのに要るアメの数（全部アメブで上げたとき）。分からなければ null */
     neededCandy: number | null;
     manual: boolean;
+    /**
+     * アメブ目標Lv（計算機の欄と同じ値）。range は現在Lv〜上限、disabled は睡眠EXPだけで目標に届き、アメブを使えない行
+     */
+    level: Change<number> & { range: OpRange; disabled: boolean };
   }) | null;
   /** 使えたアメ（最新の結果） */
   candy: Change<number | null>;
@@ -246,6 +250,12 @@ export function buildRowViews(input: RowViewInput): FineTuneRowView[] {
           shortCandy: item.minimizeShortCandy,
           neededCandy: item.minimizeNeededCandy ?? null,
           manual: row.boostOrExpAdjustment !== undefined,
+          level: {
+            base: baseItem.boostReachLevel,
+            value: item.boostReachLevel,
+            range: opRange(base, state, evaluated, { kind: "boostLevel", rowId: id }),
+            disabled: item.boostInputDisabled,
+          },
         }
         : null,
       candy: {

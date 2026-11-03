@@ -49,6 +49,7 @@ function depsOf(store: CalcStore): FineTuneDeps {
     speciesCandyFamilyOf: store.speciesCandyFamilyOf,
     speciesCandyStockOf: store.speciesCandyStockOf,
     withExplicitBoost: store.withExplicitBoost,
+    withBoostReachLevel: store.withBoostReachLevel,
     withTargetLevel: store.withTargetLevel,
     withCandyTarget: store.withCandyTarget,
     maxCandyTargetFor: store.maxCandyTargetFor,
@@ -206,6 +207,26 @@ describe("reduceFineTune: 本物のストアを deps に渡す", () => {
     store.resetRowBoostCandy(a);
     expect(rowOf(reset.rows, a)).toEqual(rowOf(store.rows.value, a));
     expect(rowOf(reset.rows, a).boostOrExpAdjustment).toBeUndefined();
+  });
+
+  it("アメブ目標Lvは計算機の setBoostLevel と同じ行になり、評価したアメブ目標Lvも計算機の欄と同じ", () => {
+    const store = newStore(100_000);
+    const a = add(store, "a", 25, 10, 50);
+    store.onRowBoostCandy(a, "40");
+    const s = session(store);
+    for (const level of [30, 55]) {
+      const draft = s.ok(s.initial, { kind: "boostLevelSet", rowId: a, level });
+      const before = rowOf(store.rows.value, a);
+      store.setBoostLevel(a, level);
+      expect(rowOf(draft.rows, a)).toEqual(rowOf(store.rows.value, a));
+      const evaluated = s.deps.evaluateRows(draft.rows).byId.get(a)!;
+      const view = store.rowsView.value.find((r) => r.id === a)!;
+      expect(evaluated.boostReachLevel).toBe(view.ui.boostReachLevel);
+      expect(evaluated.boostReachLevel).toBe(level);
+      expect(evaluated.effectiveBoost).toBe(view.ui.boostCandyInput);
+      // 次の Lv の確かめのため、計算機を元の行へ戻す
+      store.replaceRows(store.rows.value.map((r) => (r.id === a ? before : r)), "test", store.rows.value);
+    }
   });
 
   it("move は在庫のみの行の保存値が上限を超えても拒否されず、実効アメブが在庫で抑えられる。上の行が在庫を先に取ると全アメブ点が下がる", () => {

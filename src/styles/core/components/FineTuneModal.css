@@ -671,33 +671,85 @@ button.fineTuneRow__cell {
   opacity: 1;
 }
 
-/* 目標Lv: Lv の欄・◀ スライダー ▶ と、Lv の丸いボタン（1段に9個） */
-.fineTuneEditor__levelRow {
-  display: grid;
-  grid-template-columns: 76px 44px minmax(0, 1fr) 44px;
-  align-items: center;
-  gap: 6px;
-}
-
-.fineTuneEditor__levelInput {
+/*
+ * Lv の欄（現在Lv・目標Lv・アメブ目標Lv。`FineTuneLevelField`）。3つとも同じ形にする。
+ * 枠の左上に欄の名前、その下に Lv（直接打てる）、右端に Lvピッカーを開く ▾。枠は行の詳細のほかの欄（あとEXP・アメ在庫）と同じ。
+ * 枠は Lvピッカーの入力欄そのものにする（ピッカーの吹き出しは入力欄の位置で出るので、欄と吹き出しがずれない）。
+ */
+.fineTuneLevelField {
   position: relative;
-  display: block;
   min-width: 0;
+  height: var(--ft-line-h);
 }
 
-.fineTuneEditor__levelPrefix {
+.fineTuneLevelField__label {
   position: absolute;
-  top: 50%;
+  z-index: 1;
+  top: 5px;
   left: 9px;
-  transform: translateY(-50%);
-  font-size: 11px;
+  right: 8px;
+  font-size: 10px;
   font-weight: 800;
+  line-height: 1.2;
   color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   pointer-events: none;
 }
 
-.fineTuneEditor__input--level.field__input {
-  padding-left: 22px;
+.fineTuneLevelField__pick.levelPick {
+  height: 100%;
+}
+
+.fineTuneLevelField .levelPick .field__input.levelPick__input {
+  -webkit-appearance: textfield;
+  -moz-appearance: textfield;
+  appearance: textfield;
+  height: 100%;
+  padding: 15px 30px 0 9px;
+  border: 1.5px solid var(--ft-control-border);
+  border-radius: var(--radius-md);
+  background: var(--input-bg);
+  color: var(--ink);
+  /* 16px 未満だと iOS が入力時に拡大する */
+  font-size: 16px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  box-shadow: none;
+}
+
+.fineTuneLevelField .levelPick__input::-webkit-inner-spin-button,
+.fineTuneLevelField .levelPick__input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.fineTuneLevelField .levelPick .field__input.levelPick__input:focus {
+  border-color: var(--accent);
+}
+
+.fineTuneLevelField--changed .levelPick .field__input.levelPick__input {
+  border-color: rgba(var(--accent-rgb), 0.7);
+  background: var(--ft-tint);
+  color: var(--accent-strong);
+}
+
+.fineTuneLevelField--disabled {
+  opacity: 0.45;
+}
+
+.fineTuneLevelField--disabled .levelPick .field__input.levelPick__input:disabled {
+  color: var(--muted);
+  opacity: 1;
+}
+
+/* 目標Lv: Lv の欄・◀ スライダー ▶ と、Lv の丸いボタン（1段に9個） */
+.fineTuneEditor__levelRow {
+  display: grid;
+  grid-template-columns: 104px 44px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 6px;
 }
 
 .fineTuneEditor__levelStep {
@@ -796,10 +848,20 @@ button.fineTuneRow__cell {
   gap: 6px;
 }
 
+/*
+ * アメブ目標Lv（最小アメブ・再計算・「〇〇のLvを上げる」と同じ段。目標Lvの欄と同じ幅）。
+ * 「〇〇のLvを上げる」のほうがずっと縮みやすい比にしてあるので、あちらが増減の数だけになっても入らないとき
+ * （とても狭い幅の英語）だけ、こちらが縮む
+ */
+.fineTuneEditor__boostLevel.fineTuneLevelField {
+  flex: 0 1 104px;
+  min-width: 84px;
+}
+
 .fineTuneEditor__tool {
   flex-shrink: 0;
   height: 34px;
-  padding: 0 12px;
+  padding: 0 10px;
   border: 1px solid var(--ft-control-border);
   border-radius: var(--radius-pill);
   background: var(--paper);
@@ -838,13 +900,39 @@ button.fineTuneRow__cell {
 }
 
 /* アメブの段に並べるときは、残りの幅に収め、名前を省く */
+/*
+ * アメブ目標Lv・最小アメブ・再計算と同じ段。入りきらないときは、文字を途中で切らずに丸ごと省く。
+ * 右から 数・「アメブ」・名前 の順に置いて折り返させ、2段目以降を隠す（入らないものほど後ろにあるので、名前 →「アメブ」の順に消え、数は残る）
+ */
 .fineTuneEditor__recommend--inline {
-  flex: 1 1 auto;
+  flex: 1 50 auto;
+  flex-direction: row-reverse;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-content: flex-start;
+  gap: 0;
   width: auto;
+  /* 増減の数（「−1,200」まで）は残す */
+  min-width: 56px;
   height: 34px;
   padding: 0 10px;
+  overflow: hidden;
   border-radius: var(--radius-pill);
   font-size: 12px;
+}
+
+.fineTuneEditor__recommend--inline > span {
+  flex-shrink: 0;
+  /* 1段の高さを枠の内側いっぱいにして、折り返したものを枠の外（下）へ出す */
+  line-height: 32px;
+}
+
+.fineTuneEditor__recommend--inline .fineTuneEditor__recommendLabel {
+  margin-right: 6px;
+}
+
+.fineTuneEditor__recommendAmount {
+  font-variant-numeric: tabular-nums;
 }
 
 .fineTuneEditor__recommendLabel {
@@ -973,8 +1061,25 @@ button.fineTuneRow__cell {
   }
 }
 
-/* とても狭い幅では、おひるね島を「島」と縮める */
+/* とても狭い幅では、おひるね島を「島」と縮める。アメブの1段目（アメブ目標Lv・最小アメブ・再計算・「〇〇のLvを上げる」）も詰める */
 @media (max-width: 359px) {
+  .fineTuneEditor__tools {
+    gap: 4px;
+  }
+
+  .fineTuneEditor__tool {
+    padding: 0 8px;
+  }
+
+  .fineTuneEditor__recommend--inline {
+    padding: 0 8px;
+  }
+
+  .fineTuneEditor__boostLevel.fineTuneLevelField {
+    flex-basis: 96px;
+    min-width: 64px;
+  }
+
   .fineTuneEditor__optionLabel--full {
     display: none;
   }
@@ -1069,6 +1174,14 @@ button.fineTuneRow__cell {
 .fineTuneModal__apply {
   flex-shrink: 0;
   min-width: 64px;
+}
+
+/* 何も変えていない（・全体のLvを伸ばしている）間は押せない。押せないと分かるよう薄くする */
+.fineTuneModal__footer .fineTuneModal__apply.btn:disabled,
+.fineTuneModal__footer .fineTuneModal__apply.btn:disabled:hover {
+  opacity: 0.45;
+  box-shadow: none;
+  cursor: default;
 }
 
 /* ===== 680px 以上は列・文字・押す部品を大きくする ===== */
@@ -1294,7 +1407,7 @@ button.fineTuneRow__cell {
   }
 
   .fineTuneEditor__levelRow {
-    grid-template-columns: 96px 56px minmax(0, 1fr) 56px;
+    grid-template-columns: 180px 56px minmax(0, 1fr) 56px;
     gap: 8px;
   }
 
@@ -1302,13 +1415,23 @@ button.fineTuneRow__cell {
     height: 52px;
   }
 
-  .fineTuneEditor__levelPrefix {
-    left: 12px;
+  /* Lv の欄は、行の詳細のほかの欄と同じく名前を左・数字を右に1段で並べる */
+  .fineTuneLevelField__label {
+    top: 50%;
+    left: 14px;
+    right: auto;
+    transform: translateY(-50%);
     font-size: 13px;
   }
 
-  .fineTuneEditor__input--level.field__input {
-    padding-left: 28px;
+  .fineTuneLevelField .levelPick .field__input.levelPick__input {
+    padding: 0 34px 0 14px;
+    font-size: 20px;
+    text-align: right;
+  }
+
+  .fineTuneEditor__boostLevel.fineTuneLevelField {
+    flex-basis: 180px;
   }
 
   .fineTuneEditor__levelStep {
@@ -1370,6 +1493,10 @@ button.fineTuneRow__cell {
   .fineTuneEditor__recommend--inline {
     height: 40px;
     font-size: 14px;
+  }
+
+  .fineTuneEditor__recommend--inline > span {
+    line-height: 38px;
   }
 
   .fineTuneEditor__recommendNote {

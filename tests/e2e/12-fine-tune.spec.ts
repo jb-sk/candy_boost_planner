@@ -187,7 +187,7 @@ test.describe('12-fine-tune（PC）', () => {
     await expect(calc.getRowBoostCandyInput(calc.getRow(1))).toHaveValue(hitokageBefore);
   });
 
-  test('目標Lv: Lvピッカーと同じ形（Lv の欄・◀ ▶・スライダー・Lv の丸いボタン）で動かした目標Lvが計算機へ移る。全員届いていれば「〇〇のLvを上げる」は出ない', async ({ page }) => {
+  test('目標Lv: Lv の欄（Lvピッカー）・◀ ▶・スライダー・Lv の丸いボタンで動かした目標Lvが計算機へ移る。全員届いていれば「〇〇のLvを上げる」は出ない', async ({ page }) => {
     const { calc, fineTune } = await setupScenario(page, ALL_REACHED);
     await fineTune.open();
     await fineTune.waitForSettled();
@@ -206,14 +206,23 @@ test.describe('12-fine-tune（PC）', () => {
     await fineTune.levelChip(50).click();
     expect(await fineTune.targetLevel(pikachu)).toBe(50);
     await expect(fineTune.levelChip(50)).toHaveClass(/levelChip--on/);
-    await expect(fineTune.editorInput).toHaveValue('50');
+    await expect(fineTune.levelInput('target')).toHaveValue('50');
     // Lv の欄に直接打つ（Enter で確定）。範囲の外は端に収まる
-    await fineTune.typeValue(52);
+    await fineTune.typeLevel('target', 52);
     expect(await fineTune.targetLevel(pikachu)).toBe(52);
     await expect(fineTune.editorChange).toHaveText('40 → 52');
-    await fineTune.typeValue(99);
+    await fineTune.typeLevel('target', 99);
     expect(await fineTune.targetLevel(pikachu)).toBe(70);
-    await expect(fineTune.editorInput).toHaveValue('70');
+    await expect(fineTune.levelInput('target')).toHaveValue('70');
+    // ▾ で計算機と同じ Lvピッカーが開き、選んだ Lv が目標Lvになる
+    await fineTune.levelField('target').getByTestId('level-picker-chevron').click();
+    const picker = fineTune.levelField('target').getByTestId('level-picker-popover');
+    await expect(picker).toBeVisible();
+    await picker.locator('.levelChip', { hasText: /^\s*60\s*$/ }).click();
+    expect(await fineTune.targetLevel(pikachu)).toBe(60);
+    // ▾ をもう一度押すと閉じる（Escape は調整バーの選択を外すので使わない）
+    await fineTune.levelField('target').getByTestId('level-picker-chevron').click();
+    await expect(picker).toBeHidden();
     // 現在Lv（10）は下の端。◀ は押せない
     await fineTune.levelChip(10).click();
     expect(await fineTune.targetLevel(pikachu)).toBe(10);
@@ -453,6 +462,71 @@ test.describe('12-fine-tune（PC）', () => {
     await expect(fineTune.minimizeButton).toHaveAttribute('aria-pressed', 'true');
   });
 
+  test('アメブ: アメブ目標Lv（現在Lv・目標Lvと同じ形の Lv の欄）を選ぶとアメブがそのLvまでの数になり、適用で計算機のアメブ目標Lvへ移る。何も変えていない間は OK が押せない', async ({ page }) => {
+    const { calc, fineTune } = await setupScenario(page, ALL_REACHED);
+    await fineTune.open();
+    await fineTune.waitForSettled();
+    // 何も変えていない間は OK を押せず、薄く出す
+    await expect(fineTune.applyButton).toHaveText('OK');
+    await expect(fineTune.applyButton).toBeDisabled();
+    expect(Number(await fineTune.applyButton.evaluate((el) => getComputedStyle(el).opacity))).toBeLessThan(1);
+
+    const pikachu = fineTune.rowByName('ピカチュウ');
+    const auto = await fineTune.boostValue(pikachu);
+    await fineTune.select(pikachu, 'boost');
+    // アメブ目標Lvは目標Lv（40）まで。3つの Lv の欄は同じ形（高さがそろう）
+    await expect(fineTune.levelInput('boostLevel')).toHaveValue('40');
+    const boostLevelBox = (await fineTune.levelField('boostLevel').boundingBox())!;
+
+    // 手でアメブを減らしてから、アメブ目標Lvで 30 を選ぶ。個数は自動に戻り、Lv30 までの数になる
+    await fineTune.step(-10);
+    await expect(fineTune.boostResetButton).toBeEnabled();
+    // 手で入れた個数が届くLv
+    const manualLevel = await fineTune.levelInput('boostLevel').inputValue();
+    await fineTune.typeLevel('boostLevel', 30);
+    await expect(fineTune.levelInput('boostLevel')).toHaveValue('30');
+    const toLv30 = await fineTune.boostValue(pikachu);
+    expect(toLv30).toBeGreaterThan(0);
+    expect(toLv30).toBeLessThan(auto - 10);
+    await expect(fineTune.boostResetButton).toBeDisabled();
+    await expect(fineTune.applyButton).toBeEnabled();
+    expect(Number(await fineTune.applyButton.evaluate((el) => getComputedStyle(el).opacity))).toBe(1);
+    // ▾ の Lvピッカーでも選べる
+    await fineTune.levelField('boostLevel').getByTestId('level-picker-chevron').click();
+    const picker = fineTune.levelField('boostLevel').getByTestId('level-picker-popover');
+    await expect(picker).toBeVisible();
+    await picker.locator('.levelChip', { hasText: /^\s*25\s*$/ }).click();
+    await expect(fineTune.levelInput('boostLevel')).toHaveValue('25');
+    expect(await fineTune.boostValue(pikachu)).toBeLessThan(toLv30);
+    await fineTune.levelField('boostLevel').getByTestId('level-picker-chevron').click();
+    await expect(picker).toBeHidden();
+    await fineTune.typeLevel('boostLevel', 30);
+    expect(await fineTune.boostValue(pikachu)).toBe(toLv30);
+    // 目標Lvより上は目標Lvも上がる（計算機と同じ）
+    await fineTune.typeLevel('boostLevel', 45);
+    expect(await fineTune.targetLevel(pikachu)).toBe(45);
+    // 続けて動かしたアメブ目標Lvは、元に戻す1回で動かす前（手で入れた個数）へ戻る（アメブの個数・目標Lvと同じまとめ方）
+    await fineTune.undoButton.click();
+    expect(await fineTune.targetLevel(pikachu)).toBe(40);
+    await expect(fineTune.levelInput('boostLevel')).toHaveValue(manualLevel);
+    expect(await fineTune.boostValue(pikachu)).toBe(auto - 10);
+    await fineTune.typeLevel('boostLevel', 30);
+    expect(await fineTune.boostValue(pikachu)).toBe(toLv30);
+
+    // 目標Lv・現在Lvの Lv の欄も同じ高さ
+    await fineTune.select(pikachu, 'target');
+    expect((await fineTune.levelField('target').boundingBox())!.height).toBeCloseTo(boostLevelBox.height, 0);
+    await fineTune.select(pikachu, 'row');
+    expect((await fineTune.levelField('srcLevel').boundingBox())!.height).toBeCloseTo(boostLevelBox.height, 0);
+
+    await fineTune.waitForSettled();
+    await fineTune.apply();
+    await expect(calc.getRowBoostReachLevelInput(calc.getRow(0))).toHaveValue('30');
+    // 計算機のアメブ目標Lvピッカーと同じく、アメブ個数は自動（欄は空で、薄く出る数が Lv30 までの数）
+    await expect(calc.getRowBoostCandyInput(calc.getRow(0))).toHaveValue('');
+    await expect(calc.getRowBoostCandyInput(calc.getRow(0))).toHaveAttribute('placeholder', String(toLv30));
+  });
+
   test('アメブ: アメが足りず最小アメブにしても届かない行は、最小アメブが押せない見た目になり、押すと要るアメの数を知らせる。在庫の足りる行は押せる', async ({ page }) => {
     const { fineTune } = await setupScenario(page, GIVE_AND_RECEIVE);
     await fineTune.open();
@@ -488,7 +562,7 @@ test.describe('12-fine-tune（PC）', () => {
 
     await fineTune.select(fushigi, 'row');
     await expect(fineTune.editor.getByTestId('fine-tune-editor-nature')).toHaveText('▲▲');
-    await expect(fineTune.rowProp('srcLevel')).toHaveValue('10');
+    await expect(fineTune.levelInput('srcLevel')).toHaveValue('10');
     await expect(fineTune.rowProp('stock')).toHaveValue('100');
 
     // アメ在庫を増やすと、アメが足りなかったフシギダネが伸びる
@@ -499,8 +573,8 @@ test.describe('12-fine-tune（PC）', () => {
     await expect(fineTune.resetEditButton).toBeEnabled();
 
     // 現在Lvを上げると、あとEXPは「次Lvまで全部」に戻る。あとEXPも打てる
-    await fineTune.typeRowProp('srcLevel', 15);
-    await expect(fineTune.rowProp('srcLevel')).toHaveValue('15');
+    await fineTune.typeLevel('srcLevel', 15);
+    await expect(fineTune.levelInput('srcLevel')).toHaveValue('15');
     const toNext = Number(await fineTune.rowProp('exp').inputValue());
     expect(toNext).toBeGreaterThan(100);
     await fineTune.typeRowProp('exp', 100);
@@ -513,11 +587,11 @@ test.describe('12-fine-tune（PC）', () => {
 
     // リセットで、名前を押す前（在庫も）へ戻り、もう一度入れ直せる
     await fineTune.resetEditButton.click();
-    await expect(fineTune.rowProp('srcLevel')).toHaveValue('10');
+    await expect(fineTune.levelInput('srcLevel')).toHaveValue('10');
     await expect(fineTune.rowProp('stock')).toHaveValue('100');
     await expect(fineTune.applyButton).toBeDisabled();
     await fineTune.typeRowProp('stock', 5000);
-    await fineTune.typeRowProp('srcLevel', 15);
+    await fineTune.typeLevel('srcLevel', 15);
     await fineTune.typeRowProp('exp', 100);
     await fineTune.waitForSettled();
 
@@ -890,8 +964,8 @@ test.describe('12-fine-tune（スマホ幅）', () => {
     // 目標Lvは Lv の欄を押すとテンキーが出て、打った Lv になる（OS のキーボードは出さない）
     const eevee = fineTune.rowByName('イーブイ');
     await fineTune.select(eevee, 'target');
-    await expect(fineTune.editorInput).toHaveAttribute('readonly', '');
-    await fineTune.editorInput.tap();
+    await expect(fineTune.levelInput('target')).toHaveAttribute('readonly', '');
+    await fineTune.levelInput('target').tap();
     const keypad = page.getByTestId('numeric-keypad');
     await expect(keypad).toBeVisible();
     for (const key of ['4', '5']) await page.getByTestId(`numeric-keypad-key-${key}`).tap();

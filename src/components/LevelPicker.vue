@@ -52,6 +52,12 @@ const props = defineProps<{
    * 上限のLvでは表しきれない値を親が持っている欄で使う（計算機のアメブ目標Lv: `T'` の端数までアメブ）。
    */
   canExceedMax?: boolean;
+  /**
+   * 吹き出しを収める枠（`closest` で引く CSS セレクタ）。省略時は画面（viewport）。
+   * はみ出しを切る枠（overflow: hidden のモーダルなど）の中で使うときに渡す。画面とその枠の重なりに収め、
+   * 下に入らなければ上へ出す（シンプルの操作パネル: モーダルの下端で切れないようにする）。
+   */
+  boundary?: string;
 }>();
 
 const emit = defineEmits<{
@@ -110,20 +116,28 @@ function adjustPopoverPosition() {
   const triggerRect = root.value.getBoundingClientRect();
   const popW = popover.offsetWidth;
   const popH = popover.offsetHeight;
-  const vpW = window.innerWidth;
-  const vpH = window.innerHeight;
+  // 収める枠。既定は画面。`boundary` があれば、その枠と画面の重なり
+  const frame = { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
+  const boundaryEl = props.boundary ? root.value.closest(props.boundary) : null;
+  if (boundaryEl) {
+    const rect = boundaryEl.getBoundingClientRect();
+    frame.left = Math.max(frame.left, rect.left);
+    frame.top = Math.max(frame.top, rect.top);
+    frame.right = Math.min(frame.right, rect.right);
+    frame.bottom = Math.min(frame.bottom, rect.bottom);
+  }
 
   // --- 水平位置 ---
   // Default: right-align to trigger (same as CSS right:0)
   let left = triggerRect.right - popW;
 
   // Clamp: don't overflow left edge
-  if (left < EDGE_GAP) {
-    left = EDGE_GAP;
+  if (left < frame.left + EDGE_GAP) {
+    left = frame.left + EDGE_GAP;
   }
   // Clamp: don't overflow right edge
-  if (left + popW > vpW - EDGE_GAP) {
-    left = vpW - EDGE_GAP - popW;
+  if (left + popW > frame.right - EDGE_GAP) {
+    left = frame.right - EDGE_GAP - popW;
   }
 
   // Convert to offset from the trigger's left edge (since parent is position:relative)
@@ -134,8 +148,8 @@ function adjustPopoverPosition() {
   // ただし position: fixed（legacy <=560px のセンタリング）時はスキップ。
   const isFixed = getComputedStyle(popover).position === "fixed";
   const gapPx = 6;
-  const overflowsBottom = triggerRect.bottom + gapPx + popH > vpH - EDGE_GAP;
-  const fitsAbove = triggerRect.top - gapPx - popH > EDGE_GAP;
+  const overflowsBottom = triggerRect.bottom + gapPx + popH > frame.bottom - EDGE_GAP;
+  const fitsAbove = triggerRect.top - gapPx - popH > frame.top + EDGE_GAP;
 
   if (!isFixed && overflowsBottom && fitsAbove) {
     popoverStyle.value = { left: `${offsetLeft}px`, right: "auto", top: "auto", bottom: `calc(100% + ${gapPx}px)` };

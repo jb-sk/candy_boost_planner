@@ -205,7 +205,7 @@ export class FineTuneModalPage {
     return this.editor.locator(`[data-testid="fine-tune-editor-step"][data-delta="${delta}"]`);
   }
 
-  /** 調整バーの個数欄（目標Lvは Lv の欄）に打って Enter で確定する（PC幅。スマホはテンキーの読み取り専用欄）。 */
+  /** 調整バーの個数欄（アメブ・アメ）に打って Enter で確定する（PC幅。スマホはテンキーの読み取り専用欄）。Lv は `typeLevel`。 */
   async typeValue(value: number): Promise<void> {
     await this.editorInput.fill(String(value));
     await this.editorInput.press('Enter');
@@ -216,15 +216,31 @@ export class FineTuneModalPage {
     return this.editor.getByTestId('fine-tune-editor-reset');
   }
 
-  /** 行の詳細（名前を押したとき）の欄: 現在Lv・あとEXP・アメ在庫 */
-  rowProp(key: 'srcLevel' | 'exp' | 'stock'): Locator {
+  /** 行の詳細（名前を押したとき）の欄: あとEXP・アメ在庫（現在Lvは Lv の欄。`levelInput('srcLevel')`） */
+  rowProp(key: 'exp' | 'stock'): Locator {
     return this.editor.locator(`[data-testid="fine-tune-editor-prop"][data-prop="${key}"]`);
   }
 
   /** 行の詳細の欄に打って Enter で確定する（PC幅） */
-  async typeRowProp(key: 'srcLevel' | 'exp' | 'stock', value: number): Promise<void> {
+  async typeRowProp(key: 'exp' | 'stock', value: number): Promise<void> {
     await this.rowProp(key).fill(String(value));
     await this.rowProp(key).press('Enter');
+  }
+
+  /** Lv の欄（現在Lv・目標Lv・アメブ目標Lv。3つとも同じ形で、計算機と同じ Lvピッカーを開ける） */
+  levelField(kind: 'srcLevel' | 'target' | 'boostLevel'): Locator {
+    return this.editor.locator(`[data-testid="fine-tune-editor-level-field"][data-level-field="${kind}"]`);
+  }
+
+  /** Lv の欄の入力欄（直接打てる。スマホはテンキーの読み取り専用欄） */
+  levelInput(kind: 'srcLevel' | 'target' | 'boostLevel'): Locator {
+    return this.levelField(kind).getByTestId('level-picker-trigger');
+  }
+
+  /** Lv の欄に打って Enter で確定する（PC幅） */
+  async typeLevel(kind: 'srcLevel' | 'target' | 'boostLevel', value: number): Promise<void> {
+    await this.levelInput(kind).fill(String(value));
+    await this.levelInput(kind).press('Enter');
   }
 
   /** 目標Lv: スライダーで Lv を入れる */

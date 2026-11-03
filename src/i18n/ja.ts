@@ -221,7 +221,7 @@ export const ja = {
       raiseUnchangedBoost: "アメブ枠が足りないため、これ以上は伸ばせません",
       raiseFailed: "計算に失敗しました。もう一度押してください",
       cancel: "キャンセル",
-      apply: "適用",
+      apply: "OK",
       discardQuestion: "変更を破棄して閉じますか？",
       discardNote: "適用していない変更は計算機に反映されません。",
       discardConfirm: "破棄して閉じる",

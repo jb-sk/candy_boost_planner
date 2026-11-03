@@ -1,7 +1,7 @@
 /**
  * シンプルの下書き。
  * 下書きは行一覧そのもの。各 op は今の下書きの行に計算機と同じ関数を当てて、その行だけを差し替える。
- * 動かせるのは目標Lv・アメブ（最小アメブ・リセットを含む）・アメの数・睡眠目標・順番と、
+ * 動かせるのは目標Lv・アメブ（アメブ目標Lv・最小アメブ・リセットを含む）・アメの数・睡眠目標・順番と、
  * 行の詳細で現在Lv・あとEXP（行の個体）・種族アメの在庫（進化系ごと。下書きの間は `speciesCandy` に持ち、評価のときだけ使う）。
  * 「全体のLvを伸ばす」は、まとめて求めた行一覧を1つの op で入れる。
  * アメの数を変えた行は個数指定の行になるので、目標Lv・アメブは動かせない（元の数に戻すと元の行に戻り、動かせる）。
@@ -55,6 +55,8 @@ export const SPECIES_CANDY_MAX = 9_999_999;
 export type FineTuneOp =
   | { kind: "step"; rowId: string; by: number }
   | { kind: "set"; rowId: string; boost: number }
+  /** アメブ目標Lv（計算機のアメブ目標Lvピッカーと同じ。個数は自動へ戻し、そのLvまでをアメブで賄う） */
+  | { kind: "boostLevelSet"; rowId: string; level: number }
   | { kind: "targetStep"; rowId: string; by: number }
   | { kind: "targetSet"; rowId: string; level: number }
   | { kind: "move"; rowId: string; toIndex: number }
@@ -95,6 +97,8 @@ export interface FineTuneDeps {
   /** 進化系の種族アメの在庫（開いた時点の、ストアの値） */
   speciesCandyStockOf(familyKey: string): number;
   withExplicitBoost(row: CalcRow, n: number, options?: { preserveTargetForExplicitBoost?: boolean }): CalcRow;
+  /** アメブ目標Lvピッカーで lv を選んだときと同じ行（上限・睡眠での無効化は reducer が `evaluateRows` の値で見る） */
+  withBoostReachLevel(row: CalcRow, lv: number): CalcRow;
   withTargetLevel(row: CalcRow, lv: number, rowList: readonly CalcRow[]): CalcRow;
   withCandyTarget(row: CalcRow, m: number): CalcRow;
   /** 個数指定の上限（計算機と同じ。`withCandyTarget` もこの数で抑える） */
@@ -120,6 +124,8 @@ export type RejectReason =
   | "invalidValue"
   /** 対象外の行に目標Lv・アメブの操作 */
   | "excluded"
+  /** 睡眠EXPだけで目標に届き、アメブを使えない行のアメブ目標Lv（計算機でもピッカーを無効にしている） */
+  | "boostLevelLocked"
   /** アメの数を変えられない行（睡眠目標モード・Lv上限・ポケモンが不明・アメを使わない行） */
   | "candyLocked"
   /** 最小アメブにできない行（全体の設定で最小化している・在庫の種族が無い・アメが足りず届かない） */
@@ -136,6 +142,7 @@ export type RowExclusion = "candyTarget" | "noCandy" | "sleepOnly" | "maxLevel" 
 
 export type OpRangeTarget =
   | { kind: "boost"; rowId: string }
+  | { kind: "boostLevel"; rowId: string }
   | { kind: "target"; rowId: string }
   | { kind: "candy"; rowId: string };
 
@@ -249,6 +256,7 @@ export function candyValueOf(
 /**
  * 数値の op が動ける範囲。評価は渡された `evaluated`（今の下書きを評価した値）の1回だけで、ほかの行は見ない。
  * - boost: 0〜min(全アメブ点, 今の値 + max(0, 残り枠))。今の値が全アメブ点を超えているときは増やせない（max = 今の値）。
+ * - boostLevel: 現在Lv〜アメブ目標Lvの上限（計算機のピッカーと同じ `boostReachLevelMax`）。行の実効アメブと同じく、残り枠では抑えない。
  * - target: 現在Lv〜MAX_LEVEL。
  * - candy: 0〜個数指定の上限（計算機と同じ。Lv70 に届く数）。記録のある行は、変える前の行（アメブを固定した行）で求める。
  * 行が見つからないときは { min: 0, max: 0 }。
@@ -268,6 +276,12 @@ export function opRange(
   if (target.kind === "target") {
     const row = state.rows.find((r) => r.id === target.rowId);
     return row === undefined ? { min: 0, max: 0 } : { min: row.srcLevel, max: MAX_LEVEL };
+  }
+  if (target.kind === "boostLevel") {
+    const row = state.rows.find((r) => r.id === target.rowId);
+    const item = evaluated.byId.get(target.rowId);
+    if (row === undefined || item === undefined) return { min: 0, max: 0 };
+    return { min: row.srcLevel, max: Math.max(row.srcLevel, item.boostReachLevelMax) };
   }
   const item = evaluated.byId.get(target.rowId);
   if (item === undefined) return { min: 0, max: 0 };
@@ -335,6 +349,8 @@ export function coalesceKeyOf(op: FineTuneOp): string | undefined {
     case "step":
     case "set":
       return `boost:${op.rowId}`;
+    case "boostLevelSet":
+      return `boostLevel:${op.rowId}`;
     case "targetStep":
     case "targetSet":
       return `target:${op.rowId}`;
@@ -399,6 +415,18 @@ export function reduceFineTune(
       return advanced(state, {
         rows: replaceRowAt(state.rows, index, deps.withExplicitBoost(row, next, { preserveTargetForExplicitBoost: true })),
       });
+    }
+    case "boostLevelSet": {
+      if (rowExclusion(row, evaluated) !== null) return { rejected: "excluded" };
+      const item = evaluated.byId.get(row.id);
+      if (item === undefined || item.boostInputDisabled) return { rejected: "boostLevelLocked" };
+      if (!Number.isFinite(op.level)) return { rejected: "invalidValue" };
+      const lv = clampToRange(op.level, opRange(base, state, evaluated, { kind: "boostLevel", rowId: row.id }));
+      // 今のアメブ目標Lvと同じなら変えない（個数を手で入れた行も、そのLvを選び直しただけでは自動に戻さない）
+      if (lv === item.boostReachLevel) return { state };
+      const next = deps.withBoostReachLevel(row, lv);
+      if (next === row) return { state };
+      return advanced(state, { rows: replaceRowAt(state.rows, index, next) });
     }
     case "targetStep":
     case "targetSet": {

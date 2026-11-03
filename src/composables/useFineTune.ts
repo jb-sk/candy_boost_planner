@@ -78,6 +78,7 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     speciesCandyFamilyOf: calc.speciesCandyFamilyOf,
     speciesCandyStockOf: calc.speciesCandyStockOf,
     withExplicitBoost: calc.withExplicitBoost,
+    withBoostReachLevel: calc.withBoostReachLevel,
     withTargetLevel: calc.withTargetLevel,
     withCandyTarget: calc.withCandyTarget,
     maxCandyTargetFor: calc.maxCandyTargetFor,
