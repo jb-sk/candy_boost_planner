@@ -61,7 +61,7 @@ export type FineTuneOp =
   /** アメブ個数をリセット（自動の値へ戻し、残枠から配り直す） */
   | { kind: "boostReset"; rowId: string }
   /**
-   * 調整バーのキャンセル。その行（とアメの数の記録）を、調整バーで編集を始める前の値へ戻す。
+   * 調整バーのリセット。その行（とアメの数の記録）を、調整バーで編集を始める前の値へ戻す。
    * ほかの行・順番は戻さない。
    */
   | { kind: "revertRow"; rowId: string; row: CalcRow; candyRecord: CandyRecord | undefined }

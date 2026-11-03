@@ -211,9 +211,9 @@ export class FineTuneModalPage {
     await this.editorInput.press('Enter');
   }
 
-  /** 調整バーのキャンセル（この欄を押す前の値へ戻す） */
-  get cancelButton(): Locator {
-    return this.editor.getByTestId('fine-tune-editor-cancel');
+  /** 調整バーの見出しのリセット（この欄を押す前の値へ戻す。選択はそのまま） */
+  get resetEditButton(): Locator {
+    return this.editor.getByTestId('fine-tune-editor-reset');
   }
 
   /** 目標Lv: スライダーで Lv を入れる */

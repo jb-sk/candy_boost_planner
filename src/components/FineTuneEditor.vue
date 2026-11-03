@@ -17,14 +17,15 @@
         <span v-if="field === 'target' && stepper !== null && changeText === null" class="fineTuneEditor__change" data-testid="fine-tune-editor-level-value">Lv{{ stepper.value }}</span>
         <span v-if="changeText !== null" class="fineTuneEditor__change" data-testid="fine-tune-editor-change">{{ changeText }}</span>
         <span class="fineTuneEditor__spacer"></span>
-        <!-- この欄を押してからの変更を取り消して、押す前の値へ戻す -->
+        <!-- この欄を押してからの変更を取り消して、押す前の値へ戻す（選んだまま続けて動かせる） -->
         <button
-          class="btn btn--soft btn--sm fineTuneEditor__cancel"
+          class="btn btn--soft btn--sm fineTuneEditor__resetEdit"
           type="button"
-          data-testid="fine-tune-editor-cancel"
-          :disabled="busy || !canCancel"
-          @click="emit('cancel')"
-        >{{ t("calc.fineTune.cancelEdit") }}</button>
+          data-testid="fine-tune-editor-reset"
+          :title="t('calc.fineTune.resetEditTitle')"
+          :disabled="busy || !canReset"
+          @click="emit('reset')"
+        >{{ t("calc.fineTune.resetEdit") }}</button>
       </template>
       <span v-else class="fineTuneEditor__hint" data-testid="fine-tune-hint">{{ t("calc.fineTune.hint") }}</span>
     </div>
@@ -47,7 +48,7 @@
       <span v-if="recommendation.insufficient" class="fineTuneEditor__recommendNote">{{ t("calc.fineTune.recommendInsufficient") }}</span>
     </button>
 
-    <!-- アメブ: 最小アメブ（手持ちのアメから最小限のアメブを自動で決める）とリセット（自動の値へ戻す） -->
+    <!-- アメブ: 最小アメブ（手持ちのアメから最小限のアメブを自動で決める）と再計算（計算機の ↺ と同じ。自動の値へ戻す） -->
     <div v-if="boostTools !== null" class="fineTuneEditor__tools">
       <button
         class="fineTuneEditor__tool"
@@ -227,7 +228,7 @@ import { sleepTargetOfChoice, type SleepTargetChoice } from "../domain/sleep-tar
 /**
  * かんたんの調整バー。表で押した欄（目標Lv・アメブ・アメ）を刻みのボタンと個数欄で、睡眠を選択肢で動かす。
  * 目標Lvは Lvピッカーと同じ形（スライダー・◀ ▶・Lv の丸いボタン）。アメブには最小アメブ・リセットも置く。
- * キャンセルは、この欄を押してからの変更を取り消す（戻すのは親。`canCancel` と `cancel`）。
+ * 見出しのリセットは、この欄を押してからの変更を取り消す（戻すのは親。`canReset` と `reset`）。
  * 行の詳細（到達・睡眠のあと・足りないもの・動かせない理由）と「〇〇のLvを上げる」もここに出す。
  * 値と範囲は `FineTuneRowView` に入っているものを使い、op を投げるだけ（範囲に収めるのは reducer）。
  */
@@ -241,16 +242,16 @@ const props = defineProps<{
   busy: boolean;
   /** 設定で全員に最小アメブを使っている（行ごとの最小アメブは切り替えられない） */
   globalMinimize: boolean;
-  /** この欄を押してから変えた（キャンセルで押す前へ戻せる） */
-  canCancel: boolean;
+  /** この欄を押してから変えた（リセットで押す前へ戻せる） */
+  canReset: boolean;
   fmt: (n: number) => string;
   titleOf: (rowId: string) => string;
 }>();
 
 const emit = defineEmits<{
   (e: "op", op: FineTuneOp): void;
-  /** キャンセル（この欄を押す前の値へ戻して、選択を外す） */
-  (e: "cancel"): void;
+  /** リセット（この欄を押す前の値へ戻す。選択はそのまま） */
+  (e: "reset"): void;
 }>();
 
 /** 何も選んでいないときに並べる、押せない刻みのボタン */

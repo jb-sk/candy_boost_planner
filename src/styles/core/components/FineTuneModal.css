@@ -452,8 +452,8 @@ button.fineTuneRow__cell {
   color: var(--muted);
 }
 
-/* キャンセル（この欄を押す前の値へ戻す） */
-.fineTuneEditor__cancel.btn {
+/* リセット（この欄を押す前の値へ戻す） */
+.fineTuneEditor__resetEdit.btn {
   flex-shrink: 0;
 }
 

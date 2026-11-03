@@ -86,11 +86,11 @@
           :pending="fineTune.stale.value"
           :busy="fineTune.raising.value"
           :global-minimize="calc.minimizeBoost.value"
-          :can-cancel="canCancel"
+          :can-reset="canReset"
           :fmt="calc.fmtNum"
           :title-of="fineTune.titleOf"
           @op="dispatch"
-          @cancel="cancelEdit"
+          @reset="resetEdit"
         />
       </template>
 
@@ -214,8 +214,8 @@ function revealRow(rowId: string): void {
   else if (below > 0) list.scrollTop += below;
 }
 
-// ===== キャンセル（その欄を押す前の値へ戻す） =====
-/** 欄を押した時点の行とアメの数の記録。キャンセルでここへ戻す */
+// ===== リセット（その欄を押す前の値へ戻す。選択はそのまま） =====
+/** 欄を押した時点の行とアメの数の記録。リセットでここへ戻す */
 const editStart = shallowRef<{ rowId: string; row: CalcRow; candyRecord: CandyRecord | undefined } | null>(null);
 
 function snapshotOf(rowId: string): { rowId: string; row: CalcRow; candyRecord: CandyRecord | undefined } | null {
@@ -225,18 +225,17 @@ function snapshotOf(rowId: string): { rowId: string; row: CalcRow; candyRecord: 
 }
 
 /** 欄を押してから、その行を変えた */
-const canCancel = computed(() => {
+const canReset = computed(() => {
   const start = editStart.value;
   const state = fineTune.state.value;
   if (start === null || state === null || selected.value?.rowId !== start.rowId) return false;
   return state.rows.find((r) => r.id === start.rowId) !== start.row || state.candyRecords[start.rowId] !== start.candyRecord;
 });
 
-function cancelEdit(): void {
+/** 押す前の値へ戻す。選択と「押す前の値」はそのままなので、続けて動かして、また戻せる */
+function resetEdit(): void {
   const start = editStart.value;
   if (start !== null) dispatch({ kind: "revertRow", rowId: start.rowId, row: start.row, candyRecord: start.candyRecord });
-  selected.value = null;
-  editStart.value = null;
 }
 
 // ===== 並べ替え（取っ手をつかんで動かすのは useRowReorderDrag、取っ手の ↑↓ キーは行。確定は move の op） =====

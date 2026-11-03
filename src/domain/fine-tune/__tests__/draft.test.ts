@@ -395,7 +395,7 @@ describe("reduceFineTune: 睡眠目標・最小アメブ・アメブのリセッ
   });
 });
 
-describe("reduceFineTune: 調整バーのキャンセル（revertRow）", () => {
+describe("reduceFineTune: 調整バーのリセット（revertRow）", () => {
   it("その行とアメの数の記録だけを、編集を始める前へ戻す。ほかの行・順番は戻さない", () => {
     const t = setup([makeRow("a", { boostOrExpAdjustment: 7 }), makeRow("b")], { a: { full: 10, need: 100 }, b: { full: 10, need: 100 } });
     const moved = t.ok(t.initial, { kind: "move", rowId: "b", toIndex: 0 });
