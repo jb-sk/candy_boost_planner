@@ -148,8 +148,9 @@ test.describe('12-fine-tune（PC）', () => {
 
     await fineTune.open();
     await fineTune.waitForSettled();
-    // 何も選んでいないときも操作の場所は出ていて、案内と押せないボタンだけ。見出しは無く、サマリーが × と同じ段にある
+    // 何も選んでいないときも操作の場所は出ていて、押せないボタンだけ（「数字を押して調整」の案内は出さない）。見出しは無く、サマリーが × と同じ段にある
     await fineTune.expectIdle();
+    await expect(fineTune.editor).not.toContainText('数字を押して調整');
     await expect(fineTune.modal.locator('.modal__title')).toHaveCount(0);
     await expect(fineTune.summaryBoost).toBeVisible();
     const pikachu = fineTune.rowByName('ピカチュウ');
@@ -232,6 +233,10 @@ test.describe('12-fine-tune（PC）', () => {
     await calc.waitForPlannerResult();
     await fineTune.open();
     await fineTune.waitForSettled();
+    // PC幅の睡眠の欄は詰めた幅でも「おひるね島🎫🍬」が欄からはみ出さない
+    const napCell = fineTune.cell(fineTune.rowByName('ヒトカゲ'), 'sleep');
+    await expect(napCell).toContainText('おひるね島');
+    expect(await napCell.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
     await expectEditorHeightConstant(fineTune);
   });
 
@@ -607,7 +612,7 @@ test.describe('12-fine-tune（PC）', () => {
     const pikachu = fineTune.rowByName('ピカチュウ');
     await fineTune.adjust(pikachu, 'target', 1);
     await expect(fineTune.applyButton).toBeEnabled();
-    // 同じ欄をもう一度押すと選択が外れ、調整バーは案内だけに戻る（場所は出たまま）
+    // 同じ欄をもう一度押すと選択が外れ、調整バーは押せないボタンだけに戻る（場所は出たまま）
     await fineTune.cell(pikachu, 'target').click();
     await fineTune.expectIdle();
     await fineTune.select(pikachu, 'boost');

@@ -506,12 +506,6 @@ button.fineTuneRow__cell {
   flex: 1 1 auto;
 }
 
-.fineTuneEditor__hint {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--muted);
-}
-
 /* リセット（この欄を押す前の値へ戻す） */
 .fineTuneEditor__resetEdit {
   -webkit-appearance: none;
@@ -1024,11 +1018,11 @@ button.fineTuneRow__cell {
 
   /* 睡眠は「おひるね島🎫🍬」が収まる幅にとどめ、左右の余白を減らす */
   .fineTuneModal__list {
-    --ft-cols: 36px minmax(0, 1fr) 72px 118px 72px 96px 96px 116px;
+    --ft-cols: 36px minmax(0, 1fr) 72px 132px 72px 96px 96px 116px;
   }
 
   .fineTuneModal__list--noBoost {
-    --ft-cols: 36px minmax(0, 1fr) 80px 118px 80px 120px 140px;
+    --ft-cols: 36px minmax(0, 1fr) 80px 132px 80px 120px 140px;
   }
 
   .fineTuneHead,
@@ -1081,8 +1075,8 @@ button.fineTuneRow__cell {
 
   .fineTuneRow__cell--sleep {
     gap: 2px;
-    padding: 0 6px;
-    font-size: 14px;
+    padding: 0 4px;
+    font-size: 16px;
   }
 
   .fineTuneRow__cell--sleep.fineTuneRow__cell--input {
@@ -1098,7 +1092,7 @@ button.fineTuneRow__cell {
   }
 
   .fineTuneRow__sleepIcons {
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .fineTuneRow__mark {
@@ -1130,10 +1124,6 @@ button.fineTuneRow__cell {
   }
 
   .fineTuneEditor__change {
-    font-size: 16px;
-  }
-
-  .fineTuneEditor__hint {
     font-size: 16px;
   }
 

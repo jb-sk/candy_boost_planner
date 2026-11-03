@@ -1,5 +1,5 @@
 <template>
-  <!-- 常に出す。何も選んでいないときは案内と押せない刻みのボタンだけ。
+  <!-- 常に出す。何も選んでいないときは押せない刻みのボタンだけ（見出しは空のまま）。
        見出し・詳細・操作の2段の高さを決めてあり、どの欄を選んでも高さが変わらない（モーダルの高さも変わらない） -->
   <section
     class="fineTuneEditor"
@@ -28,7 +28,6 @@
           <span>{{ t("calc.fineTune.resetEdit") }}</span>
         </button>
       </template>
-      <span v-else class="fineTuneEditor__hint" data-testid="fine-tune-hint">{{ t("calc.fineTune.hint") }}</span>
     </div>
 
     <p class="fineTuneEditor__info" data-testid="fine-tune-editor-info">
@@ -298,7 +297,7 @@ import { sleepTargetOfChoice, type SleepTargetChoice } from "../domain/sleep-tar
  * 値と範囲は `FineTuneRowView` に入っているものを使い、op を投げるだけ（範囲に収めるのは reducer）。
  */
 const props = defineProps<{
-  /** 選んだ行。何も選んでいなければ null（案内だけを出す） */
+  /** 選んだ行。何も選んでいなければ null（押せない刻みのボタンだけを出す） */
   row: FineTuneRowView | null;
   field: FineTuneField | null;
   /** 最新の結果が今の下書きの結果でない。結果に頼る操作（おすすめ）を押せなくする */

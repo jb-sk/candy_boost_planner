@@ -49,8 +49,7 @@ export class FineTuneModalPage {
   readonly editorNote: Locator;
   readonly editorInput: Locator;
   readonly editorRecommend: Locator;
-  /** 何も選んでいないときの案内と、押せない刻みのボタン */
-  readonly editorHint: Locator;
+  /** 何も選んでいないときの押せない刻みのボタン */
   readonly editorIdle: Locator;
 
   // === フッター ===
@@ -89,7 +88,6 @@ export class FineTuneModalPage {
     this.editorNote = page.getByTestId('fine-tune-editor-note');
     this.editorInput = page.getByTestId('fine-tune-editor-input');
     this.editorRecommend = page.getByTestId('fine-tune-editor-recommend');
-    this.editorHint = page.getByTestId('fine-tune-hint');
     this.editorIdle = page.getByTestId('fine-tune-editor-idle');
 
     this.raiseButton = page.getByTestId('fine-tune-raise');
@@ -192,9 +190,8 @@ export class FineTuneModalPage {
     await expect(this.editor).toHaveAttribute('data-row-id', rowId);
   }
 
-  /** 何も選んでいない（調整バーが案内だけの）状態か */
+  /** 何も選んでいない（調整バーが押せない刻みのボタンだけの）状態か */
   async expectIdle(): Promise<void> {
-    await expect(this.editorHint).toBeVisible();
     await expect(this.editorIdle).toBeVisible();
     await expect(this.editor).not.toHaveAttribute('data-row-id', /./);
   }

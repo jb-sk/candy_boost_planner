@@ -78,7 +78,7 @@
           />
         </div>
 
-        <!-- 操作の場所は常に出す。何も選んでいないときは案内と押せないボタン -->
+        <!-- 操作の場所は常に出す。何も選んでいないときは押せないボタンだけ -->
         <FineTuneEditor
           :key="selectedRow !== null && selected !== null ? `${selectedRow.id}:${selected.field}` : 'idle'"
           :row="selectedRow"
