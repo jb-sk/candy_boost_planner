@@ -328,6 +328,15 @@
   gap: 6px 10px;
 }
 
+/* ?perf=1 のデバッグ用ボタン（検算TSV・日時変更）。通常の操作の下へ改行して並べる。 */
+.calcActions__debug {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
 /* ?perf=1 のデバッグ用「現在日時」。隠した入力欄を重ねるためのアンカー。 */
 .calcActions__debugNow {
   position: relative;

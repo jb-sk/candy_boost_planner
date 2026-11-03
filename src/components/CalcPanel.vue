@@ -170,18 +170,23 @@
       <button class="btn btn--primary" data-testid="calc-export-button" type="button" @click="calc.openExport()" :disabled="!calc.rowsView.value.length || calc.planResultPending.value || !calc.planResult.value" :title="t('calc.export.open')">
         {{ t("calc.export.openShort") }}
       </button>
-      <button v-if="calc.debugExportEnabled" class="btn btn--ghost" data-testid="calc-debug-export-button" type="button" @click="copyDebugExport()" :disabled="!calc.rowsView.value.length || calc.planResultPending.value || (!calc.planResult.value && calc.pokemonResultByRowId.value.size === 0)" title="検算用TSVをコピー">
-        検算TSV
-      </button>
-      <span v-if="debugExportStatus" class="calcActions__status" data-testid="calc-debug-export-status">{{ debugExportStatus }}</span>
-      <!-- 補助の操作は小さく薄いボタンにまとめ、設定・育成プランより目立たせない -->
+      <!-- 補助の操作は小さく薄いボタンにまとめ、設定・育成プランより目立たせない。
+           並びはシンプル・アメブ再割当／コピー・ペースト／クリア。破壊的な全体操作のクリアは末尾に離して置く。 -->
       <div class="calcActions__tools">
         <div class="calcActions__group">
-          <button class="btn btn--soft" data-testid="calc-clear-button" type="button" @click="calc.clear()" :disabled="!calc.rowsView.value.length" :title="t('calc.clearPokemons')">
-            {{ t("calc.clearPokemonsShort") }}
+          <!-- 全体を見ながらアメブ・目標Lv・順番を試すモーダルの入口。対象にできる行が1行以上のときだけ出す。
+               アメブなしの種別でも出す（目標Lv・並べ替えは動かせる） -->
+          <button
+            v-if="canFineTune"
+            class="btn btn--soft"
+            data-testid="fine-tune-open-button"
+            type="button"
+            @click="$emit('open-fine-tune')"
+            :title="t('calc.fineTune.openTitle')"
+          >
+            {{ t("calc.fineTune.open") }}
           </button>
-          <!-- 並べ替え・上位削除のあと「最初から考え直す」ための入口。破壊的な全体操作なので
-               クリアの隣に置く（コピー／ペーストのグループへは入れない）。
+          <!-- 並べ替え・上位削除のあと「最初から考え直す」ための入口。
                アメブなしの種別では配るものが無いので出さない。 -->
           <button
             v-if="calc.boostKind.value !== 'none'"
@@ -194,18 +199,6 @@
           >
             {{ t("calc.reassignBoost") }}
           </button>
-          <!-- 全体を見ながらアメブ・目標Lv・順番を試すモーダルの入口。対象にできる行が1行以上のときだけ出す。
-               アメブなしの種別でも出す（目標Lv・ゆずる・並べ替えは動かせる） -->
-          <button
-            v-if="canFineTune"
-            class="btn btn--soft"
-            data-testid="fine-tune-open-button"
-            type="button"
-            @click="$emit('open-fine-tune')"
-            :title="t('calc.fineTune.openTitle')"
-          >
-            {{ t("calc.fineTune.open") }}
-          </button>
         </div>
         <div class="calcActions__group">
           <button class="btn btn--soft" data-testid="calc-copy-slot-button" type="button" @click="calc.copySlot()" :disabled="!calc.canCopySlot.value" :title="t('calc.copySlotTitle')">
@@ -215,37 +208,49 @@
             {{ t("calc.pasteSlot") }}
           </button>
         </div>
+        <div class="calcActions__group">
+          <button class="btn btn--soft" data-testid="calc-clear-button" type="button" @click="calc.clear()" :disabled="!calc.rowsView.value.length" :title="t('calc.clearPokemons')">
+            {{ t("calc.clearPokemonsShort") }}
+          </button>
+        </div>
       </div>
-      <!-- ?perf=1 限定。睡眠EXPボーナスは日で変わるので、満月日やイベント期間へ
-           時計を進めて内訳を確かめるためのデバッグ用。未設定＝現在日時。
-           入力欄は見せず、ボタンの上に透明で重ねてタップを受けさせる。 -->
-      <div v-if="calc.debugNowEnabled" class="calcActions__group calcActions__debugNow">
-        <button
-          class="btn btn--ghost"
-          data-testid="calc-debug-now-button"
-          type="button"
-          :title="calc.debugNowText.value ? '現在日時の上書きを解除' : 'デバッグ用に現在日時を上書きする'"
-          @click="calc.debugNowText.value = ''"
-        >
-          {{ calc.debugNowText.value ? "日時解除" : "日時変更" }}
+      <!-- ?perf=1 限定のデバッグ用ボタン。通常の操作と混ざらないよう改行して下の行にまとめる。 -->
+      <div v-if="calc.debugExportEnabled || calc.debugNowEnabled" class="calcActions__debug" data-testid="calc-debug-actions">
+        <button v-if="calc.debugExportEnabled" class="btn btn--ghost" data-testid="calc-debug-export-button" type="button" @click="copyDebugExport()" :disabled="!calc.rowsView.value.length || calc.planResultPending.value || (!calc.planResult.value && calc.pokemonResultByRowId.value.size === 0)" title="検算用TSVをコピー">
+          検算TSV
         </button>
-        <!-- 未設定のあいだはこの入力欄がボタン全面を覆い、タップがそのままピッカーになる。
-             上書き中はボタン（解除）を前に出すため、pointer-events を落とす。 -->
-        <input
-          ref="debugNowInput"
-          class="calcActions__debugNowInput"
-          :class="{ 'calcActions__debugNowInput--inert': calc.debugNowText.value }"
-          data-testid="calc-debug-now-input"
-          type="datetime-local"
-          tabindex="-1"
-          aria-hidden="true"
-          :value="calc.debugNowText.value"
-          @click="openDebugNowPicker()"
-          @change="calc.debugNowText.value = ($event.target as HTMLInputElement).value"
-        />
-        <span v-if="calc.debugNowText.value" class="calcActions__status" data-testid="calc-debug-now-value">
-          {{ calc.debugNowText.value.replace("T", " ") }}
-        </span>
+        <span v-if="debugExportStatus" class="calcActions__status" data-testid="calc-debug-export-status">{{ debugExportStatus }}</span>
+        <!-- ?perf=1 限定。睡眠EXPボーナスは日で変わるので、満月日やイベント期間へ
+             時計を進めて内訳を確かめるためのデバッグ用。未設定＝現在日時。
+             入力欄は見せず、ボタンの上に透明で重ねてタップを受けさせる。 -->
+        <div v-if="calc.debugNowEnabled" class="calcActions__group calcActions__debugNow">
+          <button
+            class="btn btn--ghost"
+            data-testid="calc-debug-now-button"
+            type="button"
+            :title="calc.debugNowText.value ? '現在日時の上書きを解除' : 'デバッグ用に現在日時を上書きする'"
+            @click="calc.debugNowText.value = ''"
+          >
+            {{ calc.debugNowText.value ? "日時解除" : "日時変更" }}
+          </button>
+          <!-- 未設定のあいだはこの入力欄がボタン全面を覆い、タップがそのままピッカーになる。
+               上書き中はボタン（解除）を前に出すため、pointer-events を落とす。 -->
+          <input
+            ref="debugNowInput"
+            class="calcActions__debugNowInput"
+            :class="{ 'calcActions__debugNowInput--inert': calc.debugNowText.value }"
+            data-testid="calc-debug-now-input"
+            type="datetime-local"
+            tabindex="-1"
+            aria-hidden="true"
+            :value="calc.debugNowText.value"
+            @click="openDebugNowPicker()"
+            @change="calc.debugNowText.value = ($event.target as HTMLInputElement).value"
+          />
+          <span v-if="calc.debugNowText.value" class="calcActions__status" data-testid="calc-debug-now-value">
+            {{ calc.debugNowText.value.replace("T", " ") }}
+          </span>
+        </div>
       </div>
     </div>
 
