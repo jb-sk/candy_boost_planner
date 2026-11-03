@@ -43,7 +43,11 @@ function installLocalStorageMock() {
 
 function depsOf(store: CalcStore): FineTuneDeps {
   return {
-    evaluateRows: store.evaluateRows,
+    evaluateRows: (rowList, speciesCandy) => store.evaluateRows(rowList, { speciesCandy }),
+    withRowIndividual: store.withRowIndividual,
+    canEditIndividual: store.canEditIndividual,
+    speciesCandyFamilyOf: store.speciesCandyFamilyOf,
+    speciesCandyStockOf: store.speciesCandyStockOf,
     withExplicitBoost: store.withExplicitBoost,
     withTargetLevel: store.withTargetLevel,
     withCandyTarget: store.withCandyTarget,

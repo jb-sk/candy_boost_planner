@@ -72,7 +72,11 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
   const resumeGameDate = calc.holdGameDate();
 
   const deps: FineTuneDeps = {
-    evaluateRows: calc.evaluateRows,
+    evaluateRows: (rowList, speciesCandy) => calc.evaluateRows(rowList, { speciesCandy }),
+    withRowIndividual: calc.withRowIndividual,
+    canEditIndividual: calc.canEditIndividual,
+    speciesCandyFamilyOf: calc.speciesCandyFamilyOf,
+    speciesCandyStockOf: calc.speciesCandyStockOf,
     withExplicitBoost: calc.withExplicitBoost,
     withTargetLevel: calc.withTargetLevel,
     withCandyTarget: calc.withCandyTarget,
@@ -121,7 +125,7 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     const b = base.value;
     const s = state.value;
     if (b === null || s === null) return null;
-    return isDraftEmpty(b, s) ? b.evaluated : calc.evaluateRows(s.rows);
+    return isDraftEmpty(b, s) ? b.evaluated : deps.evaluateRows(s.rows, s.speciesCandy);
   });
   const isEmpty = computed(() => (base.value !== null && state.value !== null ? isDraftEmpty(base.value, state.value) : true));
 
@@ -304,7 +308,7 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     const settled = raiseSettled.value;
     if (settled !== null && settled.version === s.version) return settled.outcome;
     if (l.version !== s.version) return settledRaiseCheck;
-    settledRaiseCheck = checkRaise({ deps, base: b, rows: s.rows, evaluated: ev, result: l.result });
+    settledRaiseCheck = checkRaise({ deps, base: b, rows: s.rows, speciesCandy: s.speciesCandy, evaluated: ev, result: l.result });
     return settledRaiseCheck;
   });
 
@@ -350,6 +354,7 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
         deps,
         base: b,
         rows: s.rows,
+        speciesCandy: s.speciesCandy,
         // 今の版の結果があれば解き直さない（ソルバーは1回 1秒近くかかることがある）
         initialResult: l !== null && l.version === fromVersion ? l.result : undefined,
         solve: options.solvePlan ?? runnerSolve,
@@ -380,7 +385,7 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
 
   // ===== 適用 =====
   /**
-   * 下書きを計算機へ書き込む。計算機の履歴は `replaceRows` の1件だけ。
+   * 下書きを計算機へ書き込む（行一覧と、変えた現在Lv・あとEXP・在庫）。計算機の履歴は `applyFineTuneDraft` の1件だけ。
    * 基準が今の計算機と別物なら何も書かず "stale" を返す（黙って当て直さない）。
    */
   function apply(): FineTuneApplyResult {
@@ -388,7 +393,8 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     const s = state.value;
     if (b === null || s === null) return "notReady";
     if (isDraftEmpty(b, s)) return "empty";
-    const ok = calc.replaceRows(s.rows, options.t("calc.undoLabel.fineTune"), b.rows);
+    // 現在Lv・あとEXP・在庫を変えていれば、個体・在庫へも書く（元に戻す1回で全部戻る）
+    const ok = calc.applyFineTuneDraft({ rows: s.rows, speciesCandy: s.speciesCandy, label: options.t("calc.undoLabel.fineTune"), expectedBase: b.rows });
     if (!ok) {
       if (import.meta.env.DEV) console.error("[fine-tune] 計算機の内容が開いた時点から変わっているため、適用しませんでした");
       return "stale";

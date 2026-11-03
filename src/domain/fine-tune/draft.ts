@@ -1,12 +1,13 @@
 /**
  * かんたんの下書き。
  * 下書きは行一覧そのもの。各 op は今の下書きの行に計算機と同じ関数を当てて、その行だけを差し替える。
- * 動かせるのは目標Lv・アメブ（最小アメブ・リセットを含む）・アメの数・睡眠目標・順番。
+ * 動かせるのは目標Lv・アメブ（最小アメブ・リセットを含む）・アメの数・睡眠目標・順番と、
+ * 行の詳細で現在Lv・あとEXP（行の個体）・種族アメの在庫（進化系ごと。下書きの間は `speciesCandy` に持ち、評価のときだけ使う）。
  * 「全体のLvを伸ばす」は、まとめて求めた行一覧を1つの op で入れる。
  * アメの数を変えた行は個数指定の行になるので、目標Lv・アメブは動かせない（元の数に戻すと元の行に戻り、動かせる）。
  * ストア・Vue を import しない。ストアの関数は `FineTuneDeps` で受け取る。
  */
-import type { CalcRow, EvaluatedRows } from "../../composables/useCalcStore";
+import type { CalcRow, EvaluatedRows, RowIndividualPatch, SpeciesCandyOverride } from "../../composables/useCalcStore";
 import { isValidPokedexId } from "../pokesleep/candy-family";
 import { maxLevel as MAX_LEVEL } from "../pokesleep/tables";
 import { sleepTargetTraits, type SleepTargetMode } from "../sleep-target";
@@ -44,7 +45,12 @@ export interface FineTuneState {
   rows: readonly CalcRow[];
   /** アメの数を変えた行の記録（個数指定でなかった行だけ）。 */
   candyRecords: Readonly<Record<string, CandyRecord>>;
+  /** 変えた種族アメの在庫（進化系のキー → 個数）。開いた時点の在庫と同じ数にすると消える。 */
+  speciesCandy: SpeciesCandyOverride;
 }
+
+/** 種族アメの在庫の上限（テンキーで打てる7桁） */
+export const SPECIES_CANDY_MAX = 9_999_999;
 
 export type FineTuneOp =
   | { kind: "step"; rowId: string; by: number }
@@ -60,11 +66,16 @@ export type FineTuneOp =
   | { kind: "boostMinimize"; rowId: string; on: boolean }
   /** アメブ個数をリセット（自動の値へ戻し、残枠から配り直す） */
   | { kind: "boostReset"; rowId: string }
+  /** 行の詳細: 現在Lv（あとEXPは「次Lvまで全部」へ戻る）・あとEXP（行の個体） */
+  | { kind: "srcLevelSet"; rowId: string; level: number }
+  | { kind: "expRemainingSet"; rowId: string; exp: number }
+  /** 行の詳細: その行の進化系の種族アメの在庫 */
+  | { kind: "stockSet"; rowId: string; count: number }
   /**
-   * 調整バーのリセット。その行（とアメの数の記録）を、調整バーで編集を始める前の値へ戻す。
-   * ほかの行・順番は戻さない。
+   * 調整バーのリセット。その行（とアメの数の記録・その行の進化系の在庫）を、調整バーで編集を始める前の値へ戻す。
+   * ほかの行・順番は戻さない。`stock` はその行の進化系の在庫の、編集を始める前の下書きの値（変えていなければ undefined）。
    */
-  | { kind: "revertRow"; rowId: string; row: CalcRow; candyRecord: CandyRecord | undefined }
+  | { kind: "revertRow"; rowId: string; row: CalcRow; candyRecord: CandyRecord | undefined; stock?: { familyKey: string; count: number | undefined } }
   /**
    * 「全体のLvを伸ばす」で求めた行一覧を入れる。`fromVersion` の下書きから求めたもので、
    * その後に下書きが変わっていれば入れない。行の顔ぶれと順番は変えられない（アメブだけを変えた行一覧）。
@@ -73,7 +84,16 @@ export type FineTuneOp =
 
 /** ストアの関数。ドメインはストアを import しないので引数で受け取る。 */
 export interface FineTuneDeps {
-  evaluateRows(rowList: readonly CalcRow[]): EvaluatedRows;
+  /** `speciesCandy` は下書きで変えた種族アメの在庫（`FineTuneState.speciesCandy`） */
+  evaluateRows(rowList: readonly CalcRow[], speciesCandy?: SpeciesCandyOverride): EvaluatedRows;
+  /** 計算機の現在Lv・あとEXPの欄で入れたときと同じ行一覧（変わらなければ同じ配列） */
+  withRowIndividual(rowList: readonly CalcRow[], rowId: string, patch: RowIndividualPatch): readonly CalcRow[];
+  /** 行の個体（現在Lv・あとEXP）を変えられるか（リンク切れの行は不可） */
+  canEditIndividual(row: CalcRow): boolean;
+  /** 行の種族アメの進化系のキー（種族不明の行は undefined） */
+  speciesCandyFamilyOf(row: CalcRow): string | undefined;
+  /** 進化系の種族アメの在庫（開いた時点の、ストアの値） */
+  speciesCandyStockOf(familyKey: string): number;
   withExplicitBoost(row: CalcRow, n: number, options?: { preserveTargetForExplicitBoost?: boolean }): CalcRow;
   withTargetLevel(row: CalcRow, lv: number, rowList: readonly CalcRow[]): CalcRow;
   withCandyTarget(row: CalcRow, m: number): CalcRow;
@@ -102,8 +122,10 @@ export type RejectReason =
   | "excluded"
   /** アメの数を変えられない行（睡眠目標モード・Lv上限・ポケモンが不明・アメを使わない行） */
   | "candyLocked"
-  /** 最小アメブにできない行（全体の設定で最小化している・在庫の種族が無い） */
+  /** 最小アメブにできない行（全体の設定で最小化している・在庫の種族が無い・アメが足りず届かない） */
   | "minimizeUnavailable"
+  /** 個体を変えられない行（リンク切れ）の現在Lv・あとEXP、種族不明の行の在庫 */
+  | "individualLocked"
   /** 「全体のLvを伸ばす」を求めている間に下書きが変わった */
   | "stale";
 
@@ -124,7 +146,7 @@ export interface OpRange {
 
 /** 空の下書き。版は呼び出し側が決める。 */
 export function initialFineTuneState(base: FineTuneBase, version = 0): FineTuneState {
-  return { version, rows: base.rows, candyRecords: {} };
+  return { version, rows: base.rows, candyRecords: {}, speciesCandy: {} };
 }
 
 function rowIndexOf(rows: readonly CalcRow[], rowId: string): number {
@@ -270,18 +292,38 @@ function candyBaseRow(
   return deps.withExplicitBoost(before, boost, { preserveTargetForExplicitBoost: true });
 }
 
-/** 下書きの行が基準と同じか（同じ順番で各行が同じ参照）。 */
-export function isDraftEmpty(base: Pick<FineTuneBase, "rows">, state: Pick<FineTuneState, "rows">): boolean {
-  return isSameRows(base.rows, state.rows);
+/** 下書きが基準と同じか（同じ順番で各行が同じ参照で、在庫を変えていない）。 */
+export function isDraftEmpty(base: Pick<FineTuneBase, "rows">, state: Pick<FineTuneState, "rows" | "speciesCandy">): boolean {
+  return isSameRows(base.rows, state.rows) && Object.keys(state.speciesCandy).length === 0;
+}
+
+/** 下書きでのその進化系の種族アメの在庫（変えていなければストアの値） */
+export function speciesCandyValueOf(
+  state: Pick<FineTuneState, "speciesCandy">,
+  familyKey: string,
+  deps: Pick<FineTuneDeps, "speciesCandyStockOf">,
+): number {
+  return state.speciesCandy[familyKey] ?? deps.speciesCandyStockOf(familyKey);
+}
+
+function withSpeciesCandy(
+  current: SpeciesCandyOverride,
+  familyKey: string,
+  count: number | undefined,
+): SpeciesCandyOverride {
+  const { [familyKey]: _removed, ...rest } = current;
+  return count === undefined ? rest : { ...rest, [familyKey]: count };
 }
 
 function isSameRows(a: readonly CalcRow[], b: readonly CalcRow[]): boolean {
   return a.length === b.length && a.every((row, i) => row === b[i]);
 }
 
-/** 下書きの中身（rows・candyRecords）が同じか。version は見ない。履歴に記録するかの判定に使う。 */
+/** 下書きの中身（rows・candyRecords・speciesCandy）が同じか。version は見ない。履歴に記録するかの判定に使う。 */
 export function isSameDraftContent(a: FineTuneState, b: FineTuneState): boolean {
   if (!isSameRows(a.rows, b.rows)) return false;
+  const aStock = Object.keys(a.speciesCandy);
+  if (aStock.length !== Object.keys(b.speciesCandy).length || aStock.some((k) => a.speciesCandy[k] !== b.speciesCandy[k])) return false;
   const aKeys = Object.keys(a.candyRecords);
   if (aKeys.length !== Object.keys(b.candyRecords).length) return false;
   return aKeys.every((id) => a.candyRecords[id] === b.candyRecords[id]);
@@ -299,6 +341,12 @@ export function coalesceKeyOf(op: FineTuneOp): string | undefined {
     case "candyStep":
     case "candySet":
       return `candy:${op.rowId}`;
+    case "srcLevelSet":
+      return `srcLevel:${op.rowId}`;
+    case "expRemainingSet":
+      return `exp:${op.rowId}`;
+    case "stockSet":
+      return `stock:${op.rowId}`;
     default:
       return undefined;
   }
@@ -423,12 +471,48 @@ export function reduceFineTune(
     case "revertRow": {
       if (op.row.id !== row.id) return { rejected: "invalidValue" };
       const sameRecord = state.candyRecords[row.id] === op.candyRecord;
-      if (row === op.row && sameRecord) return { state };
+      const sameStock = op.stock === undefined || state.speciesCandy[op.stock.familyKey] === op.stock.count;
+      if (row === op.row && sameRecord && sameStock) return { state };
       const { [row.id]: _current, ...rest } = state.candyRecords;
       return advanced(state, {
         rows: replaceRowAt(state.rows, index, op.row),
         candyRecords: op.candyRecord === undefined ? rest : { ...rest, [row.id]: op.candyRecord },
+        speciesCandy: op.stock === undefined ? state.speciesCandy : withSpeciesCandy(state.speciesCandy, op.stock.familyKey, op.stock.count),
       });
+    }
+    case "srcLevelSet":
+    case "expRemainingSet": {
+      if (!deps.canEditIndividual(row)) return { rejected: "individualLocked" };
+      const requested = op.kind === "srcLevelSet" ? op.level : op.exp;
+      if (!Number.isFinite(requested)) return { rejected: "invalidValue" };
+      const patch = op.kind === "srcLevelSet" ? { level: requested } : { expRemaining: requested };
+      const rows = deps.withRowIndividual(state.rows, row.id, patch);
+      if (rows === state.rows) return { state };
+      // 現在Lvを変えると個数指定が外れる（計算機と同じ）。アメの数の記録も外す。
+      // あとEXPだけなら個数指定は残るので、記録の「変える前の行」にも同じ変更を当てる（元の数に戻したとき、変えたあとEXPのまま戻る）
+      const record = state.candyRecords[row.id];
+      const { [row.id]: _dropped, ...rest } = state.candyRecords;
+      let candyRecords = state.candyRecords;
+      if (record !== undefined) {
+        const updated = rows[index]!;
+        if (op.kind === "srcLevelSet" || updated.candyTarget === undefined) {
+          candyRecords = rest;
+        } else {
+          const before = deps.withRowIndividual(replaceRowAt(state.rows, index, record.before), row.id, patch)[index]!;
+          candyRecords = { ...rest, [row.id]: { ...record, before } };
+        }
+      }
+      return advanced(state, { rows, candyRecords });
+    }
+    case "stockSet": {
+      const familyKey = deps.speciesCandyFamilyOf(row);
+      if (familyKey === undefined) return { rejected: "individualLocked" };
+      if (!Number.isFinite(op.count)) return { rejected: "invalidValue" };
+      const count = clampToRange(op.count, { min: 0, max: SPECIES_CANDY_MAX });
+      if (count === speciesCandyValueOf(state, familyKey, deps)) return { state };
+      // 開いた時点の在庫と同じ数にしたら、変えていない扱いに戻す
+      const next = count === deps.speciesCandyStockOf(familyKey) ? undefined : count;
+      return advanced(state, { speciesCandy: withSpeciesCandy(state.speciesCandy, familyKey, next) });
     }
     case "boostReset": {
       if (rowExclusion(row, evaluated) !== null) return { rejected: "excluded" };

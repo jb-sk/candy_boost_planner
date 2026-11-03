@@ -12,6 +12,13 @@
     <div class="fineTuneEditor__head">
       <template v-if="row !== null">
         <span class="fineTuneEditor__name" data-testid="fine-tune-editor-name">{{ row.title }}</span>
+        <!-- EXP補正（性格）。表の名前の横と同じ印 -->
+        <span
+          v-if="natureMark !== null"
+          class="fineTuneEditor__nature fineTuneRow__nature"
+          :class="`fineTuneRow__nature--${row.nature}`"
+          data-testid="fine-tune-editor-nature"
+        >{{ natureMark }}</span>
         <span v-if="fieldLabel !== null" class="fineTuneEditor__field">{{ fieldLabel }}</span>
         <span v-if="changeText !== null" class="fineTuneEditor__change" data-testid="fine-tune-editor-change">{{ changeText }}</span>
         <span class="fineTuneEditor__spacer"></span>
@@ -238,9 +245,38 @@
         </div>
       </template>
 
-      <!-- 行の詳細・何も選んでいないとき: 1段目に動かせない理由か「〇〇のLvを上げる」、
-           2段目に同じ形の押せないボタン（操作の場所を見せたままにする） -->
-      <template v-else>
+      <!-- 行の詳細（名前を押したとき）: 1段目に現在Lv・あとEXP・アメ在庫の欄（直接打つ。タッチ端末はテンキー）、
+           2段目に動かせない理由か「〇〇のLvを上げる」 -->
+      <template v-else-if="rowProps !== null">
+        <div class="fineTuneEditor__line">
+          <div class="fineTuneEditor__props">
+            <label
+              v-for="prop in rowProps"
+              :key="prop.key"
+              class="fineTuneEditor__prop"
+              :class="{ 'fineTuneEditor__prop--changed': prop.value !== prop.base, 'fineTuneEditor__prop--disabled': prop.disabled }"
+            >
+              <span class="fineTuneEditor__propLabel">{{ prop.label }}</span>
+              <input
+                v-keypad="{ label: prop.inputLabel, maxLength: prop.maxLength }"
+                class="fineTuneEditor__propInput"
+                data-testid="fine-tune-editor-prop"
+                :data-prop="prop.key"
+                type="text"
+                inputmode="numeric"
+                autocomplete="off"
+                :maxlength="prop.maxLength"
+                :aria-label="prop.inputLabel"
+                :disabled="busy || prop.disabled"
+                :value="propDraft?.key === prop.key ? propDraft.text : prop.value === null ? '' : String(prop.value)"
+                @focus="propDraft = { key: prop.key, text: prop.value === null ? '' : String(prop.value) }"
+                @input="onPropInput(prop.key, ($event.target as HTMLInputElement).value)"
+                @blur="onPropBlur(prop.key, $event.target as HTMLInputElement)"
+                @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
+              />
+            </label>
+          </div>
+        </div>
         <div class="fineTuneEditor__line">
           <p v-if="noteText !== null" class="fineTuneEditor__note" data-testid="fine-tune-editor-note">{{ noteText }}</p>
           <button
@@ -257,6 +293,11 @@
             <span v-if="recommendation.insufficient" class="fineTuneEditor__recommendNote">{{ t("calc.fineTune.recommendInsufficient") }}</span>
           </button>
         </div>
+      </template>
+
+      <!-- 何も選んでいないとき（と、選んだ欄が動かせなくなったとき）: 2段目に同じ形の押せないボタン（操作の場所を見せたままにする） -->
+      <template v-else>
+        <div class="fineTuneEditor__line"></div>
         <div class="fineTuneEditor__line">
           <div class="fineTuneEditor__stepper fineTuneEditor__stepper--3 fineTuneEditor__stepper--ghost" data-testid="fine-tune-editor-idle" aria-hidden="true">
             <button v-for="amount in IDLE_STEPS" :key="`down-${amount}`" class="fineTuneEditor__step" type="button" tabindex="-1" disabled>−{{ amount }}</button>
@@ -292,7 +333,8 @@ import { sleepTargetOfChoice, type SleepTargetChoice } from "../domain/sleep-tar
  * かんたんの調整バー。表で押した欄（目標Lv・アメブ・アメ）を刻みのボタンと個数欄で、睡眠を選択肢で動かす。
  * 目標Lvは Lvピッカーと同じ形（Lv の欄・スライダー・◀ ▶・Lv の丸いボタン）。アメブには最小アメブ・再計算も置く。
  * 見出しのリセットは、この欄を押してからの変更を取り消す（戻すのは親。`canReset` と `reset`）。
- * 行の詳細（到達・睡眠のあと・足りないもの・動かせない理由）と「〇〇のLvを上げる」もここに出す。
+ * 行の詳細（名前を押したとき）では、現在Lv・あとEXP（個体）とアメ在庫（その行の進化系）を直接打って変えられる。
+ * 到達・睡眠のあと・足りないもの・動かせない理由と「〇〇のLvを上げる」もここに出す。見出しの名前の横に EXP補正（▲▲▼▼）を出す。
  * 見出し・詳細・操作の2段はどの欄でも同じ高さ（選ぶ欄を変えても、調整バーとモーダルの高さが変わらない）。
  * 値と範囲は `FineTuneRowView` に入っているものを使い、op を投げるだけ（範囲に収めるのは reducer）。
  */
@@ -423,6 +465,14 @@ const changeText = computed(() => {
   const s = stepper.value;
   if (s === null || s.value === s.base) return null;
   return `${props.fmt(s.base)} → ${props.fmt(s.value)}`;
+});
+
+/** EXP補正（性格）の印。補正なしは null */
+const natureMark = computed(() => {
+  const nature = props.row?.nature;
+  if (nature === "up") return t("calc.row.natureUp");
+  if (nature === "down") return t("calc.row.natureDown");
+  return null;
 });
 
 // ===== 行の詳細 =====
@@ -562,6 +612,87 @@ function toggleSleep(which: "stock" | "ticket"): void {
   if (current === undefined) return;
   if (current.base === "sleep" && which === "stock") chooseSleep({ ...current, stock: !current.stock });
   if (current.base === "napIsland") chooseSleep({ ...current, [which]: !current[which] });
+}
+
+// ===== 行の詳細の欄: 現在Lv・あとEXP・アメ在庫（確定は blur。テンキーは ui_spec §8） =====
+type RowPropKey = "srcLevel" | "exp" | "stock";
+
+interface RowProp {
+  key: RowPropKey;
+  label: string;
+  inputLabel: string;
+  /** 今の値（種族不明の行の在庫は null） */
+  value: number | null;
+  base: number | null;
+  disabled: boolean;
+  /** テンキーで打てる桁数 */
+  maxLength: number;
+  op: (value: number) => FineTuneOp;
+}
+
+const rowProps = computed<RowProp[] | null>(() => {
+  const { row, field } = props;
+  if (row === null || field !== "row") return null;
+  const rowId = row.id;
+  const { srcLevel, expRemaining, editable } = row.individual;
+  const inputLabelOf = (label: string) => t("calc.fineTune.inputAria", { field: label, name: row.title });
+  const levelLabel = t("calc.row.srcLevel");
+  const expLabel = t("calc.row.expRemaining");
+  const stockLabel = t("calc.row.speciesCandy");
+  return [
+    {
+      key: "srcLevel",
+      label: levelLabel,
+      inputLabel: inputLabelOf(levelLabel),
+      value: srcLevel.value,
+      base: srcLevel.base,
+      disabled: !editable,
+      maxLength: 2,
+      op: (level) => ({ kind: "srcLevelSet", rowId, level }),
+    },
+    {
+      key: "exp",
+      label: expLabel,
+      inputLabel: inputLabelOf(expLabel),
+      value: expRemaining.value,
+      base: expRemaining.base,
+      // Lv70 は次のLvが無い
+      disabled: !editable || expRemaining.max <= 0,
+      maxLength: 6,
+      op: (exp) => ({ kind: "expRemainingSet", rowId, exp }),
+    },
+    {
+      key: "stock",
+      label: stockLabel,
+      inputLabel: inputLabelOf(stockLabel),
+      value: row.stock?.value ?? null,
+      base: row.stock?.base ?? null,
+      disabled: row.stock === null,
+      maxLength: 7,
+      op: (count) => ({ kind: "stockSet", rowId, count }),
+    },
+  ];
+});
+
+/** 打ちかけの欄と文字（フォーカスしている間だけ） */
+const propDraft = ref<{ key: RowPropKey; text: string } | null>(null);
+
+function onPropInput(key: RowPropKey, raw: string): void {
+  propDraft.value = { key, text: raw.replace(/[^0-9]/g, "") };
+}
+
+function onPropBlur(key: RowPropKey, el: HTMLInputElement): void {
+  const draftText = propDraft.value?.key === key ? propDraft.value.text : null;
+  propDraft.value = null;
+  const prop = rowProps.value?.find((p) => p.key === key);
+  if (prop !== undefined && draftText !== null && draftText !== "" && Number(draftText) !== prop.value) {
+    emit("op", prop.op(Number(draftText)));
+  }
+  // 範囲に収めた結果が元の値と同じときも、欄に打ちかけの文字を残さない
+  void nextTick(() => {
+    const now = rowProps.value?.find((p) => p.key === key);
+    if (now !== undefined) el.value = now.value === null ? "" : String(now.value);
+  });
 }
 
 // ===== 刻みのボタンと個数欄・目標Lvの欄（確定は blur。テンキーは ui_spec §8） =====

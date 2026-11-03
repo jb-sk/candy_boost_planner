@@ -84,6 +84,27 @@ function makeDeps(info: Record<string, RowInfo>) {
     withBoostCandyReset(row) {
       return { ...row, boostOrExpAdjustment: undefined };
     },
+    /** 現在Lvは 1〜目標Lv、あとEXPは 1〜100（0 は 100）。Lv を変えると個数指定が外れ、あとEXPは 100 に戻る */
+    withRowIndividual(rowList, rowId, patch) {
+      const row = rowList.find((r) => r.id === rowId)!;
+      const level = patch.level === undefined ? row.srcLevel : Math.max(1, Math.min(row.dstLevel, Math.floor(patch.level)));
+      const exp = patch.expRemaining !== undefined
+        ? (Math.min(100, Math.max(0, Math.floor(patch.expRemaining))) || 100)
+        : level !== row.srcLevel ? 100 : row.expRemaining;
+      if (level === row.srcLevel && exp === row.expRemaining) return rowList;
+      return rowList.map((r) => (r.id === rowId
+        ? { ...r, srcLevel: level, expRemaining: exp, candyTarget: level !== row.srcLevel ? undefined : r.candyTarget }
+        : r));
+    },
+    canEditIndividual(row) {
+      return row.boxId !== "broken";
+    },
+    speciesCandyFamilyOf(row) {
+      return row.pokedexId === 0 ? undefined : String(row.pokedexId);
+    },
+    speciesCandyStockOf() {
+      return 300;
+    },
   };
   return { deps, calls };
 }
@@ -472,5 +493,68 @@ describe("reduceFineTune: その他", () => {
     expect(isSameDraftContent(t.initial, { ...t.initial, candyRecords: { a: record } })).toBe(false);
     expect(isSameDraftContent(t.initial, { ...t.initial, rows: [...t.initial.rows] })).toBe(true);
     expect(isSameDraftContent(t.initial, { ...t.initial, rows: [makeRow("a")] })).toBe(false);
+  });
+});
+
+describe("reduceFineTune: 行の詳細（現在Lv・あとEXP・アメ在庫）", () => {
+  it("現在Lv: 1〜目標Lvに収め、あとEXPは次Lvまで全部へ戻す。個数指定とアメの数の記録は外れる", () => {
+    const t = setup([makeRow("a", { expRemaining: 40 })], { a: { full: 10, need: 100 } });
+    const candied = t.ok(t.initial, { kind: "candySet", rowId: "a", candy: 50 });
+    expect(candied.candyRecords.a).toBeDefined();
+    const raised = t.ok(candied, { kind: "srcLevelSet", rowId: "a", level: 99 });
+    expect(raised.rows[0]).toMatchObject({ srcLevel: 50, expRemaining: 100, candyTarget: undefined });
+    expect(raised.candyRecords).toEqual({});
+    // 同じ値なら変えない
+    expect(t.run(raised, { kind: "srcLevelSet", rowId: "a", level: 50 })).toEqual({ state: raised });
+  });
+
+  it("あとEXP: 0 は次Lvまで全部。個数指定は残り、アメの数の記録の「変える前の行」にも同じあとEXPが入る", () => {
+    const t = setup([makeRow("a")], { a: { full: 10, need: 100 } });
+    const candied = t.ok(t.initial, { kind: "candySet", rowId: "a", candy: 50 });
+    const exp = t.ok(candied, { kind: "expRemainingSet", rowId: "a", exp: 30 });
+    expect(exp.rows[0]).toMatchObject({ expRemaining: 30, candyTarget: 50 });
+    expect(exp.candyRecords.a!.before.expRemaining).toBe(30);
+    expect(t.ok(exp, { kind: "expRemainingSet", rowId: "a", exp: 0 }).rows[0]!.expRemaining).toBe(100);
+  });
+
+  it("リンク切れの行の現在Lv・あとEXP、種族不明の行の在庫は individualLocked", () => {
+    const t = setup([makeRow("b", { boxId: "broken" }), makeRow("u", { pokedexId: 0 })], {
+      b: { full: 10, need: 100 }, u: { full: 10, need: 100 },
+    });
+    expect(t.run(t.initial, { kind: "srcLevelSet", rowId: "b", level: 20 })).toEqual({ rejected: "individualLocked" });
+    expect(t.run(t.initial, { kind: "expRemainingSet", rowId: "b", exp: 20 })).toEqual({ rejected: "individualLocked" });
+    expect(t.run(t.initial, { kind: "stockSet", rowId: "u", count: 20 })).toEqual({ rejected: "individualLocked" });
+  });
+
+  it("アメ在庫: 進化系ごとに下書きへ持ち、開いた時点の数に戻すと消える。在庫だけ変えても下書きは空でない", () => {
+    const t = setup([makeRow("a"), makeRow("b")], { a: { full: 10, need: 100 }, b: { full: 10, need: 100 } });
+    const stocked = t.ok(t.initial, { kind: "stockSet", rowId: "a", count: 500.7 });
+    expect(stocked.speciesCandy).toEqual({ "25": 500 });
+    expect(stocked.rows).toBe(t.initial.rows);
+    expect(isDraftEmpty(t.base, stocked)).toBe(false);
+    // 同じ進化系の行（b も 25）からも同じ在庫を動かす
+    expect(t.run(stocked, { kind: "stockSet", rowId: "b", count: 500 })).toEqual({ state: stocked });
+    const back = t.ok(stocked, { kind: "stockSet", rowId: "b", count: 300 });
+    expect(back.speciesCandy).toEqual({});
+    expect(isDraftEmpty(t.base, back)).toBe(true);
+    expect(t.ok(t.initial, { kind: "stockSet", rowId: "a", count: -5 }).speciesCandy).toEqual({ "25": 0 });
+  });
+
+  it("リセット（revertRow）は、その行と一緒にその行の進化系の在庫も編集を始める前の値へ戻す", () => {
+    const t = setup([makeRow("a")], { a: { full: 10, need: 100 } });
+    const start = t.initial.rows[0]!;
+    const edited = t.ok(t.ok(t.initial, { kind: "stockSet", rowId: "a", count: 900 }), { kind: "srcLevelSet", rowId: "a", level: 20 });
+    const reverted = t.ok(edited, { kind: "revertRow", rowId: "a", row: start, candyRecord: undefined, stock: { familyKey: "25", count: undefined } });
+    expect(reverted.rows[0]).toBe(start);
+    expect(reverted.speciesCandy).toEqual({});
+    expect(isSameDraftContent(reverted, t.initial)).toBe(true);
+  });
+
+  it("isSameDraftContent は在庫の違いも見る。coalesceKeyOf は欄ごとに目印を付ける", () => {
+    const t = setup([makeRow("a")], { a: { full: 10, need: 100 } });
+    expect(isSameDraftContent(t.initial, { ...t.initial, speciesCandy: { "25": 1 } })).toBe(false);
+    expect(coalesceKeyOf({ kind: "srcLevelSet", rowId: "a", level: 1 })).toBe("srcLevel:a");
+    expect(coalesceKeyOf({ kind: "expRemainingSet", rowId: "a", exp: 1 })).toBe("exp:a");
+    expect(coalesceKeyOf({ kind: "stockSet", rowId: "a", count: 1 })).toBe("stock:a");
   });
 });

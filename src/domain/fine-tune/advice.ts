@@ -251,7 +251,7 @@ function demandAt(ctx: AdviceContext, rowId: string, n: number): DemandPoint | n
     } else {
       const next = ctx.deps.withExplicitBoost(row, n, { preserveTargetForExplicitBoost: true });
       const rows = ctx.state.rows.map((r) => (r.id === rowId ? next : r));
-      point = pointFrom(ctx.deps.evaluateRows(rows), next);
+      point = pointFrom(ctx.deps.evaluateRows(rows, ctx.state.speciesCandy), next);
     }
   }
   ctx.demandCache.set(key, point);

@@ -6,6 +6,7 @@
  *   - 表の欄を押して調整バーで動かす（アメブ・目標Lv）→ 適用 → 計算機の元に戻す1回で戻る
  *   - 「全体のLvを伸ばす」（全員のアメブをまとめて動かす）と、伸ばせないときに押せない見た目になること、並べ替え、アメブなしのスロット
  *   - アメが足りず最小アメブにしても届かない行は、最小アメブを押せないこと
+ *   - 行の詳細（名前を押したとき）: EXP補正の印と、現在Lv・あとEXP・アメ在庫の編集（適用で計算機・ボックス・在庫へ移る）
  *   - モーダル内の元に戻す・やり直す（ボタンと Ctrl+Z / Ctrl+Y）と、計算機の履歴が動かないこと
  *   - Escape と × の確認
  *   - 調整バーの高さが、どの欄を選んでも変わらないこと（PC幅・スマホ幅）
@@ -455,6 +456,67 @@ test.describe('12-fine-tune（PC）', () => {
     // ピカチュウは種族アメが十分ある
     await fineTune.select(fineTune.rowByName('ピカチュウ'), 'boost');
     await expect(fineTune.minimizeButton).toBeEnabled();
+  });
+
+  test('行の詳細: 名前を押すと EXP補正の印が出て、現在Lv・あとEXP・アメ在庫を打てる。適用で計算機へ移り、計算機の元に戻す1回で全部戻る', async ({ page }) => {
+    const { calc, fineTune } = await setupScenario(page, GIVE_AND_RECEIVE);
+    // フシギダネ（2行目）は EXP↑（▲▲）
+    await calc.setRowNature(calc.getRow(1), '▲▲');
+    await calc.waitForPlannerResult();
+    const srcBefore = await calc.getRowSrcLevelInput(calc.getRow(1)).inputValue();
+    const expBefore = await calc.getRowExpRemainingInput(calc.getRow(1)).inputValue();
+    await fineTune.open();
+    await fineTune.waitForSettled();
+    const fushigi = fineTune.rowByName('フシギダネ');
+    const reachBefore = await fineTune.reachPoint(fushigi);
+
+    await fineTune.select(fushigi, 'row');
+    await expect(fineTune.editor.getByTestId('fine-tune-editor-nature')).toHaveText('▲▲');
+    await expect(fineTune.rowProp('srcLevel')).toHaveValue('10');
+    await expect(fineTune.rowProp('stock')).toHaveValue('100');
+
+    // アメ在庫を増やすと、アメが足りなかったフシギダネが伸びる
+    await fineTune.typeRowProp('stock', 5000);
+    await expect(fineTune.rowProp('stock')).toHaveValue('5000');
+    await fineTune.waitForSettled();
+    expect(await fineTune.reachPoint(fushigi)).toBeGreaterThan(reachBefore);
+    await expect(fineTune.resetEditButton).toBeEnabled();
+
+    // 現在Lvを上げると、あとEXPは「次Lvまで全部」に戻る。あとEXPも打てる
+    await fineTune.typeRowProp('srcLevel', 15);
+    await expect(fineTune.rowProp('srcLevel')).toHaveValue('15');
+    const toNext = Number(await fineTune.rowProp('exp').inputValue());
+    expect(toNext).toBeGreaterThan(100);
+    await fineTune.typeRowProp('exp', 100);
+    await expect(fineTune.rowProp('exp')).toHaveValue('100');
+    // 範囲の外は端に収まる（次Lvまで全部）
+    await fineTune.typeRowProp('exp', 999_999);
+    await expect(fineTune.rowProp('exp')).toHaveValue(String(toNext));
+    await fineTune.typeRowProp('exp', 100);
+    await fineTune.waitForSettled();
+
+    // リセットで、名前を押す前（在庫も）へ戻り、もう一度入れ直せる
+    await fineTune.resetEditButton.click();
+    await expect(fineTune.rowProp('srcLevel')).toHaveValue('10');
+    await expect(fineTune.rowProp('stock')).toHaveValue('100');
+    await expect(fineTune.applyButton).toBeDisabled();
+    await fineTune.typeRowProp('stock', 5000);
+    await fineTune.typeRowProp('srcLevel', 15);
+    await fineTune.typeRowProp('exp', 100);
+    await fineTune.waitForSettled();
+
+    // 適用: 計算機の現在Lv・あとEXP・アメ在庫が変わる
+    await fineTune.apply();
+    await calc.waitForPlannerResult();
+    await expect(calc.getRowSrcLevelInput(calc.getRow(1))).toHaveValue('15');
+    await expect(calc.getRowExpRemainingInput(calc.getRow(1))).toHaveValue('100');
+    await expect(calc.getRowSpeciesCandyInput(calc.getRow(1))).toHaveValue('5000');
+    // 計算機の元に戻す1回で、現在Lv・あとEXP・アメ在庫が全部戻る
+    await calc.clickUndo();
+    await calc.waitForPlannerResult();
+    await expect(calc.getRowSrcLevelInput(calc.getRow(1))).toHaveValue(srcBefore);
+    await expect(calc.getRowExpRemainingInput(calc.getRow(1))).toHaveValue(expBefore);
+    await expect(calc.getRowSpeciesCandyInput(calc.getRow(1))).toHaveValue('100');
   });
 
   test('アメ: 欄を押して数を変えると個数指定になり、目標Lv・アメブは動かせず、元の数に戻すと戻る。適用で計算機の個数指定へ移る', async ({ page }) => {

@@ -32,7 +32,7 @@ import { useCandyStore } from "./useCandyStore";
 import { showToast } from "./useToast";
 import { useSleepSchedulePlanning } from "./useSleepSchedulePlanning";
 import { type CandyInventoryV2, type TypeCandyInventory, type UniversalCandyInventory } from "../persistence/candy";
-import type { Individual, IndividualPatch } from "../domain/individual";
+import { clampExpRemaining, expToNextLevel, type Individual, type IndividualPatch } from "../domain/individual";
 import type { PokemonType } from "../domain/pokesleep/pokemon-names";
 import { getCandyFamilyKey, isCandyFamilyKey, isValidPokedexId, normalizeSpeciesCandyByFamily } from "../domain/pokesleep/candy-family";
 import { CANDY_VALUES } from "../domain/level-planner/constants";
@@ -43,7 +43,7 @@ import { buildPlannerInputSignature } from "../domain/level-planner/signature";
 import { createPlannerRunner, loadPlannerFallbackModule } from "../workers/plannerRunner";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { isPerfEnabled } from "../utils/perf";
-import { stepHistoryWithToast, useHistory, type CalcHistoryScope, type History } from "./useHistory";
+import { stepHistoryWithToast, useHistory, type CalcHistoryScope, type History, type HistoryScope } from "./useHistory";
 export type CalcRow = CalcRowV1;
 /** unreachable の neededCandy は、指定Lvへ届く最小の総アメ数（全部アメブで上げたとき）。 */
 export type ApplyMinBoostForCandyTargetResult =
@@ -314,6 +314,14 @@ export type EvaluatedRow = {
   minimizeShortCandy: boolean;
 };
 
+/**
+ * かんたんの下書きで変えた種族アメの在庫（進化系のキー → 個数）。評価のときだけ在庫の代わりに使い、ストアの在庫は変えない。
+ */
+export type SpeciesCandyOverride = Readonly<Record<string, number>>;
+
+/** かんたんの下書きで行の個体（現在Lv・あとEXP）を変えるときの値。キーが無い項目は変えない。 */
+export type RowIndividualPatch = { level?: number; expRemaining?: number };
+
 export type EvaluatedRows = {
   byId: Map<string, EvaluatedRow>;
   /** プランナー入力（行が不正なら null）。 */
@@ -475,8 +483,22 @@ export type CalcStore = {
   nudgeSrcLevel: (id: string, delta: number) => void;
   nudgeBoostLevel: (id: string, delta: number) => void;
   setDstLevel: (id: string, v: unknown) => void;
-  /** 渡された行一覧を、保存されたとおりに評価する。行を書き換えない（正規化しない）。 */
-  evaluateRows: (rowList: readonly CalcRow[]) => EvaluatedRows;
+  /**
+   * 渡された行一覧を、保存されたとおりに評価する。行を書き換えない（正規化しない）。
+   * `speciesCandy` を渡すと、その進化系の種族アメの在庫をその数として評価する（かんたんの下書き）。
+   */
+  evaluateRows: (rowList: readonly CalcRow[], options?: { speciesCandy?: SpeciesCandyOverride }) => EvaluatedRows;
+  /**
+   * 計算機の現在Lv・あとEXPの欄で入れたときと同じ行一覧を返す（個体を変えたときの同期 `rowsAfterIndividualChange` と同じ規則）。
+   * 現在Lvは 1〜目標Lv、あとEXPは 0〜次Lvまで（0 と次Lvまで全部は「未設定」）に収める。変わらなければ同じ配列を返す。
+   */
+  withRowIndividual: (rowList: readonly CalcRow[], rowId: string, patch: RowIndividualPatch) => readonly CalcRow[];
+  /** 行の個体（現在Lv・あとEXP）を変えられるか。リンク切れの行は不可（計算機でも欄を無効にしている）。 */
+  canEditIndividual: (row: CalcRow) => boolean;
+  /** 行の種族アメの進化系のキー。種族不明の行は undefined。 */
+  speciesCandyFamilyOf: (row: CalcRow) => string | undefined;
+  /** 進化系の種族アメの在庫（ストアの値）。 */
+  speciesCandyStockOf: (familyKey: string) => number;
   /**
    * 計算機の個数欄でアメブを n にしたときと同じ行を返す（`normalizeRowState` を通す）。
    * かんたんモードは `preserveTargetForExplicitBoost: true` を渡し、目標を押し上げない。
@@ -501,6 +523,17 @@ export type CalcStore = {
    * 行は正規化せずそのまま保存し、commitRows で1回だけ記録する。
    */
   replaceRows: (next: readonly CalcRow[], label: string, expectedBase: readonly CalcRow[]) => boolean;
+  /**
+   * かんたんの下書きを入れる。`replaceRows` と同じく expectedBase が今の rows.value と別物なら何もせず false。
+   * 現在Lv・あとEXPを変えた行は個体（ボックスの正本）へ、変えた種族アメの在庫は在庫へも書き、
+   * 行一覧・個体・在庫を元に戻す1回で戻る1件の履歴にまとめる。
+   */
+  applyFineTuneDraft: (input: {
+    rows: readonly CalcRow[];
+    speciesCandy: SpeciesCandyOverride;
+    label: string;
+    expectedBase: readonly CalcRow[];
+  }) => boolean;
   /** ゲーム内の日付の更新だけを止める。戻り値の関数で再開する（2回呼んでも1回分）。 */
   holdGameDate: () => () => void;
   setSrcLevel: (id: string, v: unknown) => void;
@@ -2031,8 +2064,8 @@ export function useCalcStore(opts: {
    * `stockCandyAllocationByRowId` の本体。保存前の仮の行一覧（リセット後の見込みなど）にも使えるよう、
    * 行一覧を引数で受ける。
    */
-  function walkStockCandyAllocation(source: readonly CalcRow[]): StockCandyAllocation {
-    const registeredStock = normalizeSpeciesCandyByFamily(candyStore.inventorySnapshot.value.species);
+  function walkStockCandyAllocation(source: readonly CalcRow[], speciesOverride?: SpeciesCandyOverride): StockCandyAllocation {
+    const registeredStock = { ...normalizeSpeciesCandyByFamily(candyStore.inventorySnapshot.value.species), ...speciesOverride };
     const left: Record<string, number> = { ...registeredStock };
     const resolved: Record<string, number> = {};
     const available: Record<string, number> = {};
@@ -3395,8 +3428,8 @@ export function useCalcStore(opts: {
    * 種族アメの取り分・最小化の実効アメブ・在庫のみの行の上限は、渡された行一覧の順番で出す。
    * `rowsView` と `buildPlannerInput()` は同じ導出（`rowViewsOf` / `plannerInputOf`）を `rows.value` で通す。
    */
-  function evaluateRows(rowList: readonly CalcRow[]): EvaluatedRows {
-    const stock = walkStockCandyAllocation(rowList);
+  function evaluateRows(rowList: readonly CalcRow[], options: { speciesCandy?: SpeciesCandyOverride } = {}): EvaluatedRows {
+    const stock = walkStockCandyAllocation(rowList, options.speciesCandy);
     const views = rowViewsOf(rowList, stock);
     const byId = new Map<string, EvaluatedRow>();
     rowList.forEach((r, i) => {
@@ -3409,7 +3442,69 @@ export function useCalcStore(opts: {
         minimizeShortCandy: minimizeShortCandyFor(r, stock),
       });
     });
-    return { byId, plannerInput: plannerInputOf(views, stock) };
+    return { byId, plannerInput: plannerInputOf(views, stock, options.speciesCandy) };
+  }
+
+  /** 解決済みの個体と同じ読み方のあとEXP（0 と次Lv以上は「次Lvまで全部」= 次Lvまでの EXP）。 */
+  function resolvedExpRemaining(raw: number | undefined, level: number, expType: CalcRow["expType"]): number {
+    const toNext = expToNextLevel(level, expType);
+    const clamped = raw === undefined || Number.isNaN(raw) ? 0 : clampExpRemaining(raw, level, expType);
+    return clamped > 0 ? clamped : toNext;
+  }
+
+  function withRowIndividual(rowList: readonly CalcRow[], rowId: string, patch: RowIndividualPatch): readonly CalcRow[] {
+    const row = rowList.find((r) => r.id === rowId);
+    if (!row) return rowList;
+    const prev = individualOfRow(row);
+    // 計算機の現在Lvの欄と同じく 1〜目標Lv。Lv を変えたら、あとEXPは「次Lvまで全部」へ戻す（ボックスの個体と同じ）
+    const level = patch.level === undefined ? prev.level : clampInt(patch.level, 1, row.dstLevel, prev.level);
+    const expRemaining = patch.expRemaining !== undefined
+      ? resolvedExpRemaining(patch.expRemaining, level, prev.expType)
+      : level !== prev.level ? expToNextLevel(level, prev.expType) : prev.expRemaining;
+    if (level === prev.level && expRemaining === prev.expRemaining) return rowList;
+    return rowsAfterIndividualChange(rowList, rowId, prev, { ...prev, level, expRemaining });
+  }
+
+  function canEditIndividual(row: CalcRow): boolean {
+    return row.boxId !== undefined && individuals.individualById.value.has(row.boxId);
+  }
+
+  function speciesCandyStockOf(familyKey: string): number {
+    return normalizeSpeciesCandyByFamily(candyStore.inventorySnapshot.value.species)[familyKey] ?? 0;
+  }
+
+  function applyFineTuneDraft(input: {
+    rows: readonly CalcRow[];
+    speciesCandy: SpeciesCandyOverride;
+    label: string;
+    expectedBase: readonly CalcRow[];
+  }): boolean {
+    const { label, expectedBase } = input;
+    if (toRaw(rows.value) !== toRaw(expectedBase)) return false;
+    const baseById = new Map(expectedBase.map((r) => [r.id, r]));
+    const individualEdits = flatMapOf(input.rows, (row) => {
+      const before = baseById.get(row.id);
+      if (!before || !canEditIndividual(row)) return [];
+      if (row.srcLevel === before.srcLevel && row.expRemaining === before.expRemaining) return [];
+      const toNext = expToNextLevel(row.srcLevel, row.expType);
+      return [{ boxId: row.boxId!, level: row.srcLevel, expRemaining: row.expRemaining >= toNext ? undefined : row.expRemaining }];
+    });
+    const stockEdits = Object.entries(input.speciesCandy).filter(([key, count]) => speciesCandyStockOf(key) !== count);
+    const scopes: HistoryScope[] = ["rows"];
+    if (individualEdits.length) scopes.push("box");
+    if (stockEdits.length) scopes.push("candyInventory");
+    history.recordAsOne(scopes, () => {
+      // 個体を先に書く（同期で行が変わる）。最後に下書きの行一覧で揃える
+      for (const edit of individualEdits) {
+        individuals.updateIndividual(edit.boxId, { level: edit.level, expRemaining: edit.expRemaining }, { label });
+      }
+      for (const [key, count] of stockEdits) {
+        beginUndo(label, ["candyInventory"]);
+        candyStore.updateSpeciesCandy(Number(key), count);
+      }
+      commitRows(input.rows as CalcRow[], label);
+    });
+    return true;
   }
 
   const exportOpen = ref(false);
@@ -3951,9 +4046,14 @@ export function useCalcStore(opts: {
   function plannerInputOf(
     views: ReturnType<typeof rowViewsOf>,
     stock: StockCandyAllocation,
+    speciesOverride?: SpeciesCandyOverride,
   ): LevelPlannerInput | null {
+    const candyInventory = candyStore.getInventory();
+    if (speciesOverride !== undefined) {
+      for (const [key, count] of Object.entries(speciesOverride)) candyInventory.species[key] = Math.max(0, Math.floor(count));
+    }
     return buildLevelPlannerInput(views.map(row => plannerRowDtoOf(row, stock)), {
-      candyInventory: candyStore.getInventory(),
+      candyInventory,
       dreamShards: shardsCap.value,
       boost: {
         kind: boostKind.value,
@@ -4633,6 +4733,10 @@ export function useCalcStore(opts: {
     nudgeBoostLevel,
     setDstLevel,
     evaluateRows,
+    withRowIndividual,
+    canEditIndividual,
+    speciesCandyFamilyOf: getRowCandyFamilyKey,
+    speciesCandyStockOf,
     withExplicitBoost,
     withTargetLevel,
     withCandyTarget,
@@ -4642,6 +4746,7 @@ export function useCalcStore(opts: {
     canMinimizeBoostFor,
     withBoostCandyReset,
     replaceRows,
+    applyFineTuneDraft,
     holdGameDate,
     setSrcLevel,
     setBoostLevel,

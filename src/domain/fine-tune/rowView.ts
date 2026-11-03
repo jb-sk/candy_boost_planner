@@ -8,6 +8,7 @@ import type { ExpGainNature } from "../types";
 import type { LevelPlannerResult, PokemonPlanLine, PokemonPlanResult, ShortageType } from "../level-planner/types";
 import { calcSleepLandingLevel } from "../level-planner/sleepReachLevel";
 import { dreamShardsPerCandy, maxLevel as MAX_LEVEL } from "../pokesleep/tables";
+import { expToNextLevel } from "../individual";
 import { sleepTargetChoiceOf, sleepTargetTraits, type SleepTargetChoice } from "../sleep-target";
 import type { RowAdviceEntry } from "./advice";
 import {
@@ -17,6 +18,7 @@ import {
   candyValueOf,
   opRange,
   rowExclusion,
+  speciesCandyValueOf,
   type FineTuneBase,
   type FineTuneDeps,
   type FineTuneLatest,
@@ -24,6 +26,12 @@ import {
   type OpRange,
   type RowExclusion,
 } from "./draft";
+
+/** 画面に出すあとEXP（0・次Lv以上は「次Lvまで全部」として次Lvまでの EXP。計算機の欄と同じ） */
+export function displayExpRemaining(row: Pick<CalcRow, "srcLevel" | "expType" | "expRemaining">): number {
+  const toNext = expToNextLevel(row.srcLevel, row.expType);
+  return row.expRemaining <= 0 || row.expRemaining >= toNext ? toNext : row.expRemaining;
+}
 
 /** 基準 → 変更後の組。結果がまだ無いときは null。 */
 export interface Change<T> {
@@ -85,6 +93,17 @@ export interface FineTuneRowView {
    */
   shardsPerCandy: Change<number | null>;
   advice: RowAdviceEntry | undefined;
+  /**
+   * 行の詳細で動かす個体。srcLevel は 1〜目標Lv、expRemaining は次Lvまでの残り（未設定は次Lvまで全部 = expMax）。
+   * リンク切れの行は editable: false（計算機でも欄を無効にしている）
+   */
+  individual: {
+    srcLevel: Change<number> & { min: number; max: number };
+    expRemaining: Change<number> & { max: number };
+    editable: boolean;
+  };
+  /** その行の進化系の種族アメの在庫（下書きの値）。種族不明の行は null */
+  stock: Change<number> | null;
 }
 
 /**
@@ -115,8 +134,11 @@ export interface RowViewInput {
   hasBoost: boolean;
   /** 残EXPを埋めたあとの着地点の値（計算機の `reachAfterRemainingForRow`。渡した行の睡眠目標で、島は渡した残EXPで出す） */
   reachAfterRemaining: (row: CalcRow, expToTarget: number) => RowReachAfterRemaining | null;
-  /** アメの数の範囲を出すストアの関数 */
-  deps: Pick<FineTuneDeps, "maxCandyTargetFor" | "withExplicitBoost" | "canMinimizeBoostFor">;
+  /** アメの数の範囲・個体と在庫の可否を出すストアの関数 */
+  deps: Pick<
+    FineTuneDeps,
+    "maxCandyTargetFor" | "withExplicitBoost" | "canMinimizeBoostFor" | "canEditIndividual" | "speciesCandyFamilyOf" | "speciesCandyStockOf"
+  >;
 }
 
 function sleepReachOf(
@@ -156,7 +178,7 @@ function resultMap(result: LevelPlannerResult | undefined): Map<string, PokemonP
 
 export function buildRowViews(input: RowViewInput): FineTuneRowView[] {
   const { base, state, evaluated, latest, advice, hasBoost, deps } = input;
-  const baseState = { version: 0, rows: base.rows, candyRecords: {} };
+  const baseState = { version: 0, rows: base.rows, candyRecords: {}, speciesCandy: {} };
   const baseRowById = new Map<string, CalcRow>();
   for (const row of base.rows) baseRowById.set(row.id, row);
   const baseResults = resultMap(base.result);
@@ -244,8 +266,24 @@ export function buildRowViews(input: RowViewInput): FineTuneRowView[] {
         value: shardsPerCandyAtReach(res?.reachableLine),
       },
       advice: advice.get(id),
+      individual: {
+        srcLevel: { base: baseRow.srcLevel, value: row.srcLevel, min: 1, max: row.dstLevel },
+        expRemaining: {
+          base: displayExpRemaining(baseRow),
+          value: displayExpRemaining(row),
+          max: expToNextLevel(row.srcLevel, row.expType),
+        },
+        editable: deps.canEditIndividual(row),
+      },
+      stock: stockOf(row),
     };
   });
+
+  function stockOf(row: CalcRow): Change<number> | null {
+    const familyKey = deps.speciesCandyFamilyOf(row);
+    if (familyKey === undefined) return null;
+    return { base: deps.speciesCandyStockOf(familyKey), value: speciesCandyValueOf(state, familyKey, deps) };
+  }
 }
 
 /** サマリー。残り枠は評価した行から出す（`summary.boost.boostRemaining` は使わない）。 */

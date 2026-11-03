@@ -7,7 +7,7 @@ import { calcExpAndCandy } from "../domain/pokesleep/exp";
 import { buildPlannerInputSignature } from "../domain/level-planner/signature";
 import type { LevelPlannerInput } from "../domain/level-planner/types";
 import { cancelPersist } from "../persistence/deferredPersist";
-import { addBoxRow, createCalcStore } from "../../tests/helpers/fakeIndividuals";
+import { addBoxRow, createCalcStore, fakeIndividualsOf } from "../../tests/helpers/fakeIndividuals";
 
 const t = ((key: string) => key) as unknown as Composer["t"];
 
@@ -264,6 +264,60 @@ describe("useCalcStore: evaluateRows / with*（設計書 §8.2）", () => {
     // 在庫が足りれば false
     store.updateSpeciesCandy(25, 99999);
     expect(store.evaluateRows(store.rows.value).byId.get(short)!.minimizeShortCandy).toBe(false);
+  });
+
+  it("evaluateRows の speciesCandy: その進化系の在庫をその数として評価し、ストアの在庫は変えない", () => {
+    const store = createCalcStore({ locale: ref("ja"), t });
+    store.setSlotBoostKind("full");
+    store.onBoostCandyRemainingInput("5000");
+    store.updateSpeciesCandy(25, 100);
+    addBoxRow(store, { boxId: "p", pokedexId: 25, srcLevel: 10, dstLevelDefault: 60, expType: 600, nature: "normal" });
+    const id = store.rows.value[0]!.id;
+    const family = store.speciesCandyFamilyOf(store.rows.value[0]!)!;
+    expect(store.speciesCandyStockOf(family)).toBe(100);
+    const plain = store.evaluateRows(store.rows.value);
+    const more = store.evaluateRows(store.rows.value, { speciesCandy: { [family]: 5000 } });
+    expect(plain.byId.get(id)!.stockCandyAvailable).toBe(100);
+    expect(more.byId.get(id)!.stockCandyAvailable).toBe(5000);
+    expect(more.plannerInput!.candyInventory.species[family]).toBe(5000);
+    expect(store.speciesCandyStockOf(family)).toBe(100);
+  });
+
+  it("withRowIndividual: 計算機の現在Lv・あとEXPの欄で入れたときの行と一致し、ストアの行は変えない", () => {
+    const { store, a, e } = makeScenario();
+    const before = snapshot(store.rows.value);
+    const leveled = store.withRowIndividual(store.rows.value, e, { level: 20 });
+    const expd = store.withRowIndividual(store.rows.value, a, { expRemaining: 50 });
+    expect(snapshot(store.rows.value)).toBe(before);
+    // 同じ値なら同じ配列
+    expect(store.withRowIndividual(store.rows.value, e, { level: rowOf(store, e).srcLevel })).toBe(store.rows.value);
+
+    store.setSrcLevel(e, 20);
+    expect(snapshot(leveled)).toBe(snapshot(store.rows.value));
+    store.undo();
+    store.onRowExpRemaining(a, "50");
+    expect(snapshot(expd)).toBe(snapshot(store.rows.value));
+  });
+
+  it("applyFineTuneDraft: 行一覧・個体（現在Lv・あとEXP）・在庫を書き、元に戻す1回で全部戻る。基準が別物なら書かない", () => {
+    const { store, e } = makeScenario();
+    store.updateSpeciesCandy(133, 40);
+    const base = store.rows.value;
+    const srcBefore = rowOf(store, e).srcLevel;
+    const family = store.speciesCandyFamilyOf(rowOf(store, e))!;
+    const draft = store.withRowIndividual(store.withRowIndividual(base, e, { level: 15 }), e, { expRemaining: 30 });
+    expect(store.applyFineTuneDraft({ rows: draft, speciesCandy: { [family]: 900 }, label: "かんたん", expectedBase: [...base] })).toBe(false);
+    expect(store.applyFineTuneDraft({ rows: draft, speciesCandy: { [family]: 900 }, label: "かんたん", expectedBase: base })).toBe(true);
+    expect(rowOf(store, e)).toMatchObject({ srcLevel: 15, expRemaining: 30 });
+    expect(fakeIndividualsOf(store).individualById.value.get("e")).toMatchObject({ level: 15, expRemaining: 30 });
+    expect(store.speciesCandyStockOf(family)).toBe(900);
+    expect(snapshot(store.rows.value)).toBe(snapshot(draft));
+
+    store.undo();
+    expect(rowOf(store, e).srcLevel).toBe(srcBefore);
+    expect(fakeIndividualsOf(store).individualById.value.get("e")!.level).toBe(srcBefore);
+    expect(store.speciesCandyStockOf(family)).toBe(40);
+    expect(snapshot(store.rows.value)).toBe(snapshot(base));
   });
 
   it("withCandyTarget: 計算機の個数指定の欄で確定した行と一致する。睡眠目標モードの行は変えない", () => {

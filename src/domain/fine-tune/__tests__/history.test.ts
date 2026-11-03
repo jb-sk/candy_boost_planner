@@ -40,6 +40,10 @@ const deps: FineTuneDeps = {
   withMinimizeBoost: (row) => row,
   canMinimizeBoostFor: () => false,
   withBoostCandyReset: (row) => row,
+  withRowIndividual: (rowList) => rowList,
+  canEditIndividual: () => true,
+  speciesCandyFamilyOf: () => undefined,
+  speciesCandyStockOf: () => 0,
 };
 
 const emptyResult = { pokemonResults: [] } as unknown as LevelPlannerResult;

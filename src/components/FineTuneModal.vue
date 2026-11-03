@@ -220,27 +220,46 @@ function revealRow(rowId: string): void {
 }
 
 // ===== リセット（その欄を押す前の値へ戻す。選択はそのまま） =====
-/** 欄を押した時点の行とアメの数の記録。リセットでここへ戻す */
-const editStart = shallowRef<{ rowId: string; row: CalcRow; candyRecord: CandyRecord | undefined } | null>(null);
+/**
+ * 欄を押した時点の行・アメの数の記録・その行の進化系の在庫（下書きの値。変えていなければ undefined）。リセットでここへ戻す
+ */
+interface EditStart {
+  rowId: string;
+  row: CalcRow;
+  candyRecord: CandyRecord | undefined;
+  stock: { familyKey: string; count: number | undefined } | undefined;
+}
+const editStart = shallowRef<EditStart | null>(null);
 
-function snapshotOf(rowId: string): { rowId: string; row: CalcRow; candyRecord: CandyRecord | undefined } | null {
+function snapshotOf(rowId: string): EditStart | null {
   const state = fineTune.state.value;
   const row = state?.rows.find((r) => r.id === rowId);
-  return state === null || row === undefined ? null : { rowId, row, candyRecord: state.candyRecords[rowId] };
+  if (state === null || row === undefined) return null;
+  const familyKey = calc.speciesCandyFamilyOf(row);
+  return {
+    rowId,
+    row,
+    candyRecord: state.candyRecords[rowId],
+    stock: familyKey === undefined ? undefined : { familyKey, count: state.speciesCandy[familyKey] },
+  };
 }
 
-/** 欄を押してから、その行を変えた */
+/** 欄を押してから、その行（とその行の進化系の在庫）を変えた */
 const canReset = computed(() => {
   const start = editStart.value;
   const state = fineTune.state.value;
   if (start === null || state === null || selected.value?.rowId !== start.rowId) return false;
-  return state.rows.find((r) => r.id === start.rowId) !== start.row || state.candyRecords[start.rowId] !== start.candyRecord;
+  return state.rows.find((r) => r.id === start.rowId) !== start.row
+    || state.candyRecords[start.rowId] !== start.candyRecord
+    || (start.stock !== undefined && state.speciesCandy[start.stock.familyKey] !== start.stock.count);
 });
 
 /** 押す前の値へ戻す。選択と「押す前の値」はそのままなので、続けて動かして、また戻せる */
 function resetEdit(): void {
   const start = editStart.value;
-  if (start !== null) dispatch({ kind: "revertRow", rowId: start.rowId, row: start.row, candyRecord: start.candyRecord });
+  if (start !== null) {
+    dispatch({ kind: "revertRow", rowId: start.rowId, row: start.row, candyRecord: start.candyRecord, stock: start.stock });
+  }
 }
 
 // ===== 並べ替え（取っ手をつかんで動かすのは useRowReorderDrag、取っ手の ↑↓ キーは行。確定は move の op） =====

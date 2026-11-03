@@ -216,6 +216,17 @@ export class FineTuneModalPage {
     return this.editor.getByTestId('fine-tune-editor-reset');
   }
 
+  /** 行の詳細（名前を押したとき）の欄: 現在Lv・あとEXP・アメ在庫 */
+  rowProp(key: 'srcLevel' | 'exp' | 'stock'): Locator {
+    return this.editor.locator(`[data-testid="fine-tune-editor-prop"][data-prop="${key}"]`);
+  }
+
+  /** 行の詳細の欄に打って Enter で確定する（PC幅） */
+  async typeRowProp(key: 'srcLevel' | 'exp' | 'stock', value: number): Promise<void> {
+    await this.rowProp(key).fill(String(value));
+    await this.rowProp(key).press('Enter');
+  }
+
   /** 目標Lv: スライダーで Lv を入れる */
   async setLevel(level: number): Promise<void> {
     await this.editor.getByTestId('fine-tune-editor-level-range').fill(String(level));

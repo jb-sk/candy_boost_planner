@@ -13,7 +13,7 @@
  * ソルバーは1回 20ms〜1秒ほどかかるので、1歩で試す候補の数と、全体の歩数・時間に上限を置く。
  * ストア・Vue を値で import しない。ストアの関数は `AdviceDeps` で受け取る。
  */
-import type { CalcRow, EvaluatedRows } from "../../composables/useCalcStore";
+import type { CalcRow, EvaluatedRows, SpeciesCandyOverride } from "../../composables/useCalcStore";
 import type { LevelPlannerInput, LevelPlannerResult, PokemonPlanResult, ShortageType } from "../level-planner/types";
 import { adviseRows, createAdviceContext, DIAGNOSIS_DIRECTION, diagnose, type AdviceDeps } from "./advice";
 import { boostSlotRemaining, canAdjustLevel, type FineTuneBase } from "./draft";
@@ -25,6 +25,8 @@ export interface RaiseInput {
   base: Pick<FineTuneBase, "boostLimit">;
   /** 今の下書きの行一覧 */
   rows: readonly CalcRow[];
+  /** 下書きで変えた種族アメの在庫（評価のときに在庫の代わりに使う） */
+  speciesCandy?: SpeciesCandyOverride;
   /** `rows` を解いた結果がもうあれば渡す（はじめに解き直さない） */
   initialResult?: LevelPlannerResult;
   solve: SolvePlan;
@@ -67,6 +69,7 @@ interface Point {
   rows: readonly CalcRow[];
   evaluated: EvaluatedRows;
   result: LevelPlannerResult;
+  speciesCandy: SpeciesCandyOverride;
 }
 
 function resultById(result: LevelPlannerResult): Map<string, PokemonPlanResult> {
@@ -108,7 +111,7 @@ function recommendationCandidates(deps: AdviceDeps, base: RaiseInput["base"], po
   const ctx = createAdviceContext({
     deps,
     base,
-    state: { version: 0, rows: point.rows, candyRecords: {} },
+    state: { version: 0, rows: point.rows, candyRecords: {}, speciesCandy: point.speciesCandy },
     evaluated: point.evaluated,
     result: point.result,
   });
@@ -199,12 +202,13 @@ export function checkRaise(input: {
   deps: AdviceDeps;
   base: RaiseInput["base"];
   rows: readonly CalcRow[];
+  speciesCandy?: SpeciesCandyOverride;
   evaluated: EvaluatedRows;
   result: LevelPlannerResult;
 }): RaiseCheck {
   const { deps, base, rows, evaluated, result } = input;
   if (evaluated.plannerInput === null || evaluated.plannerInput.boost.kind === "none") return { kind: "unavailable" };
-  const point: Point = { rows, evaluated, result };
+  const point: Point = { rows, evaluated, result, speciesCandy: input.speciesCandy ?? {} };
   const unreached = unreachedIds(point);
   if (unreached.length === 0) return { kind: "allReached" };
   if (recommendationCandidates(deps, base, point).length > 0) return { kind: "possible" };
@@ -221,10 +225,11 @@ export async function raiseLevels(input: RaiseInput): Promise<RaiseOutcome> {
   const cancelled = () => input.isCancelled?.() === true;
   const outOfTime = () => now() - startedAt > budget;
 
-  const evaluated = deps.evaluateRows(input.rows);
+  const speciesCandy = input.speciesCandy ?? {};
+  const evaluated = deps.evaluateRows(input.rows, speciesCandy);
   const plannerInput = evaluated.plannerInput;
   if (plannerInput === null || plannerInput.boost.kind === "none") return { kind: "unavailable" };
-  const initial: Point = { rows: input.rows, evaluated, result: input.initialResult ?? await solve(plannerInput) };
+  const initial: Point = { rows: input.rows, evaluated, result: input.initialResult ?? await solve(plannerInput), speciesCandy };
   if (cancelled()) return { kind: "cancelled" };
   if (unreachedIds(initial).length === 0) return { kind: "allReached" };
 
@@ -235,10 +240,10 @@ export async function raiseLevels(input: RaiseInput): Promise<RaiseOutcome> {
       if (cancelled()) return "cancelled";
       if (outOfTime()) break;
       const rows = withBoosts(deps, current.rows, changes);
-      const next = deps.evaluateRows(rows);
+      const next = deps.evaluateRows(rows, speciesCandy);
       if (next.plannerInput === null) continue;
       const result = await solve(next.plannerInput);
-      if (compareResults(result, (best ?? current).result, current.rows) > 0) best = { rows, evaluated: next, result };
+      if (compareResults(result, (best ?? current).result, current.rows) > 0) best = { rows, evaluated: next, result, speciesCandy };
     }
     return best;
   }

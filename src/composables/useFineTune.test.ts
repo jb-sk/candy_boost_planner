@@ -106,9 +106,9 @@ describe("useFineTune（設計書 §10.4）", () => {
           release();
         };
       },
-      replaceRows: (...args: Parameters<CalcStore["replaceRows"]>) => {
+      applyFineTuneDraft: (...args: Parameters<CalcStore["applyFineTuneDraft"]>) => {
         counts.replaced += 1;
-        return store.replaceRows(...args);
+        return store.applyFineTuneDraft(...args);
       },
     } as CalcStore;
     return { calc, counts };
@@ -161,7 +161,7 @@ describe("useFineTune（設計書 §10.4）", () => {
     await vi.waitFor(() => expect(fineTune.ready.value).toBe(true));
   });
 
-  it("op → プレビュー → 適用で replaceRows が1回だけ呼ばれ、計算機の元に戻す1回で戻る", async () => {
+  it("op → プレビュー → 適用で applyFineTuneDraft が1回だけ呼ばれ、計算機の元に戻す1回で戻る", async () => {
     const { store, a } = await makeStore();
     const baseRows = store.rows.value;
     const { fineTune, counts, runs, scope } = open(store);
