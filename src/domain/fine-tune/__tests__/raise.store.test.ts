@@ -201,6 +201,23 @@ describe("raiseLevels: 本物のストアとソルバー", () => {
     expect((await raiseLevels(input(store, 3000))).kind).toBe("unchanged");
   });
 
+  it("アメが足りず、上の行に種族アメの余りが無いときは、アメブを付け替えても合計が変わらないので試さず、unchanged（candy）を返す", async () => {
+    // p は種族アメをちょうど使い切って届き、アメブ枠も p が使い切る。e はアメ（種族アメ・万能アメ）が足りない
+    const store = build({ boostLimit: 3000, shards: 100_000_000, species: [[25, 99_999], [133, 50]], rows: [{ boxId: "p", pokedexId: 25, dst: 30 }, { boxId: "e", pokedexId: 133, dst: 40 }] });
+    const [p, e] = store.rows.value.map((r) => r.id) as [string, string];
+    const first = store.evaluateRows(store.rows.value).byId.get(p)!;
+    store.updateSpeciesCandy(25, first.candyNeed);
+    store.onBoostCandyRemainingInput(String(first.effectiveBoost));
+    const before = solveOf(store, store.rows.value);
+    const byId = new Map(before.pokemonResults.map((r) => [r.pokemonId, r]));
+    expect(byId.get(p)!.reachableLine.effectiveTargetReached).toBe(true);
+    expect(byId.get(e)!.constraintDiagnosis.limitingFactor).toBe("candy");
+    const run = input(store, first.effectiveBoost, { initialResult: before });
+    expect(await raiseLevels(run)).toEqual({ kind: "unchanged", limitingFactor: "candy" });
+    // 今の結果を渡したので、1回も解かない
+    expect(run.solves()).toBe(0);
+  });
+
   it("途中で止めると cancelled。時間の上限を超えたら、それまでに見つけた一番良い行一覧を返す", async () => {
     const world: World = {
       boostLimit: 450,

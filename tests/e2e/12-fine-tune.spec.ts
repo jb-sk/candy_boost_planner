@@ -236,6 +236,45 @@ test.describe('12-fine-tune（PC）', () => {
     await expect(fineTune.undoButton).toBeDisabled();
   });
 
+  test('アメ: 欄を押して数を変えると個数指定になり、目標Lv・アメブは動かせず、元の数に戻すと戻る。適用で計算機の個数指定へ移る', async ({ page }) => {
+    const { calc, fineTune } = await setupScenario(page, ALL_REACHED);
+    await fineTune.open();
+    await fineTune.waitForSettled();
+    const pikachu = fineTune.rowByName('ピカチュウ');
+    const candy = await fineTune.candyValue(pikachu);
+    // 今のLvでアメ1個に要るかけら（Lv10 から上げるアメの値段）
+    expect(await fineTune.cellNumber(pikachu, 'shardsPerCandy')).toBeGreaterThan(0);
+
+    await fineTune.select(pikachu, 'candy');
+    await expect(fineTune.editorNote).toContainText('個数指定');
+    await fineTune.step(-100);
+    expect(await fineTune.candyValue(pikachu)).toBe(candy - 100);
+    await expect(fineTune.editorChange).toHaveText(`${candy} → ${candy - 100}`);
+    await expect(fineTune.cell(pikachu, 'target')).toHaveClass(/fineTuneRow__cell--locked/);
+    await expect(fineTune.cell(pikachu, 'boost')).toHaveClass(/fineTuneRow__cell--locked/);
+    await fineTune.waitForSettled();
+    // 個数指定の行は、目標Lvがアメの数で決まる（計算機と同じ）。減らしたので目標Lvが下がる
+    expect(await fineTune.targetLevel(pikachu)).toBeLessThan(40);
+    // 動かせない欄を押すと、行の詳細と理由が出る
+    await fineTune.cell(pikachu, 'boost').click();
+    await expect(fineTune.editor).toHaveAttribute('data-field', 'row');
+    await expect(fineTune.editorNote).toContainText('アメの数を変えているため');
+
+    // 要る数より多くもできる（目標Lvより先まで上がる）
+    await fineTune.setValue(pikachu, 'candy', candy + 50);
+    expect(await fineTune.candyValue(pikachu)).toBe(candy + 50);
+    // 元の数に戻すと個数指定が外れ、目標Lv・アメブを動かせる
+    await fineTune.typeValue(candy);
+    await expect(fineTune.cell(pikachu, 'boost')).toHaveClass(/fineTuneRow__cell--input/);
+    await expect(fineTune.applyButton).toBeDisabled();
+
+    await fineTune.typeValue(candy - 30);
+    await fineTune.waitForSettled();
+    await fineTune.apply();
+    await calc.waitForPlannerResult();
+    await expect(calc.getRowCandyTargetInput(calc.getRow(0))).toHaveValue(String(candy - 30));
+  });
+
   test('並べ替え: 取っ手の ↑↓ キーとつかんで動かす操作で行が動き、適用すると計算機の順番が変わる', async ({ page }) => {
     const { calc, fineTune } = await setupScenario(page, ALL_REACHED);
     await fineTune.open();
@@ -505,7 +544,7 @@ test.describe('12-fine-tune（スマホ幅）', () => {
       expect(size.x + size.width).toBeLessThanOrEqual(viewport.width + 1);
     }
     const first = fineTune.rows.first();
-    for (const testId of ['fine-tune-row-handle', 'fine-tune-row-target', 'fine-tune-row-boost']) {
+    for (const testId of ['fine-tune-row-handle', 'fine-tune-row-target', 'fine-tune-row-boost', 'fine-tune-row-candy']) {
       const size = (await first.getByTestId(testId).boundingBox())!;
       expect(size.height, testId).toBeGreaterThanOrEqual(minHeight);
     }

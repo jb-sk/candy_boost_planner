@@ -46,6 +46,8 @@ function depsOf(store: CalcStore): FineTuneDeps {
     evaluateRows: store.evaluateRows,
     withExplicitBoost: store.withExplicitBoost,
     withTargetLevel: store.withTargetLevel,
+    withCandyTarget: store.withCandyTarget,
+    maxCandyTargetFor: store.maxCandyTargetFor,
   };
 }
 
@@ -146,6 +148,28 @@ describe("reduceFineTune: 本物のストアを deps に渡す", () => {
     const noSleep = s.base.rows.map((r) => (r.id === d ? { ...r, sleepTargetHours: undefined } : r));
     expect(m0).toBeGreaterThan(0);
     expect(m0).toBeLessThan(s.deps.evaluateRows(noSleep).byId.get(d)!.candyNeed);
+  });
+
+  it("アメの数: 実効アメブで固定してから計算機と同じ個数指定の行になり、上限は計算機の個数指定と同じ。要る数に戻すと元の行に戻る", () => {
+    const store = newStore(100_000);
+    const c = add(store, "c", 25, 10, 30);
+    add(store, "b", 133, 10, 50);
+    const s = session(store);
+    const row = rowOf(s.base.rows, c);
+    const boost = s.base.evaluated.byId.get(c)!.effectiveBoost;
+    const m0 = candyUnitsOf(row, s.base.evaluated);
+    const given = s.ok(s.initial, { kind: "candySet", rowId: c, candy: m0 - 10 });
+    const edited = rowOf(given.rows, c);
+    expect(edited.candyTarget).toBe(m0 - 10);
+    // アメブはアメの数の内数なので、数が実効アメブより少なければその数で抑えられる（計算機の個数指定と同じ）
+    expect(edited.boostOrExpAdjustment).toBe(Math.min(boost, m0 - 10));
+    expect(given.candyRecords[c]).toMatchObject({ m0, boost, candy: m0 - 10 });
+    // 上限は計算機の個数指定の上限（Lv70 に届く数）と同じ
+    const max = store.maxCandyTargetFor(store.withExplicitBoost(row, boost, { preserveTargetForExplicitBoost: true }));
+    expect(max).toBeGreaterThan(m0);
+    const top = s.ok(given, { kind: "candySet", rowId: c, candy: 1_000_000 });
+    expect(rowOf(top.rows, c).candyTarget).toBe(max);
+    expect(rowOf(s.ok(top, { kind: "candySet", rowId: c, candy: m0 }).rows, c)).toBe(row);
   });
 
   it("move は在庫のみの行の保存値が上限を超えても拒否されず、実効アメブが在庫で抑えられる。上の行が在庫を先に取ると全アメブ点が下がる", () => {

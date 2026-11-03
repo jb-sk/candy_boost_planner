@@ -91,7 +91,7 @@ import { vKeypad } from "../composables/useNumericKeypad";
 import { FINE_TUNE_STEPS, sleepReachText, type FineTuneField } from "../utils/fineTuneView";
 
 /**
- * かんたんの調整バー。表で押した欄（目標Lv・アメブ）を、刻みのボタンと個数欄で動かす。
+ * かんたんの調整バー。表で押した欄（目標Lv・アメブ・アメ）を、刻みのボタンと個数欄で動かす。
  * 行の詳細（到達・睡眠のあと・足りないもの・動かせない理由）と「〇〇のLvを上げる」もここに出す。
  * 値と範囲は `FineTuneRowView` に入っているものを使い、op を投げるだけ（範囲に収めるのは reducer）。
  */
@@ -143,7 +143,7 @@ interface Stepper {
 const stepper = computed<Stepper | null>(() => {
   const { row, field } = props;
   const rowId = row.id;
-  const labelOf = (key: "target" | "boost") => t(`calc.fineTune.field.${key}`);
+  const labelOf = (key: "target" | "boost" | "candy") => t(`calc.fineTune.field.${key}`);
   const inputLabelOf = (label: string) => t("calc.fineTune.inputAria", { field: label, name: row.title });
   if (field === "target" && row.levelAdjustable) {
     const label = labelOf("target");
@@ -171,6 +171,20 @@ const stepper = computed<Stepper | null>(() => {
       steps: FINE_TUNE_STEPS.boost,
       stepOp: (by) => ({ kind: "step", rowId, by }),
       setOp: (boost) => ({ kind: "set", rowId, boost }),
+    };
+  }
+  if (field === "candy" && row.candyEdit !== null) {
+    const label = labelOf("candy");
+    return {
+      label,
+      inputLabel: inputLabelOf(label),
+      value: row.candyEdit.value,
+      base: row.candyEdit.base,
+      min: row.candyEdit.min,
+      max: row.candyEdit.max,
+      steps: FINE_TUNE_STEPS.candy,
+      stepOp: (by) => ({ kind: "candyStep", rowId, by }),
+      setOp: (candy) => ({ kind: "candySet", rowId, candy }),
     };
   }
   return null;
@@ -207,8 +221,16 @@ const infoItems = computed(() => {
   return items;
 });
 
-/** 動かせない理由 */
-const noteText = computed(() => (props.row.exclusion === null ? null : t(EXCLUSION_TEXT[props.row.exclusion])));
+/** 動かせない理由と、アメの数を変えると個数指定になること */
+const noteText = computed(() => {
+  const { row, field } = props;
+  if (field === "candy") {
+    // もとから個数指定の行は、数を変えても個数指定のまま
+    return row.candyEdit !== null && row.exclusion === null ? t("calc.fineTune.candyNote") : null;
+  }
+  if (row.candyEdited) return t("calc.fineTune.candyEdited");
+  return row.exclusion === null ? null : t(EXCLUSION_TEXT[row.exclusion]);
+});
 
 // ===== 「〇〇のLvを上げる」（行の詳細とアメブで出す） =====
 const recommendation = computed(() => {

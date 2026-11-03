@@ -18,7 +18,7 @@ import {
   type FineTuneState,
 } from "../draft";
 
-type RowInfo = { full: number; need: number };
+type RowInfo = { full: number; need: number; /** 個数指定の上限（既定 500） */ max?: number };
 
 function makeRow(id: string, extra: Partial<CalcRow> = {}): CalcRow {
   return {
@@ -60,6 +60,12 @@ function makeDeps(info: Record<string, RowInfo>) {
       calls.target += 1;
       return { ...row, dstLevel: lv, candyTarget: undefined };
     },
+    withCandyTarget(row, m) {
+      return { ...row, candyTarget: Math.min(m, info[row.id]!.max ?? 500) };
+    },
+    maxCandyTargetFor(row) {
+      return info[row.id]!.max ?? 500;
+    },
   };
   return { deps, calls };
 }
@@ -84,7 +90,7 @@ function setup(rows: CalcRow[], info: Record<string, RowInfo>, boostLimit = 1000
     return out.state;
   };
   const range = (state: FineTuneState, target: Parameters<typeof opRange>[3]) =>
-    opRange(base, state, deps.evaluateRows(state.rows), target);
+    opRange(base, state, deps.evaluateRows(state.rows), target, deps);
   return { deps, calls, base, run, ok, range, initial: initialFineTuneState(base) };
 }
 
@@ -266,6 +272,75 @@ describe("reduceFineTune: 並べ替え（move）と isDraftEmpty", () => {
   });
 });
 
+describe("reduceFineTune: アメの数（candyStep / candySet）", () => {
+  const info = {
+    A: { full: 10, need: 100, max: 300 },
+    C: { full: 10, need: 40, max: 200 },
+    S: { full: 10, need: 100 },
+    M: { full: 0, need: 0 },
+  };
+  const rows = () => [
+    makeRow("A", { boostOrExpAdjustment: 7 }),
+    makeRow("C", { candyTarget: 40 }),
+    makeRow("S", { sleepTargetMode: "stock" }),
+    makeRow("M", { srcLevel: MAX_LEVEL, dstLevel: MAX_LEVEL }),
+  ];
+  const latestOf = (state: FineTuneState, used: Record<string, number>) => ({
+    version: state.version,
+    result: {
+      pokemonResults: Object.entries(used).map(([pokemonId, n]) => ({ pokemonId, reachableLine: { totalCandyUnitsUsed: n } })),
+    } as unknown as LevelPlannerResult,
+  });
+
+  it("個数指定でない行は、アメブを今の実効値で固定してから個数指定にし、変える前の行・要る数・アメブを記録する", () => {
+    const t = setup(rows(), info);
+    const out = t.ok(t.initial, { kind: "candyStep", rowId: "A", by: -10 });
+    expect(out.rows[0]).toMatchObject({ candyTarget: 90, boostOrExpAdjustment: 7 });
+    expect(out.candyRecords.A).toEqual({ before: t.initial.rows[0], m0: 100, boost: 7, candy: 90 });
+    // 個数指定の行になったので、目標Lv・アメブは動かせない
+    expect(t.run(out, { kind: "step", rowId: "A", by: 1 })).toEqual({ rejected: "excluded" });
+    expect(t.run(out, { kind: "targetStep", rowId: "A", by: 1 })).toEqual({ rejected: "excluded" });
+  });
+
+  it("要る数より多くもでき、上限（Lv70 に届く数）で止まる。要る数に戻すと変える前の行（同じ参照）に戻り、記録が消える", () => {
+    const t = setup(rows(), info);
+    const up = t.ok(t.initial, { kind: "candySet", rowId: "A", candy: 9999 });
+    expect(up.candyRecords.A!.candy).toBe(300);
+    expect(t.range(up, { kind: "candy", rowId: "A" })).toEqual({ min: 0, max: 300 });
+    const back = t.ok(up, { kind: "candySet", rowId: "A", candy: 100 });
+    expect(back.rows[0]).toBe(t.initial.rows[0]);
+    expect(back.candyRecords).toEqual({});
+    expect(isDraftEmpty(t.base, back)).toBe(true);
+  });
+
+  it("記録の無い行は、最新の結果で使えた数（要る数を超えない）から動かす。要る数まで増やしても記録は作らない", () => {
+    const t = setup(rows(), info);
+    const latest = latestOf(t.initial, { A: 70 });
+    const run = (op: FineTuneOp) => reduceFineTune(t.base, t.initial, op, t.deps, t.deps.evaluateRows(t.initial.rows), latest);
+    const down = run({ kind: "candyStep", rowId: "A", by: -10 });
+    expect("state" in down && down.state.candyRecords.A).toMatchObject({ m0: 100, candy: 60 });
+    expect(run({ kind: "candySet", rowId: "A", candy: 100 })).toEqual({ state: t.initial });
+  });
+
+  it("もとから個数指定の行は、その数を変えるだけで記録は持たない。睡眠目標モードの行・Lv上限の行は変えられない", () => {
+    const t = setup(rows(), info);
+    const out = t.ok(t.initial, { kind: "candyStep", rowId: "C", by: 10 });
+    expect(out.rows[1]!.candyTarget).toBe(50);
+    expect(out.candyRecords).toEqual({});
+    expect(t.run(t.initial, { kind: "candyStep", rowId: "S", by: -1 })).toEqual({ rejected: "candyLocked" });
+    expect(t.run(t.initial, { kind: "candyStep", rowId: "M", by: 1 })).toEqual({ rejected: "candyLocked" });
+    expect(t.run(t.initial, { kind: "candySet", rowId: "A", candy: Number.NaN })).toEqual({ rejected: "invalidValue" });
+  });
+
+  it("数を変えた行は、続けて動かしても記録した要る数・アメブのまま", () => {
+    const t = setup(rows(), info);
+    let s = t.ok(t.initial, { kind: "candySet", rowId: "A", candy: 50 });
+    s = t.ok(s, { kind: "candyStep", rowId: "A", by: -5 });
+    expect(s.candyRecords.A).toMatchObject({ m0: 100, boost: 7, candy: 45 });
+    expect(s.candyRecords.A!.before).toBe(t.initial.rows[0]);
+  });
+});
+
 describe("reduceFineTune: 全体のLvを伸ばす（raise）", () => {
   it("同じ顔ぶれ・順番の行一覧を1つの op で入れ、版を1つ進める。同じ行一覧なら変えない", () => {
     const t = setup([makeRow("a"), makeRow("b")], { a: { full: 50, need: 100 }, b: { full: 50, need: 100 } });
@@ -297,12 +372,16 @@ describe("reduceFineTune: その他", () => {
     expect(coalesceKeyOf({ kind: "targetStep", rowId: "a", by: 1 })).toBe("target:a");
     expect(coalesceKeyOf({ kind: "targetSet", rowId: "a", level: 30 })).toBe("target:a");
     expect(coalesceKeyOf({ kind: "move", rowId: "a", toIndex: 0 })).toBeUndefined();
+    expect(coalesceKeyOf({ kind: "candyStep", rowId: "a", by: 1 })).toBe("candy:a");
+    expect(coalesceKeyOf({ kind: "candySet", rowId: "a", candy: 1 })).toBe("candy:a");
     expect(coalesceKeyOf({ kind: "raise", rows: [], fromVersion: 0 })).toBeUndefined();
   });
 
-  it("isSameDraftContent は version を見ず、rows を比べる", () => {
+  it("isSameDraftContent は version を見ず、rows・candyRecords を比べる", () => {
     const t = setup([makeRow("a")], { a: { full: 1, need: 1 } });
     expect(isSameDraftContent(t.initial, { ...t.initial, version: 9 })).toBe(true);
+    const record = { before: t.initial.rows[0]!, m0: 1, boost: 0, candy: 0 };
+    expect(isSameDraftContent(t.initial, { ...t.initial, candyRecords: { a: record } })).toBe(false);
     expect(isSameDraftContent(t.initial, { ...t.initial, rows: [...t.initial.rows] })).toBe(true);
     expect(isSameDraftContent(t.initial, { ...t.initial, rows: [makeRow("a")] })).toBe(false);
   });

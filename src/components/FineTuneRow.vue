@@ -73,18 +73,21 @@
       <span v-if="hasRecommendation" class="fineTuneRow__mark" data-testid="fine-tune-row-recommend-mark" aria-hidden="true"></span>
     </button>
 
-    <span
-      class="fineTuneRow__cell fineTuneRow__cell--result"
-      :class="{ 'fineTuneRow__cell--changed': changed(row.candy) }"
+    <button
+      class="fineTuneRow__cell"
+      :class="[cellClass('candy', row.candyEdit !== null, candyChanged), { 'fineTuneRow__cell--result': !candyFromDraft }]"
+      type="button"
       data-testid="fine-tune-row-candy"
-    >{{ valueText(row.candy) }}</span>
+      :aria-label="`${t('calc.fineTune.field.candy')} ${candyText}`"
+      :aria-pressed="selectedField === 'candy'"
+      @click="emit('select', row.candyEdit !== null ? 'candy' : 'row')"
+    >{{ candyText }}</button>
 
     <span
-      class="fineTuneRow__cell fineTuneRow__cell--result"
-      :class="{ 'fineTuneRow__cell--changed': changed(perCandy) }"
+      class="fineTuneRow__cell"
       data-testid="fine-tune-row-shards-per-candy"
       :title="shardsTitle"
-    >{{ valueText(perCandy) }}</span>
+    >{{ row.shardsPerCandy === null ? "-" : fmt(row.shardsPerCandy) }}</span>
   </div>
 </template>
 
@@ -96,9 +99,9 @@ import type { Change, FineTuneRowView } from "../domain/fine-tune/rowView";
 import { sleepReachText, type FineTuneField } from "../utils/fineTuneView";
 
 /**
- * かんたんの1行。数字だけを1行に並べ、押した欄（目標Lv・アメブ）を下の調整バー（FineTuneEditor）で動かす。
+ * かんたんの1行。数字だけを1行に並べ、押した欄（目標Lv・アメブ・アメ）を下の調整バー（FineTuneEditor）で動かす。
  * 動かせない欄を押したときは、行の詳細（理由）を開く。計算は持たず、`FineTuneRowView` の値を出すだけ。
- * 結果から出す欄（到達・使うアメ・アメ1個あたりのかけら）は、計算中は薄くする。
+ * 結果から出す欄（到達・使えたアメ）は、計算中は薄くする。
  */
 const props = defineProps<{
   row: FineTuneRowView;
@@ -148,11 +151,13 @@ function valueText(c: Change<number | null>): string {
 const boostText = computed(() => (props.row.boost === null ? "-" : props.fmt(props.row.boost.value)));
 const hasRecommendation = computed(() => !props.pending && (props.row.advice?.recommendation ?? null) !== null);
 
-/** アメ1個あたりのかけら（整数に丸める。丸めた値で変わったかを見る） */
-const perCandy = computed<Change<number | null>>(() => {
-  const round = (n: number | null) => (n === null ? null : Math.round(n));
-  return { base: round(props.row.shardsPerCandy.base), value: round(props.row.shardsPerCandy.value) };
-});
+/** アメ: 下書きで数を変えた行は下書きの値（すぐ変わる）、ほかは最新の結果で使えた数 */
+const candyFromDraft = computed(() => props.row.candyEdit?.changed === true);
+const candyText = computed(() => (candyFromDraft.value
+  ? props.fmt(props.row.candyEdit!.value)
+  : valueText(props.row.candy)));
+const candyChanged = computed(() => candyFromDraft.value || changed(props.row.candy));
+
 /** 使うかけらの合計はホバーで出す */
 const shardsTitle = computed(() => (props.row.shards.value === null
   ? undefined

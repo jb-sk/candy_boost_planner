@@ -53,7 +53,7 @@
             <span v-if="fineTune.hasBoost.value" class="fineTuneHead__cell">{{ t("calc.fineTune.col.boost") }}</span>
             <span class="fineTuneHead__cell">{{ t("calc.fineTune.col.candy") }}</span>
             <!-- 長い見出しなので、狭い幅でも崩れないよう2段に分けて置く -->
-            <span class="fineTuneHead__cell fineTuneHead__cell--wrap" :title="t('calc.fineTune.col.shardsPerCandyTitle')">
+            <span class="fineTuneHead__cell fineTuneHead__cell--wrap" :title="t('calc.fineTune.col.shardsPerCandyTitle', { rate: shardRate })">
               <span class="fineTuneHead__line">{{ t("calc.fineTune.col.shardsPerCandyLine1") }}</span>
               <span class="fineTuneHead__line">{{ t("calc.fineTune.col.shardsPerCandyLine2") }}</span>
             </span>
@@ -130,6 +130,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import type { FineTuneOp } from "../domain/fine-tune/draft";
+import type { ShortageType } from "../domain/level-planner/types";
 import type { Change } from "../domain/fine-tune/rowView";
 import { useFineTune, type FineTuneRaiseResult } from "../composables/useFineTune";
 import { useFocusTrap } from "../composables/useFocusTrap";
@@ -137,6 +138,7 @@ import { useHistoryShortcuts } from "../composables/useHistoryShortcuts";
 import { useRowReorderDrag } from "../composables/useRowReorderDrag";
 import { showToast } from "../composables/useToast";
 import type { CalcStore } from "../composables/useCalcStore";
+import { boostRules } from "../domain/pokesleep/boost-config";
 import type { FineTuneField } from "../utils/fineTuneView";
 import FineTuneEditor from "./FineTuneEditor.vue";
 import FineTuneRow from "./FineTuneRow.vue";
@@ -248,21 +250,35 @@ onMounted(() => window.addEventListener("keydown", onKeydown));
 onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 
 // ===== 全体のLvを伸ばす。結果はトーストで知らせる（伸びた行は太字になる） =====
-const RAISE_TOAST: Readonly<Partial<Record<FineTuneRaiseResult, string>>> = {
-  raised: "calc.fineTune.raised",
-  allReached: "calc.fineTune.raiseAllReached",
-  unchanged: "calc.fineTune.raiseUnchanged",
-  failed: "calc.fineTune.raiseFailed",
+const UNCHANGED_TOAST: Readonly<Record<ShortageType, string>> = {
+  candy: "calc.fineTune.raiseUnchangedCandy",
+  shards: "calc.fineTune.raiseUnchangedShards",
+  boost: "calc.fineTune.raiseUnchangedBoost",
 };
+
+/** 結果の文言。伸びなかったときは、先頭の届かない行を止めているものを添える */
+function raiseToastKey(result: FineTuneRaiseResult): string | null {
+  switch (result.kind) {
+    case "raised":
+      return "calc.fineTune.raised";
+    case "allReached":
+      return "calc.fineTune.raiseAllReached";
+    case "unchanged":
+      return result.limitingFactor === null ? "calc.fineTune.raiseUnchanged" : UNCHANGED_TOAST[result.limitingFactor];
+    case "failed":
+      return "calc.fineTune.raiseFailed";
+    default:
+      return null;
+  }
+}
 
 async function raise(): Promise<void> {
   // 個数欄に打ちかけの値があれば、先に確定させる（blur で op が通る）
   if (document.activeElement instanceof HTMLInputElement && modalRef.value?.contains(document.activeElement)) {
     document.activeElement.blur();
   }
-  const result = await fineTune.raiseAll();
-  const key = RAISE_TOAST[result];
-  if (key !== undefined) showToast(t(key));
+  const key = raiseToastKey(await fineTune.raiseAll());
+  if (key !== null) showToast(t(key));
 }
 
 // ===== 適用。適用してから閉じる。日付の再開は unmount 側 =====
@@ -280,6 +296,9 @@ function applyDraft(): void {
 
 // ===== 表示 =====
 const summary = fineTune.summary;
+
+/** アメブで与えたときのかけらの倍率（見出しのホバーに出す） */
+const shardRate = computed(() => boostRules[calc.boostKind.value].shardMultiplier);
 
 /** 今の値。結果がまだ無いとき（変更後が null）は基準のまま。 */
 function summaryValue(change: Change<number | null>, format: (n: number) => string): string {

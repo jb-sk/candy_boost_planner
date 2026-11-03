@@ -6,6 +6,7 @@ import { cancelPersist } from "../persistence/deferredPersist";
 import { calcSleepLandingLevel } from "../domain/level-planner/sleepReachLevel";
 import { hasFineTuneTarget } from "../domain/fine-tune/draft";
 import { solveLevelPlan } from "../domain/level-planner/core/solveLevelPlan";
+import { dreamShardsPerCandy } from "../domain/pokesleep/tables";
 import type { LevelPlannerInput, LevelPlannerResult } from "../domain/level-planner/types";
 import type { PlannerRunner } from "../workers/plannerRunner";
 import type { CalcStore } from "./useCalcStore";
@@ -352,9 +353,10 @@ describe("useFineTune（設計書 §10.4）", () => {
     expect(fineTune.raising.value).toBe(true);
     expect(fineTune.dispatch({ kind: "step", rowId: a, by: 1 })).toEqual({ rejected: "busy" });
     expect(fineTune.history.canUndo.value).toBe(false);
-    expect(await pending).toBe("raised");
+    expect((await pending).kind).toBe("raised");
     expect(fineTune.raising.value).toBe(false);
-    expect(solves()).toBeGreaterThan(1);
+    // 開いた時点の結果（今の版）を使うので、解くのは候補の分だけ
+    expect(solves()).toBeGreaterThanOrEqual(1);
     expect(reachedCount()).toBeGreaterThan(before);
     expect(fineTune.rowViews.value.find((row) => row.id === a)!.boost!.value).toBeGreaterThan(0);
     // プレビューの実行役は呼ばず、計算中にならない
@@ -367,6 +369,28 @@ describe("useFineTune（設計書 §10.4）", () => {
     expect(fineTune.isEmpty.value).toBe(true);
   });
 
+  it("アメの数: 減らした行は表に下書きの値を出し、目標Lv・アメブを動かせない。元の数に戻すと動かせる", async () => {
+    const { store, a } = await makeStore("100000000");
+    const { fineTune } = open(store);
+    const view = () => fineTune.rowViews.value.find((r) => r.id === a)!;
+    const edit = view().candyEdit!;
+    expect(edit).toMatchObject({ min: 0, changed: false });
+    expect(edit.max).toBeGreaterThan(edit.value);
+    expect(fineTune.dispatch({ kind: "candyStep", rowId: a, by: -10 })).toHaveProperty("state");
+    expect(view()).toMatchObject({ candyEdited: true, levelAdjustable: false, candyEdit: { value: edit.value - 10, base: edit.value, changed: true } });
+    expect(fineTune.dispatch({ kind: "step", rowId: a, by: 1 })).toEqual({ rejected: "excluded" });
+    expect(fineTune.dispatch({ kind: "candySet", rowId: a, candy: edit.value })).toHaveProperty("state");
+    expect(view()).toMatchObject({ candyEdited: false, levelAdjustable: true });
+    expect(fineTune.isEmpty.value).toBe(true);
+  });
+
+  it("今のLvでアメ1個に要るかけらは、ゲームの表（次のLvへ向かうアメの値段）と同じ", async () => {
+    const { store, a } = await makeStore();
+    const { fineTune } = open(store);
+    const row = store.rows.value.find((r) => r.id === a)!;
+    expect(fineTune.rowViews.value.find((r) => r.id === a)!.shardsPerCandy).toBe(dreamShardsPerCandy[row.srcLevel + 1]);
+  });
+
   it("全体のLvを伸ばす: 全員届いていれば allReached で、下書きを変えない", async () => {
     const { store } = await makeStore("100000000");
     store.updateSpeciesCandy(25, 100_000);
@@ -375,7 +399,7 @@ describe("useFineTune（設計書 §10.4）", () => {
       expect(store.planResult.value!.pokemonResults.every((p) => p.reachableLine.effectiveTargetReached)).toBe(true);
     });
     const { fineTune } = open(store);
-    expect(await fineTune.raiseAll()).toBe("allReached");
+    expect((await fineTune.raiseAll()).kind).toBe("allReached");
     expect(fineTune.isEmpty.value).toBe(true);
     expect(fineTune.history.canUndo.value).toBe(false);
   });

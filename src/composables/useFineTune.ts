@@ -55,7 +55,7 @@ export interface UseFineTuneOptions {
 export type FineTuneApplyResult = "applied" | "empty" | "stale" | "notReady";
 
 /** 「全体のLvを伸ばす」の結果。"failed" は計算に失敗した、"busy" は求めている途中 */
-export type FineTuneRaiseResult = RaiseOutcome["kind"] | "notReady" | "busy" | "failed";
+export type FineTuneRaiseResult = RaiseOutcome | { kind: "notReady" | "busy" | "failed" };
 
 /**
  * かんたんの組み立て。基準の固定、下書き、op を reducer に通すこと、下書きの履歴、
@@ -75,6 +75,8 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     evaluateRows: calc.evaluateRows,
     withExplicitBoost: calc.withExplicitBoost,
     withTargetLevel: calc.withTargetLevel,
+    withCandyTarget: calc.withCandyTarget,
+    maxCandyTargetFor: calc.maxCandyTargetFor,
   };
 
   // 状態は shallowRef で持つ。行の参照を比べて変更を見分けるので、リアクティブな包みを被せない
@@ -178,7 +180,7 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     const ev = evaluated.value;
     if (b === null || s === null || ev === null) return { rejected: "notReady" };
     if (raising.value && op.kind !== "raise") return { rejected: "busy" };
-    const out = reduceFineTune(b, s, op, deps, ev);
+    const out = reduceFineTune(b, s, op, deps, ev, latest.value);
     if ("rejected" in out) return out;
     // 中身が変わらない op は、状態も履歴も動かさない（版も進めない）
     if (isSameDraftContent(s, out.state)) return { state: s };
@@ -264,6 +266,7 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
       advice: advice.value,
       hasBoost: hasBoost.value,
       reachAfterRemaining: (rowId, expToTarget) => calc.rowReachAfterRemainingFor(rowId, expToTarget),
+      deps,
     });
   });
 
@@ -312,31 +315,34 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
   async function raiseAll(): Promise<FineTuneRaiseResult> {
     const b = base.value;
     const s = state.value;
-    if (b === null || s === null) return "notReady";
-    if (raising.value) return "busy";
+    if (b === null || s === null) return { kind: "notReady" };
+    if (raising.value) return { kind: "busy" };
     raising.value = true;
     const fromVersion = s.version;
+    const l = latest.value;
     try {
       const out = await raiseLevels({
         deps,
         base: b,
         rows: s.rows,
+        // 今の版の結果があれば解き直さない（ソルバーは1回 1秒近くかかることがある）
+        initialResult: l !== null && l.version === fromVersion ? l.result : undefined,
         solve: options.solvePlan ?? runnerSolve,
         isCancelled: () => disposed || state.value?.version !== fromVersion,
       });
-      if (out.kind !== "raised") return out.kind;
+      if (out.kind !== "raised") return out;
       const reduced = dispatch({ kind: "raise", rows: out.rows, fromVersion });
-      if (!("state" in reduced)) return "cancelled";
+      if (!("state" in reduced)) return { kind: "cancelled" };
       // プレビューを待たず、解いた結果を今の版の結果にする
       clearPreviewTimer();
       runner.cancel();
       previewFailed.value = false;
       latest.value = { version: reduced.state.version, result: out.result };
-      return "raised";
+      return out;
     } catch (error) {
-      if (disposed) return "cancelled";
+      if (disposed) return { kind: "cancelled" };
       console.error("[fine-tune] raise failed:", error);
-      return "failed";
+      return { kind: "failed" };
     } finally {
       raising.value = false;
     }

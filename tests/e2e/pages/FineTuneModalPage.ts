@@ -5,9 +5,9 @@
 import { type Page, type Locator, expect } from '@playwright/test';
 
 /** 表で押せる欄。`row` は名前（行の詳細） */
-export type FineTuneField = 'row' | 'target' | 'boost';
+export type FineTuneField = 'row' | 'target' | 'boost' | 'candy';
 
-const CELL_TEST_ID: Record<Exclude<FineTuneField, 'row'> | 'candy' | 'reach' | 'shardsPerCandy', string> = {
+const CELL_TEST_ID: Record<Exclude<FineTuneField, 'row'> | 'reach' | 'shardsPerCandy', string> = {
   target: 'fine-tune-row-target',
   boost: 'fine-tune-row-boost',
   candy: 'fine-tune-row-candy',
@@ -180,7 +180,7 @@ export class FineTuneModalPage {
     await expect(this.editor).toBeVisible();
   }
 
-  /** 調整バーの刻みのボタン（アメブは -100 / -10 / -1 / +1 / +10 / +100、目標Lvは ±1 / ±5）を押す。 */
+  /** 調整バーの刻みのボタン（アメブ・アメは -100 / -10 / -1 / +1 / +10 / +100、目標Lvは ±1 / ±5）を押す。 */
   async step(delta: number): Promise<void> {
     await this.editor.locator(`[data-testid="fine-tune-editor-step"][data-delta="${delta}"]`).click();
   }

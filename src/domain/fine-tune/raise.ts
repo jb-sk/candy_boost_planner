@@ -6,13 +6,15 @@
  * 候補は次の順に作る。
  * 1. 先頭の届かない行への「〇〇のLvを上げる」（`adviseRows` のおすすめ量。アメが足りない・かけらが足りない）
  * 2. 届かない行（上から順）へのアメブの付け替え:
- *    - アメ・アメブ枠で止まっている行: 上の行のアメブを減らし、その分をその行へ回す（枠が足りないとき）
+ *    - アメで止まっている行: 上の行のアメブを減らし、その分をその行へ回す。上の行は減らした分だけアメが要るので、
+ *      その行の種族アメが余っているときだけ試す（余りが無いと共有のアメを取り合うだけで、合計は変わらない）
+ *    - アメブ枠で止まっている行: 上の行のアメブを減らして枠を空ける
  *    - かけらで止まっている行: その行と上の行のアメブを減らす（浮いたかけらが回る）
- * ソルバーは1回 20ms ほどかかるので、1歩で試す候補の数と、全体の歩数・時間に上限を置く。
+ * ソルバーは1回 20ms〜1秒ほどかかるので、1歩で試す候補の数と、全体の歩数・時間に上限を置く。
  * ストア・Vue を値で import しない。ストアの関数は `AdviceDeps` で受け取る。
  */
 import type { CalcRow, EvaluatedRows } from "../../composables/useCalcStore";
-import type { LevelPlannerInput, LevelPlannerResult, PokemonPlanResult } from "../level-planner/types";
+import type { LevelPlannerInput, LevelPlannerResult, PokemonPlanResult, ShortageType } from "../level-planner/types";
 import { adviseRows, createAdviceContext, DIAGNOSIS_DIRECTION, diagnose, type AdviceDeps } from "./advice";
 import { boostSlotRemaining, canAdjustLevel, type FineTuneBase } from "./draft";
 
@@ -23,6 +25,8 @@ export interface RaiseInput {
   base: Pick<FineTuneBase, "boostLimit">;
   /** 今の下書きの行一覧 */
   rows: readonly CalcRow[];
+  /** `rows` を解いた結果がもうあれば渡す（はじめに解き直さない） */
+  initialResult?: LevelPlannerResult;
   solve: SolvePlan;
   /** true を返すと途中で止める（閉じた・下書きが変わった） */
   isCancelled?: () => boolean;
@@ -38,14 +42,14 @@ export type RaiseOutcome =
   | { kind: "raised"; rows: readonly CalcRow[]; result: LevelPlannerResult; steps: number }
   /** はじめから全員が目標Lvに届いている */
   | { kind: "allReached" }
-  /** 試したどの候補でも伸びなかった */
-  | { kind: "unchanged" }
+  /** 試したどの候補でも伸びなかった。`limitingFactor` は先頭の届かない行を止めているもの */
+  | { kind: "unchanged"; limitingFactor: ShortageType | null }
   /** アメブなしのスロット・計算できる行が無い */
   | { kind: "unavailable" }
   | { kind: "cancelled" };
 
 export const RAISE_MAX_STEPS = 12;
-export const RAISE_TIME_BUDGET_MS = 6000;
+export const RAISE_TIME_BUDGET_MS = 8000;
 /** 1つの届かない行に対して試す、付け替えの相手の数（アメブの多い順） */
 const TRANSFER_PARTNERS = 4;
 /** 付け替えを試す届かない行の数（上から） */
@@ -96,7 +100,7 @@ function recommendationCandidates(deps: AdviceDeps, base: RaiseInput["base"], po
   const ctx = createAdviceContext({
     deps,
     base,
-    state: { version: 0, rows: point.rows },
+    state: { version: 0, rows: point.rows, candyRecords: {} },
     evaluated: point.evaluated,
     result: point.result,
   });
@@ -118,9 +122,16 @@ function transferCandidates(point: Point, targetId: string): Map<string, number>
   if (res === undefined || target === undefined || item === undefined) return [];
   const factor = res.constraintDiagnosis.limitingFactor;
   const boostOf = (row: CalcRow) => point.evaluated.byId.get(row.id)?.effectiveBoost ?? 0;
-  // 上の行のうち、アメブを減らせる行（アメブの多い順）
+  const familyOf = (row: CalcRow) => point.evaluated.plannerInput?.pokemonList.find((p) => p.pokemonId === row.id)?.candyFamilyKey;
+  /** その行の進化系の種族アメの余り（ほかの行は使えない） */
+  const speciesLeftOf = (row: CalcRow) => {
+    const family = familyOf(row);
+    return family === undefined ? 0 : Math.max(0, point.result.summary.speciesCandyRemaining[family] ?? 0);
+  };
+  // 上の行のうち、アメブを減らせる行（アメブの多い順）。アメで止まっている行へ回すときは、種族アメの余る行だけ
   const partners = point.rows.slice(0, index)
     .filter((row) => canAdjustLevel(point.evaluated, row) && boostOf(row) > 0)
+    .filter((row) => factor !== "candy" || speciesLeftOf(row) > 0)
     .sort((a, b) => boostOf(b) - boostOf(a))
     .slice(0, TRANSFER_PARTNERS);
   const candidates: Map<string, number>[] = [];
@@ -142,7 +153,9 @@ function transferCandidates(point: Point, targetId: string): Map<string, number>
     : Math.max(0, item.fullBoost - item.effectiveBoost);
   if (want <= 0) return [];
   for (const partner of partners) {
-    for (const k of halves(Math.min(want, boostOf(partner)))) {
+    // アメで止まっている行へは、上の行が余りの種族アメで賄える分まで
+    const limit = factor === "candy" ? Math.min(want, boostOf(partner), speciesLeftOf(partner)) : Math.min(want, boostOf(partner));
+    for (const k of halves(limit)) {
       const changes = new Map([[partner.id, boostOf(partner) - k]]);
       // 枠で止まっている行は、空いた枠をソルバーがそのまま回す。アメで止まっている行は、その分アメブを増やす
       if (factor !== "boost") changes.set(targetId, item.effectiveBoost + k);
@@ -174,7 +187,7 @@ export async function raiseLevels(input: RaiseInput): Promise<RaiseOutcome> {
   const evaluated = deps.evaluateRows(input.rows);
   const plannerInput = evaluated.plannerInput;
   if (plannerInput === null || plannerInput.boost.kind === "none") return { kind: "unavailable" };
-  const initial: Point = { rows: input.rows, evaluated, result: await solve(plannerInput) };
+  const initial: Point = { rows: input.rows, evaluated, result: input.initialResult ?? await solve(plannerInput) };
   if (cancelled()) return { kind: "cancelled" };
   if (unreachedIds(initial).length === 0) return { kind: "allReached" };
 
@@ -213,5 +226,10 @@ export async function raiseLevels(input: RaiseInput): Promise<RaiseOutcome> {
     steps += 1;
   }
   if (cancelled()) return { kind: "cancelled" };
-  return steps === 0 ? { kind: "unchanged" } : { kind: "raised", rows: point.rows, result: point.result, steps };
+  if (steps > 0) return { kind: "raised", rows: point.rows, result: point.result, steps };
+  const firstShort = unreachedIds(point)[0];
+  const limitingFactor = firstShort === undefined
+    ? null
+    : resultById(point.result).get(firstShort)?.constraintDiagnosis.limitingFactor ?? null;
+  return { kind: "unchanged", limitingFactor };
 }

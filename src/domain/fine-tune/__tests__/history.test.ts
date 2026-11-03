@@ -34,6 +34,8 @@ const deps: FineTuneDeps = {
   },
   withExplicitBoost: (row, n) => ({ ...row, boostOrExpAdjustment: n }),
   withTargetLevel: (row, lv) => ({ ...row, dstLevel: lv }),
+  withCandyTarget: (row, m) => ({ ...row, candyTarget: m }),
+  maxCandyTargetFor: () => 500,
 };
 
 const emptyResult = { pokemonResults: [] } as unknown as LevelPlannerResult;

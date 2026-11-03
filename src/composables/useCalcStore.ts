@@ -481,6 +481,8 @@ export type CalcStore = {
   withTargetLevel: (row: CalcRow, lv: unknown, rowList: readonly CalcRow[]) => CalcRow;
   /** 計算機の個数指定の欄に m を入れたときと同じ行を返す。睡眠目標モードの行は変えない。 */
   withCandyTarget: (row: CalcRow, m: number) => CalcRow;
+  /** 個数指定の上限（Lv70 に届く数。睡眠目標があれば睡眠で賄える分を引く）。`withCandyTarget` はこの数で抑える。 */
+  maxCandyTargetFor: (row: CalcRow) => number;
   /**
    * 行一覧を丸ごと差し替える。今の rows.value が expectedBase と別物（参照が違う）なら何もせず false を返す。
    * 行は正規化せずそのまま保存し、commitRows で1回だけ記録する。
@@ -4584,6 +4586,7 @@ export function useCalcStore(opts: {
     withExplicitBoost,
     withTargetLevel,
     withCandyTarget,
+    maxCandyTargetFor,
     replaceRows,
     holdGameDate,
     setSrcLevel,

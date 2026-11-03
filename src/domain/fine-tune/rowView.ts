@@ -7,14 +7,18 @@ import type { CalcRow, EvaluatedRows, RowReachAfterRemaining } from "../../compo
 import type { ExpGainNature } from "../types";
 import type { LevelPlannerResult, PokemonPlanResult, ShortageType } from "../level-planner/types";
 import { calcSleepLandingLevel } from "../level-planner/sleepReachLevel";
+import { dreamShardsPerCandy, maxLevel as MAX_LEVEL } from "../pokesleep/tables";
 import { sleepTargetTraits } from "../sleep-target";
 import type { RowAdviceEntry } from "./advice";
 import {
   boostSlotRemaining,
+  canAdjustCandy,
   canAdjustLevel,
+  candyValueOf,
   opRange,
   rowExclusion,
   type FineTuneBase,
+  type FineTuneDeps,
   type FineTuneLatest,
   type FineTuneState,
   type OpRange,
@@ -37,6 +41,8 @@ export interface FineTuneRowView {
   exclusion: RowExclusion | null;
   /** 目標Lv・アメブを動かせる行 */
   levelAdjustable: boolean;
+  /** アメの数を変えた行（変える前は個数指定でなかった行）。目標Lv・アメブは動かせない */
+  candyEdited: boolean;
   targetLevel: Change<number> & { range: OpRange };
   /** アメが担当する到達点へ届いたか（`effectiveTargetReached`） */
   reached: Change<boolean | null>;
@@ -52,9 +58,14 @@ export interface FineTuneRowView {
   boost: (Change<number> & { range: OpRange; cappedTo: number | null }) | null;
   /** 使えたアメ（最新の結果） */
   candy: Change<number | null>;
+  /**
+   * アメの数の欄（変えられる行だけ）。value は今の値（下書きで変えた行は下書きの値）、base は開いた時点の値、
+   * changed は下書きで数を変えたか（表には下書きの値を出す）
+   */
+  candyEdit: { value: number; base: number; min: number; max: number; changed: boolean } | null;
   shards: Change<number | null>;
-  /** アメ1個あたりのかけら（使うかけら ÷ 使うアメ）。アメを使わない行は null */
-  shardsPerCandy: Change<number | null>;
+  /** 今のLvでアメ1個に要るかけら（アメブで与えると倍率がかかる）。Lv上限の行は null */
+  shardsPerCandy: number | null;
   advice: RowAdviceEntry | undefined;
 }
 
@@ -86,6 +97,8 @@ export interface RowViewInput {
   hasBoost: boolean;
   /** 残EXPを埋めたあとの着地点の値（計算機の `rowReachAfterRemainingFor`。島は渡した残EXPで出す） */
   reachAfterRemaining: (rowId: string, expToTarget: number) => RowReachAfterRemaining | null;
+  /** アメの数の範囲を出すストアの関数 */
+  deps: Pick<FineTuneDeps, "maxCandyTargetFor" | "withExplicitBoost">;
 }
 
 function sleepReachOf(
@@ -105,11 +118,10 @@ function sleepReachOf(
   return { kind: after.kind, level: landing.level, tenths: landing.tenths };
 }
 
-/** アメ1個あたりのかけら。アメを1個も使わない行・結果が無いときは null */
-function shardsPerCandyOf(res: PokemonPlanResult | undefined): number | null {
-  if (res === undefined) return null;
-  const { totalCandyUnitsUsed, dreamShardsUsed } = res.reachableLine;
-  return totalCandyUnitsUsed > 0 ? dreamShardsUsed / totalCandyUnitsUsed : null;
+/** 今のLvでアメ1個に要るかけら（ゲームの表示と同じ。次のLvへ向かうアメの値段）。Lv上限は null */
+export function shardsPerCandyAt(level: number): number | null {
+  if (level >= MAX_LEVEL) return null;
+  return dreamShardsPerCandy[level + 1] ?? null;
 }
 
 function resultMap(result: LevelPlannerResult | undefined): Map<string, PokemonPlanResult> {
@@ -119,7 +131,8 @@ function resultMap(result: LevelPlannerResult | undefined): Map<string, PokemonP
 }
 
 export function buildRowViews(input: RowViewInput): FineTuneRowView[] {
-  const { base, state, evaluated, latest, advice, hasBoost } = input;
+  const { base, state, evaluated, latest, advice, hasBoost, deps } = input;
+  const baseState = { version: 0, rows: base.rows, candyRecords: {} };
   const baseRowById = new Map<string, CalcRow>();
   for (const row of base.rows) baseRowById.set(row.id, row);
   const baseResults = resultMap(base.result);
@@ -151,6 +164,7 @@ export function buildRowViews(input: RowViewInput): FineTuneRowView[] {
       index,
       exclusion: rowExclusion(row, evaluated),
       levelAdjustable: canAdjustLevel(evaluated, row),
+      candyEdited: state.candyRecords[id] !== undefined,
       targetLevel: {
         base: baseRow.dstLevel,
         value: row.dstLevel,
@@ -172,7 +186,15 @@ export function buildRowViews(input: RowViewInput): FineTuneRowView[] {
         base: baseRes?.reachableLine.dreamShardsUsed ?? null,
         value: res?.reachableLine.dreamShardsUsed ?? null,
       },
-      shardsPerCandy: { base: shardsPerCandyOf(baseRes), value: shardsPerCandyOf(res) },
+      candyEdit: canAdjustCandy(evaluated, row)
+        ? {
+          value: candyValueOf(state, evaluated, latest, row),
+          base: candyValueOf(baseState, base.evaluated, { version: 0, result: base.result }, baseRow),
+          ...opRange(base, state, evaluated, { kind: "candy", rowId: id }, deps),
+          changed: state.candyRecords[id] !== undefined || row.candyTarget !== baseRow.candyTarget,
+        }
+        : null,
+      shardsPerCandy: shardsPerCandyAt(row.srcLevel),
       advice: advice.get(id),
     };
   });
