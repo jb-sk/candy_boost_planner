@@ -110,21 +110,30 @@
 }
 
 /* ===== 表 =====
-   列: 取っ手 | ポケモン | 目標 | 到達 | アメブ | アメ | アメ1個あたりのかけら（アメブなしのスロットはアメブの列が無い） */
+   列: 取っ手 | ポケモン | 目標 | 睡眠 | 到達 | アメブ | アメ | アメ1個あたりのかけら
+   睡眠の列は睡眠のある行がいるときだけ、アメブの列はアメブのあるスロットだけ。列の幅は一覧の --ft-cols で決める */
 .fineTuneModal__list {
+  --ft-cols: 22px minmax(0, 1fr) 36px 40px 50px 50px 74px;
   padding: 0;
+}
+
+.fineTuneModal__list--noBoost {
+  --ft-cols: 22px minmax(0, 1fr) 40px 44px 60px 80px;
+}
+
+.fineTuneModal__list--sleep {
+  --ft-cols: 18px minmax(0, 1fr) 32px 36px 32px 46px 46px 64px;
+}
+
+.fineTuneModal__list--sleep.fineTuneModal__list--noBoost {
+  --ft-cols: 20px minmax(0, 1fr) 36px 40px 40px 56px 72px;
 }
 
 .fineTuneHead,
 .fineTuneRow {
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) 36px 40px 50px 50px 74px;
+  grid-template-columns: var(--ft-cols);
   padding: 0 6px 0 2px;
-}
-
-.fineTuneHead--noBoost,
-.fineTuneRow--noBoost {
-  grid-template-columns: 22px minmax(0, 1fr) 40px 44px 60px 80px;
 }
 
 .fineTuneHead {
@@ -156,6 +165,10 @@
   padding: 2px 2px;
   font-size: 10px;
   line-height: 1.2;
+}
+
+.fineTuneModal__list--sleep .fineTuneHead__cell--wrap {
+  font-size: 9px;
 }
 
 .fineTuneHead__line {
@@ -397,22 +410,6 @@ button.fineTuneRow__cell {
   flex-shrink: 0;
 }
 
-.fineTuneEditor__close {
-  -webkit-appearance: none;
-  appearance: none;
-  box-shadow: none;
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--muted);
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-}
 
 .fineTuneEditor__info {
   display: flex;
@@ -425,8 +422,15 @@ button.fineTuneRow__cell {
   color: var(--muted);
 }
 
-.fineTuneEditor__info:empty {
-  display: none;
+/* 何も選んでいないとき・詳細が無いときも1行ぶんの高さを取り、選んでも操作の場所が動かないようにする */
+.fineTuneEditor__info {
+  min-height: 1.5em;
+}
+
+.fineTuneEditor__hint {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
 }
 
 .fineTuneEditor__info--short {
@@ -601,15 +605,33 @@ button.fineTuneRow__cell {
     font-size: 14px;
   }
 
+  .fineTuneModal__list {
+    --ft-cols: 36px minmax(0, 1fr) 80px 80px 104px 104px 120px;
+  }
+
+  .fineTuneModal__list--noBoost {
+    --ft-cols: 36px minmax(0, 1fr) 88px 88px 120px 140px;
+  }
+
+  .fineTuneModal__list--sleep {
+    --ft-cols: 36px minmax(0, 1fr) 72px 80px 72px 100px 100px 120px;
+  }
+
+  .fineTuneModal__list--sleep.fineTuneModal__list--noBoost {
+    --ft-cols: 36px minmax(0, 1fr) 80px 88px 80px 120px 140px;
+  }
+
+  .fineTuneModal__list--sleep .fineTuneHead__cell--wrap {
+    font-size: 13px;
+  }
+
   .fineTuneHead,
   .fineTuneRow {
-    grid-template-columns: 36px minmax(0, 1fr) 80px 80px 104px 104px 120px;
     padding: 0 16px 0 8px;
   }
 
-  .fineTuneHead--noBoost,
-  .fineTuneRow--noBoost {
-    grid-template-columns: 36px minmax(0, 1fr) 88px 88px 120px 140px;
+  .fineTuneEditor__hint {
+    font-size: 16px;
   }
 
   .fineTuneHead {
@@ -676,11 +698,6 @@ button.fineTuneRow__cell {
     font-size: 15px;
   }
 
-  .fineTuneEditor__close {
-    width: 40px;
-    height: 40px;
-    font-size: 22px;
-  }
 
   .fineTuneEditor__info {
     gap: 4px 16px;

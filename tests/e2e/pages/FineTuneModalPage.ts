@@ -7,8 +7,9 @@ import { type Page, type Locator, expect } from '@playwright/test';
 /** 表で押せる欄。`row` は名前（行の詳細） */
 export type FineTuneField = 'row' | 'target' | 'boost' | 'candy';
 
-const CELL_TEST_ID: Record<Exclude<FineTuneField, 'row'> | 'reach' | 'shardsPerCandy', string> = {
+const CELL_TEST_ID: Record<Exclude<FineTuneField, 'row'> | 'sleep' | 'reach' | 'shardsPerCandy', string> = {
   target: 'fine-tune-row-target',
+  sleep: 'fine-tune-row-sleep',
   boost: 'fine-tune-row-boost',
   candy: 'fine-tune-row-candy',
   reach: 'fine-tune-row-reach',
@@ -45,7 +46,9 @@ export class FineTuneModalPage {
   readonly editorNote: Locator;
   readonly editorInput: Locator;
   readonly editorRecommend: Locator;
-  readonly editorClose: Locator;
+  /** 何も選んでいないときの案内と、押せない刻みのボタン */
+  readonly editorHint: Locator;
+  readonly editorIdle: Locator;
 
   // === フッター ===
   readonly raiseButton: Locator;
@@ -81,7 +84,8 @@ export class FineTuneModalPage {
     this.editorNote = page.getByTestId('fine-tune-editor-note');
     this.editorInput = page.getByTestId('fine-tune-editor-input');
     this.editorRecommend = page.getByTestId('fine-tune-editor-recommend');
-    this.editorClose = page.getByTestId('fine-tune-editor-close');
+    this.editorHint = page.getByTestId('fine-tune-hint');
+    this.editorIdle = page.getByTestId('fine-tune-editor-idle');
 
     this.raiseButton = page.getByTestId('fine-tune-raise');
     // 計算機のボタン（history-undo-button）と取り違えないよう、モーダル専用の testid を使う
@@ -167,17 +171,26 @@ export class FineTuneModalPage {
 
   // === 選ぶ・調整バー ===
 
-  /** 欄を押して調整バーを開く。すでにその欄の調整バーが出ていれば押さない（同じ欄を押すと閉じるため）。 */
+  /**
+   * 欄を押して、調整バーをその欄にする。すでにその欄なら押さない（同じ欄を押すと選択が外れるため）。
+   * 調整バーは常に出ているので、行と欄が切り替わるまで待つ。動かせない欄を押すと行の詳細（row）になる。
+   */
   async select(row: Locator, field: FineTuneField): Promise<void> {
-    const rowId = await row.getAttribute('data-row-id');
-    const open = await this.editor.count() > 0
-      && await this.editor.getAttribute('data-row-id') === rowId
+    const rowId = (await row.getAttribute('data-row-id'))!;
+    const selected = await this.editor.getAttribute('data-row-id') === rowId
       && await this.editor.getAttribute('data-field') === field;
-    if (!open) {
+    if (!selected) {
       const target = field === 'row' ? row.getByTestId('fine-tune-row-name') : this.cell(row, field);
       await target.click();
     }
-    await expect(this.editor).toBeVisible();
+    await expect(this.editor).toHaveAttribute('data-row-id', rowId);
+  }
+
+  /** 何も選んでいない（調整バーが案内だけの）状態か */
+  async expectIdle(): Promise<void> {
+    await expect(this.editorHint).toBeVisible();
+    await expect(this.editorIdle).toBeVisible();
+    await expect(this.editor).not.toHaveAttribute('data-row-id', /./);
   }
 
   /** 調整バーの刻みのボタン（アメブ・アメは -100 / -10 / -1 / +1 / +10 / +100、目標Lvは ±1 / ±5）を押す。 */

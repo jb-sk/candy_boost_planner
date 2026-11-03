@@ -54,6 +54,8 @@ export interface FineTuneRowView {
   expToNext: Change<number | null>;
   /** 睡眠（・おひるね島）のあとの着地点。睡眠EXPが無い行・結果が無いときは null */
   sleepReach: SleepReach | null;
+  /** 睡眠のあとの着地点が開いた時点から変わったか */
+  sleepReachChanged: boolean;
   /** アメブなしのスロットでは null */
   boost: (Change<number> & { range: OpRange; cappedTo: number | null }) | null;
   /** 使えたアメ（最新の結果） */
@@ -155,6 +157,10 @@ export function buildRowViews(input: RowViewInput): FineTuneRowView[] {
     const res = results.get(id);
     const baseRes = baseResults.get(id);
     const reached = res?.reachableLine.effectiveTargetReached ?? null;
+    const sleepReach = res === undefined ? null : sleepReachOf(res, row.expType, input.reachAfterRemaining(id, res.shortage.expToTarget));
+    const baseSleepReach = baseRes === undefined
+      ? null
+      : sleepReachOf(baseRes, baseRow.expType, input.reachAfterRemaining(id, baseRes.shortage.expToTarget));
 
     const range = (hasBoost && item !== undefined)
       ? opRange(base, state, evaluated, { kind: "boost", rowId: id })
@@ -183,7 +189,9 @@ export function buildRowViews(input: RowViewInput): FineTuneRowView[] {
       limitingFactor: reached === false ? res?.constraintDiagnosis.limitingFactor ?? null : null,
       reachLevel: { base: baseRes?.reachableLine.level ?? null, value: res?.reachableLine.level ?? null },
       expToNext: { base: baseRes?.reachableLine.expToNextLevel ?? null, value: res?.reachableLine.expToNextLevel ?? null },
-      sleepReach: res === undefined ? null : sleepReachOf(res, row.expType, input.reachAfterRemaining(id, res.shortage.expToTarget)),
+      sleepReach,
+      sleepReachChanged: baseSleepReach !== null && sleepReach !== null
+        && (baseSleepReach.level !== sleepReach.level || baseSleepReach.tenths !== sleepReach.tenths),
       boost: range !== null && item !== undefined && baseItem !== undefined
         ? { base: baseItem.effectiveBoost, value: item.effectiveBoost, range, cappedTo }
         : null,

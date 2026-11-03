@@ -2,7 +2,6 @@
   <div
     class="fineTuneRow"
     :class="{
-      'fineTuneRow--noBoost': !hasBoost,
       'fineTuneRow--selected': selectedField !== null,
       'fineTuneRow--excluded': row.exclusion !== null,
       'fineTuneRow--dragging': dragging,
@@ -51,6 +50,15 @@
       :aria-pressed="selectedField === 'target'"
       @click="emit('select', row.levelAdjustable ? 'target' : 'row')"
     >{{ row.targetLevel.value }}</button>
+
+    <!-- 睡眠（島）のあとの着地点。睡眠のある行が1匹でもいるときだけ列を出す -->
+    <span
+      v-if="hasSleep"
+      class="fineTuneRow__cell fineTuneRow__cell--result"
+      :class="{ 'fineTuneRow__cell--changed': row.sleepReachChanged, 'fineTuneRow__cell--short': row.sleepReach !== null && row.reached.value === false }"
+      data-testid="fine-tune-row-sleep"
+      :title="row.sleepReach === null ? undefined : t(row.sleepReach.kind === 'napIsland' ? 'calc.row.napReachedLv' : 'calc.row.sleepReachedLv')"
+    >{{ row.sleepReach === null ? "-" : sleepReachText(row.sleepReach) }}</span>
 
     <span
       class="fineTuneRow__cell fineTuneRow__cell--result"
@@ -107,6 +115,8 @@ import { sleepReachText, type FineTuneField } from "../utils/fineTuneView";
 const props = defineProps<{
   row: FineTuneRowView;
   hasBoost: boolean;
+  /** 一覧に睡眠の列があるか（睡眠のある行が1匹でもいる） */
+  hasSleep: boolean;
   /** この行で選んでいる欄。選んでいなければ null */
   selectedField: FineTuneField | null;
   /** 最新の結果が今の下書きの結果でない（結果から出す欄を薄くする） */
@@ -164,11 +174,8 @@ const shardsTitle = computed(() => (props.row.shards.value === null
   ? undefined
   : t("calc.fineTune.shardsTotal", { shards: props.fmt(props.row.shards.value) })));
 
-/** 到達: 睡眠（島）のある行は睡眠のあとの着地点、ほかはアメで届くLv */
-const reachText = computed(() => {
-  if (props.row.sleepReach !== null) return sleepReachText(props.row.sleepReach);
-  return props.row.reachLevel.value === null ? "-" : String(props.row.reachLevel.value);
-});
+/** 到達: アメで届くLv（睡眠のあとの着地点は睡眠の列） */
+const reachText = computed(() => (props.row.reachLevel.value === null ? "-" : String(props.row.reachLevel.value)));
 const reachChanged = computed(() => {
   const { reachLevel, expToNext } = props.row;
   return reachLevel.base !== null && reachLevel.value !== null

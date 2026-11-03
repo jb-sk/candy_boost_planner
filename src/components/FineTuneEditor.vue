@@ -1,23 +1,20 @@
 <template>
+  <!-- 常に出す。何も選んでいないときは案内と押せない刻みのボタンだけ（選んでも高さが変わらない） -->
   <section
     class="fineTuneEditor"
+    :class="{ 'fineTuneEditor--idle': row === null }"
     data-testid="fine-tune-editor"
-    :data-field="field"
-    :data-row-id="row.id"
-    :aria-label="row.title"
+    :data-field="row === null ? undefined : field ?? undefined"
+    :data-row-id="row?.id"
+    :aria-label="row?.title ?? t('calc.fineTune.hint')"
   >
     <div class="fineTuneEditor__head">
-      <span class="fineTuneEditor__name" data-testid="fine-tune-editor-name">{{ row.title }}</span>
-      <span v-if="stepper !== null" class="fineTuneEditor__field">{{ stepper.label }}</span>
-      <span v-if="changeText !== null" class="fineTuneEditor__change" data-testid="fine-tune-editor-change">{{ changeText }}</span>
-      <span class="fineTuneEditor__spacer"></span>
-      <button
-        class="fineTuneEditor__close"
-        type="button"
-        data-testid="fine-tune-editor-close"
-        :aria-label="t('calc.fineTune.closeEditor')"
-        @click="emit('close')"
-      >×</button>
+      <template v-if="row !== null">
+        <span class="fineTuneEditor__name" data-testid="fine-tune-editor-name">{{ row.title }}</span>
+        <span v-if="stepper !== null" class="fineTuneEditor__field">{{ stepper.label }}</span>
+        <span v-if="changeText !== null" class="fineTuneEditor__change" data-testid="fine-tune-editor-change">{{ changeText }}</span>
+      </template>
+      <span v-else class="fineTuneEditor__hint" data-testid="fine-tune-hint">{{ t("calc.fineTune.hint") }}</span>
     </div>
 
     <p class="fineTuneEditor__info" data-testid="fine-tune-editor-info">
@@ -31,7 +28,7 @@
       type="button"
       data-testid="fine-tune-editor-recommend"
       :disabled="pending || busy"
-      @click="emit('op', { kind: 'set', rowId: row.id, boost: recommendation.boost })"
+      @click="emit('op', { kind: 'set', rowId: row!.id, boost: recommendation.boost })"
     >
       <span class="fineTuneEditor__recommendLabel">{{ recommendLabel }}</span>
       <span class="fineTuneEditor__recommendDelta" data-testid="fine-tune-editor-recommend-delta">{{ t("calc.fineTune.field.boost") }}{{ recommendDelta }}</span>
@@ -78,6 +75,12 @@
         @click="stepBy(amount)"
       >+{{ amount }}</button>
     </div>
+    <!-- 動かせる欄を選んでいないとき: 同じ形の押せないボタンを置き、操作の場所を見せたままにする -->
+    <div v-else class="fineTuneEditor__stepper fineTuneEditor__stepper--3" data-testid="fine-tune-editor-idle" aria-hidden="true">
+      <button v-for="amount in IDLE_STEPS" :key="`down-${amount}`" class="fineTuneEditor__step" type="button" tabindex="-1" disabled>−{{ amount }}</button>
+      <input class="field__input fineTuneEditor__input" type="text" tabindex="-1" disabled value="" />
+      <button v-for="amount in [...IDLE_STEPS].reverse()" :key="`up-${amount}`" class="fineTuneEditor__step" type="button" tabindex="-1" disabled>+{{ amount }}</button>
+    </div>
   </section>
 </template>
 
@@ -96,8 +99,9 @@ import { FINE_TUNE_STEPS, sleepReachText, type FineTuneField } from "../utils/fi
  * 値と範囲は `FineTuneRowView` に入っているものを使い、op を投げるだけ（範囲に収めるのは reducer）。
  */
 const props = defineProps<{
-  row: FineTuneRowView;
-  field: FineTuneField;
+  /** 選んだ行。何も選んでいなければ null（案内だけを出す） */
+  row: FineTuneRowView | null;
+  field: FineTuneField | null;
   /** 最新の結果が今の下書きの結果でない。結果に頼る操作（おすすめ）を押せなくする */
   pending: boolean;
   /** 「全体のLvを伸ばす」を求めている間。どの操作も押せなくする */
@@ -108,8 +112,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "op", op: FineTuneOp): void;
-  (e: "close"): void;
 }>();
+
+/** 何も選んでいないときに並べる、押せない刻みのボタン */
+const IDLE_STEPS = FINE_TUNE_STEPS.boost;
 
 const { t } = useI18n();
 
@@ -142,6 +148,7 @@ interface Stepper {
 /** 選んだ欄の刻み・範囲・op。動かせない欄（行の詳細）は null */
 const stepper = computed<Stepper | null>(() => {
   const { row, field } = props;
+  if (row === null) return null;
   const rowId = row.id;
   const labelOf = (key: "target" | "boost" | "candy") => t(`calc.fineTune.field.${key}`);
   const inputLabelOf = (label: string) => t("calc.fineTune.inputAria", { field: label, name: row.title });
@@ -201,10 +208,12 @@ const changeText = computed(() => {
 const infoItems = computed(() => {
   const { row } = props;
   const items: Array<{ text: string; short: boolean }> = [];
+  if (row === null) return items;
   const level = row.reachLevel.value;
   if (level !== null) {
     const exp = row.expToNext.value;
-    const left = level < MAX_LEVEL && exp !== null && exp > 0 ? ` ${t("calc.fineTune.expLeft", { exp: props.fmt(exp) })}` : "";
+    // 計算機の行と同じ「到達Lv 63（あとEXP 358）」。あとEXP は次のLvまでのEXP
+    const left = level < MAX_LEVEL && exp !== null && exp > 0 ? t("calc.fineTune.expLeft", { exp: props.fmt(exp) }) : "";
     items.push({ text: `${t("calc.fineTune.reach", { level })}${left}`, short: false });
   }
   if (row.sleepReach !== null) {
@@ -224,14 +233,14 @@ const infoItems = computed(() => {
 /** 目標Lv・アメブを動かせない理由（アメの欄では出さない） */
 const noteText = computed(() => {
   const { row, field } = props;
-  if (field === "candy") return null;
+  if (row === null || field === "candy") return null;
   if (row.candyEdited) return t("calc.fineTune.candyEdited");
   return row.exclusion === null ? null : t(EXCLUSION_TEXT[row.exclusion]);
 });
 
 // ===== 「〇〇のLvを上げる」（行の詳細とアメブで出す） =====
 const recommendation = computed(() => {
-  if (props.field !== "row" && props.field !== "boost") return null;
+  if (props.row === null || (props.field !== "row" && props.field !== "boost")) return null;
   if (!props.row.levelAdjustable) return null;
   return props.row.advice?.recommendation ?? null;
 });
@@ -244,7 +253,7 @@ const recommendLabel = computed(() => {
 
 const recommendDelta = computed(() => {
   const rec = recommendation.value;
-  const current = props.row.boost?.value;
+  const current = props.row?.boost?.value;
   if (rec === null || current === undefined) return "";
   const delta = rec.boost - current;
   return `${delta > 0 ? "+" : delta < 0 ? "−" : ""}${props.fmt(Math.abs(delta))}`;

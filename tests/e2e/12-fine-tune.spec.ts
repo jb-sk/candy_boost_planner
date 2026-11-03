@@ -120,8 +120,8 @@ test.describe('12-fine-tune（PC）', () => {
 
     await fineTune.open();
     await fineTune.waitForSettled();
-    // 何も選んでいないときは調整バーが無い。見出しは無く、サマリーが × と同じ段にある
-    await expect(fineTune.editor).toHaveCount(0);
+    // 何も選んでいないときも操作の場所は出ていて、案内と押せないボタンだけ。見出しは無く、サマリーが × と同じ段にある
+    await fineTune.expectIdle();
     await expect(fineTune.modal.locator('.modal__title')).toHaveCount(0);
     await expect(fineTune.summaryBoost).toBeVisible();
     const pikachu = fineTune.rowByName('ピカチュウ');
@@ -249,6 +249,34 @@ test.describe('12-fine-tune（PC）', () => {
     await expect(toast).toBeVisible();
     await expect(toast).toBeHidden({ timeout: 4000 });
     await expect(fineTune.applyButton).toBeDisabled();
+  });
+
+  test('睡眠: 睡眠目標のある行がいると目標の右隣に睡眠の列が出て、到達はアメで届くLv、詳細は「到達Lv（あとEXP）」と「睡眠到達Lv」', async ({ page }) => {
+    const { calc, fineTune } = await setupScenario(page, ALL_REACHED);
+    // 睡眠の列は、睡眠のある行がいなければ出ない
+    await fineTune.open();
+    await fineTune.waitForSettled();
+    await expect(page.getByTestId('fine-tune-row-sleep')).toHaveCount(0);
+    await fineTune.discardAndClose();
+
+    await calc.chooseSleepTarget(calc.getRow(2), { base: 'hours', hours: 1000 });
+    await calc.waitForPlannerResult();
+    await fineTune.open();
+    await fineTune.waitForSettled();
+    const hitokage = fineTune.rowByName('ヒトカゲ');
+    const pikachu = fineTune.rowByName('ピカチュウ');
+    // 列の並び: 目標 → 睡眠 → 到達
+    const head = (await fineTune.list.locator('.fineTuneHead .fineTuneHead__cell').allTextContents()).map((s) => s.trim());
+    expect(head.slice(2, 5)).toEqual(['目標', '睡眠', '到達']);
+    // 睡眠の無い行は「-」、ある行は睡眠のあとの着地点。到達はアメで届くLv（睡眠のぶん目標より下）
+    await expect(fineTune.cell(pikachu, 'sleep')).toHaveText('-');
+    const sleepLevel = await fineTune.cellNumber(hitokage, 'sleep');
+    const reach = await fineTune.cellNumber(hitokage, 'reach');
+    expect(sleepLevel).toBeGreaterThanOrEqual(60);
+    expect(reach).toBeLessThan(sleepLevel);
+    await fineTune.select(hitokage, 'row');
+    await expect(fineTune.editorInfo).toContainText(`到達Lv ${reach}（あとEXP`);
+    await expect(fineTune.editorInfo).toContainText(`睡眠到達Lv ${sleepLevel}`);
   });
 
   test('アメ: 欄を押して数を変えると個数指定になり、目標Lv・アメブは動かせず、元の数に戻すと戻る。適用で計算機の個数指定へ移る', async ({ page }) => {
@@ -426,14 +454,14 @@ test.describe('12-fine-tune（PC）', () => {
     const pikachu = fineTune.rowByName('ピカチュウ');
     await fineTune.adjust(pikachu, 'target', 1);
     await expect(fineTune.applyButton).toBeEnabled();
-    // 同じ欄をもう一度押すと調整バーが閉じる
+    // 同じ欄をもう一度押すと選択が外れ、調整バーは案内だけに戻る（場所は出たまま）
     await fineTune.cell(pikachu, 'target').click();
-    await expect(fineTune.editor).toHaveCount(0);
+    await fineTune.expectIdle();
     await fineTune.select(pikachu, 'boost');
 
-    // Escape: 1回目は調整バーだけ閉じ、2回目は確認を出す
+    // Escape: 1回目は選択だけ外し、2回目は確認を出す
     await page.keyboard.press('Escape');
-    await expect(fineTune.editor).toHaveCount(0);
+    await fineTune.expectIdle();
     await expect(fineTune.modal).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(fineTune.discardConfirm).toBeVisible();
@@ -465,10 +493,13 @@ test.describe('12-fine-tune（スマホ幅）', () => {
       storageState: testInfo.project.use.storageState,
     });
     const seedPage = await seed.newPage();
-    await setupScenario(seedPage, GIVE_AND_RECEIVE);
+    const { calc: seedCalc } = await setupScenario(seedPage, GIVE_AND_RECEIVE);
+    // 睡眠の列も出す（列が一番多く、スマホ幅で一番狭い並び）
+    await seedCalc.chooseSleepTarget(seedCalc.getRow(2), { base: 'hours', hours: 1000 });
+    await seedCalc.waitForPlannerResult();
     // 保存はアイドル時に遅れて行われる。最後の設定まで保存されるのを待ってから引き継ぐ
     await expect.poll(() => seedPage.evaluate(() => ({
-      calc: (localStorage.getItem('candy-boost-planner:calc:slots:v1') ?? '').includes('"dstLevel":60'),
+      calc: (localStorage.getItem('candy-boost-planner:calc:slots:v1') ?? '').includes('"sleepTargetHours":1000'),
       candy: ((localStorage.getItem('candy-boost-planner:candy-inventory:v2') ?? '').match(/99999/g) ?? []).length >= 3,
     }))).toEqual({ calc: true, candy: true });
     const storageState = await seed.storageState();
@@ -519,7 +550,8 @@ test.describe('12-fine-tune（スマホ幅）', () => {
         expect(rowBox.height).toBeLessThan(56);
         expect(rowBox.y + rowBox.height).toBeLessThanOrEqual(listBox.y + listBox.height + 1);
         const boxes = [];
-        for (const testId of ['fine-tune-row-name', 'fine-tune-row-target', 'fine-tune-row-reach', 'fine-tune-row-boost', 'fine-tune-row-candy', 'fine-tune-row-shards-per-candy']) {
+        const sleepIds = await row.getByTestId('fine-tune-row-sleep').count() > 0 ? ['fine-tune-row-sleep'] : [];
+        for (const testId of ['fine-tune-row-name', 'fine-tune-row-target', ...sleepIds, 'fine-tune-row-reach', 'fine-tune-row-boost', 'fine-tune-row-candy', 'fine-tune-row-shards-per-candy']) {
           boxes.push((await row.getByTestId(testId).boundingBox())!);
         }
         for (let j = 1; j < boxes.length; j += 1) {
@@ -536,6 +568,10 @@ test.describe('12-fine-tune（スマホ幅）', () => {
       }
     }
 
+    await expect(fineTune.rows.first().getByTestId('fine-tune-row-sleep')).toBeVisible();
+    // 何も選んでいなくても操作の場所は画面内に出ている
+    await fineTune.expectIdle();
+    expect((await fineTune.editorIdle.boundingBox())!.y + 44).toBeLessThanOrEqual(viewport.height);
     await expectCompactRows();
     // 全体のLvを伸ばしてから、アメブの調整バーを開いた状態（一覧が縮む）でも崩れない
     await fineTune.raise();
@@ -551,7 +587,6 @@ test.describe('12-fine-tune（スマホ幅）', () => {
       fineTune.stepButton(1),
       fineTune.stepButton(100),
       fineTune.editorInput,
-      fineTune.editorClose,
     ];
     for (const part of editorParts) {
       const size = (await part.boundingBox())!;
