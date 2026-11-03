@@ -1,5 +1,5 @@
 /**
- * かんたんモードの表示用データ。画面が上限・状態の計算をしなくて済むよう、
+ * かんたんの表示用データ。画面が上限・状態の計算をしなくて済むよう、
  * 行ごとの「基準 → 変更後」の値と、操作の可否をここで出す。ストア・Vue を値で import しない。
  * 範囲・可否の判定は `draft.ts` の関数を呼ぶだけで、ここでは計算し直さない。
  */
@@ -11,10 +11,7 @@ import { sleepTargetTraits } from "../sleep-target";
 import type { RowAdviceEntry } from "./advice";
 import {
   boostSlotRemaining,
-  canAdjustCandy,
   canAdjustLevel,
-  canReceive,
-  giverValueOf,
   opRange,
   rowExclusion,
   type FineTuneBase,
@@ -36,17 +33,10 @@ export interface FineTuneRowView {
   nature: ExpGainNature;
   /** 下書きの順番（0 始まり） */
   index: number;
-  /** 目標Lv・アメブを動かせない理由。動かせる行とゆずる側の行は null */
+  /** 目標Lv・アメブを動かせない理由。動かせる行は null */
   exclusion: RowExclusion | null;
-  /** 記録のある行（ゆずる側）。目標Lv・アメブは動かせない */
-  giverLocked: boolean;
   /** 目標Lv・アメブを動かせる行 */
   levelAdjustable: boolean;
-  /** 使うアメを動かせる行（ゆずる側になれる行と記録のある行） */
-  candyAdjustable: boolean;
-  /** 受け取る側に選べる行（受け取る側がいないときだけ） */
-  receivable: boolean;
-  isReceiver: boolean;
   targetLevel: Change<number> & { range: OpRange };
   /** アメが担当する到達点へ届いたか（`effectiveTargetReached`） */
   reached: Change<boolean | null>;
@@ -63,8 +53,8 @@ export interface FineTuneRowView {
   /** 使えたアメ（最新の結果） */
   candy: Change<number | null>;
   shards: Change<number | null>;
-  /** 使うアメの欄（candyAdjustable の行）。value は今の値、m0 はゆずる前の数 */
-  giver: { value: number; m0: number } | null;
+  /** アメ1個あたりのかけら（使うかけら ÷ 使うアメ）。アメを使わない行は null */
+  shardsPerCandy: Change<number | null>;
   advice: RowAdviceEntry | undefined;
 }
 
@@ -80,8 +70,6 @@ export interface SleepReach {
 }
 
 export interface FineTuneSummary {
-  reached: Change<number | null>;
-  total: number;
   /** アメブなしのスロットでは null */
   boostRemaining: Change<number> | null;
   shardsRemaining: Change<number | null>;
@@ -117,6 +105,13 @@ function sleepReachOf(
   return { kind: after.kind, level: landing.level, tenths: landing.tenths };
 }
 
+/** アメ1個あたりのかけら。アメを1個も使わない行・結果が無いときは null */
+function shardsPerCandyOf(res: PokemonPlanResult | undefined): number | null {
+  if (res === undefined) return null;
+  const { totalCandyUnitsUsed, dreamShardsUsed } = res.reachableLine;
+  return totalCandyUnitsUsed > 0 ? dreamShardsUsed / totalCandyUnitsUsed : null;
+}
+
 function resultMap(result: LevelPlannerResult | undefined): Map<string, PokemonPlanResult> {
   const map = new Map<string, PokemonPlanResult>();
   for (const p of result?.pokemonResults ?? []) map.set(p.pokemonId, p);
@@ -137,8 +132,6 @@ export function buildRowViews(input: RowViewInput): FineTuneRowView[] {
     const baseRow = baseRowById.get(id) ?? row;
     const res = results.get(id);
     const baseRes = baseResults.get(id);
-    const record = state.givers[id];
-    const candyAdjustable = canAdjustCandy(state, evaluated, row);
     const reached = res?.reachableLine.effectiveTargetReached ?? null;
 
     const range = (hasBoost && item !== undefined)
@@ -156,12 +149,8 @@ export function buildRowViews(input: RowViewInput): FineTuneRowView[] {
       title: row.title,
       nature: row.nature,
       index,
-      exclusion: record === undefined ? rowExclusion(row, evaluated) : null,
-      giverLocked: record !== undefined,
-      levelAdjustable: canAdjustLevel(state, evaluated, row),
-      candyAdjustable,
-      receivable: canReceive(state, evaluated, row),
-      isReceiver: state.receiverId === id,
+      exclusion: rowExclusion(row, evaluated),
+      levelAdjustable: canAdjustLevel(evaluated, row),
       targetLevel: {
         base: baseRow.dstLevel,
         value: row.dstLevel,
@@ -183,28 +172,16 @@ export function buildRowViews(input: RowViewInput): FineTuneRowView[] {
         base: baseRes?.reachableLine.dreamShardsUsed ?? null,
         value: res?.reachableLine.dreamShardsUsed ?? null,
       },
-      giver: candyAdjustable
-        ? {
-          value: giverValueOf(state, evaluated, latest, row),
-          m0: opRange(base, state, evaluated, { kind: "giver", rowId: id }).max,
-        }
-        : null,
+      shardsPerCandy: { base: shardsPerCandyOf(baseRes), value: shardsPerCandyOf(res) },
       advice: advice.get(id),
     };
   });
-}
-
-function reachedCount(result: LevelPlannerResult | undefined): number | null {
-  if (result === undefined) return null;
-  return result.pokemonResults.filter((p) => p.reachableLine.effectiveTargetReached).length;
 }
 
 /** サマリー。残り枠は評価した行から出す（`summary.boost.boostRemaining` は使わない）。 */
 export function buildSummary(input: Pick<RowViewInput, "base" | "evaluated" | "latest" | "hasBoost">): FineTuneSummary {
   const { base, evaluated, latest, hasBoost } = input;
   return {
-    reached: { base: reachedCount(base.result), value: reachedCount(latest?.result) },
-    total: base.result.pokemonResults.length,
     boostRemaining: hasBoost
       ? { base: boostSlotRemaining(base, base.evaluated), value: boostSlotRemaining(base, evaluated) }
       : null,

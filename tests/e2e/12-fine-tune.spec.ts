@@ -1,10 +1,10 @@
 /**
  * 12-fine-tune.spec.ts
- * かんたんモード（FineTuneModal）のE2Eテスト
+ * かんたん（FineTuneModal）のE2Eテスト
  *
  * カバー範囲:
  *   - 表の欄を押して調整バーで動かす（アメブ・目標Lv）→ 適用 → 計算機の元に戻す1回で戻る
- *   - 同じ画面での「ゆずる・受け取る」（使うアメを減らす・受け取る側を選ぶ）、並べ替え、アメブなしのスロット
+ *   - 「全体のLvを伸ばす」（全員のアメブをまとめて動かす）、並べ替え、アメブなしのスロット
  *   - モーダル内の元に戻す・やり直す（ボタンと Ctrl+Z / Ctrl+Y）と、計算機の履歴が動かないこと
  *   - Escape と × の確認
  *   - スマホ幅で行が1行に収まり、調整バーを開いても全員が見えること（chromium-mobile で走る）
@@ -43,8 +43,8 @@ const ALL_REACHED: Scenario = {
 };
 
 /**
- * ゆずる・受け取る用。かけらが足りず、ヒトカゲ（受け取る側）が届かない。
- * フシギダネはアメの在庫が少なく、受け取る側より上で届かない行になる。
+ * 全体のLvを伸ばす用。かけらが足りず、ヒトカゲが届かない。フシギダネはアメの在庫が少なく届かない。
+ * アメの余っている上の行（ピカチュウ・イーブイ）のアメブを減らすと、浮いたかけらでヒトカゲが届く。
  */
 const GIVE_AND_RECEIVE: Scenario = {
   shards: '1450000',
@@ -120,9 +120,10 @@ test.describe('12-fine-tune（PC）', () => {
 
     await fineTune.open();
     await fineTune.waitForSettled();
-    // 何も選んでいないときは案内だけで、調整バーは無い
-    await expect(fineTune.hint).toBeVisible();
+    // 何も選んでいないときは調整バーが無い。見出しは無く、サマリーが × と同じ段にある
     await expect(fineTune.editor).toHaveCount(0);
+    await expect(fineTune.modal.locator('.modal__title')).toHaveCount(0);
+    await expect(fineTune.summaryBoost).toBeVisible();
     const pikachu = fineTune.rowByName('ピカチュウ');
     const hitokage = fineTune.rowByName('ヒトカゲ');
     const pointBefore = await fineTune.reachPoint(hitokage);
@@ -167,8 +168,7 @@ test.describe('12-fine-tune（PC）', () => {
     expect(await fineTune.targetLevel(pikachu)).toBe(41);
     await expect(fineTune.editorChange).toHaveText('40 → 41');
     await expect(fineTune.cell(pikachu, 'target')).toHaveClass(/fineTuneRow__cell--changed/);
-    // 届いている行には「受け取る」が出ない。おすすめも出ない
-    await expect(fineTune.editorReceive).toHaveCount(0);
+    // 全員届いているので、おすすめは出ない
     await expect(fineTune.editorRecommend).toHaveCount(0);
 
     // 個数欄で打つ。範囲の外は端に収まる（現在Lv 10 より下は 10）
@@ -184,90 +184,56 @@ test.describe('12-fine-tune（PC）', () => {
     await expect(calc.getRowDstLevelInput(calc.getRow(0))).toHaveValue('45');
   });
 
-  test('ゆずる・受け取る: 受け取る側を選ぶと届かない行が下へ動き、上の行の使うアメを減らすと受け取る側が伸びる', async ({ page }) => {
+  test('全体のLvを伸ばす: 1回押すと全員のアメブがまとまって変わり、届く行が増え、元に戻す1回で戻り、適用で計算機へ移る', async ({ page }) => {
     const { calc, fineTune } = await setupScenario(page, GIVE_AND_RECEIVE);
+    const calcBoostBefore = await calc.getRowBoostCandyInput(calc.getRow(0)).inputValue();
     await fineTune.open();
     await fineTune.waitForSettled();
-    await expect(fineTune.receiver).toHaveCount(0);
-
-    const hitokage = fineTune.rowByName('ヒトカゲ');
-    await fineTune.receive(hitokage);
-    await fineTune.waitForSettled();
-
-    // 上の届かない行（フシギダネ）が受け取る側の下へ動き、受け取りの欄が出る
-    expect(await fineTune.rowTitles()).toEqual(['ピカチュウ', 'イーブイ', 'ヒトカゲ', 'フシギダネ']);
-    await expect(fineTune.receiverName).toHaveText('受け取り：ヒトカゲ');
-    await expect(hitokage).toHaveClass(/fineTuneRow--receiver/);
-    // 受け取る側が決まっている間は、ほかの行に「受け取る」が出ない
-    await fineTune.select(fineTune.rowByName('フシギダネ'), 'row');
-    await expect(fineTune.editorReceive).toHaveCount(0);
 
     const pikachu = fineTune.rowByName('ピカチュウ');
-    const eevee = fineTune.rowByName('イーブイ');
-    const receiverBefore = await fineTune.reachPoint(hitokage);
-    const giverBefore = await fineTune.reachPoint(pikachu);
-    const pikachuCandy = await fineTune.candyValue(pikachu);
-    expect(pikachuCandy).toBeGreaterThan(100);
+    const hitokage = fineTune.rowByName('ヒトカゲ');
+    await expect(pikachu).toHaveAttribute('data-reached', 'true');
+    await expect(hitokage).toHaveAttribute('data-reached', 'false');
+    const reachedBefore = await fineTune.reachedCount();
+    const boosts = async () => Promise.all((await fineTune.rows.all()).map((row) => fineTune.boostValue(row)));
+    const boostsBefore = await boosts();
+    // アメ1個あたりのかけら（使うかけら ÷ 使うアメ）
+    expect(await fineTune.cellNumber(pikachu, 'shardsPerCandy')).toBeGreaterThan(0);
 
-    // ピカチュウの使うアメを 100 にする。減らすと個数指定になる案内が出て、目標Lv・アメブは動かせなくなる
-    await fineTune.select(pikachu, 'candy');
-    await expect(fineTune.editorInput).toHaveValue(String(pikachuCandy));
-    await expect(fineTune.editorNote).toContainText('個数指定');
-    await fineTune.typeValue(100);
-    await expect(fineTune.editorChange).toHaveText(`${pikachuCandy} → 100`);
-    expect(await fineTune.candyValue(pikachu)).toBe(100);
-    await expect(fineTune.cell(pikachu, 'target')).toHaveClass(/fineTuneRow__cell--locked/);
-    await expect(fineTune.cell(pikachu, 'boost')).toHaveClass(/fineTuneRow__cell--locked/);
+    await fineTune.raise();
+    await expect(page.locator('.appToast')).toContainText('全体のLvを伸ばしました');
+    // 届いていた行は届いたまま、届く行が増える。ヒトカゲが届く
+    expect(await fineTune.reachedCount()).toBeGreaterThan(reachedBefore);
+    await expect(pikachu).toHaveAttribute('data-reached', 'true');
+    await expect(hitokage).toHaveAttribute('data-reached', 'true');
+    const boostsAfter = await boosts();
+    expect(boostsAfter.filter((n, i) => n !== boostsBefore[i]!).length).toBeGreaterThanOrEqual(1);
+    await expect(fineTune.applyButton).toBeEnabled();
+
+    // 元に戻す1回で押す前へ戻り、やり直すでまた入る
+    await fineTune.undoButton.click();
+    expect(await boosts()).toEqual(boostsBefore);
+    await expect(fineTune.applyButton).toBeDisabled();
+    await fineTune.redoButton.click();
+    expect(await boosts()).toEqual(boostsAfter);
     await fineTune.waitForSettled();
-    await expect.poll(() => fineTune.reachPoint(pikachu)).toBeLessThan(giverBefore);
-    await expect.poll(() => fineTune.reachPoint(hitokage)).toBeGreaterThan(receiverBefore);
 
-    // 動かせない欄（ピカチュウの目標Lv）を押すと、行の詳細と理由が出る
-    await fineTune.cell(pikachu, 'target').click();
-    await expect(fineTune.editor).toHaveAttribute('data-field', 'row');
-    await expect(fineTune.editorNote).toContainText('使うアメを減らしているため');
-
-    // 2行目のゆずる側
-    const receiverMid = await fineTune.reachPoint(hitokage);
-    await fineTune.setValue(eevee, 'candy', 100);
-    await fineTune.waitForSettled();
-    await expect.poll(() => fineTune.reachPoint(hitokage)).toBeGreaterThanOrEqual(receiverMid);
-
-    // 受け取る側を外しても、減らした数は残る
-    await fineTune.receiverClear.click();
-    await expect(fineTune.receiver).toHaveCount(0);
-    expect(await fineTune.candyValue(pikachu)).toBe(100);
-    expect(await fineTune.candyValue(eevee)).toBe(100);
-
-    // 適用: ゆずる側が個数指定の行になり、順番も計算機へ移る
+    // 適用: 計算機のアメブが変わり、計算機の元に戻す1回で戻る
     await fineTune.apply();
     await calc.waitForPlannerResult();
-    await expectCalcOrder(calc, ['ピカチュウ', 'イーブイ', 'ヒトカゲ', 'フシギダネ']);
-    await expect(calc.getRowCandyTargetInput(calc.getRow(0))).toHaveValue('100');
-    await expect(calc.getRowCandyTargetInput(calc.getRow(1))).toHaveValue('100');
-
-    // 計算機の元に戻す1回で、適用の前へ戻る（順番と個数指定の両方）
+    await expect(calc.getRowBoostCandyInput(calc.getRow(0))).toHaveValue(String(boostsAfter[0]));
     await calc.clickUndo();
-    await expectCalcOrder(calc, ['ピカチュウ', 'フシギダネ', 'イーブイ', 'ヒトカゲ']);
-    await expect(calc.getRowCandyTargetInput(calc.getRow(0))).toHaveValue('');
-    await expect(calc.getRowCandyTargetInput(calc.getRow(2))).toHaveValue('');
+    await expect(calc.getRowBoostCandyInput(calc.getRow(0))).toHaveValue(calcBoostBefore);
   });
 
-  test('使うアメ: 受け取る側を選ばなくても減らせ、元の数に戻すと目標Lv・アメブをまた動かせる', async ({ page }) => {
+  test('全体のLvを伸ばす: 全員届いていれば、そう知らせて下書きを変えない', async ({ page }) => {
     const { fineTune } = await setupScenario(page, ALL_REACHED);
     await fineTune.open();
     await fineTune.waitForSettled();
-    const pikachu = fineTune.rowByName('ピカチュウ');
-    const candy = await fineTune.candyValue(pikachu);
-
-    await fineTune.adjust(pikachu, 'candy', -10);
-    expect(await fineTune.candyValue(pikachu)).toBe(candy - 10);
-    await expect(fineTune.cell(pikachu, 'boost')).toHaveClass(/fineTuneRow__cell--locked/);
-    // 元の数を超えては増やせない
-    await fineTune.step(10);
-    await expect(fineTune.stepButton(1)).toBeDisabled();
-    await expect(fineTune.cell(pikachu, 'boost')).toHaveClass(/fineTuneRow__cell--input/);
+    await fineTune.raise();
+    await expect(page.locator('.appToast')).toContainText('全員が目標Lvに届いています');
     await expect(fineTune.applyButton).toBeDisabled();
+    await expect(fineTune.undoButton).toBeDisabled();
   });
 
   test('並べ替え: 取っ手の ↑↓ キーとつかんで動かす操作で行が動き、適用すると計算機の順番が変わる', async ({ page }) => {
@@ -295,7 +261,7 @@ test.describe('12-fine-tune（PC）', () => {
     await expectCalcOrder(calc, ['ヒトカゲ', 'イーブイ', 'ピカチュウ']);
   });
 
-  test('アメブなしのスロット: アメブの列が無く、目標Lvと使うアメを動かせる', async ({ page }) => {
+  test('アメブなしのスロット: アメブの列と「全体のLvを伸ばす」が無く、目標Lvを動かせる', async ({ page }) => {
     const { calc, fineTune } = await setupScenario(page, {
       ...ALL_REACHED,
       boostKind: 'none',
@@ -304,9 +270,10 @@ test.describe('12-fine-tune（PC）', () => {
     await fineTune.open();
     await fineTune.waitForSettled();
 
-    // アメブの列・サマリーの残り枠が無い
+    // アメブの列・サマリーの残り枠・全体のLvを伸ばすが無い
     await expect(page.getByTestId('fine-tune-row-boost')).toHaveCount(0);
     await expect(fineTune.summaryBoost).toHaveCount(0);
+    await expect(fineTune.raiseButton).toHaveCount(0);
 
     // 目標Lv
     const pikachu = fineTune.rowByName('ピカチュウ');
@@ -314,16 +281,9 @@ test.describe('12-fine-tune（PC）', () => {
     expect(await fineTune.targetLevel(pikachu)).toBe(41);
     await fineTune.waitForSettled();
 
-    // 使うアメ（イーブイ）
-    const eevee = fineTune.rowByName('イーブイ');
-    await fineTune.setValue(eevee, 'candy', 100);
-    await fineTune.waitForSettled();
-    expect(await fineTune.candyValue(eevee)).toBe(100);
-
     await fineTune.apply();
     await calc.waitForPlannerResult();
     await expect(calc.getRowDstLevelInput(calc.getRow(0))).toHaveValue('41');
-    await expect(calc.getRowCandyTargetInput(calc.getRow(1))).toHaveValue('100');
   });
 
   test('元に戻す・やり直す: ボタンと Ctrl+Z / Ctrl+Y で1つずつ戻り進み、開いている間は計算機の履歴が動かない', async ({ page }) => {
@@ -504,7 +464,7 @@ test.describe('12-fine-tune（スマホ幅）', () => {
         expect(rowBox.height).toBeLessThan(56);
         expect(rowBox.y + rowBox.height).toBeLessThanOrEqual(listBox.y + listBox.height + 1);
         const boxes = [];
-        for (const testId of ['fine-tune-row-name', 'fine-tune-row-target', 'fine-tune-row-reach', 'fine-tune-row-boost', 'fine-tune-row-candy', 'fine-tune-row-shards']) {
+        for (const testId of ['fine-tune-row-name', 'fine-tune-row-target', 'fine-tune-row-reach', 'fine-tune-row-boost', 'fine-tune-row-candy', 'fine-tune-row-shards-per-candy']) {
           boxes.push((await row.getByTestId(testId).boundingBox())!);
         }
         for (let j = 1; j < boxes.length; j += 1) {
@@ -514,7 +474,7 @@ test.describe('12-fine-tune（スマホ幅）', () => {
         }
         expect(boxes[boxes.length - 1]!.x + boxes[boxes.length - 1]!.width).toBeLessThanOrEqual(viewport.width + 1);
         // 数字の欄の文字が欄からはみ出していない
-        for (const testId of ['fine-tune-row-boost', 'fine-tune-row-candy', 'fine-tune-row-shards']) {
+        for (const testId of ['fine-tune-row-boost', 'fine-tune-row-candy', 'fine-tune-row-shards-per-candy']) {
           const clipped = await row.getByTestId(testId).evaluate((el) => el.scrollWidth - el.clientWidth);
           expect(clipped, testId).toBeLessThanOrEqual(0);
         }
@@ -522,10 +482,9 @@ test.describe('12-fine-tune（スマホ幅）', () => {
     }
 
     await expectCompactRows();
-    // 受け取る側を選び、上の行の使うアメを開いた状態（調整バーが出て一覧が縮む）でも崩れない
-    await fineTune.receive(fineTune.rowByName('ヒトカゲ'));
-    await fineTune.waitForSettled();
-    await fineTune.select(fineTune.rowByName('ピカチュウ'), 'candy');
+    // 全体のLvを伸ばしてから、アメブの調整バーを開いた状態（一覧が縮む）でも崩れない
+    await fineTune.raise();
+    await fineTune.select(fineTune.rowByName('ヒトカゲ'), 'boost');
     await fineTune.step(-100);
     await fineTune.waitForSettled();
     await expectCompactRows();
@@ -546,13 +505,13 @@ test.describe('12-fine-tune（スマホ幅）', () => {
       expect(size.x + size.width).toBeLessThanOrEqual(viewport.width + 1);
     }
     const first = fineTune.rows.first();
-    for (const testId of ['fine-tune-row-handle', 'fine-tune-row-target', 'fine-tune-row-boost', 'fine-tune-row-candy']) {
+    for (const testId of ['fine-tune-row-handle', 'fine-tune-row-target', 'fine-tune-row-boost']) {
       const size = (await first.getByTestId(testId).boundingBox())!;
       expect(size.height, testId).toBeGreaterThanOrEqual(minHeight);
     }
 
     // フッターの操作が画面内に収まる
-    for (const button of [fineTune.applyButton, fineTune.undoButton, fineTune.redoButton]) {
+    for (const button of [fineTune.applyButton, fineTune.raiseButton, fineTune.undoButton, fineTune.redoButton]) {
       const rect = (await button.boundingBox())!;
       expect(rect.x).toBeGreaterThanOrEqual(0);
       expect(rect.x + rect.width).toBeLessThanOrEqual(viewport.width + 1);

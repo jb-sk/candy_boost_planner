@@ -381,15 +381,6 @@ describe("advice: 本物のストアとソルバー", () => {
       expect(adviseRows(contextOf(none.store, 0).ctx, "increase").size).toBe(0);
     });
 
-    it("目標Lv・アメブを動かせない行（ゆずる側の記録のある行）は入らない", () => {
-      const { store, ids, boostLimit } = candyShortWorld();
-      const first = contextOf(store, boostLimit);
-      const record = { before: first.rows[0]!, m0: 100, boost: 0, candy: 50 };
-      const state: FineTuneState = { ...first.state, givers: { [ids[0]!]: record } };
-      const { ctx } = contextOf(store, boostLimit, state, first.result);
-      expect([...adviseRows(ctx, "increase").keys()]).toEqual([ids[1], ids[2]]);
-    });
-
     it("全員届いているとき: saving で、おすすめ量は出ない", () => {
       const { store, ids, boostLimit } = build({
         species: [[25, 100_000], [133, 100_000]],

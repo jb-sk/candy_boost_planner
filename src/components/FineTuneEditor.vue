@@ -11,16 +11,6 @@
       <span v-if="stepper !== null" class="fineTuneEditor__field">{{ stepper.label }}</span>
       <span v-if="changeText !== null" class="fineTuneEditor__change" data-testid="fine-tune-editor-change">{{ changeText }}</span>
       <span class="fineTuneEditor__spacer"></span>
-      <!-- 受け取る側に選べるのは、届かない行だけ（届いている行が受け取っても伸びない） -->
-      <button
-        v-if="row.receivable && row.reached.value === false"
-        class="btn btn--soft btn--sm"
-        type="button"
-        data-testid="fine-tune-editor-receive"
-        :title="t('calc.fineTune.receiveTitle')"
-        :disabled="pending"
-        @click="emit('op', { kind: 'receiverSelect', rowId: row.id })"
-      >{{ t("calc.fineTune.receive") }}</button>
       <button
         class="fineTuneEditor__close"
         type="button"
@@ -40,7 +30,7 @@
       class="fineTuneEditor__recommend"
       type="button"
       data-testid="fine-tune-editor-recommend"
-      :disabled="pending"
+      :disabled="pending || busy"
       @click="emit('op', { kind: 'set', rowId: row.id, boost: recommendation.boost })"
     >
       <span class="fineTuneEditor__recommendLabel">{{ recommendLabel }}</span>
@@ -57,7 +47,7 @@
         data-testid="fine-tune-editor-step"
         :data-delta="-amount"
         :aria-label="t('calc.fineTune.stepAria', { field: stepper.label, delta: `−${amount}` })"
-        :disabled="stepper.value <= stepper.min"
+        :disabled="busy || stepper.value <= stepper.min"
         @click="stepBy(-amount)"
       >−{{ amount }}</button>
       <input
@@ -69,6 +59,7 @@
         inputmode="numeric"
         autocomplete="off"
         :aria-label="stepper.inputLabel"
+        :disabled="busy"
         :value="draft ?? String(stepper.value)"
         @focus="draft = String(stepper.value)"
         @input="onInput(($event.target as HTMLInputElement).value)"
@@ -83,7 +74,7 @@
         data-testid="fine-tune-editor-step"
         :data-delta="amount"
         :aria-label="t('calc.fineTune.stepAria', { field: stepper.label, delta: `+${amount}` })"
-        :disabled="stepper.value >= stepper.max"
+        :disabled="busy || stepper.value >= stepper.max"
         @click="stepBy(amount)"
       >+{{ amount }}</button>
     </div>
@@ -100,15 +91,17 @@ import { vKeypad } from "../composables/useNumericKeypad";
 import { FINE_TUNE_STEPS, sleepReachText, type FineTuneField } from "../utils/fineTuneView";
 
 /**
- * かんたんモードの調整バー。表で押した欄（目標Lv・アメブ・使うアメ）を、刻みのボタンと個数欄で動かす。
- * 行の詳細（到達・睡眠のあと・足りないもの）と、受け取る・「〇〇のLvを上げる」もここに出す。
+ * かんたんの調整バー。表で押した欄（目標Lv・アメブ）を、刻みのボタンと個数欄で動かす。
+ * 行の詳細（到達・睡眠のあと・足りないもの・動かせない理由）と「〇〇のLvを上げる」もここに出す。
  * 値と範囲は `FineTuneRowView` に入っているものを使い、op を投げるだけ（範囲に収めるのは reducer）。
  */
 const props = defineProps<{
   row: FineTuneRowView;
   field: FineTuneField;
-  /** 最新の結果が今の下書きの結果でない。結果に頼る操作（受け取る・おすすめ）を押せなくする */
+  /** 最新の結果が今の下書きの結果でない。結果に頼る操作（おすすめ）を押せなくする */
   pending: boolean;
+  /** 「全体のLvを伸ばす」を求めている間。どの操作も押せなくする */
+  busy: boolean;
   fmt: (n: number) => string;
   titleOf: (rowId: string) => string;
 }>();
@@ -150,7 +143,7 @@ interface Stepper {
 const stepper = computed<Stepper | null>(() => {
   const { row, field } = props;
   const rowId = row.id;
-  const labelOf = (key: "target" | "boost" | "candy") => t(`calc.fineTune.field.${key}`);
+  const labelOf = (key: "target" | "boost") => t(`calc.fineTune.field.${key}`);
   const inputLabelOf = (label: string) => t("calc.fineTune.inputAria", { field: label, name: row.title });
   if (field === "target" && row.levelAdjustable) {
     const label = labelOf("target");
@@ -180,25 +173,10 @@ const stepper = computed<Stepper | null>(() => {
       setOp: (boost) => ({ kind: "set", rowId, boost }),
     };
   }
-  if (field === "candy" && row.giver !== null) {
-    const label = labelOf("candy");
-    return {
-      label,
-      inputLabel: inputLabelOf(label),
-      value: row.giver.value,
-      // 減らす前（記録が無い）は今の値が基準。足りずに m0 まで使えていない行で「m0 → 使えた数」と出さない
-      base: row.giverLocked ? row.giver.m0 : row.giver.value,
-      min: 0,
-      max: row.giver.m0,
-      steps: FINE_TUNE_STEPS.candy,
-      stepOp: (by) => ({ kind: "giverStep", rowId, by }),
-      setOp: (candy) => ({ kind: "giverSet", rowId, candy }),
-    };
-  }
   return null;
 });
 
-/** 基準からの変化（変わっていなければ null）。使うアメは、減らす前の数からの変化 */
+/** 基準からの変化（変わっていなければ null） */
 const changeText = computed(() => {
   const s = stepper.value;
   if (s === null || s.value === s.base) return null;
@@ -229,14 +207,8 @@ const infoItems = computed(() => {
   return items;
 });
 
-/** 動かせない理由と、使うアメを減らすと個数指定になること */
-const noteText = computed(() => {
-  const { row, field } = props;
-  if (row.exclusion !== null && (field !== "candy" || row.giver === null)) return t(EXCLUSION_TEXT[row.exclusion]);
-  if (row.giverLocked && field !== "candy") return t("calc.fineTune.giverLocked");
-  if (field === "candy" && !row.giverLocked && row.exclusion === null) return t("calc.fineTune.candyNote");
-  return null;
-});
+/** 動かせない理由 */
+const noteText = computed(() => (props.row.exclusion === null ? null : t(EXCLUSION_TEXT[props.row.exclusion])));
 
 // ===== 「〇〇のLvを上げる」（行の詳細とアメブで出す） =====
 const recommendation = computed(() => {

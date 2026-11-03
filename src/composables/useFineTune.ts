@@ -5,8 +5,6 @@ import {
   createAdviceContext,
   DIAGNOSIS_DIRECTION,
   diagnose,
-  receiverNotices,
-  type ReceiverNotice,
   type RowAdviceEntry,
 } from "../domain/fine-tune/advice";
 import {
@@ -30,6 +28,7 @@ import {
   undoDraft,
   type FineTuneHistory,
 } from "../domain/fine-tune/history";
+import { raiseLevels, type RaiseOutcome, type SolvePlan } from "../domain/fine-tune/raise";
 import {
   buildRowViews,
   buildSummary,
@@ -49,13 +48,18 @@ export interface UseFineTuneOptions {
   createRunner?: () => PlannerRunner;
   now?: () => number;
   previewDelayMs?: number;
+  /** 「全体のLvを伸ばす」で候補を解く。テストで差し替える。既定は専用の実行役（ワーカー） */
+  solvePlan?: SolvePlan;
 }
 
 export type FineTuneApplyResult = "applied" | "empty" | "stale" | "notReady";
 
+/** 「全体のLvを伸ばす」の結果。"failed" は計算に失敗した、"busy" は求めている途中 */
+export type FineTuneRaiseResult = RaiseOutcome["kind"] | "notReady" | "busy" | "failed";
+
 /**
- * かんたんモードの組み立て。基準の固定、下書き、op を reducer に通すこと、下書きの履歴、
- * プレビュー（間引きと実行役）、最新の結果、適用、ゲーム内の日付の停止と再開を持つ。
+ * かんたんの組み立て。基準の固定、下書き、op を reducer に通すこと、下書きの履歴、
+ * プレビュー（間引きと実行役）、最新の結果、「全体のLvを伸ばす」、適用、ゲーム内の日付の停止と再開を持つ。
  * 上限・おすすめ量の計算は持たず、ドメイン（draft / advice / rowView）を呼ぶだけ。
  *
  * 日付の停止と実行役の破棄は、呼び出したコンポーネントの寿命（スコープ）に結びつける。
@@ -71,7 +75,6 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     evaluateRows: calc.evaluateRows,
     withExplicitBoost: calc.withExplicitBoost,
     withTargetLevel: calc.withTargetLevel,
-    withCandyTarget: calc.withCandyTarget,
   };
 
   // 状態は shallowRef で持つ。行の参照を比べて変更を見分けるので、リアクティブな包みを被せない
@@ -80,6 +83,8 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
   const history = shallowRef<FineTuneHistory>(EMPTY_FINE_TUNE_HISTORY);
   const latest = shallowRef<FineTuneLatest | null>(null);
   const previewFailed = ref(false);
+  /** 「全体のLvを伸ばす」を求めている間 true。下書きを変える操作を受け付けない */
+  const raising = ref(false);
 
   // ===== 基準 =====
   // 開いたときに計算機が計算中なら、終わるまで基準を作らない（一覧を出さない）。
@@ -167,12 +172,13 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
   const previewing = computed(() => stale.value && !previewFailed.value);
 
   // ===== op =====
-  function dispatch(op: FineTuneOp): FineTuneReduceResult | { rejected: "notReady" } {
+  function dispatch(op: FineTuneOp): FineTuneReduceResult | { rejected: "notReady" | "busy" } {
     const b = base.value;
     const s = state.value;
     const ev = evaluated.value;
     if (b === null || s === null || ev === null) return { rejected: "notReady" };
-    const out = reduceFineTune(b, s, op, deps, ev, latest.value);
+    if (raising.value && op.kind !== "raise") return { rejected: "busy" };
+    const out = reduceFineTune(b, s, op, deps, ev);
     if ("rejected" in out) return out;
     // 中身が変わらない op は、状態も履歴も動かさない（版も進めない）
     if (isSameDraftContent(s, out.state)) return { state: s };
@@ -184,7 +190,7 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
   // ===== 下書きの元に戻す・やり直す（操作名もトーストも出さない） =====
   function undo(): null {
     const s = state.value;
-    if (s === null) return null;
+    if (s === null || raising.value) return null;
     const stepped = undoDraft(history.value, s, now());
     if (stepped === null) return null;
     history.value = stepped.history;
@@ -193,7 +199,7 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
   }
   function redo(): null {
     const s = state.value;
-    if (s === null) return null;
+    if (s === null || raising.value) return null;
     const stepped = redoDraft(history.value, s, now());
     if (stepped === null) return null;
     history.value = stepped.history;
@@ -201,8 +207,8 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     return null;
   }
   const historyControls: HistoryControls = {
-    canUndo: computed(() => history.value.undo.length > 0),
-    canRedo: computed(() => history.value.redo.length > 0),
+    canUndo: computed(() => !raising.value && history.value.undo.length > 0),
+    canRedo: computed(() => !raising.value && history.value.redo.length > 0),
     undoLabel: computed(() => null),
     redoLabel: computed(() => null),
     undo,
@@ -268,25 +274,72 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     return buildSummary({ base: b, evaluated: ev, latest: latest.value, hasBoost: hasBoost.value });
   });
 
-  const notices = computed<ReceiverNotice[]>(() => {
-    const s = state.value;
-    const ev = evaluated.value;
-    if (s === null || ev === null) return [];
-    // 最新の結果が今の版でない間は、結果に頼る注意を出さない（古い結果で「先に取られる」と誤って出さない）
-    const l = latest.value;
-    return receiverNotices(s, ev, l !== null && l.version === s.version ? l : null);
-  });
-
-  const receiver = computed(() => {
-    const s = state.value;
-    if (s === null || s.receiverId === null) return null;
-    const row = s.rows.find((r) => r.id === s.receiverId);
-    return row === undefined ? null : { id: row.id, title: row.title };
-  });
-
-  /** 行名を引く（診断・注意の文言に差し込む）。下書きの行一覧から引く。 */
+  /** 行名を引く（おすすめの文言に差し込む）。下書きの行一覧から引く。 */
   function titleOf(rowId: string): string {
     return state.value?.rows.find((r) => r.id === rowId)?.title ?? "";
+  }
+
+  // ===== 全体のLvを伸ばす =====
+  let disposed = false;
+  let raiseRunner: PlannerRunner | null = null;
+  let rejectPendingSolve: ((reason: unknown) => void) | null = null;
+
+  /** プレビューとは別の実行役で1つずつ解く。閉じたら待っている依頼を止める */
+  function runnerSolve(input: Parameters<SolvePlan>[0]): ReturnType<SolvePlan> {
+    raiseRunner ??= (options.createRunner ?? createPlannerRunner)();
+    const solver = raiseRunner;
+    return new Promise((resolve, reject) => {
+      rejectPendingSolve = reject;
+      solver.run(
+        input,
+        (output) => {
+          rejectPendingSolve = null;
+          resolve(output.result);
+        },
+        (error) => {
+          rejectPendingSolve = null;
+          reject(error);
+        },
+      );
+    });
+  }
+
+  /**
+   * 全員のアメブ（とそれで決まる使うアメ）をまとめて動かし、届かない行を上から伸ばす（`raiseLevels`）。
+   * 伸びたら下書きへ1つの op で入れ（元に戻す1回で戻る）、解いた結果をそのまま最新の結果にする。
+   * 求めている間に下書きが変わったら入れない。
+   */
+  async function raiseAll(): Promise<FineTuneRaiseResult> {
+    const b = base.value;
+    const s = state.value;
+    if (b === null || s === null) return "notReady";
+    if (raising.value) return "busy";
+    raising.value = true;
+    const fromVersion = s.version;
+    try {
+      const out = await raiseLevels({
+        deps,
+        base: b,
+        rows: s.rows,
+        solve: options.solvePlan ?? runnerSolve,
+        isCancelled: () => disposed || state.value?.version !== fromVersion,
+      });
+      if (out.kind !== "raised") return out.kind;
+      const reduced = dispatch({ kind: "raise", rows: out.rows, fromVersion });
+      if (!("state" in reduced)) return "cancelled";
+      // プレビューを待たず、解いた結果を今の版の結果にする
+      clearPreviewTimer();
+      runner.cancel();
+      previewFailed.value = false;
+      latest.value = { version: reduced.state.version, result: out.result };
+      return "raised";
+    } catch (error) {
+      if (disposed) return "cancelled";
+      console.error("[fine-tune] raise failed:", error);
+      return "failed";
+    } finally {
+      raising.value = false;
+    }
   }
 
   // ===== 適用 =====
@@ -308,8 +361,12 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
   }
 
   function dispose(): void {
+    disposed = true;
     clearPreviewTimer();
     runner.dispose();
+    raiseRunner?.dispose();
+    rejectPendingSolve?.(new Error("disposed"));
+    rejectPendingSolve = null;
     resumeGameDate();
   }
   onScopeDispose(dispose);
@@ -328,8 +385,8 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     history: historyControls,
     rowViews,
     summary,
-    notices,
-    receiver,
+    raising,
+    raiseAll,
     titleOf,
     dispatch,
     undo,

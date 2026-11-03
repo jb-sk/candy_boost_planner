@@ -34,7 +34,6 @@ const deps: FineTuneDeps = {
   },
   withExplicitBoost: (row, n) => ({ ...row, boostOrExpAdjustment: n }),
   withTargetLevel: (row, lv) => ({ ...row, dstLevel: lv }),
-  withCandyTarget: (row, m) => ({ ...row, candyTarget: m }),
 };
 
 const emptyResult = { pokemonResults: [] } as unknown as LevelPlannerResult;
@@ -52,8 +51,8 @@ function session() {
   const api = {
     get state() { return state; },
     get history() { return history; },
-    op(op: FineTuneOp, now: number, latestOk = true) {
-      const out = reduceFineTune(base, state, op, deps, deps.evaluateRows(state.rows), latestOk ? { version: state.version, result: emptyResult } : null);
+    op(op: FineTuneOp, now: number) {
+      const out = reduceFineTune(base, state, op, deps, deps.evaluateRows(state.rows));
       if ("rejected" in out) return false;
       if (isSameDraftContent(state, out.state)) return true;
       history = recordDraft(history, state, coalesceKeyOf(op), now);
@@ -84,7 +83,7 @@ describe("下書きの履歴（§9.1、§10.1）", () => {
   it("通った op ごとに1件増え、元に戻すで1つ前の状態に、やり直すで戻す前の状態に戻る", () => {
     const s = session();
     s.op({ kind: "move", rowId: "c", toIndex: 0 }, 0);
-    s.op({ kind: "giverStep", rowId: "x", by: 1 }, 10); // rejected
+    s.op({ kind: "step", rowId: "x", by: 1 }, 10); // rejected
     s.op({ kind: "move", rowId: "c", toIndex: 2 }, 20); // 元の並びへ
     expect(s.history.undo).toHaveLength(2);
 
@@ -104,31 +103,26 @@ describe("下書きの履歴（§9.1、§10.1）", () => {
     expect(s.redo(80)).toBe(false);
   });
 
-  it("受け取る側の選択・選択を外す・並べ替えも1件ずつ戻る", () => {
+  it("全体のLvを伸ばす（raise）は、何行を変えても1件で戻る", () => {
     const s = session();
-    s.op({ kind: "receiverSelect", rowId: "b" }, 0);
-    expect(s.state.receiverId).toBe("b");
-    s.op({ kind: "receiverClear" }, 10);
-    s.op({ kind: "move", rowId: "c", toIndex: 0 }, 20);
-    s.op({ kind: "move", rowId: "c", toIndex: 2 }, 30);
-    expect(s.history.undo).toHaveLength(4);
-    s.undo(40);
+    s.op({ kind: "move", rowId: "c", toIndex: 0 }, 0);
+    const raised = s.state.rows.map((row) => ({ ...row, boostOrExpAdjustment: 7 }));
+    s.op({ kind: "raise", rows: raised, fromVersion: s.state.version }, 10);
+    expect(s.history.undo).toHaveLength(2);
+    expect(s.state.rows.map((r) => r.boostOrExpAdjustment)).toEqual([7, 7, 7]);
+    s.undo(20);
     expect(s.state.rows.map((r) => r.id)).toEqual(["c", "a", "b"]);
-    s.undo(50);
-    expect(s.state.rows.map((r) => r.id)).toEqual(["a", "b", "c"]);
-    expect(s.state.receiverId).toBeNull();
-    s.undo(60);
-    expect(s.state.receiverId).toBe("b");
-    s.undo(70);
-    expect(s.state.receiverId).toBeNull();
+    expect(s.state.rows.map((r) => r.boostOrExpAdjustment)).toEqual([undefined, undefined, undefined]);
+    s.redo(30);
+    expect(s.state.rows.map((r) => r.boostOrExpAdjustment)).toEqual([7, 7, 7]);
   });
 
   it("rejected の op と、中身が変わらない op（範囲の端で止まった）は記録しない", () => {
     const s = session();
-    expect(s.op({ kind: "receiverSelect", rowId: "b" }, 0, false)).toBe(false);
+    expect(s.op({ kind: "raise", rows: s.state.rows, fromVersion: s.state.version + 1 }, 0)).toBe(false);
     s.op({ kind: "step", rowId: "a", by: -1 }, 10); // 0 のまま
     s.op({ kind: "move", rowId: "a", toIndex: 0 }, 20); // 同じ位置
-    s.op({ kind: "receiverClear" }, 30); // 選んでいない: 中身が変わらない
+    s.op({ kind: "raise", rows: s.state.rows, fromVersion: s.state.version }, 30); // 同じ行一覧: 中身が変わらない
     expect(s.history.undo).toHaveLength(0);
   });
 

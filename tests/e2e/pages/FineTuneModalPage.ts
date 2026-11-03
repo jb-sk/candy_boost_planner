@@ -1,18 +1,18 @@
 /**
- * FineTuneModal Page Object（かんたんモード）
+ * FineTuneModal Page Object（かんたん）
  * セレクタと操作をまとめる。すべてのセレクタは data-testid ベース（接頭辞は fine-tune-）
  */
 import { type Page, type Locator, expect } from '@playwright/test';
 
 /** 表で押せる欄。`row` は名前（行の詳細） */
-export type FineTuneField = 'row' | 'target' | 'boost' | 'candy';
+export type FineTuneField = 'row' | 'target' | 'boost';
 
-const CELL_TEST_ID: Record<Exclude<FineTuneField, 'row'> | 'reach' | 'shards', string> = {
+const CELL_TEST_ID: Record<Exclude<FineTuneField, 'row'> | 'candy' | 'reach' | 'shardsPerCandy', string> = {
   target: 'fine-tune-row-target',
   boost: 'fine-tune-row-boost',
   candy: 'fine-tune-row-candy',
   reach: 'fine-tune-row-reach',
-  shards: 'fine-tune-row-shards',
+  shardsPerCandy: 'fine-tune-row-shards-per-candy',
 };
 
 export class FineTuneModalPage {
@@ -29,14 +29,9 @@ export class FineTuneModalPage {
 
   // === 上部 ===
   readonly summary: Locator;
-  readonly summaryReached: Locator;
   readonly summaryBoost: Locator;
   readonly summaryShards: Locator;
   readonly calculating: Locator;
-  readonly receiver: Locator;
-  readonly receiverName: Locator;
-  readonly receiverClear: Locator;
-  readonly notices: Locator;
 
   // === 一覧 ===
   readonly list: Locator;
@@ -49,12 +44,11 @@ export class FineTuneModalPage {
   readonly editorInfo: Locator;
   readonly editorNote: Locator;
   readonly editorInput: Locator;
-  readonly editorReceive: Locator;
   readonly editorRecommend: Locator;
   readonly editorClose: Locator;
 
   // === フッター ===
-  readonly hint: Locator;
+  readonly raiseButton: Locator;
   readonly undoButton: Locator;
   readonly redoButton: Locator;
   readonly applyButton: Locator;
@@ -73,14 +67,9 @@ export class FineTuneModalPage {
     this.loading = page.getByTestId('fine-tune-loading');
 
     this.summary = page.getByTestId('fine-tune-summary');
-    this.summaryReached = page.getByTestId('fine-tune-summary-reached');
     this.summaryBoost = page.getByTestId('fine-tune-summary-boost');
     this.summaryShards = page.getByTestId('fine-tune-summary-shards');
     this.calculating = page.getByTestId('fine-tune-calculating');
-    this.receiver = page.getByTestId('fine-tune-receiver');
-    this.receiverName = page.getByTestId('fine-tune-receiver-name');
-    this.receiverClear = page.getByTestId('fine-tune-receiver-clear');
-    this.notices = page.getByTestId('fine-tune-notice');
 
     this.list = page.getByTestId('fine-tune-list');
     this.rows = page.getByTestId('fine-tune-row');
@@ -91,11 +80,10 @@ export class FineTuneModalPage {
     this.editorInfo = page.getByTestId('fine-tune-editor-info');
     this.editorNote = page.getByTestId('fine-tune-editor-note');
     this.editorInput = page.getByTestId('fine-tune-editor-input');
-    this.editorReceive = page.getByTestId('fine-tune-editor-receive');
     this.editorRecommend = page.getByTestId('fine-tune-editor-recommend');
     this.editorClose = page.getByTestId('fine-tune-editor-close');
 
-    this.hint = page.getByTestId('fine-tune-hint');
+    this.raiseButton = page.getByTestId('fine-tune-raise');
     // 計算機のボタン（history-undo-button）と取り違えないよう、モーダル専用の testid を使う
     this.undoButton = page.getByTestId('fine-tune-undo-button');
     this.redoButton = page.getByTestId('fine-tune-redo-button');
@@ -192,7 +180,7 @@ export class FineTuneModalPage {
     await expect(this.editor).toBeVisible();
   }
 
-  /** 調整バーの刻みのボタン（-100 / -10 / -1 / +1 / +10 / +100、目標Lvは ±1 / ±5）を押す。 */
+  /** 調整バーの刻みのボタン（アメブは -100 / -10 / -1 / +1 / +10 / +100、目標Lvは ±1 / ±5）を押す。 */
   async step(delta: number): Promise<void> {
     await this.editor.locator(`[data-testid="fine-tune-editor-step"][data-delta="${delta}"]`).click();
   }
@@ -221,10 +209,16 @@ export class FineTuneModalPage {
     await this.typeValue(value);
   }
 
-  /** 受け取る側に選ぶ（行の名前を押して、調整バーの「受け取る」）。 */
-  async receive(row: Locator): Promise<void> {
-    await this.select(row, 'row');
-    await this.editorReceive.click();
+  /** 届いた行の数（最新の結果） */
+  async reachedCount(): Promise<number> {
+    return this.rows.and(this.page.locator('[data-reached="true"]')).count();
+  }
+
+  /** 「全体のLvを伸ばす」を押し、求め終わる（ボタンが戻り、計算中が消える）まで待つ。 */
+  async raise(): Promise<void> {
+    await this.raiseButton.click();
+    await expect(this.raiseButton).toBeEnabled({ timeout: 20_000 });
+    await this.waitForSettled();
   }
 
   // === 並べ替え ===

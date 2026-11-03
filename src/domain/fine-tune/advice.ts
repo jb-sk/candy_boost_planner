@@ -1,5 +1,5 @@
 /**
- * かんたんモードの診断・効果・おすすめ量（「〇〇のLvを上げる」）・受け取る側の注意。
+ * かんたんの診断・効果・おすすめ量（「〇〇のLvを上げる」）。「全体のLvを伸ばす」（raise.ts）が使う。
  * 機械はポケモンを選ばない。効果とおすすめ量を出すだけ。
  * ストア・Vue を値で import しない。ストアの関数は `AdviceDeps` で受け取る。
  * 文言は画面側（i18n）で引く。ここは `kind` と行IDなどのデータだけを返す。
@@ -20,13 +20,11 @@ import { simulateCandyBudget, simulateCandyRun } from "../pokesleep/simulateCand
 import { maxLevel } from "../pokesleep/tables";
 import { sleepTargetTraits } from "../sleep-target";
 import {
-  canAdjustCandy,
   canAdjustLevel,
   candyUnitsOf,
   opRange,
   type FineTuneBase,
   type FineTuneDeps,
-  type FineTuneLatest,
   type FineTuneState,
 } from "./draft";
 
@@ -681,101 +679,10 @@ export function adviseRows(ctx: AdviceContext, direction: RankDirection): Map<st
   const entries = new Map<string, RowAdviceEntry>();
   if (ctx.boostKind === null || ctx.boostKind === "none") return entries;
   for (const row of ctx.state.rows) {
-    if (!canAdjustLevel(ctx.state, ctx.evaluated, row)) continue;
+    if (!canAdjustLevel(ctx.evaluated, row)) continue;
     const advice = adviseRow(ctx, row.id, direction);
     if (advice === null) continue;
     entries.set(row.id, { rowId: row.id, advice, recommendation: recommendBoost(ctx, row.id, direction, advice) });
   }
   return entries;
-}
-
-// ============================================================
-// 受け取る側の注意（§6.1、§6.2）
-// ============================================================
-
-/**
- * 受け取る側の欄にまとめて出す注意。記録のある行（実際に減らした行）についてだけ出す（`noGivers` を除く）。
- * - noGivers: 受け取る側より上にゆずれるポケモンがいない
- * - belowReceiver: 記録のある行が受け取る側より下なので届かない（D7）
- * - takenFirst: 受け取る側が受け取れるものを、間の届かない行が先に受け取る。giverIds は対象の記録のある行
- */
-export type ReceiverNotice =
-  | { kind: "noGivers"; receiverId: string }
-  | { kind: "belowReceiver"; giverId: string; receiverId: string }
-  | { kind: "takenFirst"; takerId: string; giverIds: string[]; receiverId: string };
-
-/** 受け取る側 B が giver の浮いたものから受け取れる種類（§6.2）。 */
-interface ReceivableKinds extends UsableKinds {
-  shards: boolean;
-}
-
-/**
- * 受け取る側の注意。受け取る側がいなければ空。`latest` が null のときは結果に頼らない注意（noGivers、belowReceiver）だけ。
- * 受け取れるもの: giver が使っているアメのうち B が使えるもの（B が在庫のみの行なら giver と同じ進化系の種族アメだけ）。
- * B がかけらで止まっているなら、giver が使っているかけら。間の届かない行 X が先に取るのは、X が同じものを使える
- * （アメは X がアメで止まっている、かけらは X がかけらで止まっている）とき。
- */
-export function receiverNotices(
-  state: FineTuneState,
-  evaluated: EvaluatedRows,
-  latest: FineTuneLatest | null,
-): ReceiverNotice[] {
-  const receiverId = state.receiverId;
-  if (receiverId === null) return [];
-  const rows = state.rows;
-  const receiverIndex = rows.findIndex((r) => r.id === receiverId);
-  if (receiverIndex < 0) return [];
-  const notices: ReceiverNotice[] = [];
-
-  if (!rows.slice(0, receiverIndex).some((row) => canAdjustCandy(state, evaluated, row))) {
-    notices.push({ kind: "noGivers", receiverId });
-  }
-  const giverRows = rows.filter((r) => state.givers[r.id] !== undefined);
-  for (const giver of giverRows) {
-    if (rows.indexOf(giver) > receiverIndex) notices.push({ kind: "belowReceiver", giverId: giver.id, receiverId });
-  }
-  if (latest === null) return notices;
-
-  const resultById = new Map<string, PokemonPlanResult>();
-  for (const p of latest.result.pokemonResults) resultById.set(p.pokemonId, p);
-  const planById = new Map<string, PokemonPlanInput>();
-  for (const p of evaluated.plannerInput?.pokemonList ?? []) planById.set(p.pokemonId, p);
-  const receiverResult = resultById.get(receiverId);
-  const receiverPlan = planById.get(receiverId);
-  if (receiverResult === undefined || receiverPlan === undefined || isReached(receiverResult)) return notices;
-  const receiverShortOfShards = receiverResult.constraintDiagnosis.limitingFactor === "shards";
-
-  const takers = new Map<string, string[]>();
-  for (const giver of giverRows) {
-    const giverIndex = rows.indexOf(giver);
-    if (giverIndex > receiverIndex) continue;
-    const giverResult = resultById.get(giver.id);
-    const giverPlan = planById.get(giver.id);
-    if (giverResult === undefined || giverPlan === undefined) continue;
-    const receivable: ReceivableKinds = {
-      ...usableKinds(giverResult.reachableLine.candySupply, giverPlan, receiverPlan),
-      shards: receiverShortOfShards && giverResult.reachableLine.dreamShardsUsed > 0,
-    };
-    if (!anyUsable(receivable) && !receivable.shards) continue;
-    for (const between of rows.slice(giverIndex + 1, receiverIndex)) {
-      const result = resultById.get(between.id);
-      const plan = planById.get(between.id);
-      if (result === undefined || plan === undefined || isReached(result)) continue;
-      const factor = result.constraintDiagnosis.limitingFactor;
-      const wanted = factor === "shards"
-        ? receivable.shards
-        : factor === "candy" && anyUsable(intersect(receivable, usableKinds(giverResult.reachableLine.candySupply, giverPlan, plan)));
-      if (!wanted) continue;
-      const list = takers.get(between.id) ?? [];
-      list.push(giver.id);
-      takers.set(between.id, list);
-      break;
-    }
-  }
-  for (const [takerId, giverIds] of takers) notices.push({ kind: "takenFirst", takerId, giverIds, receiverId });
-  return notices;
-}
-
-function intersect(a: UsableKinds, b: UsableKinds): UsableKinds {
-  return { species: a.species && b.species, type: a.type && b.type, universal: a.universal && b.universal };
 }

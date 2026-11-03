@@ -46,7 +46,6 @@ function depsOf(store: CalcStore): FineTuneDeps {
     evaluateRows: store.evaluateRows,
     withExplicitBoost: store.withExplicitBoost,
     withTargetLevel: store.withTargetLevel,
-    withCandyTarget: store.withCandyTarget,
   };
 }
 
@@ -60,7 +59,7 @@ function session(store: CalcStore, boostLimit = 5000) {
     boostLimit,
   };
   const ok = (state: FineTuneState, op: FineTuneOp): FineTuneState => {
-    const out = reduceFineTune(base, state, op, deps, deps.evaluateRows(state.rows), null);
+    const out = reduceFineTune(base, state, op, deps, deps.evaluateRows(state.rows));
     if ("rejected" in out) throw new Error(`rejected: ${out.rejected}`);
     return out.state;
   };
@@ -68,8 +67,6 @@ function session(store: CalcStore, boostLimit = 5000) {
 }
 
 const rowOf = (rows: readonly CalcRow[], id: string) => rows.find((r) => r.id === id)!;
-/** 目標を (Lv, Lv内EXP) の組として比べる */
-const targetKey = (r: CalcRow) => r.dstLevel * 1_000_000 + (r.dstExpInLevel ?? 0);
 
 describe("reduceFineTune: 本物のストアを deps に渡す", () => {
   const candyStore = useCandyStore();
@@ -135,7 +132,7 @@ describe("reduceFineTune: 本物のストアを deps に渡す", () => {
     expect(plain.rows[0]!.dstLevel).toBe(lowered.rows[0]!.dstLevel);
   });
 
-  it("時間の睡眠目標の行は m0 がプランナーへ渡す総アメ数（睡眠EXPを引いた数）と同じで、m0 - 1 で目標が上がらない", () => {
+  it("時間の睡眠目標の行の使うアメの数は、プランナーへ渡す総アメ数（睡眠EXPを引いた数）と同じ", () => {
     const store = newStore(100_000);
     const d = add(store, "d", 25, 10, 50);
     store.setRowSleepTarget(d, 1000);
@@ -149,38 +146,6 @@ describe("reduceFineTune: 本物のストアを deps に渡す", () => {
     const noSleep = s.base.rows.map((r) => (r.id === d ? { ...r, sleepTargetHours: undefined } : r));
     expect(m0).toBeGreaterThan(0);
     expect(m0).toBeLessThan(s.deps.evaluateRows(noSleep).byId.get(d)!.candyNeed);
-
-    const state = { ...s.initial, receiverId: s.base.rows[1]!.id };
-    expect(opRange(s.base, state, s.base.evaluated, { kind: "giver", rowId: d })).toEqual({ min: 0, max: m0 });
-    for (const m of [m0 - 1, Math.floor(m0 / 2), 0]) {
-      const next = s.ok(state, { kind: "giverSet", rowId: d, candy: m });
-      expect(next.givers[d]!.m0).toBe(m0);
-      expect(targetKey(next.rows[0]!)).toBeLessThanOrEqual(targetKey(row));
-    }
-  });
-
-  it("アメブ最小化でアメブ 0 の行をゆずる側にして m0 - 1 を当てると、アメブが 0 の明示アメブで固定され、目標が上がらない", () => {
-    const store = newStore(100_000);
-    const c = add(store, "c", 25, 10, 20);
-    store.setRowMinimizeBoost(c, true);
-    add(store, "b", 133, 10, 50);
-    const s = session(store);
-    const row = rowOf(s.base.rows, c);
-    expect(s.base.evaluated.byId.get(c)!.effectiveBoost).toBe(0);
-    const m0 = candyUnitsOf(row, s.base.evaluated);
-    expect(m0).toBeGreaterThan(1);
-
-    const state = { ...s.initial, receiverId: s.base.rows[1]!.id };
-    const given = s.ok(state, { kind: "giverSet", rowId: c, candy: m0 - 1 });
-    expect(given.givers[c]).toMatchObject({ m0, boost: 0, candy: m0 - 1 });
-    expect(given.rows[0]!.boostOrExpAdjustment).toBe(0);
-    expect(targetKey(given.rows[0]!)).toBeLessThanOrEqual(targetKey(row));
-    // 続けて減らしても、固定するアメブは記録した値
-    const more = s.ok(given, { kind: "giverSet", rowId: c, candy: 1 });
-    expect(more.rows[0]!.boostOrExpAdjustment).toBe(0);
-    expect(more.givers[c]!.boost).toBe(0);
-    // m0 へ戻すとゆずる前の行（同じ参照）に戻る
-    expect(s.ok(more, { kind: "giverSet", rowId: c, candy: m0 }).rows[0]).toBe(s.base.rows[0]);
   });
 
   it("move は在庫のみの行の保存値が上限を超えても拒否されず、実効アメブが在庫で抑えられる。上の行が在庫を先に取ると全アメブ点が下がる", () => {

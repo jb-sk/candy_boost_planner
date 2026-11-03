@@ -4,7 +4,6 @@
     :class="{
       'fineTuneRow--noBoost': !hasBoost,
       'fineTuneRow--selected': selectedField !== null,
-      'fineTuneRow--receiver': row.isReceiver,
       'fineTuneRow--excluded': row.exclusion !== null,
       'fineTuneRow--dragging': dragging,
       'fineTuneRow--dragOver': dragOver,
@@ -74,21 +73,18 @@
       <span v-if="hasRecommendation" class="fineTuneRow__mark" data-testid="fine-tune-row-recommend-mark" aria-hidden="true"></span>
     </button>
 
-    <button
-      class="fineTuneRow__cell"
-      :class="[cellClass('candy', row.candyAdjustable, candyChanged), { 'fineTuneRow__cell--result': !row.giverLocked }]"
-      type="button"
+    <span
+      class="fineTuneRow__cell fineTuneRow__cell--result"
+      :class="{ 'fineTuneRow__cell--changed': changed(row.candy) }"
       data-testid="fine-tune-row-candy"
-      :aria-label="`${t('calc.fineTune.field.candy')} ${candyText}`"
-      :aria-pressed="selectedField === 'candy'"
-      @click="emit('select', row.candyAdjustable ? 'candy' : 'row')"
-    >{{ candyText }}</button>
+    >{{ valueText(row.candy) }}</span>
 
     <span
-      class="fineTuneRow__cell fineTuneRow__cell--result fineTuneRow__cell--shards"
-      :class="{ 'fineTuneRow__cell--changed': changed(row.shards) }"
-      data-testid="fine-tune-row-shards"
-    >{{ valueText(row.shards) }}</span>
+      class="fineTuneRow__cell fineTuneRow__cell--result"
+      :class="{ 'fineTuneRow__cell--changed': changed(perCandy) }"
+      data-testid="fine-tune-row-shards-per-candy"
+      :title="shardsTitle"
+    >{{ valueText(perCandy) }}</span>
   </div>
 </template>
 
@@ -100,9 +96,9 @@ import type { Change, FineTuneRowView } from "../domain/fine-tune/rowView";
 import { sleepReachText, type FineTuneField } from "../utils/fineTuneView";
 
 /**
- * かんたんモードの1行。数字だけを1行に並べ、押した欄を下の調整バー（FineTuneEditor）で動かす。
+ * かんたんの1行。数字だけを1行に並べ、押した欄（目標Lv・アメブ）を下の調整バー（FineTuneEditor）で動かす。
  * 動かせない欄を押したときは、行の詳細（理由）を開く。計算は持たず、`FineTuneRowView` の値を出すだけ。
- * 結果から出す欄（到達・かけら・使えたアメ）は、計算中は薄くする。
+ * 結果から出す欄（到達・使うアメ・アメ1個あたりのかけら）は、計算中は薄くする。
  */
 const props = defineProps<{
   row: FineTuneRowView;
@@ -152,11 +148,15 @@ function valueText(c: Change<number | null>): string {
 const boostText = computed(() => (props.row.boost === null ? "-" : props.fmt(props.row.boost.value)));
 const hasRecommendation = computed(() => !props.pending && (props.row.advice?.recommendation ?? null) !== null);
 
-/** 使うアメを減らした行は下書きの値（すぐ変わる）、ほかは最新の結果で使えた数 */
-const candyText = computed(() => (props.row.giverLocked && props.row.giver !== null
-  ? props.fmt(props.row.giver.value)
-  : valueText(props.row.candy)));
-const candyChanged = computed(() => props.row.giverLocked || changed(props.row.candy));
+/** アメ1個あたりのかけら（整数に丸める。丸めた値で変わったかを見る） */
+const perCandy = computed<Change<number | null>>(() => {
+  const round = (n: number | null) => (n === null ? null : Math.round(n));
+  return { base: round(props.row.shardsPerCandy.base), value: round(props.row.shardsPerCandy.value) };
+});
+/** 使うかけらの合計はホバーで出す */
+const shardsTitle = computed(() => (props.row.shards.value === null
+  ? undefined
+  : t("calc.fineTune.shardsTotal", { shards: props.fmt(props.row.shards.value) })));
 
 /** 到達: 睡眠（島）のある行は睡眠のあとの着地点、ほかはアメで届くLv */
 const reachText = computed(() => {

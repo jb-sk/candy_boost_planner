@@ -1,6 +1,6 @@
-/* FineTuneModal — かんたんモード。
+/* FineTuneModal — かんたん。
    全員を数字だけの1行の表で並べ、押した欄を下の調整バー（FineTuneEditor）で動かす。
-   スマホは全画面。680px 以上は中央のカード。表は同じ列のまま、列の幅と文字だけ広げる。
+   スマホは全画面。680px 以上は中央のカード。表は同じ列のまま、列の幅・文字・押す部品を大きくする。
    色は CSS 変数だけで書き、テーマの装飾は各テーマの CSS 側に置く。 */
 
 /* ===== 器 ===== */
@@ -20,7 +20,7 @@
     bottom: auto;
     left: auto;
     width: 100%;
-    max-width: 760px;
+    max-width: 960px;
     max-height: 100%;
     margin: 0;
     border-radius: var(--radius-lg);
@@ -29,7 +29,21 @@
 }
 
 .fineTuneModal__header {
-  padding: 10px 12px 10px 16px;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 8px 6px 16px;
+}
+
+.fineTuneModal__close {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* 「全体のLvを伸ばす」を求めている間は、表と調整バーを押せなくする */
+.fineTuneModal--busy .fineTuneModal__list,
+.fineTuneModal--busy .fineTuneEditor {
+  pointer-events: none;
+  opacity: 0.6;
 }
 
 .fineTuneModal__loading {
@@ -48,16 +62,14 @@
   color: var(--danger);
 }
 
-/* ===== サマリー（1行。増減は小さく添える） ===== */
+/* ===== サマリー（ヘッダーの段に置く。増減は小さく添える） ===== */
 .fineTuneSummary {
-  flex-shrink: 0;
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 2px 14px;
-  padding: 6px 16px;
-  border-bottom: 1px solid var(--border);
-  background: var(--paper);
   font-variant-numeric: tabular-nums;
 }
 
@@ -97,39 +109,8 @@
   color: var(--muted);
 }
 
-/* ===== 受け取る側（選んだときだけ） ===== */
-.fineTuneReceiver {
-  flex-shrink: 0;
-  padding: 6px 16px;
-  border-bottom: 1px solid var(--border);
-  background: rgba(var(--accent-rgb), 0.07);
-}
-
-.fineTuneReceiver__line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.fineTuneReceiver__name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--accent-strong);
-}
-
-.fineTuneReceiver__notice {
-  margin: 2px 0 0;
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: var(--ink);
-}
-
 /* ===== 表 =====
-   列: 取っ手 | ポケモン | 目標 | 到達 | アメブ | アメ | かけら（アメブなしのスロットはアメブの列が無い） */
+   列: 取っ手 | ポケモン | 目標 | 到達 | アメブ | アメ | アメ1個あたりのかけら（アメブなしのスロットはアメブの列が無い） */
 .fineTuneModal__list {
   padding: 0;
 }
@@ -137,7 +118,7 @@
 .fineTuneHead,
 .fineTuneRow {
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) 36px 40px 50px 50px 72px;
+  grid-template-columns: 22px minmax(0, 1fr) 36px 40px 50px 50px 74px;
   padding: 0 6px 0 2px;
 }
 
@@ -150,7 +131,7 @@
   position: sticky;
   top: 0;
   z-index: 1;
-  height: 26px;
+  min-height: 26px;
   align-items: center;
   border-bottom: 1px solid var(--border);
   background: var(--paper);
@@ -170,6 +151,17 @@
   text-align: left;
 }
 
+/* 長い見出し（アメ1個あたりのかけら）は2段。段の中では折り返さない */
+.fineTuneHead__cell--wrap {
+  padding: 2px 2px;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.fineTuneHead__line {
+  display: block;
+}
+
 .fineTuneRow {
   min-height: 40px;
   border-bottom: 1px solid rgba(var(--ink-rgb), 0.08);
@@ -178,10 +170,6 @@
 
 .fineTuneRow--selected {
   background: rgba(var(--accent-rgb), 0.06);
-}
-
-.fineTuneRow--receiver {
-  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .fineTuneRow--dragging {
@@ -327,11 +315,6 @@ button.fineTuneRow__cell {
 .fineTuneRow__cell--on {
   background: var(--accent);
   color: var(--btn-ink);
-}
-
-/* かけらは桁が多いので、スマホ幅では少し小さくする */
-.fineTuneRow__cell--shards {
-  font-size: 12px;
 }
 
 /* 計算中は、結果から出す欄を薄くする */
@@ -573,74 +556,194 @@ button.fineTuneRow__cell {
   padding: 0 6px;
 }
 
-.fineTuneModal__hint {
-  flex: 1 1 auto;
+.fineTuneModal__raise {
+  flex-shrink: 1;
   min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  margin-left: auto;
   white-space: nowrap;
-  font-size: 12px;
-  color: var(--muted);
-  text-align: center;
 }
 
 .fineTuneModal__apply {
   flex-shrink: 0;
-  min-width: 88px;
-  margin-left: auto;
+  min-width: 80px;
 }
 
-/* ===== 680px 以上は列と文字を広げる ===== */
+/* ===== 680px 以上は列・文字・押す部品を大きくする ===== */
 @media (min-width: 680px) {
+  .fineTuneModal__header {
+    min-height: 56px;
+    padding: 8px 12px 8px 24px;
+  }
+
+  .fineTuneModal__close {
+    font-size: 24px;
+  }
+
+  .fineTuneSummary {
+    gap: 4px 24px;
+  }
+
+  .fineTuneSummary__k {
+    font-size: 14px;
+  }
+
+  .fineTuneSummary__v {
+    font-size: 20px;
+  }
+
+  .fineTuneSummary__d,
+  .fineTuneSummary__calculating {
+    font-size: 14px;
+  }
+
+  .fineTuneModal__warn {
+    padding: 6px 24px;
+    font-size: 14px;
+  }
+
   .fineTuneHead,
   .fineTuneRow {
-    grid-template-columns: 30px minmax(0, 1fr) 64px 64px 80px 80px 104px;
-    padding: 0 12px 0 6px;
+    grid-template-columns: 36px minmax(0, 1fr) 80px 80px 104px 104px 120px;
+    padding: 0 16px 0 8px;
   }
 
   .fineTuneHead--noBoost,
   .fineTuneRow--noBoost {
-    grid-template-columns: 30px minmax(0, 1fr) 64px 64px 96px 120px;
+    grid-template-columns: 36px minmax(0, 1fr) 88px 88px 120px 140px;
   }
 
   .fineTuneHead {
-    height: 30px;
+    min-height: 36px;
   }
 
-  .fineTuneHead__cell {
-    font-size: 12px;
-    padding: 0 8px;
+  .fineTuneHead__cell,
+  .fineTuneHead__cell--wrap {
+    padding: 2px 10px;
+    font-size: 13px;
   }
 
   .fineTuneRow {
-    min-height: 42px;
+    min-height: 54px;
+  }
+
+  .fineTuneRow__handleIcon {
+    width: 16px;
+    height: 17px;
   }
 
   .fineTuneRow__name {
-    font-size: 14px;
-    padding: 0 6px;
+    gap: 4px;
+    padding: 0 8px;
+    font-size: 17px;
   }
 
   .fineTuneRow__nature {
-    font-size: 10px;
+    font-size: 11px;
   }
 
-  .fineTuneRow__cell,
-  .fineTuneRow__cell--shards {
-    font-size: 14px;
-    padding: 0 8px;
+  .fineTuneRow__cell {
+    padding: 0 10px;
+    font-size: 17px;
   }
 
   .fineTuneRow__cell--input {
-    margin: 5px 2px;
+    margin: 7px 3px;
+  }
+
+  .fineTuneRow__mark {
+    top: 4px;
+    right: 4px;
+    width: 8px;
+    height: 8px;
   }
 
   .fineTuneEditor {
-    padding: 10px 16px 12px;
+    gap: 8px;
+    padding: 14px 24px 16px;
+  }
+
+  .fineTuneEditor__head {
+    gap: 12px;
+    min-height: 36px;
+  }
+
+  .fineTuneEditor__name {
+    font-size: 18px;
+  }
+
+  .fineTuneEditor__field,
+  .fineTuneEditor__change {
+    font-size: 15px;
+  }
+
+  .fineTuneEditor__close {
+    width: 40px;
+    height: 40px;
+    font-size: 22px;
+  }
+
+  .fineTuneEditor__info {
+    gap: 4px 16px;
+    font-size: 15px;
+  }
+
+  .fineTuneEditor__note {
+    font-size: 14px;
+  }
+
+  .fineTuneEditor__recommend {
+    max-width: 680px;
+    padding: 10px 16px;
+    font-size: 16px;
+  }
+
+  .fineTuneEditor__recommendNote {
+    font-size: 13px;
   }
 
   .fineTuneEditor__stepper {
-    max-width: 520px;
+    max-width: 680px;
+    gap: 6px;
+  }
+
+  .fineTuneEditor__step {
+    height: 52px;
+    font-size: 17px;
+  }
+
+  .fineTuneEditor__input.field__input {
+    height: 52px;
+    font-size: 20px;
+  }
+
+  .fineTuneModal__confirm {
+    padding: 0 24px;
+  }
+
+  .fineTuneModal__footer {
+    gap: 12px;
+    padding: 12px 24px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .fineTuneModal__history .historyBtn {
+    height: 44px;
+    padding: 0 8px;
+  }
+
+  .fineTuneModal__history .historyBtn__icon {
+    width: 22px;
+    height: 22px;
+  }
+
+  .fineTuneModal__raise.btn,
+  .fineTuneModal__apply.btn {
+    min-height: 44px;
+    padding: 10px 20px;
+    font-size: 15px;
+  }
+
+  .fineTuneModal__apply {
+    min-width: 120px;
   }
 }

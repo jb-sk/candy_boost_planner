@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { entriesToObject } from "../../../utils/entriesToObject";
 import type { CalcRow, EvaluatedRows } from "../../../composables/useCalcStore";
 import type {
   BoostKind,
@@ -14,14 +13,13 @@ import {
   adviseRow,
   createAdviceContext,
   diagnose,
-  receiverNotices,
   type AdviceContext,
   type Diagnosis,
   type RankDirection,
 } from "../advice";
-import { initialFineTuneState, type FineTuneBase, type FineTuneState, type GiverRecord } from "../draft";
+import { initialFineTuneState, type FineTuneBase } from "../draft";
 
-/** 作り物の結果と評価で、診断・効果・受け取る側の注意の判定だけを確かめる（planner と store は使わない）。 */
+/** 作り物の結果と評価で、診断・効果の判定だけを確かめる（planner と store は使わない）。 */
 
 function makeRow(id: string, extra: Partial<CalcRow> = {}): CalcRow {
   return { id, title: id, pokedexId: 25, srcLevel: 10, dstLevel: 50, expRemaining: 0, expType: 600, nature: "normal", boostReachLevel: 50, ...extra };
@@ -334,137 +332,5 @@ describe("adviseRow: 減らす向き（§5.3）", () => {
     expect(advise(t, "low", "decrease")).toEqual({ kind: "noEffect", reason: "belowShortRows" });
     const candyOnly = build({ up: { boost: 10 }, x: { reached: false, factor: "candy", boost: 5 } });
     expect(advise(candyOnly, "up", "decrease")).toEqual({ kind: "noEffect", reason: "belowShortRows" });
-  });
-});
-
-describe("receiverNotices（§6.1、§6.2、D43）", () => {
-  function record(before: CalcRow, over: Partial<GiverRecord> = {}): GiverRecord {
-    return { before, m0: 100, boost: 0, candy: 50, ...over };
-  }
-  function withReceiver(t: ReturnType<typeof build>, receiverId: string | null, givers: string[] = []): FineTuneState {
-    return {
-      ...t.state,
-      receiverId,
-      givers: entriesToObject(givers.map((id) => [id, record(t.rows.find((r) => r.id === id)!)])),
-    };
-  }
-  const latestOf = (t: ReturnType<typeof build>) => ({ version: 0, result: t.result });
-
-  it("受け取る側がいないときは何も出さない", () => {
-    const t = build({ g: {}, b: { reached: false, factor: "candy" } });
-    expect(receiverNotices(withReceiver(t, null, ["g"]), t.evaluated, latestOf(t))).toEqual([]);
-  });
-
-  it("受け取る側より上にゆずれるポケモンがいないとき noGivers", () => {
-    const t = build({ b: { reached: false, factor: "candy" }, g: {} });
-    expect(receiverNotices(withReceiver(t, "b"), t.evaluated, latestOf(t))).toEqual([{ kind: "noGivers", receiverId: "b" }]);
-    // 上に使うアメが1個以上の行があれば出ない
-    const withUpper = build({ g: {}, b: { reached: false, factor: "candy" } });
-    expect(receiverNotices(withReceiver(withUpper, "b"), withUpper.evaluated, latestOf(withUpper))).toEqual([]);
-    // 上の行の使うアメが0なら noGivers
-    const zero = build({ g: { need: 0 }, b: { reached: false, factor: "candy" } });
-    expect(receiverNotices(withReceiver(zero, "b"), zero.evaluated, latestOf(zero))).toEqual([{ kind: "noGivers", receiverId: "b" }]);
-    // 記録のある行は上にいればゆずれる側に数える
-    const recorded = build({ g: { need: 0 }, b: { reached: false, factor: "candy" } });
-    expect(receiverNotices(withReceiver(recorded, "b", ["g"]), recorded.evaluated, latestOf(recorded)).some((n) => n.kind === "noGivers")).toBe(false);
-  });
-
-  it("記録のある行が受け取る側より下なら belowReceiver（受け取る側が届いていても出る）", () => {
-    const t = build({ top: {}, b: { reached: true }, g: {} });
-    expect(receiverNotices(withReceiver(t, "b", ["g"]), t.evaluated, latestOf(t))).toEqual([
-      { kind: "belowReceiver", giverId: "g", receiverId: "b" },
-    ]);
-    // 結果が無くても出す
-    expect(receiverNotices(withReceiver(t, "b", ["g"]), t.evaluated, null)).toEqual([
-      { kind: "belowReceiver", giverId: "g", receiverId: "b" },
-    ]);
-  });
-
-  it("間の届かない行が受け取れるものを使えるとき takenFirst。使えないときは出ない", () => {
-    // 万能アメ: 間の行 x（アメで止まっている）が先に受け取る
-    const universal = build({
-      g: { supply: supplyOf({ universal: 2 }), family: "f1" },
-      x: { reached: false, factor: "candy", family: "f2", type: "water" },
-      b: { reached: false, factor: "candy", family: "f3", type: "fire" },
-    });
-    expect(receiverNotices(withReceiver(universal, "b", ["g"]), universal.evaluated, latestOf(universal))).toEqual([
-      { kind: "takenFirst", takerId: "x", giverIds: ["g"], receiverId: "b" },
-    ]);
-    // 浮くのが g の種族アメだけで、間の行 x は別の進化系: 先に取られない（B も別の進化系なので受け取れるものも無い）
-    const speciesOnly = build({
-      g: { supply: supplyOf({ species: 40 }), family: "f1" },
-      x: { reached: false, factor: "candy", family: "f2" },
-      b: { reached: false, factor: "candy", family: "f1" },
-    });
-    expect(receiverNotices(withReceiver(speciesOnly, "b", ["g"]), speciesOnly.evaluated, latestOf(speciesOnly))).toEqual([]);
-    // 間の行がアメ以外で止まっているときも先に取らない
-    const shardsRow = build({
-      g: { supply: supplyOf({ universal: 2 }) },
-      x: { reached: false, factor: "shards" },
-      b: { reached: false, factor: "candy" },
-    });
-    expect(receiverNotices(withReceiver(shardsRow, "b", ["g"]), shardsRow.evaluated, latestOf(shardsRow))).toEqual([]);
-  });
-
-  it("受け取る側が在庫のみの行なら、タイプアメ・万能アメを受け取れるものに数えない", () => {
-    const itemsOnly = build({
-      g: { supply: supplyOf({ type: 3, universal: 3 }), family: "f1", type: "water" },
-      x: { reached: false, factor: "candy", family: "f2", type: "water" },
-      b: { reached: false, factor: "candy", family: "f3", type: "water", items: false },
-    });
-    expect(receiverNotices(withReceiver(itemsOnly, "b", ["g"]), itemsOnly.evaluated, latestOf(itemsOnly))).toEqual([]);
-    // 同じ進化系の種族アメなら受け取れる。間の行 x が同じ進化系なら先に取る
-    const sameFamily = build({
-      g: { supply: supplyOf({ species: 3, universal: 3 }), family: "f1" },
-      x: { reached: false, factor: "candy", family: "f1" },
-      b: { reached: false, factor: "candy", family: "f1", items: false },
-    });
-    expect(receiverNotices(withReceiver(sameFamily, "b", ["g"]), sameFamily.evaluated, latestOf(sameFamily))).toEqual([
-      { kind: "takenFirst", takerId: "x", giverIds: ["g"], receiverId: "b" },
-    ]);
-    // 間の行は在庫のみでない別の進化系で、受け取れるのは種族アメだけ → 先に取られない
-    const otherFamily = build({
-      g: { supply: supplyOf({ species: 3, universal: 3 }), family: "f1" },
-      x: { reached: false, factor: "candy", family: "f2" },
-      b: { reached: false, factor: "candy", family: "f1", items: false },
-    });
-    expect(receiverNotices(withReceiver(otherFamily, "b", ["g"]), otherFamily.evaluated, latestOf(otherFamily))).toEqual([]);
-  });
-
-  it("受け取る側がかけらで止まっているとき、かけらで止まる間の行が先に取る", () => {
-    const t = build({
-      g: { shardsUsed: 500 },
-      x: { reached: false, factor: "shards" },
-      b: { reached: false, factor: "shards" },
-    });
-    expect(receiverNotices(withReceiver(t, "b", ["g"]), t.evaluated, latestOf(t))).toEqual([
-      { kind: "takenFirst", takerId: "x", giverIds: ["g"], receiverId: "b" },
-    ]);
-  });
-
-  it("注意は記録のある行についてだけ。記録の無い行・受け取る側が届いているときは takenFirst を出さない", () => {
-    const universal = {
-      g: { supply: supplyOf({ universal: 2 }) },
-      x: { reached: false, factor: "candy" as const },
-      b: { reached: false, factor: "candy" as const },
-    };
-    const t = build(universal);
-    expect(receiverNotices(withReceiver(t, "b", []), t.evaluated, latestOf(t))).toEqual([]);
-    const reachedReceiver = build({ ...universal, b: { reached: true } });
-    expect(receiverNotices(withReceiver(reachedReceiver, "b", ["g"]), reachedReceiver.evaluated, latestOf(reachedReceiver))).toEqual([]);
-    // 結果が無いとき（latest が null）は takenFirst を出さない
-    expect(receiverNotices(withReceiver(t, "b", ["g"]), t.evaluated, null)).toEqual([]);
-  });
-
-  it("ゆずる側が複数でも、同じ行が先に取るなら1つにまとめる", () => {
-    const t = build({
-      g1: { supply: supplyOf({ universal: 2 }) },
-      g2: { supply: supplyOf({ universal: 2 }) },
-      x: { reached: false, factor: "candy" },
-      b: { reached: false, factor: "candy" },
-    });
-    expect(receiverNotices(withReceiver(t, "b", ["g1", "g2"]), t.evaluated, latestOf(t))).toEqual([
-      { kind: "takenFirst", takerId: "x", giverIds: ["g1", "g2"], receiverId: "b" },
-    ]);
   });
 });

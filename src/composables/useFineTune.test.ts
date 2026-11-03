@@ -5,6 +5,7 @@ import { addBoxRow, createCalcStore } from "../../tests/helpers/fakeIndividuals"
 import { cancelPersist } from "../persistence/deferredPersist";
 import { calcSleepLandingLevel } from "../domain/level-planner/sleepReachLevel";
 import { hasFineTuneTarget } from "../domain/fine-tune/draft";
+import { solveLevelPlan } from "../domain/level-planner/core/solveLevelPlan";
 import type { LevelPlannerInput, LevelPlannerResult } from "../domain/level-planner/types";
 import type { PlannerRunner } from "../workers/plannerRunner";
 import type { CalcStore } from "./useCalcStore";
@@ -115,8 +116,14 @@ describe("useFineTune（設計書 §10.4）", () => {
   function open(store: CalcStore, runnerKit = fakeRunner()) {
     const { calc, counts } = spied(store);
     const scope = effectScope();
-    const fineTune = scope.run(() => useFineTune(calc, { t, createRunner: () => runnerKit.runner, previewDelayMs: 1 }))!;
-    return { fineTune, scope, counts, ...runnerKit };
+    let solves = 0;
+    // 「全体のLvを伸ばす」はプレビューの実行役を使わず、その場で本物のソルバーで解く
+    const solvePlan = async (input: LevelPlannerInput) => {
+      solves += 1;
+      return solveLevelPlan(input);
+    };
+    const fineTune = scope.run(() => useFineTune(calc, { t, createRunner: () => runnerKit.runner, previewDelayMs: 1, solvePlan }))!;
+    return { fineTune, scope, counts, solves: () => solves, ...runnerKit };
   }
 
   it("開いたとき日付の更新を止め、基準を固定して、下書きは空から始まる", async () => {
@@ -252,7 +259,9 @@ describe("useFineTune（設計書 §10.4）", () => {
     const version = fineTune.state.value!.version;
     fineTune.dispatch({ kind: "step", rowId: a, by: 0 });
     expect("rejected" in fineTune.dispatch({ kind: "move", rowId: "no-such-row", toIndex: 0 })).toBe(true);
-    fineTune.dispatch({ kind: "receiverClear" });
+    // 同じ行一覧の raise と、古い版から求めた raise
+    fineTune.dispatch({ kind: "raise", rows: fineTune.state.value!.rows, fromVersion: version });
+    expect(fineTune.dispatch({ kind: "raise", rows: fineTune.state.value!.rows, fromVersion: version - 1 })).toEqual({ rejected: "stale" });
     expect(fineTune.state.value!.version).toBe(version);
     expect(fineTune.history.canUndo.value).toBe(false);
   });
@@ -261,7 +270,7 @@ describe("useFineTune（設計書 §10.4）", () => {
     const { store, a, b } = await makeStore();
     const { fineTune } = open(store);
     const first = fineTune.rowViews.value[0]!;
-    expect(first).toMatchObject({ id: a, index: 0, levelAdjustable: true, candyAdjustable: true, giverLocked: false, exclusion: null });
+    expect(first).toMatchObject({ id: a, index: 0, levelAdjustable: true, exclusion: null });
     expect(first.boost).not.toBeNull();
     const baseBoost = first.boost!.base;
     const baseRemaining = fineTune.summary.value!.boostRemaining!.base;
@@ -319,27 +328,59 @@ describe("useFineTune（設計書 §10.4）", () => {
     expect(hasFineTuneTarget(store.rows.value, store.evaluateRows)).toBe(true);
   });
 
-  it("使うアメ: 受け取る側がいなくても減らせ、減らした行は目標Lv・アメブを動かせない。元の数に戻すと動かせる", async () => {
-    const { store, a } = await makeStore("100000000");
-    const { fineTune } = open(store);
-    const view = () => fineTune.rowViews.value.find((r) => r.id === a)!;
-    expect(view()).toMatchObject({ candyAdjustable: true, levelAdjustable: true, giverLocked: false });
-    const { value, m0 } = view().giver!;
-    // 表に出ている使えた数から減らし始める
-    expect(value).toBe(Math.min(m0, view().candy.value!));
-    expect(value).toBeGreaterThan(10);
-
-    expect(fineTune.dispatch({ kind: "giverStep", rowId: a, by: -10 })).toHaveProperty("state");
-    expect(view()).toMatchObject({ giverLocked: true, levelAdjustable: false, candyAdjustable: true, giver: { value: value - 10, m0 } });
-    expect(fineTune.dispatch({ kind: "step", rowId: a, by: 1 })).toEqual({ rejected: "giverLocked" });
-    expect(fineTune.state.value!.rows.find((r) => r.id === a)!.candyTarget).toBe(value - 10);
-
-    expect(fineTune.dispatch({ kind: "giverSet", rowId: a, candy: m0 })).toHaveProperty("state");
-    expect(view()).toMatchObject({ giverLocked: false, levelAdjustable: true });
+  it("全体のLvを伸ばす: 上の行のアメブを動かして届かない行が届き、1件の履歴で入り、解いた結果がそのまま最新の結果になる", async () => {
+    // a（ピカチュウ）は種族アメが足りず万能アメで届く。アメブ 0 だと万能アメを使い切り、b（イーブイ）が届かない
+    const store = createCalcStore({ locale: ref("ja"), t });
+    store.setSlotBoostKind("full");
+    store.onTotalShardsInput("100000000");
+    store.onBoostCandyRemainingInput("3000");
+    store.updateSpeciesCandy(25, 100);
+    store.updateUniversalCandy({ s: 25, m: 0, l: 0 });
+    addBoxRow(store, { boxId: "a", pokedexId: 25, srcLevel: 10, dstLevelDefault: 30, expType: 600, nature: "normal" });
+    addBoxRow(store, { boxId: "b", pokedexId: 133, srcLevel: 10, dstLevelDefault: 40, expType: 600, nature: "normal" });
+    const [a] = store.rows.value.map((r) => r.id) as [string, string];
+    store.onRowBoostCandy(a, "0");
+    await vi.waitFor(() => {
+      expect(store.planResultPending.value).toBe(false);
+      expect(store.planResult.value).not.toBeNull();
+    });
+    const { fineTune, runs, solves } = open(store);
+    const reachedCount = () => fineTune.rowViews.value.filter((row) => row.reached.value === true).length;
+    const before = reachedCount();
+    const pending = fineTune.raiseAll();
+    // 求めている間は下書きを変えられない
+    expect(fineTune.raising.value).toBe(true);
+    expect(fineTune.dispatch({ kind: "step", rowId: a, by: 1 })).toEqual({ rejected: "busy" });
+    expect(fineTune.history.canUndo.value).toBe(false);
+    expect(await pending).toBe("raised");
+    expect(fineTune.raising.value).toBe(false);
+    expect(solves()).toBeGreaterThan(1);
+    expect(reachedCount()).toBeGreaterThan(before);
+    expect(fineTune.rowViews.value.find((row) => row.id === a)!.boost!.value).toBeGreaterThan(0);
+    // プレビューの実行役は呼ばず、計算中にならない
+    expect(fineTune.stale.value).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(runs).toHaveLength(0);
+    // 元に戻す1回で、押す前へ戻る
+    expect(fineTune.history.canUndo.value).toBe(true);
+    fineTune.undo();
     expect(fineTune.isEmpty.value).toBe(true);
   });
 
-  it("入口のボタン: 実ストアでも、個数指定の行はゆずる側になれるときだけ数える", () => {
+  it("全体のLvを伸ばす: 全員届いていれば allReached で、下書きを変えない", async () => {
+    const { store } = await makeStore("100000000");
+    store.updateSpeciesCandy(25, 100_000);
+    await vi.waitFor(() => {
+      expect(store.planResultPending.value).toBe(false);
+      expect(store.planResult.value!.pokemonResults.every((p) => p.reachableLine.effectiveTargetReached)).toBe(true);
+    });
+    const { fineTune } = open(store);
+    expect(await fineTune.raiseAll()).toBe("allReached");
+    expect(fineTune.isEmpty.value).toBe(true);
+    expect(fineTune.history.canUndo.value).toBe(false);
+  });
+
+  it("入口のボタン: 実ストアでも、個数指定の行・Lv上限の行・睡眠目標モードの行だけなら出さない", () => {
     const store = createCalcStore({ locale: ref("ja"), t });
     store.setSlotBoostKind("full");
     store.updateSpeciesCandy(133, 100_000);
@@ -348,11 +389,14 @@ describe("useFineTune（設計書 §10.4）", () => {
     const maxRowId = store.rows.value[0]!.id;
     store.onRowCandyTarget(maxRowId, "5");
     expect(hasFineTuneTarget(store.rows.value, store.evaluateRows)).toBe(false);
-    // 普通の個数指定の行があれば true
+    // 個数指定の行は目標Lv・アメブを動かせないので数えない。個数指定を外せば true
     addBoxRow(store, { boxId: "n", pokedexId: 133, srcLevel: 10, dstLevelDefault: 50, expType: 600, nature: "normal" });
     const normalRowId = store.rows.value[1]!.id;
     store.onRowCandyTarget(normalRowId, "20");
     expect(store.rows.value[1]!.candyTarget).toBe(20);
+    expect(hasFineTuneTarget(store.rows.value, store.evaluateRows)).toBe(false);
+    store.onRowCandyTarget(normalRowId, "");
+    expect(store.rows.value[1]!.candyTarget).toBeUndefined();
     expect(hasFineTuneTarget(store.rows.value, store.evaluateRows)).toBe(true);
     // 睡眠目標モードにすると個数指定は外れ、対象外
     store.setRowSleepTarget(normalRowId, "all");
