@@ -251,32 +251,79 @@ test.describe('12-fine-tune（PC）', () => {
     await expect(fineTune.applyButton).toBeDisabled();
   });
 
-  test('睡眠: 睡眠目標のある行がいると目標の右隣に睡眠の列が出て、到達はアメで届くLv、詳細は「到達Lv（あとEXP）」と「睡眠到達Lv」', async ({ page }) => {
+  test('睡眠: 目標の右隣の睡眠の列に睡眠目標が出て、調整バーで 200h〜2000h・全て・おひるね島とアメ在庫・チケットを選べ、適用で計算機へ移る', async ({ page }) => {
     const { calc, fineTune } = await setupScenario(page, ALL_REACHED);
-    // 睡眠の列は、睡眠のある行がいなければ出ない
-    await fineTune.open();
-    await fineTune.waitForSettled();
-    await expect(page.getByTestId('fine-tune-row-sleep')).toHaveCount(0);
-    await fineTune.discardAndClose();
-
-    await calc.chooseSleepTarget(calc.getRow(2), { base: 'hours', hours: 1000 });
-    await calc.waitForPlannerResult();
     await fineTune.open();
     await fineTune.waitForSettled();
     const hitokage = fineTune.rowByName('ヒトカゲ');
     const pikachu = fineTune.rowByName('ピカチュウ');
-    // 列の並び: 目標 → 睡眠 → 到達
+    // 列の並び: 目標 → 睡眠 → 到達。睡眠目標の無い行は「-」
     const head = (await fineTune.list.locator('.fineTuneHead .fineTuneHead__cell').allTextContents()).map((s) => s.trim());
     expect(head.slice(2, 5)).toEqual(['目標', '睡眠', '到達']);
-    // 睡眠の無い行は「-」、ある行は睡眠のあとの着地点。到達はアメで届くLv（睡眠のぶん目標より下）
     await expect(fineTune.cell(pikachu, 'sleep')).toHaveText('-');
-    const sleepLevel = await fineTune.cellNumber(hitokage, 'sleep');
+
+    // 時間: 1000h。到達はアメで届くLv（睡眠のぶん目標より下）、詳細は「到達Lv（あとEXP）」と「睡眠到達Lv」
+    await fineTune.chooseSleep(hitokage, 'h1000');
+    await expect(fineTune.cell(hitokage, 'sleep')).toHaveText('1000h');
+    await expect(fineTune.cell(hitokage, 'sleep')).toHaveClass(/fineTuneRow__cell--changed/);
+    await expect(fineTune.editorChange).toHaveText('未設定 → 1000h');
+    await expect(fineTune.sleepStockToggle).toBeDisabled();
+    await fineTune.waitForSettled();
     const reach = await fineTune.cellNumber(hitokage, 'reach');
-    expect(sleepLevel).toBeGreaterThanOrEqual(60);
-    expect(reach).toBeLessThan(sleepLevel);
-    await fineTune.select(hitokage, 'row');
+    expect(reach).toBeLessThan(60);
     await expect(fineTune.editorInfo).toContainText(`到達Lv ${reach}（あとEXP`);
-    await expect(fineTune.editorInfo).toContainText(`睡眠到達Lv ${sleepLevel}`);
+    await expect(fineTune.editorInfo).toContainText('睡眠到達Lv');
+
+    // 全て ＋ アメ在庫 → 🍬 の印
+    await fineTune.sleepOption('sleep').click();
+    await expect(fineTune.cell(hitokage, 'sleep')).toHaveText('全て');
+    await expect(fineTune.sleepTicketToggle).toBeDisabled();
+    await fineTune.sleepStockToggle.click();
+    await expect(fineTune.sleepStockToggle).toHaveAttribute('aria-pressed', 'true');
+    await expect(fineTune.cell(hitokage, 'sleep')).toHaveText('全て🍬');
+    // おひるね島へ移るとアメ在庫を持ち越し、チケットを足すと 🎫🍬
+    await fineTune.sleepOption('nap').click();
+    await fineTune.sleepTicketToggle.click();
+    // PC幅では「おひるね島」、狭い幅では「島」と出す（見えている文字で比べる）
+    await expect.poll(() => fineTune.cell(hitokage, 'sleep').evaluate((el) => (el as HTMLElement).innerText.replace(/\s/g, ''))).toBe('おひるね島🎫🍬');
+    await fineTune.waitForSettled();
+
+    await fineTune.apply();
+    await calc.waitForPlannerResult();
+    await expect(calc.getRowSleepTargetSelect(calc.getRow(2))).toContainText('おひるね島');
+    await expect(calc.getRowSleepTargetSelect(calc.getRow(2))).toContainText('🎫🍬');
+  });
+
+  test('アメブ: 最小アメブで手持ちのアメから最小限のアメブになり、リセットで自動の値に戻る', async ({ page }) => {
+    const { fineTune } = await setupScenario(page, ALL_REACHED);
+    await fineTune.open();
+    await fineTune.waitForSettled();
+    const pikachu = fineTune.rowByName('ピカチュウ');
+    const auto = await fineTune.boostValue(pikachu);
+    expect(auto).toBeGreaterThan(0);
+
+    // 自動の値のときはリセットできない。手で動かすとリセットでき、押すと自動の値へ戻る
+    await fineTune.select(pikachu, 'boost');
+    await expect(fineTune.boostResetButton).toBeDisabled();
+    await fineTune.step(-10);
+    expect(await fineTune.boostValue(pikachu)).toBe(auto - 10);
+    await expect(fineTune.boostResetButton).toBeEnabled();
+    await fineTune.boostResetButton.click();
+    expect(await fineTune.boostValue(pikachu)).toBe(auto);
+    await expect(fineTune.boostResetButton).toBeDisabled();
+
+    // 最小アメブ: 種族アメが十分あるので、アメブを使わずに届く（0 個）。もう一度押すと外れて自動の値へ戻る
+    await fineTune.minimizeButton.click();
+    await expect(fineTune.minimizeButton).toHaveAttribute('aria-pressed', 'true');
+    expect(await fineTune.boostValue(pikachu)).toBeLessThan(auto);
+    await fineTune.waitForSettled();
+    await expect(pikachu).toHaveAttribute('data-reached', 'true');
+    await fineTune.minimizeButton.click();
+    await expect(fineTune.minimizeButton).toHaveAttribute('aria-pressed', 'false');
+    expect(await fineTune.boostValue(pikachu)).toBe(auto);
+    // 元に戻すで1つずつ戻る
+    await fineTune.undoButton.click();
+    await expect(fineTune.minimizeButton).toHaveAttribute('aria-pressed', 'true');
   });
 
   test('アメ: 欄を押して数を変えると個数指定になり、目標Lv・アメブは動かせず、元の数に戻すと戻る。適用で計算機の個数指定へ移る', async ({ page }) => {
@@ -550,8 +597,7 @@ test.describe('12-fine-tune（スマホ幅）', () => {
         expect(rowBox.height).toBeLessThan(56);
         expect(rowBox.y + rowBox.height).toBeLessThanOrEqual(listBox.y + listBox.height + 1);
         const boxes = [];
-        const sleepIds = await row.getByTestId('fine-tune-row-sleep').count() > 0 ? ['fine-tune-row-sleep'] : [];
-        for (const testId of ['fine-tune-row-name', 'fine-tune-row-target', ...sleepIds, 'fine-tune-row-reach', 'fine-tune-row-boost', 'fine-tune-row-candy', 'fine-tune-row-shards-per-candy']) {
+        for (const testId of ['fine-tune-row-name', 'fine-tune-row-target', 'fine-tune-row-sleep', 'fine-tune-row-reach', 'fine-tune-row-boost', 'fine-tune-row-candy', 'fine-tune-row-shards-per-candy']) {
           boxes.push((await row.getByTestId(testId).boundingBox())!);
         }
         for (let j = 1; j < boxes.length; j += 1) {
@@ -561,7 +607,7 @@ test.describe('12-fine-tune（スマホ幅）', () => {
         }
         expect(boxes[boxes.length - 1]!.x + boxes[boxes.length - 1]!.width).toBeLessThanOrEqual(viewport.width + 1);
         // 数字の欄の文字が欄からはみ出していない
-        for (const testId of ['fine-tune-row-boost', 'fine-tune-row-candy', 'fine-tune-row-shards-per-candy']) {
+        for (const testId of ['fine-tune-row-sleep', 'fine-tune-row-boost', 'fine-tune-row-candy', 'fine-tune-row-shards-per-candy']) {
           const clipped = await row.getByTestId(testId).evaluate((el) => el.scrollWidth - el.clientWidth);
           expect(clipped, testId).toBeLessThanOrEqual(0);
         }
@@ -595,7 +641,7 @@ test.describe('12-fine-tune（スマホ幅）', () => {
       expect(size.x + size.width).toBeLessThanOrEqual(viewport.width + 1);
     }
     const first = fineTune.rows.first();
-    for (const testId of ['fine-tune-row-handle', 'fine-tune-row-target', 'fine-tune-row-boost', 'fine-tune-row-candy']) {
+    for (const testId of ['fine-tune-row-handle', 'fine-tune-row-target', 'fine-tune-row-sleep', 'fine-tune-row-boost', 'fine-tune-row-candy']) {
       const size = (await first.getByTestId(testId).boundingBox())!;
       expect(size.height, testId).toBeGreaterThanOrEqual(minHeight);
     }

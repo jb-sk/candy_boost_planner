@@ -111,22 +111,14 @@
 
 /* ===== 表 =====
    列: 取っ手 | ポケモン | 目標 | 睡眠 | 到達 | アメブ | アメ | アメ1個あたりのかけら
-   睡眠の列は睡眠のある行がいるときだけ、アメブの列はアメブのあるスロットだけ。列の幅は一覧の --ft-cols で決める */
+   アメブの列はアメブのあるスロットだけ。列の幅は一覧の --ft-cols で決める */
 .fineTuneModal__list {
-  --ft-cols: 22px minmax(0, 1fr) 36px 40px 50px 50px 74px;
+  --ft-cols: 18px minmax(0, 1fr) 32px 50px 32px 46px 46px 64px;
   padding: 0;
 }
 
 .fineTuneModal__list--noBoost {
-  --ft-cols: 22px minmax(0, 1fr) 40px 44px 60px 80px;
-}
-
-.fineTuneModal__list--sleep {
-  --ft-cols: 18px minmax(0, 1fr) 32px 36px 32px 46px 46px 64px;
-}
-
-.fineTuneModal__list--sleep.fineTuneModal__list--noBoost {
-  --ft-cols: 20px minmax(0, 1fr) 36px 40px 40px 56px 72px;
+  --ft-cols: 20px minmax(0, 1fr) 36px 56px 40px 56px 72px;
 }
 
 .fineTuneHead,
@@ -163,12 +155,12 @@
 /* 長い見出し（アメ1個あたりのかけら）は2段。段の中では折り返さない */
 .fineTuneHead__cell--wrap {
   padding: 2px 2px;
-  font-size: 10px;
+  font-size: 9px;
   line-height: 1.2;
 }
 
-.fineTuneModal__list--sleep .fineTuneHead__cell--wrap {
-  font-size: 9px;
+.fineTuneHead__cell--sleep {
+  text-align: center;
 }
 
 .fineTuneHead__line {
@@ -330,6 +322,22 @@ button.fineTuneRow__cell {
   color: var(--btn-ink);
 }
 
+/* 睡眠目標の欄。名前（200h・全て・おひるね島）と印。狭い幅ではおひるね島を「島」と縮める */
+.fineTuneRow__cell--sleep {
+  justify-content: center;
+  gap: 1px;
+  font-size: 11px;
+}
+
+.fineTuneRow__sleepName--full {
+  display: none;
+}
+
+.fineTuneRow__sleepIcons {
+  flex-shrink: 0;
+  font-size: 10px;
+}
+
 /* 計算中は、結果から出す欄を薄くする */
 .fineTuneRow--pending .fineTuneRow__cell--result {
   opacity: 0.45;
@@ -442,6 +450,68 @@ button.fineTuneRow__cell {
   font-size: 11.5px;
   line-height: 1.45;
   color: var(--muted);
+}
+
+/* アメブの最小アメブ・リセット */
+.fineTuneEditor__tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fineTuneEditor__tool,
+.fineTuneEditor__option {
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(var(--accent-rgb), 0.3);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--accent-strong);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.fineTuneEditor__tool--on,
+.fineTuneEditor__option--on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--btn-ink);
+}
+
+.fineTuneEditor__tool:disabled,
+.fineTuneEditor__option:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* 睡眠目標の選択肢（4列）と、アメ在庫・チケット */
+.fineTuneEditor__sleep {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fineTuneEditor__options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.fineTuneEditor__checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.fineTuneEditor__options .fineTuneEditor__option,
+.fineTuneEditor__checks .fineTuneEditor__option {
+  padding: 0 4px;
 }
 
 .fineTuneEditor__recommend {
@@ -606,23 +676,47 @@ button.fineTuneRow__cell {
   }
 
   .fineTuneModal__list {
-    --ft-cols: 36px minmax(0, 1fr) 80px 80px 104px 104px 120px;
+    --ft-cols: 36px minmax(0, 1fr) 72px 136px 72px 96px 96px 116px;
   }
 
   .fineTuneModal__list--noBoost {
-    --ft-cols: 36px minmax(0, 1fr) 88px 88px 120px 140px;
+    --ft-cols: 36px minmax(0, 1fr) 80px 148px 80px 120px 140px;
   }
 
-  .fineTuneModal__list--sleep {
-    --ft-cols: 36px minmax(0, 1fr) 72px 80px 72px 100px 100px 120px;
-  }
-
-  .fineTuneModal__list--sleep.fineTuneModal__list--noBoost {
-    --ft-cols: 36px minmax(0, 1fr) 80px 88px 80px 120px 140px;
-  }
-
-  .fineTuneModal__list--sleep .fineTuneHead__cell--wrap {
+  .fineTuneHead__cell--wrap {
     font-size: 13px;
+  }
+
+  .fineTuneRow__cell--sleep {
+    gap: 2px;
+    font-size: 15px;
+  }
+
+  .fineTuneRow__sleepName--full {
+    display: inline;
+  }
+
+  .fineTuneRow__sleepName--short {
+    display: none;
+  }
+
+  .fineTuneRow__sleepIcons {
+    font-size: 14px;
+  }
+
+  .fineTuneEditor__tool,
+  .fineTuneEditor__option {
+    min-height: 44px;
+    font-size: 15px;
+  }
+
+  .fineTuneEditor__options {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    max-width: 680px;
+  }
+
+  .fineTuneEditor__checks {
+    max-width: 680px;
   }
 
   .fineTuneHead,

@@ -12,6 +12,7 @@
       <template v-if="row !== null">
         <span class="fineTuneEditor__name" data-testid="fine-tune-editor-name">{{ row.title }}</span>
         <span v-if="stepper !== null" class="fineTuneEditor__field">{{ stepper.label }}</span>
+        <span v-else-if="field === 'sleep'" class="fineTuneEditor__field">{{ t("calc.fineTune.field.sleep") }}</span>
         <span v-if="changeText !== null" class="fineTuneEditor__change" data-testid="fine-tune-editor-change">{{ changeText }}</span>
       </template>
       <span v-else class="fineTuneEditor__hint" data-testid="fine-tune-hint">{{ t("calc.fineTune.hint") }}</span>
@@ -35,7 +36,67 @@
       <span v-if="recommendation.insufficient" class="fineTuneEditor__recommendNote">{{ t("calc.fineTune.recommendInsufficient") }}</span>
     </button>
 
-    <div v-if="stepper !== null" class="fineTuneEditor__stepper" :class="`fineTuneEditor__stepper--${stepper.steps.length}`">
+    <!-- アメブ: 最小アメブ（手持ちのアメから最小限のアメブを自動で決める）とリセット（自動の値へ戻す） -->
+    <div v-if="boostTools !== null" class="fineTuneEditor__tools">
+      <button
+        class="fineTuneEditor__tool"
+        :class="{ 'fineTuneEditor__tool--on': boostTools.minimized }"
+        type="button"
+        data-testid="fine-tune-editor-minimize"
+        :aria-pressed="boostTools.minimized"
+        :title="boostTools.minimizeTitle"
+        :disabled="busy || (!boostTools.minimized && !boostTools.canMinimize)"
+        @click="emit('op', { kind: 'boostMinimize', rowId: row!.id, on: !boostTools.minimized })"
+      >{{ t("calc.fineTune.boostMinimize") }}</button>
+      <button
+        class="fineTuneEditor__tool"
+        type="button"
+        data-testid="fine-tune-editor-boost-reset"
+        :title="t('calc.fineTune.boostResetTitle')"
+        :disabled="busy || !boostTools.manual"
+        @click="emit('op', { kind: 'boostReset', rowId: row!.id })"
+      >{{ t("calc.fineTune.boostReset") }}</button>
+    </div>
+
+    <!-- 睡眠: 200h〜2000h・全て・おひるね島と、アメ在庫・チケット（全て・おひるね島のときだけ） -->
+    <div v-if="sleepEditor !== null" class="fineTuneEditor__sleep" data-testid="fine-tune-editor-sleep">
+      <div class="fineTuneEditor__options">
+        <button
+          v-for="option in sleepEditor.options"
+          :key="option.key"
+          class="fineTuneEditor__option"
+          :class="{ 'fineTuneEditor__option--on': option.selected }"
+          type="button"
+          data-testid="fine-tune-editor-sleep-option"
+          :data-option="option.key"
+          :aria-pressed="option.selected"
+          :disabled="busy"
+          @click="chooseSleep(option.choice)"
+        >{{ option.label }}</button>
+      </div>
+      <div class="fineTuneEditor__checks">
+        <button
+          class="fineTuneEditor__option"
+          :class="{ 'fineTuneEditor__option--on': sleepEditor.ticket }"
+          type="button"
+          data-testid="fine-tune-editor-sleep-ticket"
+          :aria-pressed="sleepEditor.ticket"
+          :disabled="busy || !sleepEditor.canTicket"
+          @click="toggleSleep('ticket')"
+        ><span aria-hidden="true">{{ SLEEP_TICKET_EMOJI }}</span>{{ t("calc.fineTune.sleepOption.ticket") }}</button>
+        <button
+          class="fineTuneEditor__option"
+          :class="{ 'fineTuneEditor__option--on': sleepEditor.stock }"
+          type="button"
+          data-testid="fine-tune-editor-sleep-stock"
+          :aria-pressed="sleepEditor.stock"
+          :disabled="busy || !sleepEditor.canStock"
+          @click="toggleSleep('stock')"
+        ><span aria-hidden="true">{{ SLEEP_STOCK_EMOJI }}</span>{{ t("calc.fineTune.sleepOption.stock") }}</button>
+      </div>
+    </div>
+
+    <div v-else-if="stepper !== null" class="fineTuneEditor__stepper" :class="`fineTuneEditor__stepper--${stepper.steps.length}`">
       <button
         v-for="amount in stepper.steps"
         :key="`down-${amount}`"
@@ -91,10 +152,20 @@ import type { FineTuneOp, RowExclusion } from "../domain/fine-tune/draft";
 import type { FineTuneRowView } from "../domain/fine-tune/rowView";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { vKeypad } from "../composables/useNumericKeypad";
-import { FINE_TUNE_STEPS, sleepReachText, type FineTuneField } from "../utils/fineTuneView";
+import {
+  FINE_TUNE_STEPS,
+  SLEEP_STOCK_EMOJI,
+  SLEEP_TICKET_EMOJI,
+  sleepReachText,
+  sleepTargetText,
+  type FineTuneField,
+} from "../utils/fineTuneView";
+import { SLEEP_TARGET_HOURS_OPTIONS } from "../domain/types";
+import { sleepTargetOfChoice, type SleepTargetChoice } from "../domain/sleep-target";
 
 /**
- * かんたんの調整バー。表で押した欄（目標Lv・アメブ・アメ）を、刻みのボタンと個数欄で動かす。
+ * かんたんの調整バー。表で押した欄（目標Lv・アメブ・アメ）を刻みのボタンと個数欄で、睡眠を選択肢で動かす。
+ * アメブには最小アメブ・リセットも置く。
  * 行の詳細（到達・睡眠のあと・足りないもの・動かせない理由）と「〇〇のLvを上げる」もここに出す。
  * 値と範囲は `FineTuneRowView` に入っているものを使い、op を投げるだけ（範囲に収めるのは reducer）。
  */
@@ -106,6 +177,8 @@ const props = defineProps<{
   pending: boolean;
   /** 「全体のLvを伸ばす」を求めている間。どの操作も押せなくする */
   busy: boolean;
+  /** 設定で全員に最小アメブを使っている（行ごとの最小アメブは切り替えられない） */
+  globalMinimize: boolean;
   fmt: (n: number) => string;
   titleOf: (rowId: string) => string;
 }>();
@@ -197,8 +270,17 @@ const stepper = computed<Stepper | null>(() => {
   return null;
 });
 
-/** 基準からの変化（変わっていなければ null） */
+/** 基準からの変化（変わっていなければ null）。睡眠は目標の名前で出す */
 const changeText = computed(() => {
+  const { row, field } = props;
+  if (row !== null && field === "sleep") {
+    if (!row.sleepTarget.changed) return null;
+    const label = (choice: SleepTargetChoice) => {
+      const text = sleepTargetText(t, choice);
+      return `${choice.base === "none" ? t("calc.fineTune.sleepOption.none") : text.name}${text.icons}`;
+    };
+    return `${label(row.sleepTarget.base)} → ${label(row.sleepTarget.choice)}`;
+  }
   const s = stepper.value;
   if (s === null || s.value === s.base) return null;
   return `${props.fmt(s.base)} → ${props.fmt(s.value)}`;
@@ -258,6 +340,57 @@ const recommendDelta = computed(() => {
   const delta = rec.boost - current;
   return `${delta > 0 ? "+" : delta < 0 ? "−" : ""}${props.fmt(Math.abs(delta))}`;
 });
+
+// ===== アメブの最小アメブ・リセット =====
+const boostTools = computed(() => {
+  const { row, field } = props;
+  if (row === null || field !== "boost" || !row.levelAdjustable || row.boost === null) return null;
+  const { minimized, canMinimize, manual } = row.boost;
+  const minimizeTitle = props.globalMinimize
+    ? t("calc.fineTune.boostMinimizeGlobal")
+    : canMinimize || minimized ? t("calc.fineTune.boostMinimizeTitle") : t("calc.fineTune.boostMinimizeUnavailable");
+  return { minimized, canMinimize, manual, minimizeTitle };
+});
+
+// ===== 睡眠目標 =====
+const sleepEditor = computed(() => {
+  const { row, field } = props;
+  if (row === null || field !== "sleep") return null;
+  const current = row.sleepTarget.choice;
+  const stock = (current.base === "sleep" || current.base === "napIsland") && current.stock;
+  const ticket = current.base === "napIsland" && current.ticket;
+  const options: Array<{ key: string; label: string; choice: SleepTargetChoice; selected: boolean }> = [
+    { key: "none", label: t("calc.fineTune.sleepOption.none"), choice: { base: "none" }, selected: current.base === "none" },
+    ...SLEEP_TARGET_HOURS_OPTIONS.map((hours) => ({
+      key: `h${hours}`,
+      label: sleepTargetText(t, { base: "hours", hours }).name,
+      choice: { base: "hours", hours } as SleepTargetChoice,
+      selected: current.base === "hours" && current.hours === hours,
+    })),
+    // 全て・おひるね島へ移るときは、アメ在庫の印を持ち越す（チケットはおひるね島どうしだけ）
+    { key: "sleep", label: t("calc.fineTune.sleepOption.all"), choice: { base: "sleep", stock }, selected: current.base === "sleep" },
+    { key: "nap", label: t("calc.fineTune.sleepOption.nap"), choice: { base: "napIsland", stock, ticket }, selected: current.base === "napIsland" },
+  ];
+  return {
+    options,
+    stock,
+    ticket,
+    canStock: current.base === "sleep" || current.base === "napIsland",
+    canTicket: current.base === "napIsland",
+  };
+});
+
+function chooseSleep(choice: SleepTargetChoice): void {
+  if (props.row === null) return;
+  emit("op", { kind: "sleepSet", rowId: props.row.id, target: sleepTargetOfChoice(choice) });
+}
+
+function toggleSleep(which: "stock" | "ticket"): void {
+  const current = props.row?.sleepTarget.choice;
+  if (current === undefined) return;
+  if (current.base === "sleep" && which === "stock") chooseSleep({ ...current, stock: !current.stock });
+  if (current.base === "napIsland") chooseSleep({ ...current, [which]: !current[which] });
+}
 
 // ===== 刻みのボタンと個数欄（確定は blur。テンキーは ui_spec §8） =====
 function stepBy(by: number): void {

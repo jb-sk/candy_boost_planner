@@ -48,6 +48,10 @@ function depsOf(store: CalcStore): FineTuneDeps {
     withTargetLevel: store.withTargetLevel,
     withCandyTarget: store.withCandyTarget,
     maxCandyTargetFor: store.maxCandyTargetFor,
+    withSleepTarget: store.withSleepTarget,
+    withMinimizeBoost: store.withMinimizeBoost,
+    canMinimizeBoostFor: store.canMinimizeBoostFor,
+    withBoostCandyReset: store.withBoostCandyReset,
   };
 }
 
@@ -170,6 +174,34 @@ describe("reduceFineTune: 本物のストアを deps に渡す", () => {
     const top = s.ok(given, { kind: "candySet", rowId: c, candy: 1_000_000 });
     expect(rowOf(top.rows, c).candyTarget).toBe(max);
     expect(rowOf(s.ok(top, { kind: "candySet", rowId: c, candy: m0 }).rows, c)).toBe(row);
+  });
+
+  it("睡眠目標・最小アメブ・リセットは、計算機で同じ操作をしたときと同じ行になる", () => {
+    const store = newStore(100_000);
+    const a = add(store, "a", 25, 10, 40);
+    add(store, "b", 133, 10, 50);
+    const s = session(store);
+    // 睡眠目標（時間とおひるね島＋アメ在庫＋チケット）
+    for (const target of [1000, "napStockTicket", "all"] as const) {
+      const draft = s.ok(s.initial, { kind: "sleepSet", rowId: a, target });
+      store.setRowSleepTarget(a, target);
+      expect(rowOf(draft.rows, a)).toEqual(rowOf(store.rows.value, a));
+      store.setRowSleepTarget(a, undefined);
+    }
+    // 手で入れたアメブ → 最小アメブ → リセット
+    store.onRowBoostCandy(a, "50");
+    const manual = session(store);
+    const minimized = manual.ok(manual.initial, { kind: "boostMinimize", rowId: a, on: true });
+    expect(rowOf(minimized.rows, a)).toMatchObject({ boostOrExpAdjustment: undefined, boostMinimizeRow: true });
+    store.setRowMinimizeBoost(a, true);
+    expect(rowOf(minimized.rows, a)).toEqual(rowOf(store.rows.value, a));
+    store.setRowMinimizeBoost(a, false);
+    store.onRowBoostCandy(a, "50");
+    const again = session(store);
+    const reset = again.ok(again.initial, { kind: "boostReset", rowId: a });
+    store.resetRowBoostCandy(a);
+    expect(rowOf(reset.rows, a)).toEqual(rowOf(store.rows.value, a));
+    expect(rowOf(reset.rows, a).boostOrExpAdjustment).toBeUndefined();
   });
 
   it("move は在庫のみの行の保存値が上限を超えても拒否されず、実効アメブが在庫で抑えられる。上の行が在庫を先に取ると全アメブ点が下がる", () => {

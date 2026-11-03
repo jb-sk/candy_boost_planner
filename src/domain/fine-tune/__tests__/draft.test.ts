@@ -66,6 +66,23 @@ function makeDeps(info: Record<string, RowInfo>) {
     maxCandyTargetFor(row) {
       return info[row.id]!.max ?? 500;
     },
+    withSleepTarget(row, target) {
+      return {
+        ...row,
+        sleepTargetMode: typeof target === "string" ? target : undefined,
+        sleepTargetHours: typeof target === "number" ? target : undefined,
+        candyTarget: target === undefined ? row.candyTarget : undefined,
+      };
+    },
+    withMinimizeBoost(row, on) {
+      return on ? { ...row, boostOrExpAdjustment: undefined, boostMinimizeRow: true } : { ...row, boostMinimizeRow: undefined };
+    },
+    canMinimizeBoostFor(row) {
+      return row.pokedexId !== 0;
+    },
+    withBoostCandyReset(row) {
+      return { ...row, boostOrExpAdjustment: undefined };
+    },
   };
   return { deps, calls };
 }
@@ -338,6 +355,43 @@ describe("reduceFineTune: アメの数（candyStep / candySet）", () => {
     s = t.ok(s, { kind: "candyStep", rowId: "A", by: -5 });
     expect(s.candyRecords.A).toMatchObject({ m0: 100, boost: 7, candy: 45 });
     expect(s.candyRecords.A!.before).toBe(t.initial.rows[0]);
+  });
+});
+
+describe("reduceFineTune: 睡眠目標・最小アメブ・アメブのリセット", () => {
+  it("睡眠目標を計算機と同じ関数で入れる。同じ目標なら変えない。個数指定が外れたらアメの数の記録も外す", () => {
+    const t = setup([makeRow("a", { boostOrExpAdjustment: 7 }), makeRow("b")], { a: { full: 10, need: 100 }, b: { full: 10, need: 100 } });
+    const hours = t.ok(t.initial, { kind: "sleepSet", rowId: "b", target: 1000 });
+    expect(hours.rows[1]).toMatchObject({ sleepTargetHours: 1000, sleepTargetMode: undefined });
+    expect(t.run(hours, { kind: "sleepSet", rowId: "b", target: 1000 })).toEqual({ state: hours });
+    const nap = t.ok(hours, { kind: "sleepSet", rowId: "b", target: "napStockTicket" });
+    expect(nap.rows[1]).toMatchObject({ sleepTargetMode: "napStockTicket", sleepTargetHours: undefined });
+    expect(t.ok(nap, { kind: "sleepSet", rowId: "b", target: undefined }).rows[1]).toMatchObject({ sleepTargetMode: undefined, sleepTargetHours: undefined });
+    // アメの数を変えた行に睡眠目標を入れると、個数指定と記録が外れる
+    const candy = t.ok(t.initial, { kind: "candyStep", rowId: "a", by: -10 });
+    expect(candy.candyRecords.a).toBeDefined();
+    const slept = t.ok(candy, { kind: "sleepSet", rowId: "a", target: 500 });
+    expect(slept.rows[0]!.candyTarget).toBeUndefined();
+    expect(slept.candyRecords).toEqual({});
+  });
+
+  it("最小アメブ: 入れると個数を自動にしてスイッチを入れ、効いているときに入れても変えない。外すとスイッチだけ外す。できない行は拒否", () => {
+    const t = setup([makeRow("a", { boostOrExpAdjustment: 7 }), makeRow("u", { pokedexId: 0 })], { a: { full: 10, need: 100 }, u: { full: 10, need: 100 } });
+    const on = t.ok(t.initial, { kind: "boostMinimize", rowId: "a", on: true });
+    expect(on.rows[0]).toMatchObject({ boostOrExpAdjustment: undefined, boostMinimizeRow: true });
+    expect(t.run(on, { kind: "boostMinimize", rowId: "a", on: true })).toEqual({ state: on });
+    expect(t.ok(on, { kind: "boostMinimize", rowId: "a", on: false }).rows[0]!.boostMinimizeRow).toBeUndefined();
+    // 対象外の行（ポケモンが不明）は拒否
+    expect(t.run(t.initial, { kind: "boostMinimize", rowId: "u", on: true })).toEqual({ rejected: "excluded" });
+  });
+
+  it("アメブのリセット: 手で入れた個数を自動へ戻す。自動の行・対象外の行は変えない", () => {
+    const t = setup([makeRow("a", { boostOrExpAdjustment: 7 }), makeRow("b"), makeRow("c", { candyTarget: 40 })], {
+      a: { full: 10, need: 100 }, b: { full: 10, need: 100 }, c: { full: 10, need: 40 },
+    });
+    expect(t.ok(t.initial, { kind: "boostReset", rowId: "a" }).rows[0]!.boostOrExpAdjustment).toBeUndefined();
+    expect(t.run(t.initial, { kind: "boostReset", rowId: "b" })).toEqual({ state: t.initial });
+    expect(t.run(t.initial, { kind: "boostReset", rowId: "c" })).toEqual({ rejected: "excluded" });
   });
 });
 

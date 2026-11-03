@@ -51,14 +51,24 @@
       @click="emit('select', row.levelAdjustable ? 'target' : 'row')"
     >{{ row.targetLevel.value }}</button>
 
-    <!-- 睡眠（島）のあとの着地点。睡眠のある行が1匹でもいるときだけ列を出す -->
-    <span
-      v-if="hasSleep"
-      class="fineTuneRow__cell fineTuneRow__cell--result"
-      :class="{ 'fineTuneRow__cell--changed': row.sleepReachChanged, 'fineTuneRow__cell--short': row.sleepReach !== null && row.reached.value === false }"
+    <!-- 睡眠目標（200h〜2000h・全て・おひるね島）。アメ在庫・チケットを使うときは印を付ける -->
+    <button
+      class="fineTuneRow__cell fineTuneRow__cell--sleep"
+      :class="cellClass('sleep', true, row.sleepTarget.changed)"
+      type="button"
       data-testid="fine-tune-row-sleep"
-      :title="row.sleepReach === null ? undefined : t(row.sleepReach.kind === 'napIsland' ? 'calc.row.napReachedLv' : 'calc.row.sleepReachedLv')"
-    >{{ row.sleepReach === null ? "-" : sleepReachText(row.sleepReach) }}</span>
+      :aria-label="`${t('calc.fineTune.field.sleep')} ${sleepText.name}${sleepText.icons}`"
+      :aria-pressed="selectedField === 'sleep'"
+      @click="emit('select', 'sleep')"
+    >
+      <!-- おひるね島だけ、狭い幅では「島」と縮める（ほかは名前が同じ） -->
+      <template v-if="sleepText.short !== sleepText.name">
+        <span class="fineTuneRow__sleepName fineTuneRow__sleepName--full">{{ sleepText.name }}</span>
+        <span class="fineTuneRow__sleepName fineTuneRow__sleepName--short">{{ sleepText.short }}</span>
+      </template>
+      <span v-else class="fineTuneRow__sleepName">{{ sleepText.name }}</span>
+      <span v-if="sleepText.icons" class="fineTuneRow__sleepIcons" aria-hidden="true">{{ sleepText.icons }}</span>
+    </button>
 
     <span
       class="fineTuneRow__cell fineTuneRow__cell--result"
@@ -105,18 +115,16 @@ import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import type { FineTuneOp } from "../domain/fine-tune/draft";
 import type { Change, FineTuneRowView } from "../domain/fine-tune/rowView";
-import { sleepReachText, type FineTuneField } from "../utils/fineTuneView";
+import { sleepTargetText, type FineTuneField } from "../utils/fineTuneView";
 
 /**
- * かんたんの1行。数字だけを1行に並べ、押した欄（目標Lv・アメブ・アメ）を下の調整バー（FineTuneEditor）で動かす。
+ * かんたんの1行。数字だけを1行に並べ、押した欄（目標Lv・睡眠・アメブ・アメ）を下の調整バー（FineTuneEditor）で動かす。
  * 動かせない欄を押したときは、行の詳細（理由）を開く。計算は持たず、`FineTuneRowView` の値を出すだけ。
  * 結果から出す欄（到達・使えたアメ・到達Lvでのアメ1個のかけら）は、計算中は薄くする。
  */
 const props = defineProps<{
   row: FineTuneRowView;
   hasBoost: boolean;
-  /** 一覧に睡眠の列があるか（睡眠のある行が1匹でもいる） */
-  hasSleep: boolean;
   /** この行で選んでいる欄。選んでいなければ null */
   selectedField: FineTuneField | null;
   /** 最新の結果が今の下書きの結果でない（結果から出す欄を薄くする） */
@@ -174,7 +182,9 @@ const shardsTitle = computed(() => (props.row.shards.value === null
   ? undefined
   : t("calc.fineTune.shardsTotal", { shards: props.fmt(props.row.shards.value) })));
 
-/** 到達: アメで届くLv（睡眠のあとの着地点は睡眠の列） */
+const sleepText = computed(() => sleepTargetText(t, props.row.sleepTarget.choice));
+
+/** 到達: アメで届くLv（睡眠のあとの着地点は調整バーの詳細） */
 const reachText = computed(() => (props.row.reachLevel.value === null ? "-" : String(props.row.reachLevel.value)));
 const reachChanged = computed(() => {
   const { reachLevel, expToNext } = props.row;

@@ -42,7 +42,7 @@
         <div
           ref="listRef"
           class="modal__body fineTuneModal__list"
-          :class="{ 'fineTuneModal__list--noBoost': !fineTune.hasBoost.value, 'fineTuneModal__list--sleep': hasSleep }"
+          :class="{ 'fineTuneModal__list--noBoost': !fineTune.hasBoost.value }"
           data-testid="fine-tune-list"
           :data-pending="fineTune.stale.value ? 'true' : undefined"
         >
@@ -50,7 +50,7 @@
             <span class="fineTuneHead__cell"></span>
             <span class="fineTuneHead__cell fineTuneHead__cell--name">{{ t("calc.fineTune.col.pokemon") }}</span>
             <span class="fineTuneHead__cell" :title="t('calc.fineTune.field.target')">{{ t("calc.fineTune.col.target") }}</span>
-            <span v-if="hasSleep" class="fineTuneHead__cell" :title="t('calc.fineTune.col.sleepTitle')">{{ t("calc.fineTune.col.sleep") }}</span>
+            <span class="fineTuneHead__cell fineTuneHead__cell--sleep" :title="t('calc.fineTune.col.sleepTitle')">{{ t("calc.fineTune.col.sleep") }}</span>
             <span class="fineTuneHead__cell" :title="t('calc.fineTune.col.reachTitle')">{{ t("calc.fineTune.col.reach") }}</span>
             <span v-if="fineTune.hasBoost.value" class="fineTuneHead__cell">{{ t("calc.fineTune.col.boost") }}</span>
             <span class="fineTuneHead__cell">{{ t("calc.fineTune.col.candy") }}</span>
@@ -65,7 +65,6 @@
             :key="row.id"
             :row="row"
             :has-boost="fineTune.hasBoost.value"
-            :has-sleep="hasSleep"
             :selected-field="selected?.rowId === row.id ? selected.field : null"
             :pending="fineTune.stale.value"
             :is-first="i === 0"
@@ -86,6 +85,7 @@
           :field="selected?.field ?? null"
           :pending="fineTune.stale.value"
           :busy="fineTune.raising.value"
+          :global-minimize="calc.minimizeBoost.value"
           :fmt="calc.fmtNum"
           :title-of="fineTune.titleOf"
           @op="dispatch"
@@ -305,9 +305,6 @@ function applyDraft(): void {
 
 // ===== 表示 =====
 const summary = fineTune.summary;
-
-/** 睡眠の列は、睡眠（島）のある行が1匹でもいるときだけ出す */
-const hasSleep = computed(() => fineTune.rowViews.value.some((row) => row.sleepReach !== null));
 
 /** アメブで与えたときのかけらの倍率（見出しのホバーに出す） */
 const shardRate = computed(() => boostRules[calc.boostKind.value].shardMultiplier);

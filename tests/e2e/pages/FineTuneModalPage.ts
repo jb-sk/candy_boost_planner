@@ -5,9 +5,12 @@
 import { type Page, type Locator, expect } from '@playwright/test';
 
 /** 表で押せる欄。`row` は名前（行の詳細） */
-export type FineTuneField = 'row' | 'target' | 'boost' | 'candy';
+export type FineTuneField = 'row' | 'target' | 'sleep' | 'boost' | 'candy';
 
-const CELL_TEST_ID: Record<Exclude<FineTuneField, 'row'> | 'sleep' | 'reach' | 'shardsPerCandy', string> = {
+/** 睡眠目標の選択肢（調整バーの data-option） */
+export type FineTuneSleepOption = 'none' | 'h200' | 'h500' | 'h1000' | 'h2000' | 'sleep' | 'nap';
+
+const CELL_TEST_ID: Record<Exclude<FineTuneField, 'row'> | 'reach' | 'shardsPerCandy', string> = {
   target: 'fine-tune-row-target',
   sleep: 'fine-tune-row-sleep',
   boost: 'fine-tune-row-boost',
@@ -208,15 +211,44 @@ export class FineTuneModalPage {
     await this.editorInput.press('Enter');
   }
 
+  /** アメブの最小アメブ・リセット */
+  get minimizeButton(): Locator {
+    return this.editor.getByTestId('fine-tune-editor-minimize');
+  }
+
+  get boostResetButton(): Locator {
+    return this.editor.getByTestId('fine-tune-editor-boost-reset');
+  }
+
+  /** 睡眠目標の選択肢・アメ在庫・チケット */
+  sleepOption(option: FineTuneSleepOption): Locator {
+    return this.editor.locator(`[data-testid="fine-tune-editor-sleep-option"][data-option="${option}"]`);
+  }
+
+  get sleepStockToggle(): Locator {
+    return this.editor.getByTestId('fine-tune-editor-sleep-stock');
+  }
+
+  get sleepTicketToggle(): Locator {
+    return this.editor.getByTestId('fine-tune-editor-sleep-ticket');
+  }
+
+  /** 行の睡眠の欄を押して、睡眠目標を選ぶ。 */
+  async chooseSleep(row: Locator, option: FineTuneSleepOption): Promise<void> {
+    await this.select(row, 'sleep');
+    await this.sleepOption(option).click();
+    await expect(this.sleepOption(option)).toHaveAttribute('aria-pressed', 'true');
+  }
+
   /** 欄を選んで刻みを押す。 */
-  async adjust(row: Locator, field: Exclude<FineTuneField, 'row'>, delta: number): Promise<void> {
+  async adjust(row: Locator, field: 'target' | 'boost' | 'candy', delta: number): Promise<void> {
     await this.select(row, field);
     await expect(this.editor).toHaveAttribute('data-field', field);
     await this.step(delta);
   }
 
   /** 欄を選んで値を打つ。 */
-  async setValue(row: Locator, field: Exclude<FineTuneField, 'row'>, value: number): Promise<void> {
+  async setValue(row: Locator, field: 'target' | 'boost' | 'candy', value: number): Promise<void> {
     await this.select(row, field);
     await expect(this.editor).toHaveAttribute('data-field', field);
     await this.typeValue(value);

@@ -483,6 +483,14 @@ export type CalcStore = {
   withCandyTarget: (row: CalcRow, m: number) => CalcRow;
   /** 個数指定の上限（Lv70 に届く数。睡眠目標があれば睡眠で賄える分を引く）。`withCandyTarget` はこの数で抑える。 */
   maxCandyTargetFor: (row: CalcRow) => number;
+  /** 計算機の睡眠目標で target を選んだときと同じ行を返す（`setRowSleepTarget` の確定の手順）。 */
+  withSleepTarget: (row: CalcRow, target: number | SleepTargetMode | undefined) => CalcRow;
+  /** 行単位の最小アメブを切り替えた行を返す（`setRowMinimizeBoost` の確定の手順）。切り替えられない行はそのまま返す。 */
+  withMinimizeBoost: (row: CalcRow, on: boolean) => CalcRow;
+  /** 行単位の最小アメブを切り替えられるか（全体の設定で最小化しているとき・在庫の種族が無い行は不可）。 */
+  canMinimizeBoostFor: (row: CalcRow) => boolean;
+  /** アメブ個数をリセットした行を返す（`resetRowBoostCandy` の確定の手順。残枠から上の行より順に配り直す）。`rowList` はその行を含む行一覧。 */
+  withBoostCandyReset: (row: CalcRow, rowList: readonly CalcRow[]) => CalcRow;
   /**
    * 行一覧を丸ごと差し替える。今の rows.value が expectedBase と別物（参照が違う）なら何もせず false を返す。
    * 行は正規化せずそのまま保存し、commitRows で1回だけ記録する。
@@ -543,11 +551,10 @@ export type CalcStore = {
   rowRestCapacityOverflow: (rowId: string) => RestResource | null;
   /** 残EXPを埋める時間（睡眠かおひるね島）。残EXPが無ければ null。 */
   rowRemainingTimeFor: (rowId: string, expToTarget: number) => RowRemainingTime | null;
-  /**
-   * 残EXPを埋めたあとの着地点を出すための値。計画が無ければ null。
-   * `expToTarget` を渡すと、島のEXPを計算機の計画ではなくその残EXPで出す（かんたんモードの下書きの結果）。
-   */
-  rowReachAfterRemainingFor: (rowId: string, expToTarget?: number) => RowReachAfterRemaining | null;
+  /** 残EXPを埋めたあとの着地点を出すための値。計画が無ければ null。 */
+  rowReachAfterRemainingFor: (rowId: string) => RowReachAfterRemaining | null;
+  /** 行そのもので求める版（かんたんの下書きの行）。島は渡した残EXPで出す。 */
+  reachAfterRemainingForRow: (row: CalcRow, expToTarget: number) => RowReachAfterRemaining;
 };
 
 export function useCalcStore(opts: {
@@ -1761,15 +1768,26 @@ export function useCalcStore(opts: {
     return { kind: "sleep", result: calcSleepTimeFor(row, expToTarget) };
   }
 
-  function rowReachAfterRemainingFor(rowId: string, expToTarget?: number): RowReachAfterRemaining | null {
+  function rowReachAfterRemainingFor(rowId: string): RowReachAfterRemaining | null {
     const row = rows.value.find((candidate) => candidate.id === rowId);
     if (!row) return null;
     if (sleepTargetTraits(row).rest === "napIsland") {
-      const exp = expToTarget ?? getPokemonResult(rowId)?.shortage.expToTarget;
+      const exp = getPokemonResult(rowId)?.shortage.expToTarget;
       if (exp === undefined) return null;
-      return { kind: "napIsland", napGainedExp: calcNapIslandTimeFor(row, exp).napGainedExp };
+      return reachAfterRemainingForRow(row, exp);
     }
-    return { kind: "sleep", sleepExp: rowSleepExp(row), hours: rowSleepRemainingHoursFor(rowId) };
+    return reachAfterRemainingForRow(row, 0);
+  }
+
+  /**
+   * `rowReachAfterRemainingFor` の行そのものを受け取る版（計算機に無い下書きの行で求める）。
+   * 島は渡した残EXP（その行一覧の計画の残EXP）で出す。睡眠は残EXPに依らない。
+   */
+  function reachAfterRemainingForRow(row: CalcRow, expToTarget: number): RowReachAfterRemaining {
+    if (sleepTargetTraits(row).rest === "napIsland") {
+      return { kind: "napIsland", napGainedExp: calcNapIslandTimeFor(row, expToTarget).napGainedExp };
+    }
+    return { kind: "sleep", sleepExp: rowSleepExp(row), hours: rowMarkForSleep(row)?.remainingHours ?? 0 };
   }
 
   function calcSleepTimeFor(row: CalcRow, expToTarget: number): SleepTimeResult {
@@ -2412,6 +2430,14 @@ export function useCalcStore(opts: {
       rowFieldUndoLabel(row, t("calc.row.boostCandyCount")),
     );
   }
+
+  /** `resetRowBoostCandy` と同じ配り直しを、渡された行一覧の上で行い、その行を返す（行一覧は書き換えない）。 */
+  function withBoostCandyReset(row: CalcRow, rowList: readonly CalcRow[]): CalcRow {
+    if (sleepTargetTraits(row).candy === "none") return row;
+    const source = rowList.some((r) => r.id === row.id) ? rowList : [...rowList, row];
+    return allocateBoostCandyFromQuota(source.map((r) => (r.id === row.id ? row : r)), { rowId: row.id })
+      .find((r) => r.id === row.id) ?? row;
+  }
   function nudgeDstLevel(id: string, delta: number) {
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
@@ -2724,7 +2750,11 @@ export function useCalcStore(opts: {
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
 
-    const label = rowFieldUndoLabel(r, t("calc.row.sleepTarget"));
+    commitRowValue(r, withSleepTarget(r, target), rowFieldUndoLabel(r, t("calc.row.sleepTarget")), options);
+  }
+
+  /** `setRowSleepTarget` が行へ当てる変更（正規化した行）。行一覧は要らない。 */
+  function withSleepTarget(r: CalcRow, target: number | SleepTargetMode | undefined): CalcRow {
     const patch: Partial<CalcRow> = {
       sleepTargetMode: isSleepTargetMode(target) ? target : undefined,
       sleepTargetHours: typeof target === "number" ? target : undefined,
@@ -2760,7 +2790,7 @@ export function useCalcStore(opts: {
         }
       }
     }
-    commitRow(id, patch, label, options);
+    return normalizeRowState({ ...r, ...patch });
   }
 
   /** 数値の睡眠目標を使う既存呼び出し向け。 */
@@ -2848,28 +2878,29 @@ export function useCalcStore(opts: {
   /** 行単位の最小化スイッチを操作できる条件を返す。 */
   function canSetRowMinimizeBoost(id: string): boolean {
     const row = rows.value.find((candidate) => candidate.id === id);
+    return row !== undefined && canMinimizeBoostFor(row);
+  }
+
+  /** `canSetRowMinimizeBoost` の行そのものを受け取る版（下書きの行で判定する）。 */
+  function canMinimizeBoostFor(row: CalcRow): boolean {
     return !minimizeBoost.value
-      && row !== undefined
       && canMinimizeBoostRow(row) !== undefined
       && !isBoostInputDisabledBySleep(row);
+  }
+
+  /** `setRowMinimizeBoost` が行へ当てる変更（正規化した行）。切り替えられない・変わらないときは同じ行を返す。 */
+  function withMinimizeBoost(row: CalcRow, on: boolean): CalcRow {
+    if (!on) return row.boostMinimizeRow === true ? normalizeRowState({ ...row, boostMinimizeRow: undefined }) : row;
+    if (!canMinimizeBoostFor(row)) return row;
+    return normalizeRowState({ ...row, boostOrExpAdjustment: undefined, boostReachAuto: true, boostMinimizeRow: true });
   }
 
   /** 行単位のアメブ最小化を切り替える。 */
   function setRowMinimizeBoost(id: string, on: boolean): "applied" | "disabled" {
     const row = rows.value.find((candidate) => candidate.id === id);
     if (!row) return "disabled";
-    const undoLabel = rowFieldUndoLabel(row, t("calc.row.boostCandyCount"));
-    if (!on) {
-      if (row.boostMinimizeRow !== true) return "disabled";
-      commitRow(id, { boostMinimizeRow: undefined }, undoLabel);
-      return "applied";
-    }
-    if (!canSetRowMinimizeBoost(id)) return "disabled";
-    commitRow(id, {
-      boostOrExpAdjustment: undefined,
-      boostReachAuto: true,
-      boostMinimizeRow: true,
-    }, undoLabel);
+    if (on ? !canMinimizeBoostFor(row) : row.boostMinimizeRow !== true) return "disabled";
+    commitRowValue(row, withMinimizeBoost(row, on), rowFieldUndoLabel(row, t("calc.row.boostCandyCount")));
     return "applied";
   }
 
@@ -4587,6 +4618,10 @@ export function useCalcStore(opts: {
     withTargetLevel,
     withCandyTarget,
     maxCandyTargetFor,
+    withSleepTarget,
+    withMinimizeBoost,
+    canMinimizeBoostFor,
+    withBoostCandyReset,
     replaceRows,
     holdGameDate,
     setSrcLevel,
@@ -4628,5 +4663,6 @@ export function useCalcStore(opts: {
     rowRestCapacityOverflow,
     rowRemainingTimeFor,
     rowReachAfterRemainingFor,
+    reachAfterRemainingForRow,
   };
 }

@@ -8,7 +8,7 @@ import type { ExpGainNature } from "../types";
 import type { LevelPlannerResult, PokemonPlanLine, PokemonPlanResult, ShortageType } from "../level-planner/types";
 import { calcSleepLandingLevel } from "../level-planner/sleepReachLevel";
 import { dreamShardsPerCandy, maxLevel as MAX_LEVEL } from "../pokesleep/tables";
-import { sleepTargetTraits } from "../sleep-target";
+import { sleepTargetChoiceOf, sleepTargetTraits, type SleepTargetChoice } from "../sleep-target";
 import type { RowAdviceEntry } from "./advice";
 import {
   boostSlotRemaining,
@@ -52,12 +52,23 @@ export interface FineTuneRowView {
   reachLevel: Change<number | null>;
   /** 到達Lvから次のLvまでのEXP（あとEXP）。Lv70 のときは 0 */
   expToNext: Change<number | null>;
+  /** 睡眠目標（画面の選び方）と、開いた時点から変えたか */
+  sleepTarget: { choice: SleepTargetChoice; base: SleepTargetChoice; changed: boolean };
   /** 睡眠（・おひるね島）のあとの着地点。睡眠EXPが無い行・結果が無いときは null */
   sleepReach: SleepReach | null;
   /** 睡眠のあとの着地点が開いた時点から変わったか */
   sleepReachChanged: boolean;
-  /** アメブなしのスロットでは null */
-  boost: (Change<number> & { range: OpRange; cappedTo: number | null }) | null;
+  /**
+   * アメブなしのスロットでは null。minimized は最小アメブが効いている（スイッチが入っていて、個数を手で入れていない）、
+   * canMinimize は最小アメブにできる、manual は個数を手で入れている（リセットできる）
+   */
+  boost: (Change<number> & {
+    range: OpRange;
+    cappedTo: number | null;
+    minimized: boolean;
+    canMinimize: boolean;
+    manual: boolean;
+  }) | null;
   /** 使えたアメ（最新の結果） */
   candy: Change<number | null>;
   /**
@@ -100,10 +111,10 @@ export interface RowViewInput {
   latest: FineTuneLatest | null;
   advice: ReadonlyMap<string, RowAdviceEntry>;
   hasBoost: boolean;
-  /** 残EXPを埋めたあとの着地点の値（計算機の `rowReachAfterRemainingFor`。島は渡した残EXPで出す） */
-  reachAfterRemaining: (rowId: string, expToTarget: number) => RowReachAfterRemaining | null;
+  /** 残EXPを埋めたあとの着地点の値（計算機の `reachAfterRemainingForRow`。渡した行の睡眠目標で、島は渡した残EXPで出す） */
+  reachAfterRemaining: (row: CalcRow, expToTarget: number) => RowReachAfterRemaining | null;
   /** アメの数の範囲を出すストアの関数 */
-  deps: Pick<FineTuneDeps, "maxCandyTargetFor" | "withExplicitBoost">;
+  deps: Pick<FineTuneDeps, "maxCandyTargetFor" | "withExplicitBoost" | "canMinimizeBoostFor">;
 }
 
 function sleepReachOf(
@@ -157,10 +168,11 @@ export function buildRowViews(input: RowViewInput): FineTuneRowView[] {
     const res = results.get(id);
     const baseRes = baseResults.get(id);
     const reached = res?.reachableLine.effectiveTargetReached ?? null;
-    const sleepReach = res === undefined ? null : sleepReachOf(res, row.expType, input.reachAfterRemaining(id, res.shortage.expToTarget));
+    // 睡眠目標は下書きで変えられるので、下書きの行（基準は開いた時点の行）で求める
+    const sleepReach = res === undefined ? null : sleepReachOf(res, row.expType, input.reachAfterRemaining(row, res.shortage.expToTarget));
     const baseSleepReach = baseRes === undefined
       ? null
-      : sleepReachOf(baseRes, baseRow.expType, input.reachAfterRemaining(id, baseRes.shortage.expToTarget));
+      : sleepReachOf(baseRes, baseRow.expType, input.reachAfterRemaining(baseRow, baseRes.shortage.expToTarget));
 
     const range = (hasBoost && item !== undefined)
       ? opRange(base, state, evaluated, { kind: "boost", rowId: id })
@@ -189,11 +201,24 @@ export function buildRowViews(input: RowViewInput): FineTuneRowView[] {
       limitingFactor: reached === false ? res?.constraintDiagnosis.limitingFactor ?? null : null,
       reachLevel: { base: baseRes?.reachableLine.level ?? null, value: res?.reachableLine.level ?? null },
       expToNext: { base: baseRes?.reachableLine.expToNextLevel ?? null, value: res?.reachableLine.expToNextLevel ?? null },
+      sleepTarget: {
+        choice: sleepTargetChoiceOf(row),
+        base: sleepTargetChoiceOf(baseRow),
+        changed: row.sleepTargetMode !== baseRow.sleepTargetMode || row.sleepTargetHours !== baseRow.sleepTargetHours,
+      },
       sleepReach,
       sleepReachChanged: baseSleepReach !== null && sleepReach !== null
         && (baseSleepReach.level !== sleepReach.level || baseSleepReach.tenths !== sleepReach.tenths),
       boost: range !== null && item !== undefined && baseItem !== undefined
-        ? { base: baseItem.effectiveBoost, value: item.effectiveBoost, range, cappedTo }
+        ? {
+          base: baseItem.effectiveBoost,
+          value: item.effectiveBoost,
+          range,
+          cappedTo,
+          minimized: row.boostMinimizeRow === true && row.boostOrExpAdjustment === undefined,
+          canMinimize: deps.canMinimizeBoostFor(row),
+          manual: row.boostOrExpAdjustment !== undefined,
+        }
         : null,
       candy: {
         base: baseRes?.reachableLine.totalCandyUnitsUsed ?? null,

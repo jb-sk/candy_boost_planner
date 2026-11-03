@@ -77,6 +77,10 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     withTargetLevel: calc.withTargetLevel,
     withCandyTarget: calc.withCandyTarget,
     maxCandyTargetFor: calc.maxCandyTargetFor,
+    withSleepTarget: calc.withSleepTarget,
+    withMinimizeBoost: calc.withMinimizeBoost,
+    canMinimizeBoostFor: calc.canMinimizeBoostFor,
+    withBoostCandyReset: calc.withBoostCandyReset,
   };
 
   // 状態は shallowRef で持つ。行の参照を比べて変更を見分けるので、リアクティブな包みを被せない
@@ -265,7 +269,7 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
       latest: latest.value,
       advice: advice.value,
       hasBoost: hasBoost.value,
-      reachAfterRemaining: (rowId, expToTarget) => calc.rowReachAfterRemainingFor(rowId, expToTarget),
+      reachAfterRemaining: (row, expToTarget) => calc.reachAfterRemainingForRow(row, expToTarget),
       deps,
     });
   });

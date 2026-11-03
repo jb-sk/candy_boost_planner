@@ -36,6 +36,10 @@ const deps: FineTuneDeps = {
   withTargetLevel: (row, lv) => ({ ...row, dstLevel: lv }),
   withCandyTarget: (row, m) => ({ ...row, candyTarget: m }),
   maxCandyTargetFor: () => 500,
+  withSleepTarget: (row) => row,
+  withMinimizeBoost: (row) => row,
+  canMinimizeBoostFor: () => false,
+  withBoostCandyReset: (row) => row,
 };
 
 const emptyResult = { pokemonResults: [] } as unknown as LevelPlannerResult;

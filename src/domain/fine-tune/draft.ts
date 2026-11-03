@@ -1,14 +1,15 @@
 /**
  * かんたんの下書き。
  * 下書きは行一覧そのもの。各 op は今の下書きの行に計算機と同じ関数を当てて、その行だけを差し替える。
- * 動かせるのは目標Lv・アメブ・アメの数・順番。「全体のLvを伸ばす」は、まとめて求めた行一覧を1つの op で入れる。
+ * 動かせるのは目標Lv・アメブ（最小アメブ・リセットを含む）・アメの数・睡眠目標・順番。
+ * 「全体のLvを伸ばす」は、まとめて求めた行一覧を1つの op で入れる。
  * アメの数を変えた行は個数指定の行になるので、目標Lv・アメブは動かせない（元の数に戻すと元の行に戻り、動かせる）。
  * ストア・Vue を import しない。ストアの関数は `FineTuneDeps` で受け取る。
  */
 import type { CalcRow, EvaluatedRows } from "../../composables/useCalcStore";
 import { isValidPokedexId } from "../pokesleep/candy-family";
 import { maxLevel as MAX_LEVEL } from "../pokesleep/tables";
-import { sleepTargetTraits } from "../sleep-target";
+import { sleepTargetTraits, type SleepTargetMode } from "../sleep-target";
 import type { LevelPlannerResult } from "../level-planner/types";
 
 /** 開いた時点の計算機。モーダルの間は変わらない。 */
@@ -53,6 +54,12 @@ export type FineTuneOp =
   | { kind: "move"; rowId: string; toIndex: number }
   | { kind: "candyStep"; rowId: string; by: number }
   | { kind: "candySet"; rowId: string; candy: number }
+  /** 睡眠目標（計算機と同じ値: 時間・モード・未設定は undefined） */
+  | { kind: "sleepSet"; rowId: string; target: number | SleepTargetMode | undefined }
+  /** 行単位の最小アメブ（手持ちのアメから最小限のアメブを自動で決める） */
+  | { kind: "boostMinimize"; rowId: string; on: boolean }
+  /** アメブ個数をリセット（自動の値へ戻し、残枠から配り直す） */
+  | { kind: "boostReset"; rowId: string }
   /**
    * 「全体のLvを伸ばす」で求めた行一覧を入れる。`fromVersion` の下書きから求めたもので、
    * その後に下書きが変わっていれば入れない。行の顔ぶれと順番は変えられない（アメブだけを変えた行一覧）。
@@ -67,6 +74,10 @@ export interface FineTuneDeps {
   withCandyTarget(row: CalcRow, m: number): CalcRow;
   /** 個数指定の上限（計算機と同じ。`withCandyTarget` もこの数で抑える） */
   maxCandyTargetFor(row: CalcRow): number;
+  withSleepTarget(row: CalcRow, target: number | SleepTargetMode | undefined): CalcRow;
+  withMinimizeBoost(row: CalcRow, on: boolean): CalcRow;
+  canMinimizeBoostFor(row: CalcRow): boolean;
+  withBoostCandyReset(row: CalcRow, rowList: readonly CalcRow[]): CalcRow;
 }
 
 /**
@@ -86,6 +97,8 @@ export type RejectReason =
   | "excluded"
   /** アメの数を変えられない行（睡眠目標モード・Lv上限・ポケモンが不明・アメを使わない行） */
   | "candyLocked"
+  /** 最小アメブにできない行（全体の設定で最小化している・在庫の種族が無い） */
+  | "minimizeUnavailable"
   /** 「全体のLvを伸ばす」を求めている間に下書きが変わった */
   | "stale";
 
@@ -379,6 +392,30 @@ export function reduceFineTune(
         rows: replaceRowAt(state.rows, index, deps.withCandyTarget(fixed, next)),
         candyRecords: { ...state.candyRecords, [row.id]: { before, m0, boost, candy: next } },
       });
+    }
+    case "sleepSet": {
+      if (row.sleepTargetMode === (typeof op.target === "string" ? op.target : undefined)
+        && row.sleepTargetHours === (typeof op.target === "number" ? op.target : undefined)) return { state };
+      const next = deps.withSleepTarget(row, op.target);
+      // 睡眠目標を入れると個数指定は外れる（計算機と同じ）。アメの数の記録も外す（元の数へ戻す先が無くなる）
+      const { [row.id]: dropped, ...rest } = state.candyRecords;
+      const candyRecords = dropped !== undefined && next.candyTarget === undefined ? rest : state.candyRecords;
+      return advanced(state, { rows: replaceRowAt(state.rows, index, next), candyRecords });
+    }
+    case "boostMinimize": {
+      if (rowExclusion(row, evaluated) !== null) return { rejected: "excluded" };
+      if (op.on && !deps.canMinimizeBoostFor(row)) return { rejected: "minimizeUnavailable" };
+      // 最小化が効いている（スイッチが入っていて、個数を手で入れていない）なら、入れても変わらない
+      if (op.on && row.boostMinimizeRow === true && row.boostOrExpAdjustment === undefined) return { state };
+      const next = deps.withMinimizeBoost(row, op.on);
+      if (next === row) return { state };
+      return advanced(state, { rows: replaceRowAt(state.rows, index, next) });
+    }
+    case "boostReset": {
+      if (rowExclusion(row, evaluated) !== null) return { rejected: "excluded" };
+      // 個数を手で入れていない（自動の値）なら、戻すものが無い
+      if (row.boostOrExpAdjustment === undefined) return { state };
+      return advanced(state, { rows: replaceRowAt(state.rows, index, deps.withBoostCandyReset(row, state.rows)) });
     }
   }
 }
