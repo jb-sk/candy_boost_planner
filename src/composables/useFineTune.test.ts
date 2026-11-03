@@ -384,11 +384,24 @@ describe("useFineTune（設計書 §10.4）", () => {
     expect(fineTune.isEmpty.value).toBe(true);
   });
 
-  it("今のLvでアメ1個に要るかけらは、ゲームの表（次のLvへ向かうアメの値段）と同じ", async () => {
-    const { store, a } = await makeStore();
-    const { fineTune } = open(store);
-    const row = store.rows.value.find((r) => r.id === a)!;
-    expect(fineTune.rowViews.value.find((r) => r.id === a)!.shardsPerCandy).toBe(dreamShardsPerCandy[row.srcLevel + 1]);
+  it("アメ1個あたりのかけらは到達Lvの値段（ゲームの表）。アメを減らして到達Lvが下がると、値段も下がる", async () => {
+    const { store, a } = await makeStore("100000000");
+    const { fineTune, runs } = open(store);
+    const view = () => fineTune.rowViews.value.find((r) => r.id === a)!;
+    const plan = store.getPokemonResult(a)!.reachableLine;
+    // Lv ちょうどで止まった行はそのLvへ上がるアメ、Lv の途中で止まった行は次のLvへ向かうアメの値段
+    const priceAt = (line: { level: number; expInLevel: number }) => dreamShardsPerCandy[line.expInLevel === 0 ? line.level : line.level + 1]!;
+    const before = priceAt(plan);
+    expect(view().shardsPerCandy).toEqual({ base: before, value: before });
+    fineTune.dispatch({ kind: "candyStep", rowId: a, by: -200 });
+    await vi.waitFor(() => expect(runs).toHaveLength(1));
+    const result = solveLevelPlan(fineTune.evaluated.value!.plannerInput!);
+    runs[0]!.onResult({ result, durationMs: 1 });
+    await vi.waitFor(() => expect(fineTune.stale.value).toBe(false));
+    const line = result.pokemonResults.find((p) => p.pokemonId === a)!.reachableLine;
+    expect(line.level).toBeLessThan(plan.level);
+    expect(view().shardsPerCandy).toEqual({ base: before, value: priceAt(line) });
+    expect(priceAt(line)).toBeLessThan(before);
   });
 
   it("全体のLvを伸ばす: 全員届いていれば allReached で、下書きを変えない", async () => {

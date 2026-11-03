@@ -157,7 +157,7 @@ export const ja = {
         candy: "アメ",
         shardsPerCandyLine1: "アメ1個あたり",
         shardsPerCandyLine2: "かけら",
-        shardsPerCandyTitle: "今のLvでアメ1個に要るかけら（アメブで与えると×{rate}）",
+        shardsPerCandyTitle: "到達Lvでアメ1個に要るかけら（最後に与えるアメの値段。高いLvほど多い。アメブで与えると×{rate}）",
       },
       field: {
         target: "目標Lv",

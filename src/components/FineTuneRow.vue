@@ -84,10 +84,11 @@
     >{{ candyText }}</button>
 
     <span
-      class="fineTuneRow__cell"
+      class="fineTuneRow__cell fineTuneRow__cell--result"
+      :class="{ 'fineTuneRow__cell--changed': changed(row.shardsPerCandy) }"
       data-testid="fine-tune-row-shards-per-candy"
       :title="shardsTitle"
-    >{{ row.shardsPerCandy === null ? "-" : fmt(row.shardsPerCandy) }}</span>
+    >{{ valueText(row.shardsPerCandy) }}</span>
   </div>
 </template>
 
@@ -101,7 +102,7 @@ import { sleepReachText, type FineTuneField } from "../utils/fineTuneView";
 /**
  * かんたんの1行。数字だけを1行に並べ、押した欄（目標Lv・アメブ・アメ）を下の調整バー（FineTuneEditor）で動かす。
  * 動かせない欄を押したときは、行の詳細（理由）を開く。計算は持たず、`FineTuneRowView` の値を出すだけ。
- * 結果から出す欄（到達・使えたアメ）は、計算中は薄くする。
+ * 結果から出す欄（到達・使えたアメ・到達Lvでのアメ1個のかけら）は、計算中は薄くする。
  */
 const props = defineProps<{
   row: FineTuneRowView;

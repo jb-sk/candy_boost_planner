@@ -158,7 +158,7 @@ export const en = {
         candy: "Candy",
         shardsPerCandyLine1: "Shards",
         shardsPerCandyLine2: "per candy",
-        shardsPerCandyTitle: "Dream Shards per candy at the current Lv (×{rate} when boosted)",
+        shardsPerCandyTitle: "Dream Shards per candy at the reached Lv (the price of the last candy; higher at higher Lv; ×{rate} when boosted)",
       },
       field: {
         target: "Target Lv",

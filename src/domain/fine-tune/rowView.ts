@@ -5,7 +5,7 @@
  */
 import type { CalcRow, EvaluatedRows, RowReachAfterRemaining } from "../../composables/useCalcStore";
 import type { ExpGainNature } from "../types";
-import type { LevelPlannerResult, PokemonPlanResult, ShortageType } from "../level-planner/types";
+import type { LevelPlannerResult, PokemonPlanLine, PokemonPlanResult, ShortageType } from "../level-planner/types";
 import { calcSleepLandingLevel } from "../level-planner/sleepReachLevel";
 import { dreamShardsPerCandy, maxLevel as MAX_LEVEL } from "../pokesleep/tables";
 import { sleepTargetTraits } from "../sleep-target";
@@ -64,8 +64,11 @@ export interface FineTuneRowView {
    */
   candyEdit: { value: number; base: number; min: number; max: number; changed: boolean } | null;
   shards: Change<number | null>;
-  /** 今のLvでアメ1個に要るかけら（アメブで与えると倍率がかかる）。Lv上限の行は null */
-  shardsPerCandy: number | null;
+  /**
+   * 到達Lvでアメ1個に要るかけら（最後に与えるアメの値段。アメブで与えると倍率がかかる）。
+   * 高いLvほど多いので、アメブ・アメを減らすかの目安になる。結果が無いときは null
+   */
+  shardsPerCandy: Change<number | null>;
   advice: RowAdviceEntry | undefined;
 }
 
@@ -118,10 +121,16 @@ function sleepReachOf(
   return { kind: after.kind, level: landing.level, tenths: landing.tenths };
 }
 
-/** 今のLvでアメ1個に要るかけら（ゲームの表示と同じ。次のLvへ向かうアメの値段）。Lv上限は null */
-export function shardsPerCandyAt(level: number): number | null {
-  if (level >= MAX_LEVEL) return null;
-  return dreamShardsPerCandy[level + 1] ?? null;
+/**
+ * 到達Lvでアメ1個に要るかけら（ゲームの表と同じ値段。アメが止まった点で与えるアメの値段）。
+ * Lv ちょうどで止まったときはそのLvへ上がるアメ（表の [level]）、Lv の途中で止まったときは次のLvへ向かうアメ（[level + 1]）。
+ * アメを1個も使わない行は、次に与えるアメの値段。結果が無いときは null。
+ */
+export function shardsPerCandyAtReach(line: PokemonPlanLine | undefined): number | null {
+  if (line === undefined) return null;
+  const atLevelEdge = line.expInLevel === 0 && line.totalCandyUnitsUsed > 0;
+  const index = atLevelEdge || line.level >= MAX_LEVEL ? line.level : line.level + 1;
+  return dreamShardsPerCandy[Math.min(index, MAX_LEVEL)] ?? null;
 }
 
 function resultMap(result: LevelPlannerResult | undefined): Map<string, PokemonPlanResult> {
@@ -194,7 +203,10 @@ export function buildRowViews(input: RowViewInput): FineTuneRowView[] {
           changed: state.candyRecords[id] !== undefined || row.candyTarget !== baseRow.candyTarget,
         }
         : null,
-      shardsPerCandy: shardsPerCandyAt(row.srcLevel),
+      shardsPerCandy: {
+        base: shardsPerCandyAtReach(baseRes?.reachableLine),
+        value: shardsPerCandyAtReach(res?.reachableLine),
+      },
       advice: advice.get(id),
     };
   });
