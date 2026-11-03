@@ -1,5 +1,6 @@
 <template>
-  <!-- 常に出す。何も選んでいないときは案内と押せない刻みのボタンだけ（選んでも高さが変わらない） -->
+  <!-- 常に出す。何も選んでいないときは案内と押せない刻みのボタンだけ。
+       見出し・詳細・操作の2段の高さを決めてあり、どの欄を選んでも高さが変わらない（モーダルの高さも変わらない） -->
   <section
     class="fineTuneEditor"
     :class="{ 'fineTuneEditor--idle': row === null }"
@@ -11,197 +12,260 @@
     <div class="fineTuneEditor__head">
       <template v-if="row !== null">
         <span class="fineTuneEditor__name" data-testid="fine-tune-editor-name">{{ row.title }}</span>
-        <span v-if="stepper !== null" class="fineTuneEditor__field">{{ stepper.label }}</span>
-        <span v-else-if="field === 'sleep'" class="fineTuneEditor__field">{{ t("calc.fineTune.field.sleep") }}</span>
-        <!-- 目標Lvは個数欄が無いので、今の値をここに出す -->
-        <span v-if="field === 'target' && stepper !== null && changeText === null" class="fineTuneEditor__change" data-testid="fine-tune-editor-level-value">Lv{{ stepper.value }}</span>
+        <span v-if="fieldLabel !== null" class="fineTuneEditor__field">{{ fieldLabel }}</span>
         <span v-if="changeText !== null" class="fineTuneEditor__change" data-testid="fine-tune-editor-change">{{ changeText }}</span>
         <span class="fineTuneEditor__spacer"></span>
         <!-- この欄を押してからの変更を取り消して、押す前の値へ戻す（選んだまま続けて動かせる） -->
         <button
-          class="btn btn--soft btn--sm fineTuneEditor__resetEdit"
+          class="fineTuneEditor__resetEdit"
           type="button"
           data-testid="fine-tune-editor-reset"
           :title="t('calc.fineTune.resetEditTitle')"
           :disabled="busy || !canReset"
           @click="emit('reset')"
-        >{{ t("calc.fineTune.resetEdit") }}</button>
+        >
+          <svg class="fineTuneEditor__resetIcon" aria-hidden="true" viewBox="0 0 16 16" width="13" height="13"><path d="M3.2 6.2A5 5 0 1 1 3 9.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M2.6 2.8v3.6h3.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>{{ t("calc.fineTune.resetEdit") }}</span>
+        </button>
       </template>
       <span v-else class="fineTuneEditor__hint" data-testid="fine-tune-hint">{{ t("calc.fineTune.hint") }}</span>
     </div>
 
     <p class="fineTuneEditor__info" data-testid="fine-tune-editor-info">
-      <span v-for="(item, i) in infoItems" :key="i" :class="{ 'fineTuneEditor__info--short': item.short }">{{ item.text }}</span>
+      <span v-for="(item, i) in infoItems" :key="i" :class="`fineTuneEditor__info--${item.tone}`">{{ item.text }}</span>
     </p>
-    <p v-if="noteText !== null" class="fineTuneEditor__note" data-testid="fine-tune-editor-note">{{ noteText }}</p>
 
-    <button
-      v-if="recommendation !== null"
-      class="fineTuneEditor__recommend"
-      type="button"
-      data-testid="fine-tune-editor-recommend"
-      :disabled="pending || busy"
-      @click="emit('op', { kind: 'set', rowId: row!.id, boost: recommendation.boost })"
-    >
-      <span class="fineTuneEditor__recommendLabel">{{ recommendLabel }}</span>
-      <span class="fineTuneEditor__recommendDelta" data-testid="fine-tune-editor-recommend-delta">{{ t("calc.fineTune.field.boost") }}{{ recommendDelta }}</span>
-      <span v-if="recommendation.insufficient" class="fineTuneEditor__recommendNote">{{ t("calc.fineTune.recommendInsufficient") }}</span>
-    </button>
+    <!-- 操作は2段。どの欄でも同じ高さの段に置く -->
+    <div class="fineTuneEditor__body">
+      <!-- 睡眠: 1段目に 200h〜2000h・全て・おひるね島、2段目にチケット・アメ在庫（全て・おひるね島のときだけ） -->
+      <template v-if="sleepEditor !== null">
+        <div class="fineTuneEditor__line">
+          <div class="fineTuneEditor__options" data-testid="fine-tune-editor-sleep" role="group" :aria-label="t('calc.fineTune.field.sleep')">
+            <button
+              v-for="option in sleepEditor.options"
+              :key="option.key"
+              class="fineTuneEditor__option"
+              :class="{ 'fineTuneEditor__option--on': option.selected, 'fineTuneEditor__option--wide': option.key === 'nap' }"
+              type="button"
+              data-testid="fine-tune-editor-sleep-option"
+              :data-option="option.key"
+              :aria-pressed="option.selected"
+              :disabled="busy"
+              @click="chooseSleep(option.choice)"
+            >
+              <template v-if="option.short !== option.label">
+                <span class="fineTuneEditor__optionLabel fineTuneEditor__optionLabel--full">{{ option.label }}</span>
+                <span class="fineTuneEditor__optionLabel fineTuneEditor__optionLabel--short">{{ option.short }}</span>
+              </template>
+              <template v-else>{{ option.label }}</template>
+            </button>
+          </div>
+        </div>
+        <div class="fineTuneEditor__line">
+          <div class="fineTuneEditor__checks">
+            <button
+              class="fineTuneEditor__toggle"
+              :class="{ 'fineTuneEditor__toggle--on': sleepEditor.ticket }"
+              type="button"
+              data-testid="fine-tune-editor-sleep-ticket"
+              :aria-pressed="sleepEditor.ticket"
+              :disabled="busy || !sleepEditor.canTicket"
+              @click="toggleSleep('ticket')"
+            ><span class="fineTuneEditor__toggleIcon" aria-hidden="true">{{ SLEEP_TICKET_EMOJI }}</span>{{ t("calc.fineTune.sleepOption.ticket") }}</button>
+            <button
+              class="fineTuneEditor__toggle"
+              :class="{ 'fineTuneEditor__toggle--on': sleepEditor.stock }"
+              type="button"
+              data-testid="fine-tune-editor-sleep-stock"
+              :aria-pressed="sleepEditor.stock"
+              :disabled="busy || !sleepEditor.canStock"
+              @click="toggleSleep('stock')"
+            ><span class="fineTuneEditor__toggleIcon" aria-hidden="true">{{ SLEEP_STOCK_EMOJI }}</span>{{ t("calc.fineTune.sleepOption.stock") }}</button>
+          </div>
+        </div>
+      </template>
 
-    <!-- アメブ: 最小アメブ（手持ちのアメから最小限のアメブを自動で決める）と再計算（計算機の ↺ と同じ。自動の値へ戻す） -->
-    <div v-if="boostTools !== null" class="fineTuneEditor__tools">
-      <button
-        class="fineTuneEditor__tool"
-        :class="{ 'fineTuneEditor__tool--on': boostTools.minimized }"
-        type="button"
-        data-testid="fine-tune-editor-minimize"
-        :aria-pressed="boostTools.minimized"
-        :title="boostTools.minimizeTitle"
-        :disabled="busy || (!boostTools.minimized && !boostTools.canMinimize)"
-        @click="emit('op', { kind: 'boostMinimize', rowId: row!.id, on: !boostTools.minimized })"
-      >{{ t("calc.fineTune.boostMinimize") }}</button>
-      <button
-        class="fineTuneEditor__tool"
-        type="button"
-        data-testid="fine-tune-editor-boost-reset"
-        :title="t('calc.fineTune.boostResetTitle')"
-        :disabled="busy || !boostTools.manual"
-        @click="emit('op', { kind: 'boostReset', rowId: row!.id })"
-      >{{ t("calc.fineTune.boostReset") }}</button>
-    </div>
+      <!-- 目標Lv: Lvピッカーと同じ形。1段目に Lv の欄（直接打つ。タッチ端末はテンキー）と ◀ スライダー ▶、2段目に Lv の丸いボタン -->
+      <template v-else-if="stepper !== null && field === 'target'">
+        <div class="fineTuneEditor__line">
+          <div class="fineTuneEditor__levelRow" data-testid="fine-tune-editor-level">
+            <label class="fineTuneEditor__levelInput">
+              <span class="fineTuneEditor__levelPrefix" aria-hidden="true">Lv</span>
+              <input
+                ref="inputRef"
+                v-keypad="{ label: stepper.inputLabel, maxLength: 2 }"
+                class="field__input fineTuneEditor__input fineTuneEditor__input--level"
+                data-testid="fine-tune-editor-input"
+                type="text"
+                inputmode="numeric"
+                maxlength="2"
+                autocomplete="off"
+                :aria-label="stepper.inputLabel"
+                :disabled="busy"
+                :value="draft ?? String(stepper.value)"
+                @focus="draft = String(stepper.value)"
+                @input="onInput(($event.target as HTMLInputElement).value)"
+                @blur="onBlur"
+                @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
+              />
+            </label>
+            <button
+              class="fineTuneEditor__step fineTuneEditor__levelStep"
+              type="button"
+              data-testid="fine-tune-editor-step"
+              data-delta="-1"
+              :aria-label="t('calc.fineTune.stepAria', { field: stepper.label, delta: '−1' })"
+              :disabled="busy || stepper.value <= stepper.min"
+              @click="stepBy(-1)"
+            >◀</button>
+            <input
+              class="levelPick__range fineTuneEditor__levelRange"
+              type="range"
+              data-testid="fine-tune-editor-level-range"
+              :aria-label="stepper.inputLabel"
+              :min="stepper.min"
+              :max="stepper.max"
+              step="1"
+              :value="stepper.value"
+              :disabled="busy"
+              @input="setLevel(($event.target as HTMLInputElement).value)"
+            />
+            <button
+              class="fineTuneEditor__step fineTuneEditor__levelStep"
+              type="button"
+              data-testid="fine-tune-editor-step"
+              data-delta="1"
+              :aria-label="t('calc.fineTune.stepAria', { field: stepper.label, delta: '+1' })"
+              :disabled="busy || stepper.value >= stepper.max"
+              @click="stepBy(1)"
+            >▶</button>
+          </div>
+        </div>
+        <div class="fineTuneEditor__line">
+          <div class="fineTuneEditor__levelChips">
+            <button
+              v-for="lv in LEVEL_PRESETS"
+              :key="lv"
+              type="button"
+              class="levelChip fineTuneEditor__levelChip"
+              :class="{ 'levelChip--on': lv === stepper.value }"
+              data-testid="fine-tune-editor-level-chip"
+              :data-level="lv"
+              :disabled="busy || lv < stepper.min || lv > stepper.max"
+              @click="setLevel(String(lv))"
+            >{{ lv }}</button>
+          </div>
+        </div>
+      </template>
 
-    <!-- 睡眠: 200h〜2000h・全て・おひるね島と、アメ在庫・チケット（全て・おひるね島のときだけ） -->
-    <div v-if="sleepEditor !== null" class="fineTuneEditor__sleep" data-testid="fine-tune-editor-sleep">
-      <div class="fineTuneEditor__options">
-        <button
-          v-for="option in sleepEditor.options"
-          :key="option.key"
-          class="fineTuneEditor__option"
-          :class="{ 'fineTuneEditor__option--on': option.selected }"
-          type="button"
-          data-testid="fine-tune-editor-sleep-option"
-          :data-option="option.key"
-          :aria-pressed="option.selected"
-          :disabled="busy"
-          @click="chooseSleep(option.choice)"
-        >{{ option.label }}</button>
-      </div>
-      <div class="fineTuneEditor__checks">
-        <button
-          class="fineTuneEditor__option"
-          :class="{ 'fineTuneEditor__option--on': sleepEditor.ticket }"
-          type="button"
-          data-testid="fine-tune-editor-sleep-ticket"
-          :aria-pressed="sleepEditor.ticket"
-          :disabled="busy || !sleepEditor.canTicket"
-          @click="toggleSleep('ticket')"
-        ><span aria-hidden="true">{{ SLEEP_TICKET_EMOJI }}</span>{{ t("calc.fineTune.sleepOption.ticket") }}</button>
-        <button
-          class="fineTuneEditor__option"
-          :class="{ 'fineTuneEditor__option--on': sleepEditor.stock }"
-          type="button"
-          data-testid="fine-tune-editor-sleep-stock"
-          :aria-pressed="sleepEditor.stock"
-          :disabled="busy || !sleepEditor.canStock"
-          @click="toggleSleep('stock')"
-        ><span aria-hidden="true">{{ SLEEP_STOCK_EMOJI }}</span>{{ t("calc.fineTune.sleepOption.stock") }}</button>
-      </div>
-    </div>
+      <!-- アメブ・アメ: 1段目に最小アメブ・再計算と「〇〇のLvを上げる」（アメブのとき）、2段目に刻みのボタンと個数欄 -->
+      <template v-else-if="stepper !== null">
+        <div class="fineTuneEditor__line">
+          <div v-if="boostTools !== null" class="fineTuneEditor__tools">
+            <!-- 最小アメブ（手持ちのアメから最小限のアメブを自動で決める）と再計算（計算機の ↺ と同じ。自動の値へ戻す） -->
+            <button
+              class="fineTuneEditor__tool"
+              :class="{ 'fineTuneEditor__tool--on': boostTools.minimized }"
+              type="button"
+              data-testid="fine-tune-editor-minimize"
+              :aria-pressed="boostTools.minimized"
+              :title="boostTools.minimizeTitle"
+              :disabled="busy || (!boostTools.minimized && !boostTools.canMinimize)"
+              @click="emit('op', { kind: 'boostMinimize', rowId: row!.id, on: !boostTools.minimized })"
+            >{{ t("calc.fineTune.boostMinimize") }}</button>
+            <button
+              class="fineTuneEditor__tool"
+              type="button"
+              data-testid="fine-tune-editor-boost-reset"
+              :title="t('calc.fineTune.boostResetTitle')"
+              :disabled="busy || !boostTools.manual"
+              @click="emit('op', { kind: 'boostReset', rowId: row!.id })"
+            >{{ t("calc.fineTune.boostReset") }}</button>
+            <button
+              v-if="recommendation !== null"
+              class="fineTuneEditor__recommend fineTuneEditor__recommend--inline"
+              type="button"
+              data-testid="fine-tune-editor-recommend"
+              :title="recommendTitle"
+              :disabled="pending || busy"
+              @click="emit('op', { kind: 'set', rowId: row!.id, boost: recommendation.boost })"
+            >
+              <span class="fineTuneEditor__recommendLabel">{{ recommendLabel }}</span>
+              <span class="fineTuneEditor__recommendDelta" data-testid="fine-tune-editor-recommend-delta">{{ t("calc.fineTune.field.boost") }}{{ recommendDelta }}</span>
+            </button>
+          </div>
+        </div>
+        <div class="fineTuneEditor__line">
+          <div class="fineTuneEditor__stepper" :class="`fineTuneEditor__stepper--${stepper.steps.length}`">
+            <button
+              v-for="amount in stepper.steps"
+              :key="`down-${amount}`"
+              class="fineTuneEditor__step"
+              type="button"
+              data-testid="fine-tune-editor-step"
+              :data-delta="-amount"
+              :aria-label="t('calc.fineTune.stepAria', { field: stepper.label, delta: `−${amount}` })"
+              :disabled="busy || stepper.value <= stepper.min"
+              @click="stepBy(-amount)"
+            >−{{ amount }}</button>
+            <input
+              ref="inputRef"
+              v-keypad="stepper.inputLabel"
+              class="field__input fineTuneEditor__input"
+              data-testid="fine-tune-editor-input"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              :aria-label="stepper.inputLabel"
+              :disabled="busy"
+              :value="draft ?? String(stepper.value)"
+              @focus="draft = String(stepper.value)"
+              @input="onInput(($event.target as HTMLInputElement).value)"
+              @blur="onBlur"
+              @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
+            />
+            <button
+              v-for="amount in [...stepper.steps].reverse()"
+              :key="`up-${amount}`"
+              class="fineTuneEditor__step"
+              type="button"
+              data-testid="fine-tune-editor-step"
+              :data-delta="amount"
+              :aria-label="t('calc.fineTune.stepAria', { field: stepper.label, delta: `+${amount}` })"
+              :disabled="busy || stepper.value >= stepper.max"
+              @click="stepBy(amount)"
+            >+{{ amount }}</button>
+          </div>
+        </div>
+      </template>
 
-    <!-- 目標Lv: Lvピッカーと同じ形（スライダーと左右の ◀ ▶、2段目に Lv の丸いボタン） -->
-    <div v-else-if="stepper !== null && field === 'target'" class="fineTuneEditor__level" data-testid="fine-tune-editor-level">
-      <div class="levelPick__sliderRow fineTuneEditor__levelRow">
-        <button
-          class="fineTuneEditor__step fineTuneEditor__levelStep"
-          type="button"
-          data-testid="fine-tune-editor-step"
-          data-delta="-1"
-          :aria-label="t('calc.fineTune.stepAria', { field: stepper.label, delta: '−1' })"
-          :disabled="busy || stepper.value <= stepper.min"
-          @click="stepBy(-1)"
-        >◀</button>
-        <input
-          class="levelPick__range fineTuneEditor__levelRange"
-          type="range"
-          data-testid="fine-tune-editor-level-range"
-          :aria-label="stepper.inputLabel"
-          :min="stepper.min"
-          :max="stepper.max"
-          step="1"
-          :value="stepper.value"
-          :disabled="busy"
-          @input="setLevel(($event.target as HTMLInputElement).value)"
-        />
-        <button
-          class="fineTuneEditor__step fineTuneEditor__levelStep"
-          type="button"
-          data-testid="fine-tune-editor-step"
-          data-delta="1"
-          :aria-label="t('calc.fineTune.stepAria', { field: stepper.label, delta: '+1' })"
-          :disabled="busy || stepper.value >= stepper.max"
-          @click="stepBy(1)"
-        >▶</button>
-      </div>
-      <div class="levelPick__chips fineTuneEditor__levelChips">
-        <button
-          v-for="lv in LEVEL_PRESETS"
-          :key="lv"
-          type="button"
-          class="levelChip"
-          :class="{ 'levelChip--on': lv === stepper.value }"
-          data-testid="fine-tune-editor-level-chip"
-          :data-level="lv"
-          :disabled="busy || lv < stepper.min || lv > stepper.max"
-          @click="setLevel(String(lv))"
-        >{{ lv }}</button>
-      </div>
-    </div>
-
-    <div v-else-if="stepper !== null" class="fineTuneEditor__stepper" :class="`fineTuneEditor__stepper--${stepper.steps.length}`">
-      <button
-        v-for="amount in stepper.steps"
-        :key="`down-${amount}`"
-        class="fineTuneEditor__step"
-        type="button"
-        data-testid="fine-tune-editor-step"
-        :data-delta="-amount"
-        :aria-label="t('calc.fineTune.stepAria', { field: stepper.label, delta: `−${amount}` })"
-        :disabled="busy || stepper.value <= stepper.min"
-        @click="stepBy(-amount)"
-      >−{{ amount }}</button>
-      <input
-        ref="inputRef"
-        v-keypad="stepper.inputLabel"
-        class="field__input fineTuneEditor__input"
-        data-testid="fine-tune-editor-input"
-        type="text"
-        inputmode="numeric"
-        autocomplete="off"
-        :aria-label="stepper.inputLabel"
-        :disabled="busy"
-        :value="draft ?? String(stepper.value)"
-        @focus="draft = String(stepper.value)"
-        @input="onInput(($event.target as HTMLInputElement).value)"
-        @blur="onBlur"
-        @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
-      />
-      <button
-        v-for="amount in [...stepper.steps].reverse()"
-        :key="`up-${amount}`"
-        class="fineTuneEditor__step"
-        type="button"
-        data-testid="fine-tune-editor-step"
-        :data-delta="amount"
-        :aria-label="t('calc.fineTune.stepAria', { field: stepper.label, delta: `+${amount}` })"
-        :disabled="busy || stepper.value >= stepper.max"
-        @click="stepBy(amount)"
-      >+{{ amount }}</button>
-    </div>
-    <!-- 動かせる欄を選んでいないとき: 同じ形の押せないボタンを置き、操作の場所を見せたままにする -->
-    <div v-else class="fineTuneEditor__stepper fineTuneEditor__stepper--3" data-testid="fine-tune-editor-idle" aria-hidden="true">
-      <button v-for="amount in IDLE_STEPS" :key="`down-${amount}`" class="fineTuneEditor__step" type="button" tabindex="-1" disabled>−{{ amount }}</button>
-      <input class="field__input fineTuneEditor__input" type="text" tabindex="-1" disabled value="" />
-      <button v-for="amount in [...IDLE_STEPS].reverse()" :key="`up-${amount}`" class="fineTuneEditor__step" type="button" tabindex="-1" disabled>+{{ amount }}</button>
+      <!-- 行の詳細・何も選んでいないとき: 1段目に動かせない理由か「〇〇のLvを上げる」、
+           2段目に同じ形の押せないボタン（操作の場所を見せたままにする） -->
+      <template v-else>
+        <div class="fineTuneEditor__line">
+          <p v-if="noteText !== null" class="fineTuneEditor__note" data-testid="fine-tune-editor-note">{{ noteText }}</p>
+          <button
+            v-else-if="recommendation !== null"
+            class="fineTuneEditor__recommend"
+            type="button"
+            data-testid="fine-tune-editor-recommend"
+            :title="recommendTitle"
+            :disabled="pending || busy"
+            @click="emit('op', { kind: 'set', rowId: row!.id, boost: recommendation.boost })"
+          >
+            <span class="fineTuneEditor__recommendLabel">{{ recommendLabel }}</span>
+            <span class="fineTuneEditor__recommendDelta" data-testid="fine-tune-editor-recommend-delta">{{ t("calc.fineTune.field.boost") }}{{ recommendDelta }}</span>
+            <span v-if="recommendation.insufficient" class="fineTuneEditor__recommendNote">{{ t("calc.fineTune.recommendInsufficient") }}</span>
+          </button>
+        </div>
+        <div class="fineTuneEditor__line">
+          <div class="fineTuneEditor__stepper fineTuneEditor__stepper--3 fineTuneEditor__stepper--ghost" data-testid="fine-tune-editor-idle" aria-hidden="true">
+            <button v-for="amount in IDLE_STEPS" :key="`down-${amount}`" class="fineTuneEditor__step" type="button" tabindex="-1" disabled>−{{ amount }}</button>
+            <input class="field__input fineTuneEditor__input" type="text" tabindex="-1" disabled value="" />
+            <button v-for="amount in [...IDLE_STEPS].reverse()" :key="`up-${amount}`" class="fineTuneEditor__step" type="button" tabindex="-1" disabled>+{{ amount }}</button>
+          </div>
+        </div>
+      </template>
     </div>
   </section>
 </template>
@@ -227,9 +291,10 @@ import { sleepTargetOfChoice, type SleepTargetChoice } from "../domain/sleep-tar
 
 /**
  * かんたんの調整バー。表で押した欄（目標Lv・アメブ・アメ）を刻みのボタンと個数欄で、睡眠を選択肢で動かす。
- * 目標Lvは Lvピッカーと同じ形（スライダー・◀ ▶・Lv の丸いボタン）。アメブには最小アメブ・リセットも置く。
+ * 目標Lvは Lvピッカーと同じ形（Lv の欄・スライダー・◀ ▶・Lv の丸いボタン）。アメブには最小アメブ・再計算も置く。
  * 見出しのリセットは、この欄を押してからの変更を取り消す（戻すのは親。`canReset` と `reset`）。
  * 行の詳細（到達・睡眠のあと・足りないもの・動かせない理由）と「〇〇のLvを上げる」もここに出す。
+ * 見出し・詳細・操作の2段はどの欄でも同じ高さ（選ぶ欄を変えても、調整バーとモーダルの高さが変わらない）。
  * 値と範囲は `FineTuneRowView` に入っているものを使い、op を投げるだけ（範囲に収めるのは reducer）。
  */
 const props = defineProps<{
@@ -338,6 +403,13 @@ const stepper = computed<Stepper | null>(() => {
   return null;
 });
 
+/** 見出しの欄の名前（行の詳細・何も選んでいないときは出さない） */
+const fieldLabel = computed(() => {
+  if (props.row === null) return null;
+  if (stepper.value !== null) return stepper.value.label;
+  return props.field === "sleep" ? t("calc.fineTune.field.sleep") : null;
+});
+
 /** 基準からの変化（変わっていなければ null）。睡眠は目標の名前で出す */
 const changeText = computed(() => {
   const { row, field } = props;
@@ -355,35 +427,43 @@ const changeText = computed(() => {
 });
 
 // ===== 行の詳細 =====
+/** 詳細の1つ。`danger` は足りないもの、`note` は睡眠の欄で出す動かせない理由 */
+type InfoTone = "normal" | "danger" | "note";
+
 const infoItems = computed(() => {
   const { row } = props;
-  const items: Array<{ text: string; short: boolean }> = [];
+  const items: Array<{ text: string; tone: InfoTone }> = [];
   if (row === null) return items;
   const level = row.reachLevel.value;
   if (level !== null) {
     const exp = row.expToNext.value;
     // 計算機の行と同じ「到達Lv 63（あとEXP 358）」。あとEXP は次のLvまでのEXP
     const left = level < MAX_LEVEL && exp !== null && exp > 0 ? t("calc.fineTune.expLeft", { exp: props.fmt(exp) }) : "";
-    items.push({ text: `${t("calc.fineTune.reach", { level })}${left}`, short: false });
+    items.push({ text: `${t("calc.fineTune.reach", { level })}${left}`, tone: "normal" });
   }
   if (row.sleepReach !== null) {
     const key = row.sleepReach.kind === "napIsland" ? "calc.fineTune.napReach" : "calc.fineTune.sleepReach";
-    items.push({ text: t(key, { level: sleepReachText(row.sleepReach) }), short: false });
+    items.push({ text: t(key, { level: sleepReachText(row.sleepReach) }), tone: "normal" });
   }
   if (row.limitingFactor !== null) {
-    items.push({ text: t("calc.fineTune.short", { factor: t(FACTOR_TEXT[row.limitingFactor]) }), short: true });
+    items.push({ text: t("calc.fineTune.short", { factor: t(FACTOR_TEXT[row.limitingFactor]) }), tone: "danger" });
   }
   const cappedTo = row.boost?.cappedTo ?? null;
   if (props.field === "boost" && cappedTo !== null) {
-    items.push({ text: t("calc.fineTune.boostCapped", { count: props.fmt(cappedTo) }), short: false });
+    items.push({ text: t("calc.fineTune.boostCapped", { count: props.fmt(cappedTo) }), tone: "normal" });
+  }
+  // 睡眠の欄は操作の2段を選択肢で使うので、睡眠に関わる理由（アメを使わない・睡眠だけで届く など）はここに添える。
+  // 個数指定（目標Lv・アメブを動かせない）は睡眠の操作に関わらないので出さない
+  if (props.field === "sleep" && row.exclusion !== null && row.exclusion !== "candyTarget") {
+    items.push({ text: t(EXCLUSION_TEXT[row.exclusion]), tone: "note" });
   }
   return items;
 });
 
-/** 目標Lv・アメブを動かせない理由（アメの欄では出さない） */
+/** 目標Lv・アメブを動かせない理由（行の詳細で出す。睡眠の欄は詳細の行に添える） */
 const noteText = computed(() => {
   const { row, field } = props;
-  if (row === null || field === "candy") return null;
+  if (row === null || field !== "row") return null;
   if (row.candyEdited) return t("calc.fineTune.candyEdited");
   return row.exclusion === null ? null : t(EXCLUSION_TEXT[row.exclusion]);
 });
@@ -399,6 +479,14 @@ const recommendLabel = computed(() => {
   const rec = recommendation.value;
   if (rec === null) return "";
   return t(rec.andOthers ? "calc.fineTune.recommendMany" : "calc.fineTune.recommend", { name: props.titleOf(rec.targetRowId) });
+});
+
+/** 「〇〇のLvを上げる」の全文（狭い幅では名前を省くので、ホバーで全文を出す） */
+const recommendTitle = computed(() => {
+  const rec = recommendation.value;
+  if (rec === null) return undefined;
+  const text = `${recommendLabel.value} ${t("calc.fineTune.field.boost")}${recommendDelta.value}`;
+  return rec.insufficient ? `${text}（${t("calc.fineTune.recommendInsufficient")}）` : text;
 });
 
 const recommendDelta = computed(() => {
@@ -427,17 +515,30 @@ const sleepEditor = computed(() => {
   const current = row.sleepTarget.choice;
   const stock = (current.base === "sleep" || current.base === "napIsland") && current.stock;
   const ticket = current.base === "napIsland" && current.ticket;
-  const options: Array<{ key: string; label: string; choice: SleepTargetChoice; selected: boolean }> = [
-    { key: "none", label: t("calc.fineTune.sleepOption.none"), choice: { base: "none" }, selected: current.base === "none" },
-    ...SLEEP_TARGET_HOURS_OPTIONS.map((hours) => ({
-      key: `h${hours}`,
-      label: sleepTargetText(t, { base: "hours", hours }).name,
-      choice: { base: "hours", hours } as SleepTargetChoice,
-      selected: current.base === "hours" && current.hours === hours,
-    })),
+  const none = t("calc.fineTune.sleepOption.none");
+  const all = t("calc.fineTune.sleepOption.all");
+  // おひるね島だけ、とても狭い幅では「島」と縮める（表の睡眠の欄と同じ）
+  const options: Array<{ key: string; label: string; short: string; choice: SleepTargetChoice; selected: boolean }> = [
+    { key: "none", label: none, short: none, choice: { base: "none" }, selected: current.base === "none" },
+    ...SLEEP_TARGET_HOURS_OPTIONS.map((hours) => {
+      const name = sleepTargetText(t, { base: "hours", hours }).name;
+      return {
+        key: `h${hours}`,
+        label: name,
+        short: name,
+        choice: { base: "hours", hours } as SleepTargetChoice,
+        selected: current.base === "hours" && current.hours === hours,
+      };
+    }),
     // 全て・おひるね島へ移るときは、アメ在庫の印を持ち越す（チケットはおひるね島どうしだけ）
-    { key: "sleep", label: t("calc.fineTune.sleepOption.all"), choice: { base: "sleep", stock }, selected: current.base === "sleep" },
-    { key: "nap", label: t("calc.fineTune.sleepOption.nap"), choice: { base: "napIsland", stock, ticket }, selected: current.base === "napIsland" },
+    { key: "sleep", label: all, short: all, choice: { base: "sleep", stock }, selected: current.base === "sleep" },
+    {
+      key: "nap",
+      label: t("calc.fineTune.sleepOption.nap"),
+      short: t("calc.fineTune.sleepOption.napShort"),
+      choice: { base: "napIsland", stock, ticket },
+      selected: current.base === "napIsland",
+    },
   ];
   return {
     options,
@@ -460,13 +561,13 @@ function toggleSleep(which: "stock" | "ticket"): void {
   if (current.base === "napIsland") chooseSleep({ ...current, [which]: !current[which] });
 }
 
-// ===== 刻みのボタンと個数欄（確定は blur。テンキーは ui_spec §8） =====
+// ===== 刻みのボタンと個数欄・目標Lvの欄（確定は blur。テンキーは ui_spec §8） =====
 function stepBy(by: number): void {
   const s = stepper.value;
   if (s !== null) emit("op", s.stepOp(by));
 }
 
-/** 目標Lvのスライダー・Lv の丸いボタン */
+/** 目標Lvのスライダー・Lv の丸いボタン（欄に打った値は blur で setOp） */
 function setLevel(raw: string): void {
   const s = stepper.value;
   const level = Number(raw);

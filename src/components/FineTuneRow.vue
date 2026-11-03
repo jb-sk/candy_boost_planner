@@ -102,7 +102,7 @@
     >{{ candyText }}</button>
 
     <span
-      class="fineTuneRow__cell fineTuneRow__cell--result"
+      class="fineTuneRow__cell fineTuneRow__cell--result fineTuneRow__cell--shards"
       :class="{ 'fineTuneRow__cell--changed': changed(row.shardsPerCandy) }"
       data-testid="fine-tune-row-shards-per-candy"
       :title="shardsTitle"

@@ -208,7 +208,7 @@ export class FineTuneModalPage {
     return this.editor.locator(`[data-testid="fine-tune-editor-step"][data-delta="${delta}"]`);
   }
 
-  /** 調整バーの個数欄に打って Enter で確定する（PC幅。スマホはテンキーの読み取り専用欄）。 */
+  /** 調整バーの個数欄（目標Lvは Lv の欄）に打って Enter で確定する（PC幅。スマホはテンキーの読み取り専用欄）。 */
   async typeValue(value: number): Promise<void> {
     await this.editorInput.fill(String(value));
     await this.editorInput.press('Enter');

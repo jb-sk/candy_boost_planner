@@ -7,7 +7,8 @@
  *   - 「全体のLvを伸ばす」（全員のアメブをまとめて動かす）、並べ替え、アメブなしのスロット
  *   - モーダル内の元に戻す・やり直す（ボタンと Ctrl+Z / Ctrl+Y）と、計算機の履歴が動かないこと
  *   - Escape と × の確認
- *   - スマホ幅で行が1行に収まり、調整バーを開いても全員が見えること（chromium-mobile で走る）
+ *   - 調整バーの高さが、どの欄を選んでも変わらないこと（PC幅・スマホ幅）
+ *   - スマホ幅で行が1行に収まり、調整バーを開いても全員が見えること、目標Lvをテンキーで打てること（chromium-mobile で走る）
  */
 import { test, expect, devices, type Page } from '@playwright/test';
 import { BoxPanelPage } from './pages/BoxPanelPage';
@@ -110,6 +111,33 @@ async function expectCalcOrder(calc: CalcPanelPage, names: string[]): Promise<vo
   }
 }
 
+/**
+ * 何も選んでいないとき・各欄（目標Lv・睡眠・アメブ・アメ・行の詳細）を選んだときで、調整バーとモーダルの高さが同じ。
+ * 届かない行（ヒトカゲ・フシギダネ）を選ぶので、詳細に足りないものが出る状態も含む。
+ */
+async function expectEditorHeightConstant(fineTune: FineTuneModalPage): Promise<void> {
+  const editorHeight = async () => (await fineTune.editor.boundingBox())!.height;
+  const modalHeight = async () => (await fineTune.modal.boundingBox())!.height;
+  await fineTune.expectIdle();
+  const editor = await editorHeight();
+  const modal = await modalHeight();
+  const choices: Array<[string, 'row' | 'target' | 'sleep' | 'boost' | 'candy']> = [
+    ['ヒトカゲ', 'target'],
+    ['ヒトカゲ', 'sleep'],
+    ['ヒトカゲ', 'boost'],
+    ['フシギダネ', 'candy'],
+    ['フシギダネ', 'row'],
+    ['イーブイ', 'boost'],
+  ];
+  for (const [name, field] of choices) {
+    await fineTune.select(fineTune.rowByName(name), field);
+    await expect(fineTune.editor).toHaveAttribute('data-field', field);
+    await fineTune.waitForSettled();
+    expect(await editorHeight(), `${name} ${field}`).toBeCloseTo(editor, 0);
+    expect(await modalHeight(), `${name} ${field}`).toBeCloseTo(modal, 0);
+  }
+}
+
 test.describe('12-fine-tune（PC）', () => {
   test.skip(({ isMobile }) => isMobile, 'スマホ幅の検査は別の describe');
 
@@ -156,7 +184,7 @@ test.describe('12-fine-tune（PC）', () => {
     await expect(calc.getRowBoostCandyInput(calc.getRow(1))).toHaveValue(hitokageBefore);
   });
 
-  test('目標Lv: Lvピッカーと同じ形（◀ ▶・スライダー・Lv の丸いボタン）で動かした目標Lvが計算機へ移る。全員届いていれば「〇〇のLvを上げる」は出ない', async ({ page }) => {
+  test('目標Lv: Lvピッカーと同じ形（Lv の欄・◀ ▶・スライダー・Lv の丸いボタン）で動かした目標Lvが計算機へ移る。全員届いていれば「〇〇のLvを上げる」は出ない', async ({ page }) => {
     const { calc, fineTune } = await setupScenario(page, ALL_REACHED);
     await fineTune.open();
     await fineTune.waitForSettled();
@@ -171,10 +199,18 @@ test.describe('12-fine-tune（PC）', () => {
     // 全員届いているので、おすすめは出ない
     await expect(fineTune.editorRecommend).toHaveCount(0);
 
-    // Lv の丸いボタン。今の値のボタンが選ばれた形になる
+    // Lv の丸いボタン。今の値のボタンが選ばれた形になり、Lv の欄にも出る
     await fineTune.levelChip(50).click();
     expect(await fineTune.targetLevel(pikachu)).toBe(50);
     await expect(fineTune.levelChip(50)).toHaveClass(/levelChip--on/);
+    await expect(fineTune.editorInput).toHaveValue('50');
+    // Lv の欄に直接打つ（Enter で確定）。範囲の外は端に収まる
+    await fineTune.typeValue(52);
+    expect(await fineTune.targetLevel(pikachu)).toBe(52);
+    await expect(fineTune.editorChange).toHaveText('40 → 52');
+    await fineTune.typeValue(99);
+    expect(await fineTune.targetLevel(pikachu)).toBe(70);
+    await expect(fineTune.editorInput).toHaveValue('70');
     // 現在Lv（10）は下の端。◀ は押せない
     await fineTune.levelChip(10).click();
     expect(await fineTune.targetLevel(pikachu)).toBe(10);
@@ -187,6 +223,16 @@ test.describe('12-fine-tune（PC）', () => {
 
     await fineTune.apply();
     await expect(calc.getRowDstLevelInput(calc.getRow(0))).toHaveValue('45');
+  });
+
+  test('調整バー: どの欄を選んでも（何も選んでいなくても）調整バーとモーダルの高さが変わらない', async ({ page }) => {
+    const { calc, fineTune } = await setupScenario(page, GIVE_AND_RECEIVE);
+    // 睡眠の詳細（睡眠到達Lv）と足りないもの（かけら・アメ）が出る行もそろえる
+    await calc.chooseSleepTarget(calc.getRow(3), { base: 'napIsland', stock: true, ticket: true });
+    await calc.waitForPlannerResult();
+    await fineTune.open();
+    await fineTune.waitForSettled();
+    await expectEditorHeightConstant(fineTune);
   });
 
   test('全体のLvを伸ばす: 1回押すと全員のアメブがまとまって変わり、届く行が増え、元に戻す1回で戻り、適用で計算機へ移る', async ({ page }) => {
@@ -732,6 +778,24 @@ test.describe('12-fine-tune（スマホ幅）', () => {
     }
     // スマホ幅（390px）でも1段に収まる
     expect(Math.max(...footerTops) - Math.min(...footerTops)).toBeLessThan(4);
+
+    // 調整バーの高さは、どの欄を選んでも変わらない（Escape で選択を外し、何も選んでいない状態から測る）
+    await page.keyboard.press('Escape');
+    await expectEditorHeightConstant(fineTune);
+
+    // 目標Lvは Lv の欄を押すとテンキーが出て、打った Lv になる（OS のキーボードは出さない）
+    const eevee = fineTune.rowByName('イーブイ');
+    await fineTune.select(eevee, 'target');
+    await expect(fineTune.editorInput).toHaveAttribute('readonly', '');
+    await fineTune.editorInput.tap();
+    const keypad = page.getByTestId('numeric-keypad');
+    await expect(keypad).toBeVisible();
+    for (const key of ['4', '5']) await page.getByTestId(`numeric-keypad-key-${key}`).tap();
+    await expect(page.getByTestId('numeric-keypad-display')).toHaveText('45');
+    await page.getByTestId('numeric-keypad-confirm').tap();
+    await expect(keypad).toBeHidden();
+    expect(await fineTune.targetLevel(eevee)).toBe(45);
+    await expect(fineTune.editorChange).toHaveText('40 → 45');
     await phone.close();
   });
 });
