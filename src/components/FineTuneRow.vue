@@ -26,7 +26,8 @@
       @click.stop
       @keydown="onHandleKeydown"
     >
-      <svg class="fineTuneRow__handleIcon" aria-hidden="true" viewBox="0 0 16 17" width="12" height="13"><path d="M4.5 5.5L8 2 11.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 11.5L8 15 11.5 11.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <!-- つかんで動かす印（6つの点のグリップ） -->
+      <svg class="fineTuneRow__handleIcon" aria-hidden="true" viewBox="0 0 16 17" width="12" height="13"><g fill="currentColor"><circle cx="5.5" cy="3.5" r="1.6"/><circle cx="10.5" cy="3.5" r="1.6"/><circle cx="5.5" cy="8.5" r="1.6"/><circle cx="10.5" cy="8.5" r="1.6"/><circle cx="5.5" cy="13.5" r="1.6"/><circle cx="10.5" cy="13.5" r="1.6"/></g></svg>
     </button>
 
     <button
