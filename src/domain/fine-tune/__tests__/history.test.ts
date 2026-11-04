@@ -41,6 +41,7 @@ const deps: FineTuneDeps = {
   withMinimizeBoost: (row) => row,
   canMinimizeBoostFor: () => false,
   withBoostCandyReset: (row) => row,
+  withDefaultBoostReachLevelRows: (rowList) => rowList,
   withRowIndividual: (rowList) => rowList,
   canEditIndividual: () => true,
   speciesCandyFamilyOf: () => undefined,
@@ -53,6 +54,7 @@ const base: FineTuneBase = {
   evaluated: deps.evaluateRows([makeRow("a"), makeRow("b"), makeRow("c")]),
   result: emptyResult,
   boostLimit: 1000,
+  settings: { minimizeBoost: false, defaultBoostReachLevel: null, totalShards: 0, universalCandy: { s: 0, m: 0, l: 0 } },
 };
 
 /** 下書きと履歴を持つ小さな実行役（`useFineTune` が行う手順と同じ: 通って中身が変わった op だけ記録する） */

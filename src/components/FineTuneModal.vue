@@ -78,15 +78,17 @@
           />
         </div>
 
-        <!-- 操作の場所は常に出す。何も選んでいないときは押せないボタンだけ -->
+        <!-- 操作の場所は常に出す。何も選んでいないときは設定欄（最小限のアメブ・既定のアメブ目標Lv・かけら・万能アメ） -->
         <FineTuneEditor
           :key="selectedRow !== null && selected !== null ? `${selectedRow.id}:${selected.field}` : 'idle'"
           :row="selectedRow"
           :field="selected?.field ?? null"
           :pending="fineTune.stale.value"
           :busy="fineTune.raising.value"
-          :global-minimize="calc.minimizeBoost.value"
+          :global-minimize="fineTune.settings.value?.value.minimizeBoost ?? calc.minimizeBoost.value"
           :can-reset="canReset"
+          :settings="fineTune.settings.value"
+          :has-boost="fineTune.hasBoost.value"
           :fmt="calc.fmtNum"
           :title-of="fineTune.titleOf"
           @op="dispatch"
@@ -233,19 +235,28 @@ const resetTarget = computed(() => {
   return { row: baseRow, familyKey: calc.speciesCandyFamilyOf(baseRow) };
 });
 
-/** 選んだポケモンが、開いた時点から変わっている（行・アメの数の記録・その進化系の在庫のどれか） */
+/**
+ * 選んだポケモンが、開いた時点から変わっている（行・アメの数の記録・その進化系の在庫のどれか）。
+ * 何も選んでいないときは、設定欄の設定を変えている
+ */
 const canReset = computed(() => {
   const target = resetTarget.value;
   const state = fineTune.state.value;
-  if (target === null || state === null) return false;
+  if (state === null) return false;
+  if (selected.value === null) return Object.keys(state.settings).length > 0;
+  if (target === null) return false;
   const id = target.row.id;
   return state.rows.find((r) => r.id === id) !== target.row
     || state.candyRecords[id] !== undefined
     || (target.familyKey !== undefined && state.speciesCandy[target.familyKey] !== undefined);
 });
 
-/** 開いた時点へ戻す。選択はそのままなので、続けて動かして、また戻せる */
+/** 開いた時点へ戻す。選択はそのままなので、続けて動かして、また戻せる。何も選んでいないときは設定を戻す */
 function resetEdit(): void {
+  if (selected.value === null) {
+    dispatch({ kind: "settingsReset" });
+    return;
+  }
   const target = resetTarget.value;
   if (target === null) return;
   dispatch({

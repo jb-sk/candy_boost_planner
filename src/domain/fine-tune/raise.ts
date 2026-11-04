@@ -111,7 +111,8 @@ function recommendationCandidates(deps: AdviceDeps, base: RaiseInput["base"], po
   const ctx = createAdviceContext({
     deps,
     base,
-    state: { version: 0, rows: point.rows, candyRecords: {}, speciesCandy: point.speciesCandy },
+    // 設定（設定欄で変えたもの）は deps が今の下書きの設定で読むので、ここでは持たない
+    state: { version: 0, rows: point.rows, candyRecords: {}, speciesCandy: point.speciesCandy, settings: {} },
     evaluated: point.evaluated,
     result: point.result,
   });

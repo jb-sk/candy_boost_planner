@@ -190,7 +190,7 @@ export class FineTuneModalPage {
     await expect(this.editor).toHaveAttribute('data-row-id', rowId);
   }
 
-  /** 何も選んでいない（調整バーが押せない刻みのボタンだけの）状態か */
+  /** 何も選んでいない（調整バーが設定欄の）状態か */
   async expectIdle(): Promise<void> {
     await expect(this.editorIdle).toBeVisible();
     await expect(this.editor).not.toHaveAttribute('data-row-id', /./);
@@ -228,19 +228,35 @@ export class FineTuneModalPage {
   }
 
   /** Lv の欄（現在Lv・目標Lv・アメブ目標Lv。3つとも同じ形で、計算機と同じ Lvピッカーを開ける） */
-  levelField(kind: 'srcLevel' | 'target' | 'boostLevel'): Locator {
+  levelField(kind: 'srcLevel' | 'target' | 'boostLevel' | 'defaultBoostLevel'): Locator {
     return this.editor.locator(`[data-testid="fine-tune-editor-level-field"][data-level-field="${kind}"]`);
   }
 
   /** Lv の欄の入力欄（直接打てる。スマホはテンキーの読み取り専用欄） */
-  levelInput(kind: 'srcLevel' | 'target' | 'boostLevel'): Locator {
+  levelInput(kind: 'srcLevel' | 'target' | 'boostLevel' | 'defaultBoostLevel'): Locator {
     return this.levelField(kind).getByTestId('level-picker-trigger');
   }
 
   /** Lv の欄に打って Enter で確定する（PC幅） */
-  async typeLevel(kind: 'srcLevel' | 'target' | 'boostLevel', value: number): Promise<void> {
+  async typeLevel(kind: 'srcLevel' | 'target' | 'boostLevel' | 'defaultBoostLevel', value: number | ''): Promise<void> {
     await this.levelInput(kind).fill(String(value));
     await this.levelInput(kind).press('Enter');
+  }
+
+  /** 設定欄（何も選んでいないとき）の欄: かけら在庫・万能アメ S・M・L */
+  setting(key: 'shards' | 's' | 'm' | 'l'): Locator {
+    return this.editor.locator(`[data-testid="fine-tune-editor-setting"][data-setting="${key}"]`);
+  }
+
+  /** 設定欄の欄に打って Enter で確定する（PC幅） */
+  async typeSetting(key: 'shards' | 's' | 'm' | 'l', value: number): Promise<void> {
+    await this.setting(key).fill(String(value));
+    await this.setting(key).press('Enter');
+  }
+
+  /** 設定欄の最小限のアメブ */
+  get settingsMinimizeButton(): Locator {
+    return this.editor.getByTestId('fine-tune-editor-settings-minimize');
   }
 
   /** Lv の欄の ▾ で開く Lvピッカー（計算機と同じ。◀ スライダー ▶・Lv の丸いボタン） */

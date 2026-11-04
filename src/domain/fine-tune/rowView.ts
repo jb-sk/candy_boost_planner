@@ -187,7 +187,7 @@ function resultMap(result: LevelPlannerResult | undefined): Map<string, PokemonP
 
 export function buildRowViews(input: RowViewInput): FineTuneRowView[] {
   const { base, state, evaluated, latest, advice, hasBoost, deps } = input;
-  const baseState = { version: 0, rows: base.rows, candyRecords: {}, speciesCandy: {} };
+  const baseState = { version: 0, rows: base.rows, candyRecords: {}, speciesCandy: {}, settings: {} };
   const baseRowById = new Map<string, CalcRow>();
   for (const row of base.rows) baseRowById.set(row.id, row);
   const baseResults = resultMap(base.result);

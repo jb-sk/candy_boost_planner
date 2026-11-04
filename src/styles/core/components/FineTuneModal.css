@@ -686,20 +686,6 @@ button.fineTuneRow__cell {
   font-variant-numeric: tabular-nums;
 }
 
-/* 何も選んでいないとき・行の詳細: 同じ形の押せないボタンを点線で薄く置く */
-.fineTuneEditor__stepper--ghost {
-  opacity: 0.5;
-}
-
-.fineTuneEditor__stepper--ghost .fineTuneEditor__step,
-.fineTuneEditor__stepper--ghost .fineTuneEditor__input.field__input {
-  border-style: dashed;
-  border-color: var(--ft-control-border);
-  background: transparent;
-  box-shadow: none;
-  opacity: 1;
-}
-
 /*
  * Lv の欄（現在Lv・目標Lv・アメブ目標Lv。`FineTuneLevelField`）。3つとも同じ形にする。
  * 枠の左上に欄の名前、その下に Lv（直接打てる）、右端に Lvピッカーを開く ▾。枠は行の詳細のほかの欄（あとEXP・アメ在庫）と同じ。
@@ -862,6 +848,19 @@ button.fineTuneRow__cell {
   min-width: 84px;
 }
 
+/* 設定欄の既定のアメブ目標Lv。名前が長く、空欄は「目標Lvと同じ」と出すので広めにする */
+.fineTuneEditor__levelField--default.fineTuneLevelField {
+  flex-basis: 156px;
+}
+
+/* 空欄の文言（「目標Lvと同じ」）は、数字より小さく薄く出す */
+.fineTuneLevelField .levelPick__input::placeholder {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  opacity: 0.8;
+}
+
 .fineTuneEditor__tool {
   flex-shrink: 0;
   height: 34px;
@@ -976,6 +975,16 @@ button.fineTuneRow__cell {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
+}
+
+/* 設定欄のかけら在庫・万能アメ S・M・L。かけらは桁が多い（9桁・区切り付き）ので広くする */
+.fineTuneEditor__props--settings {
+  grid-template-columns: minmax(0, 1.9fr) repeat(3, minmax(0, 1fr));
+}
+
+.fineTuneEditor__props--settings .fineTuneEditor__prop {
+  padding-left: 6px;
+  padding-right: 6px;
 }
 
 .fineTuneEditor__prop {
@@ -1347,7 +1356,8 @@ button.fineTuneRow__cell {
     gap: 8px;
   }
 
-  .fineTuneEditor__prop {
+  .fineTuneEditor__prop,
+  .fineTuneEditor__props--settings .fineTuneEditor__prop {
     flex-direction: row;
     align-items: center;
     gap: 10px;
@@ -1428,6 +1438,10 @@ button.fineTuneRow__cell {
 
   .fineTuneEditor__levelField.fineTuneLevelField {
     flex-basis: 180px;
+  }
+
+  .fineTuneEditor__levelField--default.fineTuneLevelField {
+    flex-basis: 300px;
   }
 
   .fineTuneEditor__options {

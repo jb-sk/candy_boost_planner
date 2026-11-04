@@ -15,12 +15,14 @@
       :min="min"
       :max="max"
       :disabled="disabled"
-      :label="`${label}: Lv${value}`"
+      :placeholder="placeholder"
+      :label="`${label}: ${value === null ? placeholder : `Lv${value}`}`"
       boundary=".fineTuneModal"
       @update:model-value="(level, coalesce) => emit('set', level, coalesce)"
+      @clear="emit('clear')"
     >
-      <!-- 計算機のピッカーと同じ見出し（目標Lv・アメブ目標Lvは現在Lvからの矢印） -->
-      <template #title>{{ label }}: <template v-if="from !== undefined">Lv{{ from }} → </template>Lv{{ value }}</template>
+      <!-- 計算機のピッカーと同じ見出し（目標Lv・アメブ目標Lvは現在Lvからの矢印。空欄は文言） -->
+      <template #title>{{ label }}: <template v-if="from !== undefined">Lv{{ from }} → </template>{{ value === null ? placeholder : `Lv${value}` }}</template>
     </LevelPicker>
   </div>
 </template>
@@ -34,20 +36,25 @@ import type { HistoryRecordOptions } from "../composables/useHistory";
  * 開いた時点の値（base）と違えば、ほかの欄と同じく変えた見た目にする。
  */
 defineProps<{
-  /** どの Lv か（E2E が見分ける印） */
-  kind: "srcLevel" | "target" | "boostLevel";
+  /** どの Lv か（E2E が見分ける印）。defaultBoostLevel は設定欄の既定のアメブ目標Lv */
+  kind: "srcLevel" | "target" | "boostLevel" | "defaultBoostLevel";
   label: string;
-  value: number;
-  base: number;
+  /** null は空欄（`placeholder` のある欄だけ） */
+  value: number | null;
+  base: number | null;
   min: number;
   max: number;
   disabled?: boolean;
   /** ピッカーの見出しに「Lv{from} → 」を付ける（目標Lv・アメブ目標Lv。現在Lvは付けない） */
   from?: number;
+  /** 空欄を許す欄の、空欄の文言（既定のアメブ目標Lvの「目標Lvと同じ」）。空欄で確定すると `clear` */
+  placeholder?: string;
 }>();
 
 const emit = defineEmits<{
   /** `coalesce` はスライダーの1回のドラッグの目印（`LevelPicker` から受け取ったまま渡す） */
   (e: "set", level: number, coalesce?: HistoryRecordOptions): void;
+  /** 空欄で確定した（`placeholder` のある欄だけ） */
+  (e: "clear"): void;
 }>();
 </script>

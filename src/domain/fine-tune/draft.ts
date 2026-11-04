@@ -4,11 +4,21 @@
  * 動かせるのは目標Lv・アメブ（アメブ目標Lv・最小アメブ・リセットを含む）・アメの数・睡眠目標・順番と、
  * 行の詳細で現在Lv・あとEXP（行の個体）・種族アメの在庫（進化系ごと。下書きの間は `speciesCandy` に持ち、評価のときだけ使う）。
  * 「全体のLvを伸ばす」は、まとめて求めた行一覧を1つの op で入れる。
+ * 何も選んでいないときの設定欄で、全体の設定（最小限のアメブ・既定のアメブ目標Lv）とかけら・万能アメの在庫も動かせる
+ * （下書きの間は `settings` に持ち、評価のときだけ使う。既定のアメブ目標Lvは、自動の行をすぐ新しい既定で配り直す）。
  * アメの数を変えた行は個数指定の行になるので、アメブは動かせない（元の数に戻すと元の行に戻り、動かせる）。
  * 目標Lvは計算機と同じく個数指定を上書きする（選ぶと個数指定とアメの数の記録が外れる）。
  * ストア・Vue を import しない。ストアの関数は `FineTuneDeps` で受け取る。
  */
-import type { CalcRow, EvaluatedRows, RowIndividualPatch, SpeciesCandyOverride } from "../../composables/useCalcStore";
+import type {
+  CalcRow,
+  CalcSettingsOverride,
+  CalcSettingsSnapshot,
+  EvaluatedRows,
+  RowIndividualPatch,
+  SpeciesCandyOverride,
+} from "../../composables/useCalcStore";
+import { normalizeDefaultBoostReachLevel } from "../pokesleep/boost-config";
 import { isValidPokedexId } from "../pokesleep/candy-family";
 import { maxLevel as MAX_LEVEL } from "../pokesleep/tables";
 import { sleepTargetTraits, type SleepTargetMode } from "../sleep-target";
@@ -25,6 +35,8 @@ export interface FineTuneBase {
   result: LevelPlannerResult;
   /** スロットのアメブ上限（`boostCandyRemaining`）。残り枠は評価した行から出す。 */
   boostLimit: number;
+  /** 開いた時点の設定（設定欄で動かすもの: 最小限のアメブ・既定のアメブ目標Lv・かけら在庫・万能アメ在庫） */
+  settings: CalcSettingsSnapshot;
 }
 
 /** アメの数を変える前の行（個数指定でなかった行だけ）。元の数に戻したとき、この行へ戻す。 */
@@ -48,10 +60,18 @@ export interface FineTuneState {
   candyRecords: Readonly<Record<string, CandyRecord>>;
   /** 変えた種族アメの在庫（進化系のキー → 個数）。開いた時点の在庫と同じ数にすると消える。 */
   speciesCandy: SpeciesCandyOverride;
+  /** 変えた設定（開いた時点と違うものだけ）。開いた時点と同じ値にすると消える。 */
+  settings: CalcSettingsOverride;
 }
 
 /** 種族アメの在庫の上限（テンキーで打てる7桁） */
 export const SPECIES_CANDY_MAX = 9_999_999;
+/** 万能アメの在庫の上限（種族アメと同じ7桁） */
+export const UNIVERSAL_CANDY_MAX = 9_999_999;
+/** かけら在庫の上限（計算機の設定と同じ9桁） */
+export const SHARDS_MAX = 999_999_999;
+
+export type UniversalCandySize = "s" | "m" | "l";
 
 export type FineTuneOp =
   | { kind: "step"; rowId: string; by: number }
@@ -83,7 +103,33 @@ export type FineTuneOp =
    * 「全体のLvを伸ばす」で求めた行一覧を入れる。`fromVersion` の下書きから求めたもので、
    * その後に下書きが変わっていれば入れない。行の顔ぶれと順番は変えられない（アメブだけを変えた行一覧）。
    */
-  | { kind: "raise"; rows: readonly CalcRow[]; fromVersion: number };
+  | { kind: "raise"; rows: readonly CalcRow[]; fromVersion: number }
+  | FineTuneSettingsOp;
+
+/** 設定欄の op（行に結びつかない） */
+export type FineTuneSettingsOp =
+  /** 全体の最小限のアメブ（計算機の設定「目標Lvに届く最小限のアメブ個数にする」） */
+  | { kind: "minimizeBoostSet"; on: boolean }
+  /** 既定のアメブ目標Lv（null は目標Lvと同じ）。自動の行は、すぐ新しい既定で配り直す */
+  | { kind: "defaultBoostLevelSet"; level: number | null }
+  /** かけら在庫 */
+  | { kind: "shardsSet"; count: number }
+  /** 万能アメの在庫 */
+  | { kind: "universalCandySet"; size: UniversalCandySize; count: number }
+  /** 設定を開いた時点へ戻す（既定のアメブ目標Lvで配り直した自動の行も、開いた時点の既定で配り直す） */
+  | { kind: "settingsReset" };
+
+const SETTINGS_OP_KINDS: ReadonlySet<FineTuneOp["kind"]> = new Set([
+  "minimizeBoostSet",
+  "defaultBoostLevelSet",
+  "shardsSet",
+  "universalCandySet",
+  "settingsReset",
+]);
+
+function isSettingsOp(op: FineTuneOp): op is FineTuneSettingsOp {
+  return SETTINGS_OP_KINDS.has(op.kind);
+}
 
 /** ストアの関数。ドメインはストアを import しないので引数で受け取る。 */
 export interface FineTuneDeps {
@@ -108,6 +154,11 @@ export interface FineTuneDeps {
   withMinimizeBoost(row: CalcRow, on: boolean): CalcRow;
   canMinimizeBoostFor(row: CalcRow): boolean;
   withBoostCandyReset(row: CalcRow, rowList: readonly CalcRow[]): CalcRow;
+  /**
+   * 既定のアメブ目標Lvを `level` にしたとき、自動の行（アメブ個数も目標Lvも選んでいない行）を上から「再計算」と同じ手順で
+   * 配り直した行一覧（変わらない行は同じ参照）。`settings` はその間に使うほかの設定（省略時は今の下書きの設定）。
+   */
+  withDefaultBoostReachLevelRows(rowList: readonly CalcRow[], level: number | null, settings?: CalcSettingsOverride): readonly CalcRow[];
 }
 
 /**
@@ -154,7 +205,7 @@ export interface OpRange {
 
 /** 空の下書き。版は呼び出し側が決める。 */
 export function initialFineTuneState(base: FineTuneBase, version = 0): FineTuneState {
-  return { version, rows: base.rows, candyRecords: {}, speciesCandy: {} };
+  return { version, rows: base.rows, candyRecords: {}, speciesCandy: {}, settings: {} };
 }
 
 function rowIndexOf(rows: readonly CalcRow[], rowId: string): number {
@@ -298,9 +349,58 @@ function candyBaseRow(
   return deps.withExplicitBoost(before, boost, { preserveTargetForExplicitBoost: true });
 }
 
-/** 下書きが基準と同じか（同じ順番で各行が同じ参照で、在庫を変えていない）。 */
-export function isDraftEmpty(base: Pick<FineTuneBase, "rows">, state: Pick<FineTuneState, "rows" | "speciesCandy">): boolean {
-  return isSameRows(base.rows, state.rows) && Object.keys(state.speciesCandy).length === 0;
+/** 下書きが基準と同じか（同じ順番で各行が同じ参照で、在庫・設定を変えていない）。 */
+export function isDraftEmpty(
+  base: Pick<FineTuneBase, "rows">,
+  state: Pick<FineTuneState, "rows" | "speciesCandy" | "settings">,
+): boolean {
+  return isSameRows(base.rows, state.rows)
+    && Object.keys(state.speciesCandy).length === 0
+    && Object.keys(state.settings).length === 0;
+}
+
+/** 下書きで効いている設定（開いた時点の設定に、変えた設定を重ねたもの） */
+export function settingsValueOf(
+  base: Pick<FineTuneBase, "settings">,
+  state: Pick<FineTuneState, "settings">,
+): CalcSettingsSnapshot {
+  return { ...base.settings, ...state.settings };
+}
+
+/** 設定を1つ変えた下書きの設定。開いた時点と同じ値なら、変えていない扱いに戻す */
+function withSetting<K extends keyof CalcSettingsSnapshot>(
+  base: Pick<FineTuneBase, "settings">,
+  current: CalcSettingsOverride,
+  key: K,
+  value: CalcSettingsSnapshot[K],
+): CalcSettingsOverride {
+  const { [key]: _removed, ...rest } = current;
+  return sameSettingValue(base.settings[key], value) ? rest : { ...rest, [key]: value };
+}
+
+function sameSettingValue(a: unknown, b: unknown): boolean {
+  return a === b || JSON.stringify(a) === JSON.stringify(b);
+}
+
+function isSameSettings(a: CalcSettingsOverride, b: CalcSettingsOverride): boolean {
+  const keys = Object.keys(a) as Array<keyof CalcSettingsSnapshot>;
+  return keys.length === Object.keys(b).length && keys.every((key) => key in b && sameSettingValue(a[key], b[key]));
+}
+
+/**
+ * 開いた時点の行と中身が同じ行は、開いた時点の行（同じ参照）にする。既定のアメブ目標Lvを変えて戻したとき、
+ * 配り直した行が開いた時点と同じなら、下書きを変えていない扱いに戻すため。どれも同じなら同じ配列を返す
+ */
+function preferBaseRows(baseRows: readonly CalcRow[], rows: readonly CalcRow[]): readonly CalcRow[] {
+  const baseById = new Map(baseRows.map((row) => [row.id, row]));
+  let changed = false;
+  const next = rows.map((row) => {
+    const baseRow = baseById.get(row.id);
+    if (baseRow === undefined || baseRow === row || JSON.stringify(baseRow) !== JSON.stringify(row)) return row;
+    changed = true;
+    return baseRow;
+  });
+  return changed ? next : rows;
 }
 
 /** 下書きでのその進化系の種族アメの在庫（変えていなければストアの値） */
@@ -325,9 +425,10 @@ function isSameRows(a: readonly CalcRow[], b: readonly CalcRow[]): boolean {
   return a.length === b.length && a.every((row, i) => row === b[i]);
 }
 
-/** 下書きの中身（rows・candyRecords・speciesCandy）が同じか。version は見ない。履歴に記録するかの判定に使う。 */
+/** 下書きの中身（rows・candyRecords・speciesCandy・settings）が同じか。version は見ない。履歴に記録するかの判定に使う。 */
 export function isSameDraftContent(a: FineTuneState, b: FineTuneState): boolean {
   if (!isSameRows(a.rows, b.rows)) return false;
+  if (!isSameSettings(a.settings, b.settings)) return false;
   const aStock = Object.keys(a.speciesCandy);
   if (aStock.length !== Object.keys(b.speciesCandy).length || aStock.some((k) => a.speciesCandy[k] !== b.speciesCandy[k])) return false;
   const aKeys = Object.keys(a.candyRecords);
@@ -355,6 +456,12 @@ export function coalesceKeyOf(op: FineTuneOp): string | undefined {
       return `exp:${op.rowId}`;
     case "stockSet":
       return `stock:${op.rowId}`;
+    case "defaultBoostLevelSet":
+      return "settings:defaultBoostLevel";
+    case "shardsSet":
+      return "settings:shards";
+    case "universalCandySet":
+      return `settings:universal:${op.size}`;
     default:
       return undefined;
   }
@@ -390,6 +497,7 @@ export function reduceFineTune(
     if (isSameRows(op.rows, state.rows)) return { state };
     return advanced(state, { rows: op.rows });
   }
+  if (isSettingsOp(op)) return reduceSettings(base, state, op, deps);
 
   const index = rowIndexOf(state.rows, op.rowId);
   if (index < 0) return { rejected: "unknownRow" };
@@ -543,6 +651,51 @@ export function reduceFineTune(
       // 個数を手で入れていない（自動の値）なら、戻すものが無い
       if (row.boostOrExpAdjustment === undefined) return { state };
       return advanced(state, { rows: replaceRowAt(state.rows, index, deps.withBoostCandyReset(row, state.rows)) });
+    }
+  }
+}
+
+/** 設定欄の op。行を変えるのは既定のアメブ目標Lv（自動の行を配り直す）と、それを戻す設定のリセットだけ */
+function reduceSettings(
+  base: FineTuneBase,
+  state: FineTuneState,
+  op: FineTuneSettingsOp,
+  deps: Pick<FineTuneDeps, "withDefaultBoostReachLevelRows">,
+): FineTuneReduceResult {
+  const current = settingsValueOf(base, state);
+  switch (op.kind) {
+    case "minimizeBoostSet": {
+      if (op.on === current.minimizeBoost) return { state };
+      return advanced(state, { settings: withSetting(base, state.settings, "minimizeBoost", op.on) });
+    }
+    case "defaultBoostLevelSet": {
+      if (op.level !== null && !Number.isFinite(op.level)) return { rejected: "invalidValue" };
+      // 計算機の設定と同じく、1 未満は「目標Lvと同じ」、70 より上は 70
+      const level = normalizeDefaultBoostReachLevel(op.level);
+      if (level === current.defaultBoostReachLevel) return { state };
+      const rows = preferBaseRows(base.rows, deps.withDefaultBoostReachLevelRows(state.rows, level));
+      return advanced(state, { rows, settings: withSetting(base, state.settings, "defaultBoostReachLevel", level) });
+    }
+    case "shardsSet": {
+      if (!Number.isFinite(op.count)) return { rejected: "invalidValue" };
+      const count = clampToRange(op.count, { min: 0, max: SHARDS_MAX });
+      if (count === current.totalShards) return { state };
+      return advanced(state, { settings: withSetting(base, state.settings, "totalShards", count) });
+    }
+    case "universalCandySet": {
+      if (!Number.isFinite(op.count)) return { rejected: "invalidValue" };
+      const count = clampToRange(op.count, { min: 0, max: UNIVERSAL_CANDY_MAX });
+      if (count === current.universalCandy[op.size]) return { state };
+      const next = { ...current.universalCandy, [op.size]: count };
+      return advanced(state, { settings: withSetting(base, state.settings, "universalCandy", next) });
+    }
+    case "settingsReset": {
+      if (Object.keys(state.settings).length === 0) return { state };
+      // 既定のアメブ目標Lvを変えていたら、自動の行を開いた時点の設定で配り直す
+      const rows = state.settings.defaultBoostReachLevel === undefined
+        ? state.rows
+        : preferBaseRows(base.rows, deps.withDefaultBoostReachLevelRows(state.rows, base.settings.defaultBoostReachLevel, base.settings));
+      return advanced(state, { rows, settings: {} });
     }
   }
 }

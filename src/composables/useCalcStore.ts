@@ -327,6 +327,20 @@ export type EvaluatedRow = {
  */
 export type SpeciesCandyOverride = Readonly<Record<string, number>>;
 
+/**
+ * 計算に効く全体の設定と在庫のうち、シンプルの設定欄で動かすもの（開いた時点の値）。
+ * `defaultBoostReachLevel` の null は「目標Lvと同じ」。
+ */
+export interface CalcSettingsSnapshot {
+  minimizeBoost: boolean;
+  defaultBoostReachLevel: number | null;
+  totalShards: number;
+  universalCandy: UniversalCandyInventory;
+}
+
+/** シンプルの下書きで変えた設定（変えたものだけ）。評価のときだけ計算機の値の代わりに使う。 */
+export type CalcSettingsOverride = Readonly<Partial<CalcSettingsSnapshot>>;
+
 /** シンプルの下書きで行の個体（現在Lv・あとEXP）を変えるときの値。キーが無い項目は変えない。 */
 export type RowIndividualPatch = { level?: number; expRemaining?: number };
 
@@ -496,7 +510,20 @@ export type CalcStore = {
    * 渡された行一覧を、保存されたとおりに評価する。行を書き換えない（正規化しない）。
    * `speciesCandy` を渡すと、その進化系の種族アメの在庫をその数として評価する（シンプルの下書き）。
    */
-  evaluateRows: (rowList: readonly CalcRow[], options?: { speciesCandy?: SpeciesCandyOverride }) => EvaluatedRows;
+  evaluateRows: (rowList: readonly CalcRow[], options?: { speciesCandy?: SpeciesCandyOverride; settings?: CalcSettingsOverride }) => EvaluatedRows;
+  /** シンプルの設定欄の、今の計算機の値 */
+  settingsSnapshot: () => CalcSettingsSnapshot;
+  /**
+   * `fn` の中だけ、全体の設定（最小限のアメブ・既定のアメブ目標Lv）を `override` の値として読む（シンプルの下書き）。
+   * 計算機の値・表示は変えない。入れ子にすると内側の値が勝つ。
+   */
+  withSettingsOverride: <T>(override: CalcSettingsOverride | undefined, fn: () => T) => T;
+  /**
+   * 既定のアメブ目標Lvを `level` にしたとき、自動の行（アメブ個数を手で入れておらず、アメブ目標Lvも選んでいない行）を
+   * 上から順に「再計算」と同じ手順で配り直した行一覧。ほかの行と、変わらない行は同じ参照のまま。
+   * `settings` はその間に使うほかの設定（入れ子の `withSettingsOverride` の内側に重ねる）。
+   */
+  withDefaultBoostReachLevelRows: (rowList: readonly CalcRow[], level: number | null, settings?: CalcSettingsOverride) => readonly CalcRow[];
   /**
    * 計算機の現在Lv・あとEXPの欄で入れたときと同じ行一覧を返す（個体を変えたときの同期 `rowsAfterIndividualChange` と同じ規則）。
    * 現在Lvは 1〜目標Lv、あとEXPは 0〜次Lvまで（0 と次Lvまで全部は「未設定」）に収める。変わらなければ同じ配列を返す。
@@ -545,6 +572,8 @@ export type CalcStore = {
   applyFineTuneDraft: (input: {
     rows: readonly CalcRow[];
     speciesCandy: SpeciesCandyOverride;
+    /** 変えた設定（最小限のアメブ・既定のアメブ目標Lv・かけら在庫・万能アメ在庫）。同じ1件の履歴に入る */
+    settings?: CalcSettingsOverride;
     label: string;
     expectedBase: readonly CalcRow[];
   }) => boolean;
@@ -664,6 +693,24 @@ export function useCalcStore(opts: {
    */
   const defaultBoostReachLevel = ref<number | null>(loadDefaultBoostReachLevel());
   const minimizeBoost = ref(loadMinimizeBoost());
+
+  /**
+   * シンプルの下書きの設定。`withSettingsOverride` の中だけ入り、最小限のアメブ・既定のアメブ目標Lvの読み出しを差し替える
+   * （かけら・万能アメの在庫は `plannerInputOf` へ引数で渡す）。リアクティブにしない。
+   */
+  let settingsOverride: CalcSettingsOverride | null = null;
+  /** 全体の最小限のアメブ（下書きの間は下書きの値）。計算機の値への依存は常に取る */
+  function minimizeBoostOn(): boolean {
+    const own = minimizeBoost.value;
+    return settingsOverride?.minimizeBoost ?? own;
+  }
+  /** 既定のアメブ目標Lv（下書きの間は下書きの値。null は「目標Lvと同じ」）。計算機の値への依存は常に取る */
+  function defaultBoostReachLevelOn(): number | null {
+    const own = defaultBoostReachLevel.value;
+    return settingsOverride !== null && settingsOverride.defaultBoostReachLevel !== undefined
+      ? settingsOverride.defaultBoostReachLevel
+      : own;
+  }
 
   // 睡眠育成設定
   const sleepSettings = ref<SleepSettings>(loadSleepSettings());
@@ -908,7 +955,7 @@ export function useCalcStore(opts: {
     const cap = r.candyTarget !== undefined
       ? MAX_LEVEL
       : r.dstLevel;
-    const preferred = defaultBoostReachLevel.value ?? cap;
+    const preferred = defaultBoostReachLevelOn() ?? cap;
     return clampInt(Math.min(preferred, cap), r.srcLevel, MAX_LEVEL, r.srcLevel);
   }
 
@@ -939,7 +986,7 @@ export function useCalcStore(opts: {
     | undefined {
     const kind = canMinimizeBoostRow(row);
     if (
-      !(minimizeBoost.value || row.boostMinimizeRow === true)
+      !(minimizeBoostOn() || row.boostMinimizeRow === true)
       || row.boostOrExpAdjustment !== undefined
       || row.boostReachAuto === false
       || kind === undefined
@@ -2937,7 +2984,7 @@ export function useCalcStore(opts: {
 
   /** `canSetRowMinimizeBoost` の行そのものを受け取る版（下書きの行で判定する）。 */
   function canMinimizeBoostFor(row: CalcRow): boolean {
-    return !minimizeBoost.value
+    return !minimizeBoostOn()
       && canMinimizeBoostRow(row) !== undefined
       && !isBoostInputDisabledBySleep(row);
   }
@@ -3450,8 +3497,19 @@ export function useCalcStore(opts: {
    * 種族アメの取り分・最小化の実効アメブ・在庫のみの行の上限は、渡された行一覧の順番で出す。
    * `rowsView` と `buildPlannerInput()` は同じ導出（`rowViewsOf` / `plannerInputOf`）を `rows.value` で通す。
    */
-  function evaluateRows(rowList: readonly CalcRow[], options: { speciesCandy?: SpeciesCandyOverride } = {}): EvaluatedRows {
-    const stock = walkStockCandyAllocation(rowList, options.speciesCandy);
+  function evaluateRows(
+    rowList: readonly CalcRow[],
+    options: { speciesCandy?: SpeciesCandyOverride; settings?: CalcSettingsOverride } = {},
+  ): EvaluatedRows {
+    return withSettingsOverride(options.settings, () => evaluateRowsNow(rowList, options.speciesCandy, options.settings));
+  }
+
+  function evaluateRowsNow(
+    rowList: readonly CalcRow[],
+    speciesCandy: SpeciesCandyOverride | undefined,
+    settings: CalcSettingsOverride | undefined,
+  ): EvaluatedRows {
+    const stock = walkStockCandyAllocation(rowList, speciesCandy);
     const views = rowViewsOf(rowList, stock);
     const byId = new Map<string, EvaluatedRow>();
     rowList.forEach((r, i) => {
@@ -3468,7 +3526,56 @@ export function useCalcStore(opts: {
         ...minimizeShortageOf(r, stock),
       });
     });
-    return { byId, plannerInput: plannerInputOf(views, stock, options.speciesCandy) };
+    return { byId, plannerInput: plannerInputOf(views, stock, speciesCandy, settings) };
+  }
+
+  function settingsSnapshot(): CalcSettingsSnapshot {
+    return {
+      minimizeBoost: minimizeBoost.value,
+      defaultBoostReachLevel: defaultBoostReachLevel.value,
+      totalShards: shardsCap.value,
+      universalCandy: { ...candyStore.universalCandy.value },
+    };
+  }
+
+  function withSettingsOverride<T>(override: CalcSettingsOverride | undefined, fn: () => T): T {
+    if (override === undefined || Object.keys(override).length === 0) return fn();
+    // 差し替える前に、計算機の computed（最小限のアメブを読む在庫の割り当てと行の表示）を最新にしておく。
+    // 差し替えた間に計算し直されると、下書きの設定で求めた値が計算機の表示に残る。シンプルを開いている間は
+    // 計算機の行も設定も変わらないので、差し替えの間に古くなることはない
+    void rowsView.value;
+    const outer = settingsOverride;
+    settingsOverride = { ...outer, ...override };
+    try {
+      return fn();
+    } finally {
+      settingsOverride = outer;
+    }
+  }
+
+  /** 自動の行: アメブ個数を手で入れておらず、アメブ目標Lvも選んでいない、アメを配る行（個数指定でない） */
+  function isAutoBoostRow(row: CalcRow): boolean {
+    return row.boostOrExpAdjustment === undefined
+      && row.boostReachAuto !== false
+      && row.candyTarget === undefined
+      && sleepTargetTraits(row).candy !== "none";
+  }
+
+  function withDefaultBoostReachLevelRows(
+    rowList: readonly CalcRow[],
+    level: number | null,
+    settings: CalcSettingsOverride = {},
+  ): readonly CalcRow[] {
+    return withSettingsOverride({ ...settings, defaultBoostReachLevel: normalizeDefaultBoostReachLevel(level) }, () => {
+      let out: readonly CalcRow[] = rowList;
+      for (const row of rowList) {
+        if (!isAutoBoostRow(row)) continue;
+        const current = out.find((r) => r.id === row.id) ?? row;
+        const next = withBoostCandyReset(current, out);
+        if (JSON.stringify(next) !== JSON.stringify(current)) out = out.map((r) => (r.id === row.id ? next : r));
+      }
+      return out;
+    });
   }
 
   /** 解決済みの個体と同じ読み方のあとEXP（0 と次Lv以上は「次Lvまで全部」= 次Lvまでの EXP）。 */
@@ -3502,6 +3609,7 @@ export function useCalcStore(opts: {
   function applyFineTuneDraft(input: {
     rows: readonly CalcRow[];
     speciesCandy: SpeciesCandyOverride;
+    settings?: CalcSettingsOverride;
     label: string;
     expectedBase: readonly CalcRow[];
   }): boolean {
@@ -3516,10 +3624,29 @@ export function useCalcStore(opts: {
       return [{ boxId: row.boxId!, level: row.srcLevel, expRemaining: row.expRemaining >= toNext ? undefined : row.expRemaining }];
     });
     const stockEdits = Object.entries(input.speciesCandy).filter(([key, count]) => speciesCandyStockOf(key) !== count);
+    const settings = input.settings ?? {};
     const scopes: HistoryScope[] = ["rows"];
     if (individualEdits.length) scopes.push("box");
-    if (stockEdits.length) scopes.push("candyInventory");
+    if (stockEdits.length || settings.universalCandy !== undefined) scopes.push("candyInventory");
+    if (settings.minimizeBoost !== undefined) scopes.push("minimizeBoost");
+    if (settings.defaultBoostReachLevel !== undefined) scopes.push("defaultBoostReachLevel");
+    if (settings.totalShards !== undefined) scopes.push("totalShards");
     history.recordAsOne(scopes, () => {
+      // 何かを書く前に記録する（まとめる1件は最初の記録の時点を戻す先にする。設定は記録を伴わずに書くので先に撮る）
+      history.record(label, scopes);
+      // 設定を先に書き、最後に下書きの行一覧で揃える（既定のアメブ目標Lvで配り直した行は、下書きの行のまま入る）
+      if (settings.minimizeBoost !== undefined) minimizeBoost.value = settings.minimizeBoost;
+      if (settings.defaultBoostReachLevel !== undefined) {
+        defaultBoostReachLevel.value = normalizeDefaultBoostReachLevel(settings.defaultBoostReachLevel);
+      }
+      if (settings.totalShards !== undefined) {
+        totalShards.value = clampNonNegInt(settings.totalShards);
+        totalShardsText.value = fmtNum(totalShards.value);
+      }
+      if (settings.universalCandy !== undefined) {
+        beginUndo(label, ["candyInventory"]);
+        candyStore.updateUniversalCandy(settings.universalCandy);
+      }
       // 個体を先に書く（同期で行が変わる）。最後に下書きの行一覧で揃える
       for (const edit of individualEdits) {
         individuals.updateIndividual(edit.boxId, { level: edit.level, expRemaining: edit.expRemaining }, { label });
@@ -4073,14 +4200,19 @@ export function useCalcStore(opts: {
     views: ReturnType<typeof rowViewsOf>,
     stock: StockCandyAllocation,
     speciesOverride?: SpeciesCandyOverride,
+    settings?: CalcSettingsOverride,
   ): LevelPlannerInput | null {
     const candyInventory = candyStore.getInventory();
     if (speciesOverride !== undefined) {
       for (const [key, count] of Object.entries(speciesOverride)) candyInventory.species[key] = Math.max(0, Math.floor(count));
     }
+    if (settings?.universalCandy !== undefined) {
+      const { s, m, l } = settings.universalCandy;
+      candyInventory.universal = { s: clampNonNegInt(s), m: clampNonNegInt(m), l: clampNonNegInt(l) };
+    }
     return buildLevelPlannerInput(views.map(row => plannerRowDtoOf(row, stock)), {
       candyInventory,
-      dreamShards: shardsCap.value,
+      dreamShards: settings?.totalShards !== undefined ? clampNonNegInt(settings.totalShards) : shardsCap.value,
       boost: {
         kind: boostKind.value,
         limit: boostCandyRemaining.value ?? boostCandyDefaultCap.value,
@@ -4759,6 +4891,9 @@ export function useCalcStore(opts: {
     nudgeBoostLevel,
     setDstLevel,
     evaluateRows,
+    settingsSnapshot,
+    withSettingsOverride,
+    withDefaultBoostReachLevelRows,
     withRowIndividual,
     canEditIndividual,
     speciesCandyFamilyOf: getRowCandyFamilyKey,

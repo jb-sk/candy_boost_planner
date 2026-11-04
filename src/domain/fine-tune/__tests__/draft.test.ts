@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CalcRow, EvaluatedRows } from "../../../composables/useCalcStore";
+import type { CalcRow, CalcSettingsOverride, CalcSettingsSnapshot, EvaluatedRows } from "../../../composables/useCalcStore";
 import type { LevelPlannerResult } from "../../level-planner/types";
 import { maxLevel as MAX_LEVEL } from "../../pokesleep/tables";
 import {
@@ -12,6 +12,9 @@ import {
   opRange,
   reduceFineTune,
   rowExclusion,
+  settingsValueOf,
+  SHARDS_MAX,
+  UNIVERSAL_CANDY_MAX,
   type FineTuneBase,
   type FineTuneDeps,
   type FineTuneOp,
@@ -44,7 +47,12 @@ function makeRow(id: string, extra: Partial<CalcRow> = {}): CalcRow {
 
 /** 差し替えた deps。実効アメブは明示アメブ、個数は個数指定（無ければ info の need）をそのまま返す。 */
 function makeDeps(info: Record<string, RowInfo>) {
-  const calls = { explicit: 0, target: 0, boostLevel: 0 };
+  const calls = {
+    explicit: 0,
+    target: 0,
+    boostLevel: 0,
+    defaultLevel: [] as Array<{ level: number | null; settings: CalcSettingsOverride | undefined }>,
+  };
   const deps: FineTuneDeps = {
     evaluateRows(rowList): EvaluatedRows {
       const byId: EvaluatedRows["byId"] = new Map();
@@ -106,6 +114,13 @@ function makeDeps(info: Record<string, RowInfo>) {
     withBoostCandyReset(row) {
       return { ...row, boostOrExpAdjustment: undefined };
     },
+    /** 自動の行（個数もアメブ目標Lvも選んでいない・個数指定でない行）だけ、アメブ目標Lvを新しい既定（無ければ目標Lv）にする */
+    withDefaultBoostReachLevelRows(rowList, level, settings) {
+      calls.defaultLevel.push({ level, settings });
+      return rowList.map((r) => (r.boostOrExpAdjustment === undefined && r.boostReachAuto !== false && r.candyTarget === undefined
+        ? { ...r, boostReachLevel: Math.min(level ?? r.dstLevel, r.dstLevel) }
+        : r));
+    },
     /** 現在Lvは 1〜目標Lv、あとEXPは 1〜100（0 は 100）。Lv を変えると個数指定が外れ、あとEXPは 100 に戻る */
     withRowIndividual(rowList, rowId, patch) {
       const row = rowList.find((r) => r.id === rowId)!;
@@ -131,6 +146,9 @@ function makeDeps(info: Record<string, RowInfo>) {
   return { deps, calls };
 }
 
+/** 開いた時点の設定（テスト用） */
+const BASE_SETTINGS: CalcSettingsSnapshot = { minimizeBoost: false, defaultBoostReachLevel: null, totalShards: 1000, universalCandy: { s: 1, m: 2, l: 3 } };
+
 function resultOf(): LevelPlannerResult {
   return { pokemonResults: [] } as unknown as LevelPlannerResult;
 }
@@ -142,6 +160,7 @@ function setup(rows: CalcRow[], info: Record<string, RowInfo>, boostLimit = 1000
     evaluated: deps.evaluateRows(rows),
     result: resultOf(),
     boostLimit,
+    settings: BASE_SETTINGS,
   };
   const run = (state: FineTuneState, op: FineTuneOp) =>
     reduceFineTune(base, state, op, deps, deps.evaluateRows(state.rows));
@@ -295,6 +314,99 @@ describe("reduceFineTune: アメブ目標Lv（boostLevelSet）", () => {
   it("履歴でまとめる相手は行ごとのアメブ目標Lv（アメブの個数とは別）", () => {
     expect(coalesceKeyOf({ kind: "boostLevelSet", rowId: "a", level: 30 })).toBe("boostLevel:a");
     expect(coalesceKeyOf({ kind: "set", rowId: "a", boost: 30 })).toBe("boost:a");
+  });
+});
+
+describe("reduceFineTune: 設定欄（最小限のアメブ・既定のアメブ目標Lv・かけら・万能アメ）", () => {
+  const rows = () => [
+    makeRow("auto", { dstLevel: 60, boostReachLevel: 60 }),
+    makeRow("manual", { dstLevel: 60, boostReachLevel: 60, boostOrExpAdjustment: 30 }),
+    makeRow("picked", { dstLevel: 60, boostReachLevel: 45, boostReachAuto: false }),
+  ];
+  const info = { auto: { full: 100, need: 100 }, manual: { full: 100, need: 100 }, picked: { full: 100, need: 100 } };
+
+  it("変えた設定だけを下書きに持ち、開いた時点と同じ値に戻すと消える（行は変えない）", () => {
+    const t = setup(rows(), info);
+    const shards = t.ok(t.initial, { kind: "shardsSet", count: 5000 });
+    expect(shards.settings).toEqual({ totalShards: 5000 });
+    expect(shards.rows).toBe(t.initial.rows);
+    expect(isDraftEmpty(t.base, shards)).toBe(false);
+    expect(settingsValueOf(t.base, shards)).toEqual({ ...BASE_SETTINGS, totalShards: 5000 });
+    const back = t.ok(shards, { kind: "shardsSet", count: BASE_SETTINGS.totalShards });
+    expect(back.settings).toEqual({});
+    expect(isDraftEmpty(t.base, back)).toBe(true);
+
+    const universal = t.ok(t.initial, { kind: "universalCandySet", size: "m", count: 20 });
+    expect(universal.settings).toEqual({ universalCandy: { s: 1, m: 20, l: 3 } });
+    expect(t.ok(universal, { kind: "universalCandySet", size: "m", count: 2 }).settings).toEqual({});
+
+    const minimized = t.ok(t.initial, { kind: "minimizeBoostSet", on: true });
+    expect(minimized.settings).toEqual({ minimizeBoost: true });
+    expect(minimized.rows).toBe(t.initial.rows);
+    // 同じ値は下書きを変えない
+    expect(t.run(minimized, { kind: "minimizeBoostSet", on: true })).toEqual({ state: minimized });
+  });
+
+  it("かけら・万能アメは範囲に収める（0〜上限、整数）。数でない値は invalidValue", () => {
+    const t = setup(rows(), info);
+    expect(t.ok(t.initial, { kind: "shardsSet", count: -5 }).settings).toEqual({ totalShards: 0 });
+    expect(t.ok(t.initial, { kind: "shardsSet", count: SHARDS_MAX + 10 }).settings).toEqual({ totalShards: SHARDS_MAX });
+    expect(t.ok(t.initial, { kind: "universalCandySet", size: "s", count: 12.7 }).settings).toEqual({ universalCandy: { s: 12, m: 2, l: 3 } });
+    expect(t.ok(t.initial, { kind: "universalCandySet", size: "l", count: UNIVERSAL_CANDY_MAX + 1 }).settings.universalCandy?.l).toBe(UNIVERSAL_CANDY_MAX);
+    expect(t.run(t.initial, { kind: "shardsSet", count: Number.NaN })).toEqual({ rejected: "invalidValue" });
+    expect(t.run(t.initial, { kind: "universalCandySet", size: "s", count: Number.NaN })).toEqual({ rejected: "invalidValue" });
+  });
+
+  it("既定のアメブ目標Lvは、自動の行だけをすぐ新しい既定で配り直す（手で入れた行・アメブ目標Lvを選んだ行はそのまま）", () => {
+    const t = setup(rows(), info);
+    const out = t.ok(t.initial, { kind: "defaultBoostLevelSet", level: 40 });
+    expect(out.settings).toEqual({ defaultBoostReachLevel: 40 });
+    expect(out.rows[0]).toMatchObject({ id: "auto", boostReachLevel: 40 });
+    expect(out.rows[1]).toBe(t.initial.rows[1]);
+    expect(out.rows[2]).toBe(t.initial.rows[2]);
+    expect(t.calls.defaultLevel.at(-1)).toEqual({ level: 40, settings: undefined });
+    // 計算機の設定と同じく、1 未満は「目標Lvと同じ」（null）、70 より上は 70
+    expect(t.ok(t.initial, { kind: "defaultBoostLevelSet", level: 99 }).settings).toEqual({ defaultBoostReachLevel: MAX_LEVEL });
+    expect(t.run(t.initial, { kind: "defaultBoostLevelSet", level: 0 })).toEqual({ state: t.initial });
+    expect(t.run(t.initial, { kind: "defaultBoostLevelSet", level: Number.NaN })).toEqual({ rejected: "invalidValue" });
+  });
+
+  it("既定のアメブ目標Lvを開いた時点の値へ戻すと、配り直した行は開いた時点の行（同じ参照）に戻り、下書きは空になる", () => {
+    const t = setup(rows(), info);
+    const changed = t.ok(t.initial, { kind: "defaultBoostLevelSet", level: 40 });
+    const back = t.ok(changed, { kind: "defaultBoostLevelSet", level: null });
+    expect(back.rows[0]).toBe(t.initial.rows[0]);
+    expect(back.settings).toEqual({});
+    expect(isDraftEmpty(t.base, back)).toBe(true);
+  });
+
+  it("設定のリセットは、設定を開いた時点へ戻し、既定のアメブ目標Lvで配り直した行も開いた時点の設定で配り直す", () => {
+    const t = setup(rows(), info);
+    let s = t.ok(t.initial, { kind: "defaultBoostLevelSet", level: 40 });
+    s = t.ok(s, { kind: "shardsSet", count: 9999 });
+    s = t.ok(s, { kind: "minimizeBoostSet", on: true });
+    const reset = t.ok(s, { kind: "settingsReset" });
+    expect(reset.settings).toEqual({});
+    expect(reset.rows[0]).toBe(t.initial.rows[0]);
+    expect(isDraftEmpty(t.base, reset)).toBe(true);
+    expect(t.calls.defaultLevel.at(-1)).toEqual({ level: null, settings: BASE_SETTINGS });
+    // 変えていなければ何もしない
+    expect(t.run(t.initial, { kind: "settingsReset" })).toEqual({ state: t.initial });
+  });
+
+  it("履歴でまとめる相手: かけら・万能アメ（大きさごと）・既定のアメブ目標Lv。最小限のアメブとリセットはまとめない", () => {
+    expect(coalesceKeyOf({ kind: "shardsSet", count: 1 })).toBe("settings:shards");
+    expect(coalesceKeyOf({ kind: "universalCandySet", size: "s", count: 1 })).toBe("settings:universal:s");
+    expect(coalesceKeyOf({ kind: "defaultBoostLevelSet", level: 30 })).toBe("settings:defaultBoostLevel");
+    expect(coalesceKeyOf({ kind: "minimizeBoostSet", on: true })).toBeUndefined();
+    expect(coalesceKeyOf({ kind: "settingsReset" })).toBeUndefined();
+  });
+
+  it("設定だけ違う下書きは、中身が違う（履歴に記録する）", () => {
+    const t = setup(rows(), info);
+    const a = t.ok(t.initial, { kind: "universalCandySet", size: "s", count: 5 });
+    expect(isSameDraftContent(a, t.initial)).toBe(false);
+    expect(isSameDraftContent(a, { ...a, version: a.version + 1 })).toBe(true);
   });
 });
 

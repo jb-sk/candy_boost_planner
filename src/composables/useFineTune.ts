@@ -14,6 +14,7 @@ import {
   isDraftEmpty,
   isSameDraftContent,
   reduceFineTune,
+  settingsValueOf,
   type FineTuneBase,
   type FineTuneDeps,
   type FineTuneLatest,
@@ -36,7 +37,7 @@ import {
   type FineTuneSummary,
 } from "../domain/fine-tune/rowView";
 import { createPlannerRunner, type PlannerRunner } from "../workers/plannerRunner";
-import type { CalcRow, CalcStore } from "./useCalcStore";
+import type { CalcRow, CalcSettingsOverride, CalcSettingsSnapshot, CalcStore } from "./useCalcStore";
 import type { HistoryControls, HistoryRecordOptions } from "./useHistory";
 
 /** プレビューを間引く待ち時間（通常の計算は 150ms） */
@@ -71,21 +72,30 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
   const runner = (options.createRunner ?? createPlannerRunner)();
   const resumeGameDate = calc.holdGameDate();
 
+  /**
+   * 計算機の関数は、今の下書きの設定（設定欄で変えた最小限のアメブ・既定のアメブ目標Lv・かけら・万能アメ）で呼ぶ。
+   * 設定を変えていなければそのまま呼ぶ
+   */
+  const draftSettings = (): CalcSettingsOverride | undefined => state.value?.settings;
+  function inDraft<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+    return (...args) => calc.withSettingsOverride(draftSettings(), () => fn(...args));
+  }
   const deps: FineTuneDeps = {
-    evaluateRows: (rowList, speciesCandy) => calc.evaluateRows(rowList, { speciesCandy }),
-    withRowIndividual: calc.withRowIndividual,
+    evaluateRows: (rowList, speciesCandy) => calc.evaluateRows(rowList, { speciesCandy, settings: draftSettings() }),
+    withRowIndividual: inDraft(calc.withRowIndividual),
     canEditIndividual: calc.canEditIndividual,
     speciesCandyFamilyOf: calc.speciesCandyFamilyOf,
     speciesCandyStockOf: calc.speciesCandyStockOf,
-    withExplicitBoost: calc.withExplicitBoost,
-    withBoostReachLevel: calc.withBoostReachLevel,
-    withTargetLevel: calc.withTargetLevel,
-    withCandyTarget: calc.withCandyTarget,
-    maxCandyTargetFor: calc.maxCandyTargetFor,
-    withSleepTarget: calc.withSleepTarget,
-    withMinimizeBoost: calc.withMinimizeBoost,
-    canMinimizeBoostFor: calc.canMinimizeBoostFor,
-    withBoostCandyReset: calc.withBoostCandyReset,
+    withExplicitBoost: inDraft(calc.withExplicitBoost),
+    withBoostReachLevel: inDraft(calc.withBoostReachLevel),
+    withTargetLevel: inDraft(calc.withTargetLevel),
+    withCandyTarget: inDraft(calc.withCandyTarget),
+    maxCandyTargetFor: inDraft(calc.maxCandyTargetFor),
+    withSleepTarget: inDraft(calc.withSleepTarget),
+    withMinimizeBoost: inDraft(calc.withMinimizeBoost),
+    canMinimizeBoostFor: inDraft(calc.canMinimizeBoostFor),
+    withBoostCandyReset: inDraft(calc.withBoostCandyReset),
+    withDefaultBoostReachLevelRows: inDraft(calc.withDefaultBoostReachLevelRows),
   };
 
   // 状態は shallowRef で持つ。行の参照を比べて変更を見分けるので、リアクティブな包みを被せない
@@ -110,6 +120,7 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
       evaluated: calc.evaluateRows(rows),
       result: toRaw(result),
       boostLimit: calc.boostCandyCap.value,
+      settings: calc.settingsSnapshot(),
     };
     base.value = captured;
     const initial = initialFineTuneState(captured, 0);
@@ -129,6 +140,12 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     return isDraftEmpty(b, s) ? b.evaluated : deps.evaluateRows(s.rows, s.speciesCandy);
   });
   const isEmpty = computed(() => (base.value !== null && state.value !== null ? isDraftEmpty(base.value, state.value) : true));
+  /** 設定欄の値（下書きで効いている値と、開いた時点の値） */
+  const settings = computed<{ value: CalcSettingsSnapshot; base: CalcSettingsSnapshot } | null>(() => {
+    const b = base.value;
+    const s = state.value;
+    return b === null || s === null ? null : { value: settingsValueOf(b, s), base: b.settings };
+  });
 
   // ===== プレビュー =====
   let previewTimer: ReturnType<typeof setTimeout> | null = null;
@@ -401,8 +418,14 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     const s = state.value;
     if (b === null || s === null) return "notReady";
     if (isDraftEmpty(b, s)) return "empty";
-    // 現在Lv・あとEXP・在庫を変えていれば、個体・在庫へも書く（元に戻す1回で全部戻る）
-    const ok = calc.applyFineTuneDraft({ rows: s.rows, speciesCandy: s.speciesCandy, label: options.t("calc.undoLabel.fineTune"), expectedBase: b.rows });
+    // 現在Lv・あとEXP・在庫・設定を変えていれば、個体・在庫・設定へも書く（元に戻す1回で全部戻る）
+    const ok = calc.applyFineTuneDraft({
+      rows: s.rows,
+      speciesCandy: s.speciesCandy,
+      settings: s.settings,
+      label: options.t("calc.undoLabel.fineTune"),
+      expectedBase: b.rows,
+    });
     if (!ok) {
       if (import.meta.env.DEV) console.error("[fine-tune] 計算機の内容が開いた時点から変わっているため、適用しませんでした");
       return "stale";
@@ -431,6 +454,7 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     previewing,
     previewFailed,
     isEmpty,
+    settings,
     hasBoost,
     history: historyControls,
     rowViews,

@@ -23,7 +23,8 @@ import { vKeypad } from "../composables/useNumericKeypad";
 import type { HistoryRecordOptions } from "../composables/useHistory";
 
 const props = defineProps<{
-  modelValue: number;
+  /** 選んでいる Lv。`placeholder` を渡す欄だけ null（空欄。「目標Lvと同じ」など）を受け取る */
+  modelValue: number | null;
   label?: string; // Title inside popover
   min?: number;
   max?: number;
@@ -62,6 +63,11 @@ const props = defineProps<{
    * 下に入らなければ上へ出す（シンプルの操作パネル: モーダルの下端で切れないようにする）。
    */
   boundary?: string;
+  /**
+   * 空欄を許す欄（シンプルの既定のアメブ目標Lv）。modelValue が null のときに入力欄へ薄く出す文言。
+   * 空欄で確定すると `clear` を投げる（テンキーでは「デフォルト」の札と一緒に出す）。
+   */
+  placeholder?: string;
 }>();
 
 const emit = defineEmits<{
@@ -72,6 +78,8 @@ const emit = defineEmits<{
   (e: "update:modelValue", value: number, coalesce?: Required<HistoryRecordOptions>): void;
   /** `canExceedMax` のとき、上限より上へ上げようとした */
   (e: "exceedMax"): void;
+  /** `placeholder` のある欄を空欄で確定した（null へ戻す） */
+  (e: "clear"): void;
   /** 開閉。親が開いている間だけ重なり順を上げるのに使う（CSS の :has() は iOS 15.4・Chrome 105 からなので使わない） */
   (e: "update:open", open: boolean): void;
 }>();
@@ -84,7 +92,12 @@ const root = ref<HTMLElement | null>(null);
 const popoverStyle = ref<Record<string, string>>({});
 const presets = [10, 25, 30, 40, 50, 55, 60, 65, MAX_LEVEL];
 
-const inputValue = ref(String(props.modelValue));
+/** 空欄（null）は欄に何も出さない */
+const textOf = (v: number | null) => (v === null ? "" : String(v));
+/** スライダー・◀ ▶ が動き始める Lv。空欄（null）は上限から */
+const currentLevel = computed(() => props.modelValue ?? (props.max ?? MAX_LEVEL));
+
+const inputValue = ref(textOf(props.modelValue));
 const isEditing = ref(false);
 
 /** 上限を超える操作をした（＝理由を知りたがっている）。閉じるまで案内を出し続ける。 */
@@ -101,7 +114,7 @@ const bumpedAgainstMax = ref(false);
  */
 const showNote = computed(() =>
   Boolean(props.note)
-  && (props.disabled || props.modelValue >= (props.max ?? MAX_LEVEL) || bumpedAgainstMax.value)
+  && (props.disabled || currentLevel.value >= (props.max ?? MAX_LEVEL) || bumpedAgainstMax.value)
 );
 
 /** 上限を超える要求だったかを記録する。スライダー・±・チップ・直接入力の全経路から呼ぶ。 */
@@ -110,7 +123,7 @@ function noteIfOverMax(requested: number) {
 }
 
 watch(() => props.modelValue, (v) => {
-  if (!isEditing.value) inputValue.value = String(v);
+  if (!isEditing.value) inputValue.value = textOf(v);
 });
 
 const EDGE_GAP = 8; // px from viewport edge
@@ -226,7 +239,7 @@ function update(v: number, coalesce?: Required<HistoryRecordOptions>) {
   const max = props.max ?? MAX_LEVEL;
   noteIfOverMax(v);
   if (v > max && props.canExceedMax) {
-    inputValue.value = String(props.modelValue);
+    inputValue.value = textOf(props.modelValue);
     emit("exceedMax");
     return;
   }
@@ -237,13 +250,13 @@ function update(v: number, coalesce?: Required<HistoryRecordOptions>) {
 }
 
 function nudge(delta: number) {
-  const base = isEditing.value ? commitInput() : props.modelValue;
+  const base = isEditing.value ? commitInput() : currentLevel.value;
   update(base + delta);
 }
 
 function effectiveInputNumber() {
   const n = parseInt(inputValue.value);
-  return isNaN(n) ? props.modelValue : n;
+  return isNaN(n) ? currentLevel.value : n;
 }
 
 function onInputFocus() {
@@ -254,16 +267,21 @@ function commitInput(): number {
   isEditing.value = false;
   const n = parseInt(inputValue.value);
   if (isNaN(n) || inputValue.value.trim() === "") {
-    inputValue.value = String(props.modelValue);
-    return props.modelValue;
+    // 空欄を許す欄は、空欄で確定すると null へ戻す
+    if (props.placeholder !== undefined && inputValue.value.trim() === "" && props.modelValue !== null) {
+      emit("clear");
+      return currentLevel.value;
+    }
+    inputValue.value = textOf(props.modelValue);
+    return currentLevel.value;
   }
   const lo = props.min ?? 1;
   const hi = props.max ?? MAX_LEVEL;
   noteIfOverMax(n);
   if (n > hi && props.canExceedMax) {
-    inputValue.value = String(props.modelValue);
+    inputValue.value = textOf(props.modelValue);
     emit("exceedMax");
-    return props.modelValue;
+    return currentLevel.value;
   }
   const clamped = Math.max(lo, Math.min(hi, n));
   inputValue.value = String(clamped);
@@ -315,7 +333,10 @@ onUnmounted(() => {
       data-testid="level-picker-trigger"
       :aria-label="label ?? 'Level'"
       :disabled="disabled"
-      v-keypad="keypad ? (label ?? '') : false"
+      v-keypad="keypad
+        ? (placeholder !== undefined ? { label: label ?? '', placeholder, placeholderChip: t('common.default') } : (label ?? ''))
+        : false"
+      :placeholder="placeholder"
       :value="inputValue"
       @focus="onInputFocus"
       @blur="onInputBlur"
@@ -373,7 +394,7 @@ onUnmounted(() => {
           :min="min ?? 1"
           :max="max ?? MAX_LEVEL"
           step="1"
-          :value="modelValue"
+          :value="currentLevel"
           :disabled="disabled"
           @pointerdown="endRangeGesture"
           @input="onRangeInput"

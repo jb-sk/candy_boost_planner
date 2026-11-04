@@ -98,7 +98,7 @@ function build(specs: Record<string, Spec>, over: Parameters<typeof summaryOf>[0
     pokemonResults: Object.entries(specs).map(([id, s]) => resultOf(id, s)),
     summary: summaryOf(over),
   } as unknown as LevelPlannerResult;
-  const base: FineTuneBase = { rows, evaluated, result, boostLimit };
+  const base: FineTuneBase = { rows, evaluated, result, boostLimit, settings: { minimizeBoost: false, defaultBoostReachLevel: null, totalShards: 0, universalCandy: { s: 0, m: 0, l: 0 } } };
   return { rows, evaluated, result, base, state: initialFineTuneState(base) };
 }
 

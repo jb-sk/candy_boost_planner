@@ -167,7 +167,11 @@ export const en = {
         sleep: "Sleep",
         boost: "Boost",
         candy: "Candy",
+        settings: "Settings",
       },
+      settingsMinimize: "Minimum boost",
+      settingsUniversal: "Handy {size}",
+      resetSettingsTitle: "Returns the settings to how they were when you opened this",
       sleepOption: {
         none: "Unset",
         all: "All",

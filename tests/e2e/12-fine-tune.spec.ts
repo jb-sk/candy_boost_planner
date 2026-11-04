@@ -871,6 +871,73 @@ test.describe('12-fine-tune（PC）', () => {
     expect(await calc.undoButton.isEnabled()).toBe(calcUndoEnabled);
   });
 
+  test('設定欄: 何も選んでいないときは設定欄（既定のアメブ目標Lv・最小限のアメブ・かけら・万能アメ）を出し、変えるとプレビューに効き、リセットで戻り、適用で計算機の設定へ移る', async ({ page }) => {
+    const { calc, fineTune } = await setupScenario(page, ALL_REACHED);
+    await fineTune.open();
+    await fineTune.waitForSettled();
+    const pikachu = fineTune.rowByName('ピカチュウ');
+    const boost = await fineTune.boostValue(pikachu);
+
+    // 刻みのボタンは出さず、設定欄を出す
+    await fineTune.expectIdle();
+    await expect(fineTune.editor.getByTestId('fine-tune-editor-step')).toHaveCount(0);
+    await expect(fineTune.editor.getByTestId('fine-tune-editor-settings-label')).toHaveText('設定');
+    await expect(fineTune.setting('shards')).toHaveValue('3,000,000');
+    await expect(fineTune.levelInput('defaultBoostLevel')).toHaveValue('');
+    await expect(fineTune.levelInput('defaultBoostLevel')).toHaveAttribute('placeholder', '目標Lvと同じ');
+    await expect(fineTune.resetEditButton).toBeDisabled();
+
+    // 既定のアメブ目標Lv: 自動の行をすぐ新しい既定で配り直す
+    await fineTune.typeLevel('defaultBoostLevel', 20);
+    await fineTune.waitForSettled();
+    expect(await fineTune.boostValue(pikachu)).toBeLessThan(boost);
+    // 空欄で確定すると「目標Lvと同じ」へ戻り、アメブも戻る
+    await fineTune.typeLevel('defaultBoostLevel', '');
+    await fineTune.waitForSettled();
+    await expect(fineTune.levelInput('defaultBoostLevel')).toHaveValue('');
+    expect(await fineTune.boostValue(pikachu)).toBe(boost);
+    await expect(fineTune.applyButton).toBeDisabled();
+
+    // かけらを減らすと、届かない行が出る。押した欄は打った値で置き換わる（区切りの前の数字に足さない）
+    const reachedBefore = await fineTune.reachedCount();
+    await fineTune.typeSetting('shards', 1000);
+    await expect(fineTune.setting('shards')).toHaveValue('1,000');
+    await fineTune.waitForSettled();
+    expect(await fineTune.reachedCount()).toBeLessThan(reachedBefore);
+    await fineTune.typeSetting('s', 5);
+    await expect(fineTune.setting('s')).toHaveValue('5');
+    await fineTune.settingsMinimizeButton.click();
+    await expect(fineTune.settingsMinimizeButton).toHaveAttribute('aria-pressed', 'true');
+
+    // リセットで設定を開いた時点へ戻す
+    await expect(fineTune.resetEditButton).toBeEnabled();
+    await fineTune.resetEditButton.click();
+    await expect(fineTune.setting('shards')).toHaveValue('3,000,000');
+    await expect(fineTune.setting('s')).toHaveValue('0');
+    await expect(fineTune.settingsMinimizeButton).toHaveAttribute('aria-pressed', 'false');
+    await expect(fineTune.applyButton).toBeDisabled();
+
+    // 適用: 計算機の設定・在庫が変わり、計算機の元に戻す1回で戻る
+    await fineTune.typeSetting('shards', 2_500_000);
+    await fineTune.typeSetting('m', 7);
+    await fineTune.typeLevel('defaultBoostLevel', 35);
+    await fineTune.waitForSettled();
+    await fineTune.apply();
+    await calc.waitForPlannerResult();
+    const settings = new SettingsModalPage(page);
+    await calc.clickSettings();
+    expect(await settings.getTotalShards()).toBe('2,500,000');
+    expect(await settings.getUniversalCandy('M')).toBe(7);
+    await expect(page.getByTestId('settings-default-boost-reach-input')).toHaveValue('35');
+    await settings.closeByButton();
+    await calc.clickUndo();
+    await calc.clickSettings();
+    expect(await settings.getTotalShards()).toBe('3,000,000');
+    expect(await settings.getUniversalCandy('M')).toBe(0);
+    await expect(page.getByTestId('settings-default-boost-reach-input')).toHaveValue('');
+    await settings.closeByButton();
+  });
+
   test('閉じる: Escape は先に調整バーを閉じ、下書きがあれば × と Escape で確認が出る。キャンセルは確認なしで変更を捨てて閉じる', async ({ page }) => {
     const { calc, fineTune } = await setupScenario(page, ALL_REACHED);
     await fineTune.open();

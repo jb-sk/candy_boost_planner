@@ -240,6 +240,28 @@ describe("useFineTune（設計書 §10.4）", () => {
     expect(fineTune.history.canUndo.value).toBe(false);
   });
 
+  it("設定欄: 設定を変えると下書きが空でなくなり、プレビューの入力に入る。設定のリセットで戻り、適用で計算機の設定へ移る", async () => {
+    const { store } = await makeStore();
+    const { fineTune } = open(store);
+    expect(fineTune.settings.value!.base).toEqual(store.settingsSnapshot());
+    fineTune.dispatch({ kind: "shardsSet", count: 4321 });
+    expect(fineTune.isEmpty.value).toBe(false);
+    expect(fineTune.settings.value!.value.totalShards).toBe(4321);
+    expect(fineTune.evaluated.value!.plannerInput!.dreamShards).toBe(4321);
+    // 元に戻す1回で戻る
+    fineTune.undo();
+    expect(fineTune.isEmpty.value).toBe(true);
+    fineTune.dispatch({ kind: "universalCandySet", size: "l", count: 7 });
+    fineTune.dispatch({ kind: "settingsReset" });
+    expect(fineTune.isEmpty.value).toBe(true);
+
+    fineTune.dispatch({ kind: "minimizeBoostSet", on: true });
+    fineTune.dispatch({ kind: "shardsSet", count: 4321 });
+    expect(fineTune.apply()).toBe("applied");
+    expect(store.minimizeBoost.value).toBe(true);
+    expect(store.totalShards.value).toBe(4321);
+  });
+
   it("元に戻す・やり直すは1件ずつで、ラベルは常に null、undo() は null を返す（D41）", async () => {
     const { store, a, b } = await makeStore();
     const { fineTune } = open(store);

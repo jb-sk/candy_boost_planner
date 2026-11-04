@@ -115,7 +115,7 @@ describe("advice: 本物のストアとソルバー", () => {
     const rows = state?.rows ?? store.rows.value;
     const evaluated = store.evaluateRows(rows);
     const solved = result ?? solveLevelPlan(evaluated.plannerInput!);
-    const base: FineTuneBase = { rows: store.rows.value, evaluated: store.evaluateRows(store.rows.value), result: solved, boostLimit };
+    const base: FineTuneBase = { rows: store.rows.value, evaluated: store.evaluateRows(store.rows.value), result: solved, boostLimit, settings: store.settingsSnapshot() };
     const current = state ?? initialFineTuneState(base);
     const ctx = createAdviceContext({
       deps: { evaluateRows: store.evaluateRows, withExplicitBoost: store.withExplicitBoost },

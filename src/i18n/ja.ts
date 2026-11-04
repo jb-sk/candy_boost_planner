@@ -166,7 +166,11 @@ export const ja = {
         sleep: "睡眠",
         boost: "アメブ",
         candy: "アメ",
+        settings: "設定",
       },
+      settingsMinimize: "最小限のアメブ",
+      settingsUniversal: "万能アメ{size}",
+      resetSettingsTitle: "設定を、開いた時点の値に戻します",
       sleepOption: {
         none: "未設定",
         all: "全て",

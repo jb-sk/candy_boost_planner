@@ -59,6 +59,7 @@ function depsOf(store: CalcStore): FineTuneDeps {
     withMinimizeBoost: store.withMinimizeBoost,
     canMinimizeBoostFor: store.canMinimizeBoostFor,
     withBoostCandyReset: store.withBoostCandyReset,
+    withDefaultBoostReachLevelRows: store.withDefaultBoostReachLevelRows,
   };
 }
 
@@ -70,6 +71,7 @@ function session(store: CalcStore, boostLimit = 5000) {
     evaluated: deps.evaluateRows(rows),
     result: { pokemonResults: [] } as unknown as LevelPlannerResult,
     boostLimit,
+    settings: store.settingsSnapshot(),
   };
   const ok = (state: FineTuneState, op: FineTuneOp): FineTuneState => {
     const out = reduceFineTune(base, state, op, deps, deps.evaluateRows(state.rows));
@@ -163,6 +165,75 @@ describe("reduceFineTune: 本物のストアを deps に渡す", () => {
     const back = s.ok(low, { kind: "targetSet", rowId: d, level: 60 });
     expect(rowOf(back.rows, d).dstLevel).toBe(60);
     expect(rowExclusion(rowOf(back.rows, d), s.deps.evaluateRows(back.rows))).toBeNull();
+  });
+
+  it("設定欄: 下書きの設定で評価すると、かけら・万能アメはプランナー入力に入り、最小限のアメブは実効アメブに効く。計算機の表示は変えない", () => {
+    const store = newStore(100_000);
+    const a = add(store, "a", 25, 10, 50);
+    candyStore.updateUniversalCandy({ s: 1, m: 2, l: 3 });
+    const before = store.evaluateRows(store.rows.value);
+    const viewBoost = () => store.rowsView.value.find((r) => r.id === a)!.ui.boostCandyInput;
+    const shownBefore = viewBoost();
+    expect(before.byId.get(a)!.effectiveBoost).toBeGreaterThan(0);
+
+    const drafted = store.evaluateRows(store.rows.value, {
+      settings: { totalShards: 1234, universalCandy: { s: 10, m: 20, l: 30 }, minimizeBoost: true },
+    });
+    expect(drafted.plannerInput!.dreamShards).toBe(1234);
+    expect(drafted.plannerInput!.candyInventory.universal).toEqual({ s: 10, m: 20, l: 30 });
+    // 種族アメが潤沢なので、最小限のアメブにするとアメブは減る
+    expect(drafted.byId.get(a)!.effectiveBoost).toBeLessThan(before.byId.get(a)!.effectiveBoost);
+    // 計算機の値・表示は変わらない
+    expect(store.minimizeBoost.value).toBe(false);
+    expect(viewBoost()).toBe(shownBefore);
+    expect(store.evaluateRows(store.rows.value).byId.get(a)!.effectiveBoost).toBe(before.byId.get(a)!.effectiveBoost);
+    expect(store.evaluateRows(store.rows.value).plannerInput!.candyInventory.universal).toEqual({ s: 1, m: 2, l: 3 });
+  });
+
+  it("設定欄: 既定のアメブ目標Lvを変えると、自動の行だけを「再計算」と同じ手順で配り直す（手で入れた行・アメブ目標Lvを選んだ行は同じ参照）", () => {
+    const store = newStore(100_000);
+    const auto = add(store, "auto", 25, 10, 60);
+    const manual = add(store, "manual", 25, 10, 60);
+    const picked = add(store, "picked", 25, 10, 60);
+    store.onRowBoostCandy(manual, "50");
+    store.setBoostLevel(picked, 45);
+    const rows = store.rows.value;
+    const next = store.withDefaultBoostReachLevelRows(rows, 30);
+    expect(rowOf(next, auto).boostReachLevel).toBe(30);
+    expect(rowOf(next, manual)).toBe(rowOf(rows, manual));
+    expect(rowOf(next, picked)).toBe(rowOf(rows, picked));
+    // 新しい既定で評価したアメブは、目標Lvまでより少ない
+    const evaluatedBefore = store.evaluateRows(rows).byId.get(auto)!.effectiveBoost;
+    expect(store.evaluateRows(next).byId.get(auto)!.effectiveBoost).toBeLessThan(evaluatedBefore);
+    // 計算機の設定は変えない
+    expect(store.defaultBoostReachLevel.value).toBeNull();
+    // 既定を変えなければ、どの行も同じ参照
+    expect(store.withDefaultBoostReachLevelRows(rows, null)).toEqual(rows);
+  });
+
+  it("設定欄: 適用すると、最小限のアメブ・既定のアメブ目標Lv・かけら・万能アメを書き、元に戻す1回で全部戻る", () => {
+    const store = newStore(100_000);
+    add(store, "a", 25, 10, 50);
+    candyStore.updateUniversalCandy({ s: 1, m: 2, l: 3 });
+    const shardsBefore = store.totalShards.value;
+    const rows = store.rows.value;
+    const ok = store.applyFineTuneDraft({
+      rows,
+      speciesCandy: {},
+      settings: { minimizeBoost: true, defaultBoostReachLevel: 40, totalShards: 777, universalCandy: { s: 4, m: 5, l: 6 } },
+      label: "fine-tune",
+      expectedBase: rows,
+    });
+    expect(ok).toBe(true);
+    expect(store.minimizeBoost.value).toBe(true);
+    expect(store.defaultBoostReachLevel.value).toBe(40);
+    expect(store.totalShards.value).toBe(777);
+    expect(candyStore.universalCandy.value).toEqual({ s: 4, m: 5, l: 6 });
+    store.undo();
+    expect(store.minimizeBoost.value).toBe(false);
+    expect(store.defaultBoostReachLevel.value).toBeNull();
+    expect(store.totalShards.value).toBe(shardsBefore);
+    expect(candyStore.universalCandy.value).toEqual({ s: 1, m: 2, l: 3 });
   });
 
   it("時間の睡眠目標の行の使うアメの数は、プランナーへ渡す総アメ数（睡眠EXPを引いた数）と同じ", () => {

@@ -21,13 +21,18 @@
         >{{ natureMark }}</span>
         <span v-if="fieldLabel !== null" class="fineTuneEditor__field">{{ fieldLabel }}</span>
         <span v-if="changeText !== null" class="fineTuneEditor__change" data-testid="fine-tune-editor-change">{{ changeText }}</span>
+      </template>
+      <!-- 何も選んでいないとき: 設定欄 -->
+      <span v-else-if="settings !== null" class="fineTuneEditor__field" data-testid="fine-tune-editor-settings-label">{{ t("calc.fineTune.field.settings") }}</span>
+      <template v-if="row !== null || settings !== null">
         <span class="fineTuneEditor__spacer"></span>
-        <!-- 選んだポケモンを、開いた時点の状態へまるごと戻す（どの欄で押しても同じ。選んだまま続けて動かせる） -->
+        <!-- 選んだポケモンを、開いた時点の状態へまるごと戻す（どの欄で押しても同じ。選んだまま続けて動かせる）。
+             何も選んでいないときは、設定を開いた時点の値へ戻す -->
         <button
           class="fineTuneEditor__resetEdit"
           type="button"
           data-testid="fine-tune-editor-reset"
-          :title="t('calc.fineTune.resetEditTitle')"
+          :title="t(row !== null ? 'calc.fineTune.resetEditTitle' : 'calc.fineTune.resetSettingsTitle')"
           :disabled="busy || !canReset"
           @click="emit('reset')"
         >
@@ -247,8 +252,8 @@
                 :maxlength="prop.maxLength"
                 :aria-label="prop.inputLabel"
                 :disabled="busy || prop.disabled"
-                :value="propDraft?.key === prop.key ? propDraft.text : prop.value === null ? '' : String(prop.value)"
-                @focus="propDraft = { key: prop.key, text: prop.value === null ? '' : String(prop.value) }"
+                :value="propDraft?.key === prop.key ? propDraft.text : propText(prop)"
+                @focus="onPropFocus(prop, $event.target as HTMLInputElement)"
                 @input="onPropInput(prop.key, ($event.target as HTMLInputElement).value)"
                 @blur="onPropBlur(prop.key, $event.target as HTMLInputElement)"
                 @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
@@ -274,16 +279,73 @@
         </div>
       </template>
 
-      <!-- 何も選んでいないとき（と、選んだ欄が動かせなくなったとき）: 2段目に同じ形の押せないボタン（操作の場所を見せたままにする） -->
-      <template v-else>
-        <div class="fineTuneEditor__line"></div>
+      <!-- 何も選んでいないとき: 設定欄（下書き。OK で計算機の設定・在庫へ入る）。
+           1段目に既定のアメブ目標Lvと最小限のアメブ（アメブのあるスロットだけ）、2段目にかけら在庫と万能アメ在庫 S・M・L -->
+      <template v-else-if="row === null && settings !== null">
         <div class="fineTuneEditor__line">
-          <div class="fineTuneEditor__stepper fineTuneEditor__stepper--3 fineTuneEditor__stepper--ghost" data-testid="fine-tune-editor-idle" aria-hidden="true">
-            <button v-for="amount in IDLE_STEPS" :key="`down-${amount}`" class="fineTuneEditor__step" type="button" tabindex="-1" disabled>−{{ amount }}</button>
-            <input class="field__input fineTuneEditor__input" type="text" tabindex="-1" disabled value="" />
-            <button v-for="amount in [...IDLE_STEPS].reverse()" :key="`up-${amount}`" class="fineTuneEditor__step" type="button" tabindex="-1" disabled>+{{ amount }}</button>
+          <div v-if="hasBoost" class="fineTuneEditor__tools" data-testid="fine-tune-editor-settings-boost">
+            <!-- 変えると、自動の行（アメブ個数もアメブ目標Lvも選んでいない行）をすぐ新しい既定で配り直す -->
+            <FineTuneLevelField
+              class="fineTuneEditor__levelField fineTuneEditor__levelField--default"
+              kind="defaultBoostLevel"
+              :label="t('settings.defaultBoostReachLevelLabel')"
+              :value="settings.value.defaultBoostReachLevel"
+              :base="settings.base.defaultBoostReachLevel"
+              :min="1"
+              :max="MAX_LEVEL"
+              :placeholder="t('settings.defaultBoostReachLevelPlaceholder')"
+              :disabled="busy"
+              :title="t('settings.defaultBoostReachLevelHelp')"
+              @set="(level, coalesce) => emit('op', { kind: 'defaultBoostLevelSet', level }, coalesce)"
+              @clear="emit('op', { kind: 'defaultBoostLevelSet', level: null })"
+            />
+            <button
+              class="fineTuneEditor__tool"
+              :class="{ 'fineTuneEditor__tool--on': settings.value.minimizeBoost }"
+              type="button"
+              data-testid="fine-tune-editor-settings-minimize"
+              :aria-pressed="settings.value.minimizeBoost"
+              :title="t('settings.minimizeBoostLabel')"
+              :disabled="busy"
+              @click="emit('op', { kind: 'minimizeBoostSet', on: !settings.value.minimizeBoost })"
+            >{{ t("calc.fineTune.settingsMinimize") }}</button>
           </div>
         </div>
+        <div class="fineTuneEditor__line">
+          <div class="fineTuneEditor__props fineTuneEditor__props--settings" data-testid="fine-tune-editor-idle">
+            <label
+              v-for="prop in settingProps"
+              :key="prop.key"
+              class="fineTuneEditor__prop"
+              :class="{ 'fineTuneEditor__prop--changed': prop.value !== prop.base, 'fineTuneEditor__prop--disabled': prop.disabled }"
+            >
+              <span class="fineTuneEditor__propLabel">{{ prop.label }}</span>
+              <input
+                v-keypad="{ label: prop.inputLabel, maxLength: prop.maxLength, grouping: prop.grouping }"
+                class="fineTuneEditor__propInput"
+                data-testid="fine-tune-editor-setting"
+                :data-setting="prop.key"
+                type="text"
+                inputmode="numeric"
+                autocomplete="off"
+                :maxlength="prop.maxLength"
+                :aria-label="prop.inputLabel"
+                :disabled="busy || prop.disabled"
+                :value="propDraft?.key === prop.key ? propDraft.text : propText(prop)"
+                @focus="onPropFocus(prop, $event.target as HTMLInputElement)"
+                @input="onPropInput(prop.key, ($event.target as HTMLInputElement).value)"
+                @blur="onPropBlur(prop.key, $event.target as HTMLInputElement)"
+                @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
+              />
+            </label>
+          </div>
+        </div>
+      </template>
+
+      <!-- 選んだ欄が動かせなくなったとき: 2段とも空ける（高さはそのまま） -->
+      <template v-else>
+        <div class="fineTuneEditor__line"></div>
+        <div class="fineTuneEditor__line"></div>
       </template>
     </div>
   </section>
@@ -292,7 +354,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import type { FineTuneOp, RowExclusion } from "../domain/fine-tune/draft";
+import { SHARDS_MAX, UNIVERSAL_CANDY_MAX, type FineTuneOp, type RowExclusion, type UniversalCandySize } from "../domain/fine-tune/draft";
+import type { CalcSettingsSnapshot } from "../composables/useCalcStore";
 import type { FineTuneRowView } from "../domain/fine-tune/rowView";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { vKeypad } from "../composables/useNumericKeypad";
@@ -331,8 +394,12 @@ const props = defineProps<{
   busy: boolean;
   /** 設定で全員に最小アメブを使っている（行ごとの最小アメブは切り替えられない） */
   globalMinimize: boolean;
-  /** 選んだポケモンが開いた時点から変わっている（リセットで開いた時点へ戻せる） */
+  /** 選んだポケモン（何も選んでいないときは設定）が開いた時点から変わっている（リセットで開いた時点へ戻せる） */
   canReset: boolean;
+  /** 設定欄（何も選んでいないときに出す）の、下書きで効いている値と開いた時点の値 */
+  settings: { value: CalcSettingsSnapshot; base: CalcSettingsSnapshot } | null;
+  /** アメブのあるスロット（設定欄に既定のアメブ目標Lv・最小限のアメブを出す） */
+  hasBoost: boolean;
   fmt: (n: number) => string;
   titleOf: (rowId: string) => string;
 }>();
@@ -340,12 +407,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** `coalesce` は Lv の欄のスライダーの1回のドラッグの目印（元に戻すの1件にまとめる） */
   (e: "op", op: FineTuneOp, coalesce?: HistoryRecordOptions): void;
-  /** リセット（選んだポケモンを開いた時点の状態へ戻す。選択はそのまま） */
+  /** リセット（選んだポケモンを開いた時点の状態へ戻す。何も選んでいないときは設定を戻す。選択はそのまま） */
   (e: "reset"): void;
 }>();
-
-/** 何も選んでいないときに並べる、押せない刻みのボタン */
-const IDLE_STEPS = FINE_TUNE_STEPS.boost;
 
 const { t } = useI18n();
 
@@ -620,9 +684,9 @@ function toggleSleep(which: "stock" | "ticket"): void {
   if (current.base === "napIsland") chooseSleep({ ...current, [which]: !current[which] });
 }
 
-// ===== 行の詳細の欄: 現在Lv・あとEXP・アメ在庫（確定は blur。テンキーは ui_spec §8） =====
+// ===== 行の詳細の欄（あとEXP・アメ在庫）と設定欄（かけら・万能アメ）。確定は blur。テンキーは ui_spec §8 =====
 /** 現在Lvは Lv の欄（`FineTuneLevelField`）で動かすので、ここには入れない */
-type RowPropKey = "exp" | "stock";
+type RowPropKey = "exp" | "stock" | "shards" | UniversalCandySize;
 
 interface RowProp {
   key: RowPropKey;
@@ -634,8 +698,52 @@ interface RowProp {
   disabled: boolean;
   /** テンキーで打てる桁数 */
   maxLength: number;
+  /** 3桁ごとに区切って出す（かけら） */
+  grouping?: boolean;
   op: (value: number) => FineTuneOp;
 }
+
+/** 欄に出す文字（打っていない間）。区切る欄は 3桁ごとに区切る */
+function propText(prop: RowProp): string {
+  if (prop.value === null) return "";
+  return prop.grouping ? props.fmt(prop.value) : String(prop.value);
+}
+
+/** 設定欄: かけら在庫・万能アメ在庫 S・M・L */
+const settingProps = computed<RowProp[] | null>(() => {
+  const { row, settings } = props;
+  if (row !== null || settings === null) return null;
+  const shardsLabel = t("calc.maxShardsLabel");
+  const universal = (size: UniversalCandySize): RowProp => {
+    const label = t("calc.fineTune.settingsUniversal", { size: t(`calc.candy.universal${size.toUpperCase()}`) });
+    return {
+      key: size,
+      label,
+      inputLabel: label,
+      value: settings.value.universalCandy[size],
+      base: settings.base.universalCandy[size],
+      disabled: false,
+      maxLength: String(UNIVERSAL_CANDY_MAX).length,
+      op: (count) => ({ kind: "universalCandySet", size, count }),
+    };
+  };
+  return [
+    {
+      key: "shards",
+      label: shardsLabel,
+      inputLabel: shardsLabel,
+      value: settings.value.totalShards,
+      base: settings.base.totalShards,
+      disabled: false,
+      maxLength: String(SHARDS_MAX).length,
+      grouping: true,
+      op: (count) => ({ kind: "shardsSet", count }),
+    },
+    universal("s"),
+    universal("m"),
+    universal("l"),
+  ];
+});
 
 const rowProps = computed<RowProp[] | null>(() => {
   const { row, field } = props;
@@ -673,6 +781,19 @@ const rowProps = computed<RowProp[] | null>(() => {
 /** 打ちかけの欄と文字（フォーカスしている間だけ） */
 const propDraft = ref<{ key: RowPropKey; text: string } | null>(null);
 
+/** 打ち始め。区切った表示（1,450,000）は、その場で数字だけに戻す（描き直しを待つと、打ち始めた文字の前に元の表示が残る） */
+function onPropFocus(prop: RowProp, el: HTMLInputElement): void {
+  const text = prop.value === null ? "" : String(prop.value);
+  propDraft.value = { key: prop.key, text };
+  if (el.value === text) return;
+  // 表示を変えるとカーソルが末尾へ移るので、全体を選び直す（打つと置き換わる）
+  el.value = text;
+  el.select();
+  void nextTick(() => {
+    if (document.activeElement === el) el.select();
+  });
+}
+
 function onPropInput(key: RowPropKey, raw: string): void {
   propDraft.value = { key, text: raw.replace(/[^0-9]/g, "") };
 }
@@ -680,14 +801,15 @@ function onPropInput(key: RowPropKey, raw: string): void {
 function onPropBlur(key: RowPropKey, el: HTMLInputElement): void {
   const draftText = propDraft.value?.key === key ? propDraft.value.text : null;
   propDraft.value = null;
-  const prop = rowProps.value?.find((p) => p.key === key);
+  const findProp = () => [...(rowProps.value ?? []), ...(settingProps.value ?? [])].find((p) => p.key === key);
+  const prop = findProp();
   if (prop !== undefined && draftText !== null && draftText !== "" && Number(draftText) !== prop.value) {
     emit("op", prop.op(Number(draftText)));
   }
   // 範囲に収めた結果が元の値と同じときも、欄に打ちかけの文字を残さない
   void nextTick(() => {
-    const now = rowProps.value?.find((p) => p.key === key);
-    if (now !== undefined) el.value = now.value === null ? "" : String(now.value);
+    const now = findProp();
+    if (now !== undefined) el.value = propText(now);
   });
 }
 
