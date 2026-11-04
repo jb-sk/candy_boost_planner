@@ -46,13 +46,13 @@ export interface FineTuneRowView {
   nature: ExpGainNature;
   /** 下書きの順番（0 始まり） */
   index: number;
-  /** 目標Lv・アメブを動かせない理由。動かせる行は null */
+  /** アメブを動かせない理由。動かせる行は null */
   exclusion: RowExclusion | null;
-  /** 目標Lv・アメブを動かせる行 */
+  /** アメブを動かせる行（目標Lvも動かせる） */
   levelAdjustable: boolean;
-  /** 目標Lvを動かせる行（アメブを動かせる行と、睡眠だけで届く行） */
+  /** 目標Lvを動かせる行（LvMax のほか。個数指定の行は目標Lvが個数指定を上書きする） */
   targetAdjustable: boolean;
-  /** アメの数を変えた行（変える前は個数指定でなかった行）。目標Lv・アメブは動かせない */
+  /** アメの数を変えた行（変える前は個数指定でなかった行）。アメブは動かせない（目標Lvを選ぶと個数指定が外れる） */
   candyEdited: boolean;
   targetLevel: Change<number> & { range: OpRange };
   /** アメが担当する到達点へ届いたか（`effectiveTargetReached`） */

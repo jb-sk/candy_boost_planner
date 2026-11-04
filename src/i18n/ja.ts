@@ -183,7 +183,7 @@ export const ja = {
       boostReset: "再計算",
       boostResetTitle: "割り当て可能なアメブを再計算します（手で入れた個数を自動の値に戻す）",
       shardsTotal: "使うかけら {shards}",
-      candyEdited: "アメの数を変えているため、目標Lv・アメブは動かせません（元の数に戻すと動かせます）",
+      candyEdited: "アメの数を変えているため、アメブは動かせません（元の数に戻すか、目標Lvを選ぶと動かせます）",
       reach: "到達Lv {level}",
       expLeft: "（あとEXP {exp}）",
       sleepReach: "睡眠到達Lv {level}",
@@ -204,7 +204,7 @@ export const ja = {
       recommendInsufficient: "これだけでは届きません",
       boostCapped: "在庫で {count} に抑えられます",
       exclusion: {
-        candyTarget: "個数指定があるため、目標Lv・アメブは動かせません",
+        candyTarget: "個数指定があるため、アメブは動かせません（目標Lvを選ぶと個数指定が外れます）",
         noCandy: "アメを使わない睡眠目標です",
         sleepOnly: "睡眠だけで届くため、アメを使いません",
         maxLevel: "LvMax です",

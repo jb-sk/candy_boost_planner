@@ -4,7 +4,8 @@
  * 動かせるのは目標Lv・アメブ（アメブ目標Lv・最小アメブ・リセットを含む）・アメの数・睡眠目標・順番と、
  * 行の詳細で現在Lv・あとEXP（行の個体）・種族アメの在庫（進化系ごと。下書きの間は `speciesCandy` に持ち、評価のときだけ使う）。
  * 「全体のLvを伸ばす」は、まとめて求めた行一覧を1つの op で入れる。
- * アメの数を変えた行は個数指定の行になるので、目標Lv・アメブは動かせない（元の数に戻すと元の行に戻り、動かせる）。
+ * アメの数を変えた行は個数指定の行になるので、アメブは動かせない（元の数に戻すと元の行に戻り、動かせる）。
+ * 目標Lvは計算機と同じく個数指定を上書きする（選ぶと個数指定とアメの数の記録が外れる）。
  * ストア・Vue を import しない。ストアの関数は `FineTuneDeps` で受け取る。
  */
 import type { CalcRow, EvaluatedRows, RowIndividualPatch, SpeciesCandyOverride } from "../../composables/useCalcStore";
@@ -122,7 +123,7 @@ export interface FineTuneLatest {
 export type RejectReason =
   | "unknownRow"
   | "invalidValue"
-  /** 対象外の行に目標Lv・アメブの操作（睡眠だけで届く行は目標Lvを動かせる。`canAdjustTarget`） */
+  /** 対象外の行にアメブの操作、LvMax の行に目標Lvの操作（目標Lvは `canAdjustTarget`） */
   | "excluded"
   /** 睡眠EXPだけで目標に届き、アメブを使えない行のアメブ目標Lv（計算機でもピッカーを無効にしている） */
   | "boostLevelLocked"
@@ -137,7 +138,7 @@ export type RejectReason =
 
 export type FineTuneReduceResult = { state: FineTuneState } | { rejected: RejectReason };
 
-/** 目標Lv・アメブを動かせない行の理由。上から順に判定する。 */
+/** アメブを動かせない行の理由。上から順に判定する（目標Lvは LvMax のほか動かせる。`canAdjustTarget`）。 */
 export type RowExclusion = "candyTarget" | "noCandy" | "sleepOnly" | "maxLevel" | "unknownPokemon";
 
 export type OpRangeTarget =
@@ -186,38 +187,26 @@ export function candyUnitsOf(row: CalcRow, evaluated: EvaluatedRows): number {
   return evaluated.byId.get(row.id)?.candyNeed ?? 0;
 }
 
-/** 目標Lv・アメブを動かせない理由。動かせる行は null。 */
+/** アメブを動かせない理由（目標Lvは `canAdjustTarget`）。動かせる行は null。 */
 export function rowExclusion(row: CalcRow, evaluated: EvaluatedRows): RowExclusion | null {
   if (row.candyTarget !== undefined) return "candyTarget";
   if (sleepTargetTraits(row).candy === "none") return "noCandy";
   if (row.sleepTargetHours !== undefined && candyUnitsOf(row, evaluated) === 0) return "sleepOnly";
-  return levelExclusion(row);
-}
-
-/** Lv上限・ポケモンが不明（目標Lvも動かせない理由のうち、評価に頼らないもの） */
-function levelExclusion(row: CalcRow): "maxLevel" | "unknownPokemon" | null {
   if (row.srcLevel >= MAX_LEVEL) return "maxLevel";
   if (row.pokedexId === undefined || !isValidPokedexId(row.pokedexId)) return "unknownPokemon";
   return null;
 }
 
 /**
- * 目標Lvを動かせる行。アメブを動かせる行（`canAdjustLevel`）と、睡眠だけで届く行（`sleepOnly`）。
- * 睡眠だけで届くかは目標Lvで決まるので、そこで目標Lvを止めない（計算機と同じく、睡眠で届くLvより下げても、上げ直してもよい。
- * 上げてアメが要るようになれば、アメブも動かせる）。評価に頼らない。
+ * 目標Lvを動かせる行。計算機の目標Lvピッカーと同じく、LvMax（現在Lv70。目標Lvは70から動かない）のほかは動かせる。
+ * 睡眠だけで届く行・アメを使わない睡眠目標の行も動かせ、個数指定の行（アメの数を変えた行を含む）は目標Lvが個数指定を上書きする。
+ * 評価に頼らない。
  */
 export function canAdjustTarget(row: CalcRow): boolean {
-  return row.candyTarget === undefined && sleepTargetTraits(row).candy !== "none" && levelExclusion(row) === null;
+  return row.srcLevel < MAX_LEVEL;
 }
 
-/**
- * 入口のボタンを出すか。目標Lvを動かせる行が1行以上ある（アメブを動かせる行は目標Lvも動かせる）。評価しない。
- */
-export function hasFineTuneTarget(rows: readonly CalcRow[]): boolean {
-  return rows.some((row) => canAdjustTarget(row));
-}
-
-/** 目標Lv・アメブを動かせる行。対象外の行（アメの数を変えた行は個数指定の行）は不可。 */
+/** アメブを動かせる行（目標Lvも動かせる）。対象外の行（アメの数を変えた行は個数指定の行）は不可。 */
 export function canAdjustLevel(evaluated: EvaluatedRows, row: CalcRow): boolean {
   return rowExclusion(row, evaluated) === null;
 }
@@ -438,7 +427,11 @@ export function reduceFineTune(
       if (!Number.isFinite(requested)) return { rejected: "invalidValue" };
       const lv = clampToRange(requested, opRange(base, state, evaluated, { kind: "target", rowId: row.id }));
       if (lv === row.dstLevel) return { state };
-      return advanced(state, { rows: replaceRowAt(state.rows, index, deps.withTargetLevel(row, lv, state.rows)) });
+      const next = deps.withTargetLevel(row, lv, state.rows);
+      // 目標Lvは個数指定を上書きする（計算機と同じ）。アメの数の記録も外す（元の数へ戻す先が無くなる）
+      const { [row.id]: dropped, ...rest } = state.candyRecords;
+      const candyRecords = dropped !== undefined && next.candyTarget === undefined ? rest : state.candyRecords;
+      return advanced(state, { rows: replaceRowAt(state.rows, index, next), candyRecords });
     }
     case "move": {
       if (!Number.isFinite(op.toIndex)) return { rejected: "invalidValue" };

@@ -1017,7 +1017,6 @@ import type { AppLocale } from "../i18n";
 import { suppressNextClick } from "../utils/suppressNextClick";
 import { trackPress, type Press } from "../utils/trackPress";
 import { useRowReorderDrag } from "../composables/useRowReorderDrag";
-import { hasFineTuneTarget } from "../domain/fine-tune/draft";
 import RowReorderNav from "./RowReorderNav.vue";
 
 
@@ -1035,8 +1034,8 @@ const props = defineProps<{
 const calc = props.calc;
 const { t, locale } = useI18n();
 
-/** シンプルモードの入口を出すか（目標Lvを動かせる行が1行以上） */
-const canFineTune = computed(() => hasFineTuneTarget(calc.rows.value));
+/** シンプルモードの入口を出すか（ポケモンが1匹でもいれば出す） */
+const canFineTune = computed(() => calc.rows.value.length > 0);
 
 /** 行ごとの計画結果（テンプレートで getPokemonResult を繰り返さず Map を O(1) 参照） */
 function rowP(r: CalcRowView): PokemonPlanResult | null {

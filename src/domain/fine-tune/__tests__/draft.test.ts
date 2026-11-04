@@ -6,7 +6,6 @@ import {
   boostSlotRemaining,
   canAdjustTarget,
   coalesceKeyOf,
-  hasFineTuneTarget,
   initialFineTuneState,
   isDraftEmpty,
   isSameDraftContent,
@@ -229,7 +228,7 @@ describe("opRange / reduceFineTune: アメブ（D36、D37）", () => {
     expect(t.ok(t.initial, { kind: "set", rowId: "a", boost: 0 }).rows[0]!.boostOrExpAdjustment).toBe(0);
   });
 
-  it("対象外の行（§7）には、アメブの op を拒否する。目標Lvの op は、睡眠だけで届く行のほかは拒否する", () => {
+  it("対象外の行（§7）には、アメブの op を拒否する。目標Lvの op は LvMax の行だけ拒否する（計算機と同じ）", () => {
     const rows = [makeRow("c", { candyTarget: 100 }), makeRow("n", { sleepTargetMode: "all" }), makeRow("s", { sleepTargetHours: 1000 }), makeRow("m", { srcLevel: MAX_LEVEL, dstLevel: MAX_LEVEL })];
     const t = setup(rows, {
       c: { full: 10, need: 10 }, n: { full: 0, need: 0 }, s: { full: 0, need: 0 }, m: { full: 0, need: 0 }, u: { full: 0, need: 1 },
@@ -238,15 +237,16 @@ describe("opRange / reduceFineTune: アメブ（D36、D37）", () => {
       expect(t.run(t.initial, { kind: "step", rowId, by: 1 })).toEqual({ rejected: "excluded" });
       expect(t.run(t.initial, { kind: "set", rowId, boost: 1 })).toEqual({ rejected: "excluded" });
     }
-    for (const rowId of ["c", "n", "m"]) {
-      expect(t.run(t.initial, { kind: "targetStep", rowId, by: 1 })).toEqual({ rejected: "excluded" });
-      expect(t.run(t.initial, { kind: "targetSet", rowId, level: 40 })).toEqual({ rejected: "excluded" });
-    }
+    expect(t.run(t.initial, { kind: "targetStep", rowId: "m", by: 1 })).toEqual({ rejected: "excluded" });
+    expect(t.run(t.initial, { kind: "targetSet", rowId: "m", level: 40 })).toEqual({ rejected: "excluded" });
+    // 個数指定・アメを使わない睡眠目標・睡眠だけで届く行も、目標Lvは動かせる。個数指定は目標Lvで外れる
+    expect(t.ok(t.initial, { kind: "targetSet", rowId: "c", level: 40 }).rows[0]).toMatchObject({ dstLevel: 40, candyTarget: undefined });
+    expect(t.ok(t.initial, { kind: "targetSet", rowId: "n", level: 40 }).rows[1]!.dstLevel).toBe(40);
+    expect(t.ok(t.initial, { kind: "targetSet", rowId: "s", level: 40 }).rows[2]!.dstLevel).toBe(40);
     expect(rows.map((r) => rowExclusion(r, t.deps.evaluateRows(rows)))).toEqual(["candyTarget", "noCandy", "sleepOnly", "maxLevel"]);
-    expect(rows.map((r) => canAdjustTarget(r))).toEqual([false, false, true, false]);
+    expect(rows.map((r) => canAdjustTarget(r))).toEqual([true, true, true, false]);
     expect(rowExclusion(makeRow("u", { pokedexId: 0 }), t.deps.evaluateRows([makeRow("u")]))).toBe("unknownPokemon");
-    expect(canAdjustTarget(makeRow("u", { pokedexId: 0, sleepTargetHours: 1000 }))).toBe(false);
-    expect(canAdjustTarget(makeRow("m", { srcLevel: MAX_LEVEL, dstLevel: MAX_LEVEL, sleepTargetHours: 1000 }))).toBe(false);
+    expect(canAdjustTarget(makeRow("u", { pokedexId: 0 }))).toBe(true);
     expect(t.run(t.initial, { kind: "step", rowId: "nope", by: 1 })).toEqual({ rejected: "unknownRow" });
   });
 
@@ -256,27 +256,6 @@ describe("opRange / reduceFineTune: アメブ（D36、D37）", () => {
     expect(t.ok(t.initial, { kind: "targetStep", rowId: "s", by: -1 }).rows[0]!.dstLevel).toBe(47);
     expect(t.ok(t.initial, { kind: "targetSet", rowId: "s", level: 30 }).rows[0]!.dstLevel).toBe(30);
     expect(t.ok(t.initial, { kind: "targetSet", rowId: "s", level: 70 }).rows[0]!.dstLevel).toBe(70);
-  });
-});
-
-describe("hasFineTuneTarget: 入口のボタン（§4.1）", () => {
-  const has = (rows: CalcRow[]) => hasFineTuneTarget(rows);
-
-  it("個数指定の行だけでは false（目標Lv・アメブを動かせない）", () => {
-    expect(has([makeRow("n", { candyTarget: 5, sleepTargetMode: "all" })])).toBe(false);
-    expect(has([makeRow("m", { candyTarget: 0, srcLevel: MAX_LEVEL, dstLevel: MAX_LEVEL })])).toBe(false);
-    expect(has([makeRow("c", { candyTarget: 5 })])).toBe(false);
-    expect(has([makeRow("c", { candyTarget: 5 }), makeRow("ok")])).toBe(true);
-  });
-
-  it("個数指定でない行は対象外でなければ true", () => {
-    expect(has([makeRow("ok")])).toBe(true);
-    expect(has([makeRow("m", { srcLevel: MAX_LEVEL, dstLevel: MAX_LEVEL })])).toBe(false);
-  });
-
-  it("睡眠だけで届く行（時間の睡眠目標）も目標Lvを動かせるので true。アメを使わない睡眠目標の行だけなら false", () => {
-    expect(has([makeRow("s", { sleepTargetHours: 2000 })])).toBe(true);
-    expect(has([makeRow("n", { sleepTargetMode: "all" })])).toBe(false);
   });
 });
 
@@ -401,9 +380,20 @@ describe("reduceFineTune: アメの数（candyStep / candySet）", () => {
     const out = t.ok(t.initial, { kind: "candyStep", rowId: "A", by: -10 });
     expect(out.rows[0]).toMatchObject({ candyTarget: 90, boostOrExpAdjustment: 7 });
     expect(out.candyRecords.A).toEqual({ before: t.initial.rows[0], m0: 100, boost: 7, candy: 90 });
-    // 個数指定の行になったので、目標Lv・アメブは動かせない
+    // 個数指定の行になったので、アメブは動かせない
     expect(t.run(out, { kind: "step", rowId: "A", by: 1 })).toEqual({ rejected: "excluded" });
-    expect(t.run(out, { kind: "targetStep", rowId: "A", by: 1 })).toEqual({ rejected: "excluded" });
+  });
+
+  it("アメの数を変えた行・もとから個数指定の行も、目標Lvを選ぶと個数指定が外れる（計算機と同じ）。アメの数の記録も外れる", () => {
+    const t = setup(rows(), info);
+    const edited = t.ok(t.initial, { kind: "candyStep", rowId: "A", by: -10 });
+    const targeted = t.ok(edited, { kind: "targetSet", rowId: "A", level: 40 });
+    expect(targeted.rows[0]).toMatchObject({ dstLevel: 40, candyTarget: undefined, boostOrExpAdjustment: 7 });
+    expect(targeted.candyRecords.A).toBeUndefined();
+    // 個数指定が外れたので、アメブも動かせる
+    expect(t.ok(targeted, { kind: "step", rowId: "A", by: 1 }).rows[0]!.boostOrExpAdjustment).toBe(8);
+    // もとから個数指定の行（記録は持たない）
+    expect(t.ok(t.initial, { kind: "targetSet", rowId: "C", level: 40 }).rows[1]).toMatchObject({ dstLevel: 40, candyTarget: undefined });
   });
 
   it("要る数より多くもでき、上限（Lv70 に届く数）で止まる。要る数に戻すと変える前の行（同じ参照）に戻り、記録が消える", () => {

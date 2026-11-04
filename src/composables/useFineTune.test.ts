@@ -4,7 +4,6 @@ import type { Composer } from "vue-i18n";
 import { addBoxRow, createCalcStore } from "../../tests/helpers/fakeIndividuals";
 import { cancelPersist } from "../persistence/deferredPersist";
 import { calcSleepLandingLevel } from "../domain/level-planner/sleepReachLevel";
-import { hasFineTuneTarget } from "../domain/fine-tune/draft";
 import { solveLevelPlan } from "../domain/level-planner/core/solveLevelPlan";
 import { dreamShardsPerCandy } from "../domain/pokesleep/tables";
 import type { LevelPlannerInput, LevelPlannerResult } from "../domain/level-planner/types";
@@ -335,13 +334,6 @@ describe("useFineTune（設計書 §10.4）", () => {
     }
   });
 
-  it("入口のボタンは、対象にできる行が1行以上あるときだけ出す", async () => {
-    const empty = createCalcStore({ locale: ref("ja"), t });
-    expect(hasFineTuneTarget(empty.rows.value)).toBe(false);
-    const { store } = await makeStore();
-    expect(hasFineTuneTarget(store.rows.value)).toBe(true);
-  });
-
   it("全体のLvを伸ばす: 上の行のアメブを動かして届かない行が届き、1件の履歴で入り、解いた結果がそのまま最新の結果になる", async () => {
     // a（ピカチュウ）は種族アメが足りず万能アメで届く。アメブ 0 だと万能アメを使い切り、b（イーブイ）が届かない
     const store = createCalcStore({ locale: ref("ja"), t });
@@ -382,7 +374,7 @@ describe("useFineTune（設計書 §10.4）", () => {
     expect(fineTune.isEmpty.value).toBe(true);
   });
 
-  it("アメの数: 減らした行は表に下書きの値を出し、目標Lv・アメブを動かせない。元の数に戻すと動かせる", async () => {
+  it("アメの数: 減らした行は表に下書きの値を出し、アメブを動かせない（目標Lvは動かせる）。元の数に戻すと動かせる", async () => {
     const { store, a } = await makeStore("100000000");
     const { fineTune } = open(store);
     const view = () => fineTune.rowViews.value.find((r) => r.id === a)!;
@@ -390,11 +382,27 @@ describe("useFineTune（設計書 §10.4）", () => {
     expect(edit).toMatchObject({ min: 0, changed: false });
     expect(edit.max).toBeGreaterThan(edit.value);
     expect(fineTune.dispatch({ kind: "candyStep", rowId: a, by: -10 })).toHaveProperty("state");
-    expect(view()).toMatchObject({ candyEdited: true, levelAdjustable: false, candyEdit: { value: edit.value - 10, base: edit.value, changed: true } });
+    expect(view()).toMatchObject({ candyEdited: true, levelAdjustable: false, targetAdjustable: true, candyEdit: { value: edit.value - 10, base: edit.value, changed: true } });
     expect(fineTune.dispatch({ kind: "step", rowId: a, by: 1 })).toEqual({ rejected: "excluded" });
     expect(fineTune.dispatch({ kind: "candySet", rowId: a, candy: edit.value })).toHaveProperty("state");
     expect(view()).toMatchObject({ candyEdited: false, levelAdjustable: true });
     expect(fineTune.isEmpty.value).toBe(true);
+  });
+
+  it("アメの数を変えた行は、目標Lvを選ぶと計算機と同じく個数指定が外れ、アメブも動かせる", async () => {
+    const { store, a } = await makeStore("100000000");
+    const { fineTune } = open(store);
+    const view = () => fineTune.rowViews.value.find((r) => r.id === a)!;
+    const rowOf = () => fineTune.state.value!.rows.find((r) => r.id === a)!;
+    fineTune.dispatch({ kind: "candyStep", rowId: a, by: -10 });
+    expect(rowOf().candyTarget).toBeDefined();
+    const level = rowOf().dstLevel - 3;
+    expect(fineTune.dispatch({ kind: "targetSet", rowId: a, level })).toHaveProperty("state");
+    expect(rowOf()).toMatchObject({ dstLevel: level, candyTarget: undefined });
+    expect(view()).toMatchObject({ candyEdited: false, levelAdjustable: true, targetAdjustable: true });
+    // 元に戻す1回で、アメの数を変えた状態（個数指定）へ戻る
+    fineTune.undo();
+    expect(view()).toMatchObject({ candyEdited: true, levelAdjustable: false });
   });
 
   it("アメ1個あたりのかけらは到達Lvの値段（ゲームの表）。アメを減らして到達Lvが下がると、値段も下がる", async () => {
@@ -430,27 +438,18 @@ describe("useFineTune（設計書 §10.4）", () => {
     expect(fineTune.history.canUndo.value).toBe(false);
   });
 
-  it("入口のボタン: 実ストアでも、個数指定の行・Lv上限の行・睡眠目標モードの行だけなら出さない", () => {
-    const store = createCalcStore({ locale: ref("ja"), t });
-    store.setSlotBoostKind("full");
-    store.updateSpeciesCandy(133, 100_000);
-    // Lv上限の行は、個数指定を入れても使うアメが 0 個
-    addBoxRow(store, { boxId: "m", pokedexId: 133, srcLevel: 70, dstLevelDefault: 70, expType: 600, nature: "normal" });
-    const maxRowId = store.rows.value[0]!.id;
-    store.onRowCandyTarget(maxRowId, "5");
-    expect(hasFineTuneTarget(store.rows.value)).toBe(false);
-    // 個数指定の行は目標Lv・アメブを動かせないので数えない。個数指定を外せば true
-    addBoxRow(store, { boxId: "n", pokedexId: 133, srcLevel: 10, dstLevelDefault: 50, expType: 600, nature: "normal" });
-    const normalRowId = store.rows.value[1]!.id;
-    store.onRowCandyTarget(normalRowId, "20");
-    expect(store.rows.value[1]!.candyTarget).toBe(20);
-    expect(hasFineTuneTarget(store.rows.value)).toBe(false);
-    store.onRowCandyTarget(normalRowId, "");
-    expect(store.rows.value[1]!.candyTarget).toBeUndefined();
-    expect(hasFineTuneTarget(store.rows.value)).toBe(true);
-    // 睡眠目標モードにすると個数指定は外れ、対象外
-    store.setRowSleepTarget(normalRowId, "all");
-    expect(hasFineTuneTarget(store.rows.value)).toBe(false);
+  it("すべて睡眠（アメを使わない睡眠目標）の行も、目標Lvを動かせる（アメブは動かせない。計算機と同じ）", async () => {
+    const { store, a } = await makeStore();
+    store.setRowSleepTarget(a, "all");
+    await vi.waitFor(() => expect(store.planResultPending.value).toBe(false));
+    const { fineTune } = open(store);
+    await vi.waitFor(() => expect(fineTune.ready.value).toBe(true));
+    const view = () => fineTune.rowViews.value.find((r) => r.id === a)!;
+    expect(view()).toMatchObject({ exclusion: "noCandy", levelAdjustable: false, targetAdjustable: true });
+    const level = view().targetLevel.value - 5;
+    expect(fineTune.dispatch({ kind: "targetSet", rowId: a, level })).toHaveProperty("state");
+    expect(view().targetLevel.value).toBe(level);
+    expect(fineTune.dispatch({ kind: "step", rowId: a, by: 1 })).toEqual({ rejected: "excluded" });
   });
 
   it("基準が今の計算機と別物なら、適用せず stale を返す（黙って当て直さない）", async () => {

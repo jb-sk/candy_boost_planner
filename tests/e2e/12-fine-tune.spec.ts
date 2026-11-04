@@ -265,6 +265,23 @@ test.describe('12-fine-tune（PC）', () => {
     await expect(fineTune.cell(pikachu, 'boost')).not.toHaveClass(/fineTuneRow__cell--locked/);
   });
 
+  test('入口: すべて睡眠（アメを使わない睡眠目標）の行だけでもシンプルを出し、目標Lvを動かせる（アメブは動かせない）', async ({ page }) => {
+    const { calc, fineTune } = await setupScenario(page, { ...ALL_REACHED, rows: ALL_REACHED.rows.slice(0, 1) });
+    await calc.chooseSleepTarget(calc.getRow(0), { base: 'sleep', stock: false });
+    await calc.waitForPlannerResult();
+    await expect(fineTune.openButton).toBeVisible();
+    await fineTune.open();
+    await fineTune.waitForSettled();
+    const pikachu = fineTune.rowByName('ピカチュウ');
+    await expect(fineTune.cell(pikachu, 'target')).not.toHaveClass(/fineTuneRow__cell--locked/);
+    await expect(fineTune.cell(pikachu, 'boost')).toHaveClass(/fineTuneRow__cell--locked/);
+    await fineTune.setValue(pikachu, 'target', 30);
+    expect(await fineTune.targetLevel(pikachu)).toBe(30);
+    await fineTune.waitForSettled();
+    await fineTune.apply();
+    await expect(calc.getRowDstLevelInput(calc.getRow(0))).toHaveValue('30');
+  });
+
   test('目標Lv: Lvピッカーのスライダーを1回ドラッグした分は、元に戻す1回でまとめて戻る', async ({ page }) => {
     const { fineTune } = await setupScenario(page, ALL_REACHED);
     await fineTune.open();
@@ -667,7 +684,7 @@ test.describe('12-fine-tune（PC）', () => {
     await expect(calc.getRowSpeciesCandyInput(calc.getRow(1))).toHaveValue('100');
   });
 
-  test('アメ: 欄を押して数を変えると個数指定になり、目標Lv・アメブは動かせず、元の数に戻すと戻る。適用で計算機の個数指定へ移る', async ({ page }) => {
+  test('アメ: 欄を押して数を変えると個数指定になり、アメブは動かせず、元の数に戻すと戻る。目標Lvは個数指定を上書きする。適用で計算機の個数指定へ移る', async ({ page }) => {
     const { calc, fineTune } = await setupScenario(page, ALL_REACHED);
     await fineTune.open();
     await fineTune.waitForSettled();
@@ -682,7 +699,8 @@ test.describe('12-fine-tune（PC）', () => {
     await fineTune.step(-100);
     expect(await fineTune.candyValue(pikachu)).toBe(candy - 100);
     await expect(fineTune.editorChange).toHaveText(`${candy} → ${candy - 100}`);
-    await expect(fineTune.cell(pikachu, 'target')).toHaveClass(/fineTuneRow__cell--locked/);
+    // アメブは動かせない。目標Lvは計算機と同じく動かせる（個数指定を上書きする）
+    await expect(fineTune.cell(pikachu, 'target')).not.toHaveClass(/fineTuneRow__cell--locked/);
     await expect(fineTune.cell(pikachu, 'boost')).toHaveClass(/fineTuneRow__cell--locked/);
     await fineTune.waitForSettled();
     // 個数指定の行は、目標Lvがアメの数で決まる（計算機と同じ）。減らしたので目標Lvが下がる
@@ -695,11 +713,23 @@ test.describe('12-fine-tune（PC）', () => {
     // 要る数より多くもできる（目標Lvより先まで上がる）
     await fineTune.setValue(pikachu, 'candy', candy + 50);
     expect(await fineTune.candyValue(pikachu)).toBe(candy + 50);
-    // 元の数に戻すと個数指定が外れ、目標Lv・アメブを動かせる
+    // 元の数に戻すと個数指定が外れ、アメブを動かせる
     await fineTune.typeValue(candy);
     await expect(fineTune.cell(pikachu, 'boost')).toHaveClass(/fineTuneRow__cell--input/);
     await expect(fineTune.applyButton).toBeDisabled();
 
+    // アメの数を変えたあとに目標Lvを選ぶと、個数指定が外れてその目標Lvになり、アメブを動かせる（計算機と同じ）
+    await fineTune.typeValue(candy - 20);
+    await expect(fineTune.cell(pikachu, 'boost')).toHaveClass(/fineTuneRow__cell--locked/);
+    await fineTune.setValue(pikachu, 'target', 45);
+    expect(await fineTune.targetLevel(pikachu)).toBe(45);
+    await expect(fineTune.editor).toHaveAttribute('data-field', 'target');
+    await expect(fineTune.cell(pikachu, 'boost')).not.toHaveClass(/fineTuneRow__cell--locked/);
+    await fineTune.undoButton.click();
+    await expect(fineTune.cell(pikachu, 'boost')).toHaveClass(/fineTuneRow__cell--locked/);
+    expect(await fineTune.candyValue(pikachu)).toBe(candy - 20);
+
+    await fineTune.select(pikachu, 'candy');
     await fineTune.typeValue(candy - 30);
     await fineTune.waitForSettled();
     await fineTune.apply();

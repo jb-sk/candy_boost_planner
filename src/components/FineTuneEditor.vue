@@ -382,7 +382,7 @@ const stepper = computed<Stepper | null>(() => {
   const rowId = row.id;
   const labelOf = (key: "target" | "boost" | "candy") => t(`calc.fineTune.field.${key}`);
   const inputLabelOf = (label: string) => t("calc.fineTune.inputAria", { field: label, name: row.title });
-  // 睡眠だけで届く行（アメブは動かせない）も、目標Lvは動かせる（睡眠で届くLvより下げても、上げ直しても欄が消えない）
+  // アメブを動かせない行（睡眠だけで届く・アメを使わない睡眠目標・個数指定）も、目標Lvは計算機と同じく動かせる
   if (field === "target" && row.targetAdjustable) {
     const label = labelOf("target");
     return {
@@ -487,14 +487,14 @@ const infoItems = computed(() => {
     items.push({ text: t("calc.fineTune.boostCapped", { count: props.fmt(cappedTo) }), tone: "normal" });
   }
   // 睡眠の欄は操作の2段を選択肢で使うので、睡眠に関わる理由（アメを使わない・睡眠だけで届く など）はここに添える。
-  // 個数指定（目標Lv・アメブを動かせない）は睡眠の操作に関わらないので出さない
+  // 個数指定（アメブを動かせない）は睡眠の操作に関わらないので出さない
   if (props.field === "sleep" && row.exclusion !== null && row.exclusion !== "candyTarget") {
     items.push({ text: t(EXCLUSION_TEXT[row.exclusion]), tone: "note" });
   }
   return items;
 });
 
-/** 目標Lv・アメブを動かせない理由（行の詳細で出す。睡眠の欄は詳細の行に添える） */
+/** アメブを動かせない理由（行の詳細で出す。睡眠の欄は詳細の行に添える） */
 const noteText = computed(() => {
   const { row, field } = props;
   if (row === null || field !== "row") return null;

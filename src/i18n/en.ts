@@ -184,7 +184,7 @@ export const en = {
       boostReset: "Recalculate",
       boostResetTitle: "Recalculates from available boost candy (returns a typed count to the automatic value)",
       shardsTotal: "{shards} shards in total",
-      candyEdited: "Candy count is changed, so target Lv and boost are fixed (restore the count to change them)",
+      candyEdited: "Candy count is changed, so boost is fixed (restore the count or pick a target Lv to change it)",
       reach: "Reach Lv{level}",
       expLeft: " ({exp} EXP to next)",
       sleepReach: "Sleep reach Lv{level}",
@@ -205,7 +205,7 @@ export const en = {
       recommendInsufficient: "Not enough on its own",
       boostCapped: "Limited to {count} by stock",
       exclusion: {
-        candyTarget: "Has a candy count, so target Lv and boost can't change",
+        candyTarget: "Has a candy count, so boost can't change (picking a target Lv clears the candy count)",
         noCandy: "This sleep target uses no candy",
         sleepOnly: "Reaches the target with sleep alone, so no candy is used",
         maxLevel: "Already at Lv max",
