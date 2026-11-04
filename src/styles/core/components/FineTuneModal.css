@@ -810,19 +810,24 @@ button.fineTuneRow__cell {
   display: none;
 }
 
+/*
+ * チケット・アメ在庫は中身の幅の丸いチップにして左に並べる。幅の広いボタンの中央に置くと、
+ * 左の絵文字が淡いぶん、濃い文字だけが右に寄って見える
+ */
 .fineTuneEditor__checks {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .fineTuneEditor__toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
   gap: 6px;
   height: 40px;
-  padding: 0 14px;
+  padding: 0 16px;
   border: 1px solid var(--ft-control-border);
   border-radius: var(--radius-pill);
   background: var(--paper);
@@ -1436,13 +1441,12 @@ button.fineTuneRow__cell {
   }
 
   .fineTuneEditor__checks {
-    grid-template-columns: repeat(2, minmax(0, 200px));
-    gap: 8px;
+    gap: 10px;
   }
 
   .fineTuneEditor__toggle {
     height: 44px;
-    padding: 0 18px;
+    padding: 0 20px;
     font-size: 15px;
   }
 
