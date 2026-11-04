@@ -136,9 +136,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import type { CandyRecord, FineTuneOp } from "../domain/fine-tune/draft";
+import type { FineTuneOp } from "../domain/fine-tune/draft";
 import type { ShortageType } from "../domain/level-planner/types";
 import type { Change } from "../domain/fine-tune/rowView";
 import { useFineTune, type FineTuneRaiseResult } from "../composables/useFineTune";
@@ -147,7 +147,7 @@ import { useHistoryShortcuts } from "../composables/useHistoryShortcuts";
 import type { HistoryRecordOptions } from "../composables/useHistory";
 import { useRowReorderDrag } from "../composables/useRowReorderDrag";
 import { showToast } from "../composables/useToast";
-import type { CalcRow, CalcStore } from "../composables/useCalcStore";
+import type { CalcStore } from "../composables/useCalcStore";
 import { boostRules } from "../domain/pokesleep/boost-config";
 import { FINE_TUNE_REASON_TOAST, type FineTuneField } from "../utils/fineTuneView";
 import FineTuneEditor from "./FineTuneEditor.vue";
@@ -198,7 +198,6 @@ function select(rowId: string, field: FineTuneField): void {
     return;
   }
   selected.value = { rowId, field };
-  editStart.value = snapshotOf(rowId);
   // 調整バーが出ると一覧が縮むので、選んだ行が隠れないよう寄せる
   void nextTick(() => revealRow(rowId));
 }
@@ -221,47 +220,41 @@ function revealRow(rowId: string): void {
   else if (below > 0) list.scrollTop += below;
 }
 
-// ===== リセット（その欄を押す前の値へ戻す。選択はそのまま） =====
+// ===== リセット（選んだポケモンを、モーダルを開いた時点の状態へまるごと戻す。選択はそのまま） =====
 /**
- * 欄を押した時点の行・アメの数の記録・その行の進化系の在庫（下書きの値。変えていなければ undefined）。リセットでここへ戻す
+ * 選んだポケモンの、開いた時点の行（基準の行）と、その行の進化系。リセットはここへ戻す
+ * （アメの数の記録は外し、進化系の在庫は開いた時点の在庫に戻す）。
+ * どの欄で押しても同じで、欄を移ってから戻っても戻す先は変わらない。並べ替えた位置は戻さない
  */
-interface EditStart {
-  rowId: string;
-  row: CalcRow;
-  candyRecord: CandyRecord | undefined;
-  stock: { familyKey: string; count: number | undefined } | undefined;
-}
-const editStart = shallowRef<EditStart | null>(null);
-
-function snapshotOf(rowId: string): EditStart | null {
-  const state = fineTune.state.value;
-  const row = state?.rows.find((r) => r.id === rowId);
-  if (state === null || row === undefined) return null;
-  const familyKey = calc.speciesCandyFamilyOf(row);
-  return {
-    rowId,
-    row,
-    candyRecord: state.candyRecords[rowId],
-    stock: familyKey === undefined ? undefined : { familyKey, count: state.speciesCandy[familyKey] },
-  };
-}
-
-/** 欄を押してから、その行（とその行の進化系の在庫）を変えた */
-const canReset = computed(() => {
-  const start = editStart.value;
-  const state = fineTune.state.value;
-  if (start === null || state === null || selected.value?.rowId !== start.rowId) return false;
-  return state.rows.find((r) => r.id === start.rowId) !== start.row
-    || state.candyRecords[start.rowId] !== start.candyRecord
-    || (start.stock !== undefined && state.speciesCandy[start.stock.familyKey] !== start.stock.count);
+const resetTarget = computed(() => {
+  const s = selected.value;
+  const baseRow = s === null ? undefined : fineTune.base.value?.rows.find((r) => r.id === s.rowId);
+  if (baseRow === undefined) return null;
+  return { row: baseRow, familyKey: calc.speciesCandyFamilyOf(baseRow) };
 });
 
-/** 押す前の値へ戻す。選択と「押す前の値」はそのままなので、続けて動かして、また戻せる */
+/** 選んだポケモンが、開いた時点から変わっている（行・アメの数の記録・その進化系の在庫のどれか） */
+const canReset = computed(() => {
+  const target = resetTarget.value;
+  const state = fineTune.state.value;
+  if (target === null || state === null) return false;
+  const id = target.row.id;
+  return state.rows.find((r) => r.id === id) !== target.row
+    || state.candyRecords[id] !== undefined
+    || (target.familyKey !== undefined && state.speciesCandy[target.familyKey] !== undefined);
+});
+
+/** 開いた時点へ戻す。選択はそのままなので、続けて動かして、また戻せる */
 function resetEdit(): void {
-  const start = editStart.value;
-  if (start !== null) {
-    dispatch({ kind: "revertRow", rowId: start.rowId, row: start.row, candyRecord: start.candyRecord, stock: start.stock });
-  }
+  const target = resetTarget.value;
+  if (target === null) return;
+  dispatch({
+    kind: "revertRow",
+    rowId: target.row.id,
+    row: target.row,
+    candyRecord: undefined,
+    stock: target.familyKey === undefined ? undefined : { familyKey: target.familyKey, count: undefined },
+  });
 }
 
 // ===== 並べ替え（取っ手をつかんで動かすのは useRowReorderDrag、取っ手の ↑↓ キーは行。確定は move の op） =====

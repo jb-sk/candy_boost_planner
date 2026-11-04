@@ -199,7 +199,7 @@ export const en = {
       inputAria: "{field} ({name})",
       hint: "Select a number to adjust",
       resetEdit: "Reset",
-      resetEditTitle: "Returns this field to the value before you selected it",
+      resetEditTitle: "Returns this Pokémon to how it was when you opened this",
       recommend: "Raise {name}",
       recommendMany: "Raise {name} and others",
       recommendInsufficient: "Not enough on its own",

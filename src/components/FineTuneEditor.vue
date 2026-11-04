@@ -22,7 +22,7 @@
         <span v-if="fieldLabel !== null" class="fineTuneEditor__field">{{ fieldLabel }}</span>
         <span v-if="changeText !== null" class="fineTuneEditor__change" data-testid="fine-tune-editor-change">{{ changeText }}</span>
         <span class="fineTuneEditor__spacer"></span>
-        <!-- この欄を押してからの変更を取り消して、押す前の値へ戻す（選んだまま続けて動かせる） -->
+        <!-- 選んだポケモンを、開いた時点の状態へまるごと戻す（どの欄で押しても同じ。選んだまま続けて動かせる） -->
         <button
           class="fineTuneEditor__resetEdit"
           type="button"
@@ -315,7 +315,7 @@ import { sleepTargetOfChoice, type SleepTargetChoice } from "../domain/sleep-tar
  * シンプルの調整バー。表で押した欄（目標Lv・アメブ・アメ）を刻みのボタンと個数欄で、睡眠を選択肢で動かす。
  * 現在Lv・目標Lv・アメブ目標Lvは同じ形の Lv の欄（`FineTuneLevelField`。直接打つか、計算機と同じ Lvピッカー）。
  * 目標Lvは Lv の欄だけ（スライダー・Lv の丸いボタンは ▾ の Lvピッカーの中）。アメブにはアメブ目標Lv・最小アメブ・再計算も置く（2段に収める）。
- * 見出しのリセットは、この欄を押してからの変更を取り消す（戻すのは親。`canReset` と `reset`）。
+ * 見出しのリセットは、選んだポケモンをモーダルを開いた時点の状態へまるごと戻す（戻すのは親。`canReset` と `reset`）。
  * 行の詳細（名前を押したとき）では、現在Lv・あとEXP（個体）とアメ在庫（その行の進化系）を直接打って変えられる。
  * 到達・睡眠のあと・足りないもの・動かせない理由と「〇〇のLvを上げる」もここに出す。見出しの名前の横に EXP補正（▲▲▼▼）を出す。
  * 見出し・詳細・操作の2段はどの欄でも同じ高さ（選ぶ欄を変えても、調整バーとモーダルの高さが変わらない）。
@@ -331,7 +331,7 @@ const props = defineProps<{
   busy: boolean;
   /** 設定で全員に最小アメブを使っている（行ごとの最小アメブは切り替えられない） */
   globalMinimize: boolean;
-  /** この欄を押してから変えた（リセットで押す前へ戻せる） */
+  /** 選んだポケモンが開いた時点から変わっている（リセットで開いた時点へ戻せる） */
   canReset: boolean;
   fmt: (n: number) => string;
   titleOf: (rowId: string) => string;
@@ -340,7 +340,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** `coalesce` は Lv の欄のスライダーの1回のドラッグの目印（元に戻すの1件にまとめる） */
   (e: "op", op: FineTuneOp, coalesce?: HistoryRecordOptions): void;
-  /** リセット（この欄を押す前の値へ戻す。選択はそのまま） */
+  /** リセット（選んだポケモンを開いた時点の状態へ戻す。選択はそのまま） */
   (e: "reset"): void;
 }>();
 

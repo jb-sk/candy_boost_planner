@@ -198,7 +198,7 @@ export const ja = {
       inputAria: "{field}（{name}）",
       hint: "数字を押して調整",
       resetEdit: "リセット",
-      resetEditTitle: "この欄を押す前の値に戻します",
+      resetEditTitle: "このポケモンを、開いた時点の状態に戻します",
       recommend: "{name}のLvを上げる",
       recommendMany: "{name}などのLvを上げる",
       recommendInsufficient: "これだけでは届きません",

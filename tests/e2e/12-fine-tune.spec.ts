@@ -452,7 +452,7 @@ test.describe('12-fine-tune（PC）', () => {
     await expect(calc.getRowSleepTargetSelect(calc.getRow(2))).toContainText('🎫🍬');
   });
 
-  test('リセット: その欄を押してからの変更を取り消して押す前の値へ戻し、選んだままにする。ほかの行の変更は残る', async ({ page }) => {
+  test('リセット: 選んだポケモンを開いた時点の状態へまるごと戻し、選んだままにする。欄を移って戻っても戻せる。ほかの行の変更は残る', async ({ page }) => {
     const { fineTune } = await setupScenario(page, ALL_REACHED);
     await fineTune.open();
     await fineTune.waitForSettled();
@@ -462,7 +462,7 @@ test.describe('12-fine-tune（PC）', () => {
     const eeveeBoost = await fineTune.boostValue(eevee);
     await fineTune.adjust(eevee, 'boost', -10);
 
-    // 変えるまではリセットできない
+    // 変えるまではリセットできない（ほかの行を変えても、このポケモンは開いた時点のまま）
     await fineTune.select(pikachu, 'boost');
     await expect(fineTune.resetEditButton).toBeDisabled();
     await fineTune.step(-10);
@@ -470,7 +470,7 @@ test.describe('12-fine-tune（PC）', () => {
     expect(await fineTune.boostValue(pikachu)).toBe(boost - 110);
     await fineTune.resetEditButton.click();
     expect(await fineTune.boostValue(pikachu)).toBe(boost);
-    // 選んだまま。続けて動かして、また押す前の値へ戻せる
+    // 選んだまま。続けて動かして、また開いた時点へ戻せる
     await expect(fineTune.editor).toHaveAttribute('data-row-id', (await pikachu.getAttribute('data-row-id'))!);
     await expect(fineTune.editor).toHaveAttribute('data-field', 'boost');
     await expect(fineTune.resetEditButton).toBeDisabled();
@@ -479,24 +479,36 @@ test.describe('12-fine-tune（PC）', () => {
     expect(await fineTune.boostValue(pikachu)).toBe(boost);
     expect(await fineTune.boostValue(eevee)).toBe(eeveeBoost - 10);
 
-    // アメの数（個数指定）・目標Lv・睡眠も同じ
+    // 睡眠を変えて目標Lvを押し、睡眠へ戻っても、開いた時点へ戻せる
+    await fineTune.chooseSleep(pikachu, 'h500');
+    await fineTune.select(pikachu, 'target');
+    await expect(fineTune.resetEditButton).toBeEnabled();
+    await fineTune.select(pikachu, 'sleep');
+    await expect(fineTune.resetEditButton).toBeEnabled();
+    await fineTune.resetEditButton.click();
+    await expect(fineTune.cell(pikachu, 'sleep')).toHaveText('-');
+    await expect(fineTune.sleepOption('none')).toHaveAttribute('aria-pressed', 'true');
+    await expect(fineTune.resetEditButton).toBeDisabled();
+
+    // どの欄で押しても、このポケモンの変更はまとめて戻る（目標Lvと睡眠を変えて、睡眠の欄で押す）
+    await fineTune.setValue(pikachu, 'target', 60);
+    await fineTune.chooseSleep(pikachu, 'h500');
+    await fineTune.resetEditButton.click();
+    expect(await fineTune.targetLevel(pikachu)).toBe(40);
+    await expect(fineTune.cell(pikachu, 'sleep')).toHaveText('-');
+    // アメの数（個数指定）も戻り、アメブを動かせる行に戻る
     const candy = await fineTune.candyValue(pikachu);
     await fineTune.adjust(pikachu, 'candy', -100);
     await fineTune.resetEditButton.click();
     expect(await fineTune.candyValue(pikachu)).toBe(candy);
     await expect(fineTune.editor).toHaveAttribute('data-field', 'candy');
     await expect(fineTune.cell(pikachu, 'boost')).toHaveClass(/fineTuneRow__cell--input/);
-    await fineTune.select(pikachu, 'target');
-    await fineTune.typeLevel('target', 60);
-    await fineTune.resetEditButton.click();
-    expect(await fineTune.targetLevel(pikachu)).toBe(40);
-    await expect(fineTune.levelInput('target')).toHaveValue('40');
-    await fineTune.chooseSleep(pikachu, 'h500');
-    await fineTune.resetEditButton.click();
-    await expect(fineTune.cell(pikachu, 'sleep')).toHaveText('-');
-    await expect(fineTune.sleepOption('none')).toHaveAttribute('aria-pressed', 'true');
+    // ほかの行の変更は残る
+    expect(await fineTune.boostValue(eevee)).toBe(eeveeBoost - 10);
 
     // リセットも元に戻す1回で取り消せる
+    await fineTune.chooseSleep(pikachu, 'h500');
+    await fineTune.resetEditButton.click();
     await fineTune.undoButton.click();
     await expect(fineTune.cell(pikachu, 'sleep')).toHaveText('500h');
   });
@@ -660,7 +672,7 @@ test.describe('12-fine-tune（PC）', () => {
     await fineTune.typeRowProp('exp', 100);
     await fineTune.waitForSettled();
 
-    // リセットで、名前を押す前（在庫も）へ戻り、もう一度入れ直せる
+    // リセットで、開いた時点（在庫も）へ戻り、もう一度入れ直せる
     await fineTune.resetEditButton.click();
     await expect(fineTune.levelInput('srcLevel')).toHaveValue('10');
     await expect(fineTune.rowProp('stock')).toHaveValue('100');
