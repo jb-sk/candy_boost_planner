@@ -17,7 +17,7 @@
       :disabled="disabled"
       :label="`${label}: Lv${value}`"
       boundary=".fineTuneModal"
-      @update:model-value="emit('set', $event)"
+      @update:model-value="(level, coalesce) => emit('set', level, coalesce)"
     >
       <!-- 計算機のピッカーと同じ見出し（目標Lv・アメブ目標Lvは現在Lvからの矢印） -->
       <template #title>{{ label }}: <template v-if="from !== undefined">Lv{{ from }} → </template>Lv{{ value }}</template>
@@ -27,6 +27,7 @@
 
 <script setup lang="ts">
 import LevelPicker from "./LevelPicker.vue";
+import type { HistoryRecordOptions } from "../composables/useHistory";
 
 /**
  * シンプルの Lv の欄。値と範囲は親（`FineTuneRowView`）から受け取り、選んだ Lv を `set` で返すだけ（範囲に収めるのは reducer）。
@@ -46,6 +47,7 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: "set", level: number): void;
+  /** `coalesce` はスライダーの1回のドラッグの目印（`LevelPicker` から受け取ったまま渡す） */
+  (e: "set", level: number, coalesce?: HistoryRecordOptions): void;
 }>();
 </script>

@@ -159,6 +159,19 @@ describe("下書きの履歴（§9.1、§10.1）", () => {
     expect(boostOf(s, "a")).toBeUndefined();
   });
 
+  it("まとめる間隔に Infinity を渡すと（Lvピッカーのスライダーの1回のドラッグ）、時間が空いても同じ目印は1件", () => {
+    const s = session();
+    let history = recordDraft(s.history, s.state, "target:a:levelPicker:slider:1", 0, Number.POSITIVE_INFINITY);
+    history = recordDraft(history, s.state, "target:a:levelPicker:slider:1", 60_000, Number.POSITIVE_INFINITY);
+    expect(history.undo).toHaveLength(1);
+    history = recordDraft(history, s.state, "target:a:levelPicker:slider:2", 60_001, Number.POSITIVE_INFINITY);
+    expect(history.undo).toHaveLength(2);
+    // 既定の間隔（1秒）では割れる
+    history = recordDraft(history, s.state, "target:a", 70_000);
+    history = recordDraft(history, s.state, "target:a", 72_000);
+    expect(history.undo).toHaveLength(4);
+  });
+
   it("元に戻す・やり直すの直後の op は、前の件にまとめられない", () => {
     const s = session();
     s.op({ kind: "step", rowId: "a", by: 5 }, 0);

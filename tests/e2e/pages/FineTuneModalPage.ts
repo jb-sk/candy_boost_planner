@@ -196,7 +196,7 @@ export class FineTuneModalPage {
     await expect(this.editor).not.toHaveAttribute('data-row-id', /./);
   }
 
-  /** 調整バーの刻みのボタン（アメブ・アメは -100 / -10 / -1 / +1 / +10 / +100、目標Lvは ◀ ▶ の ±1）を押す。 */
+  /** 調整バーの刻みのボタン（アメブ・アメの -100 / -10 / -1 / +1 / +10 / +100）を押す。目標Lvは `typeLevel`。 */
   async step(delta: number): Promise<void> {
     await this.editor.locator(`[data-testid="fine-tune-editor-step"][data-delta="${delta}"]`).click();
   }
@@ -243,14 +243,9 @@ export class FineTuneModalPage {
     await this.levelInput(kind).press('Enter');
   }
 
-  /** 目標Lv: スライダーで Lv を入れる */
-  async setLevel(level: number): Promise<void> {
-    await this.editor.getByTestId('fine-tune-editor-level-range').fill(String(level));
-  }
-
-  /** 目標Lv: Lv の丸いボタン */
-  levelChip(level: number): Locator {
-    return this.editor.locator(`[data-testid="fine-tune-editor-level-chip"][data-level="${level}"]`);
+  /** Lv の欄の ▾ で開く Lvピッカー（計算機と同じ。◀ スライダー ▶・Lv の丸いボタン） */
+  levelPopover(kind: 'srcLevel' | 'target' | 'boostLevel'): Locator {
+    return this.levelField(kind).getByTestId('level-picker-popover');
   }
 
   /** アメブの最小アメブ・リセット */
@@ -286,14 +281,19 @@ export class FineTuneModalPage {
   async adjust(row: Locator, field: 'target' | 'boost' | 'candy', delta: number): Promise<void> {
     await this.select(row, field);
     await expect(this.editor).toHaveAttribute('data-field', field);
+    if (field === 'target') {
+      // 目標Lvは刻みのボタンが無いので、Lv の欄に今の値 + delta を打つ
+      await this.typeLevel('target', Number(await this.levelInput('target').inputValue()) + delta);
+      return;
+    }
     await this.step(delta);
   }
 
-  /** 欄を選んで値を打つ（目標Lvはスライダー）。 */
+  /** 欄を選んで値を打つ（目標Lvは Lv の欄）。 */
   async setValue(row: Locator, field: 'target' | 'boost' | 'candy', value: number): Promise<void> {
     if (field === 'target') {
       await this.select(row, 'target');
-      await this.setLevel(value);
+      await this.typeLevel('target', value);
       return;
     }
     await this.select(row, field);

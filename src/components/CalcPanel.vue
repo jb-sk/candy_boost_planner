@@ -362,7 +362,7 @@
               @update:open="rowLevelPickerOpen = $event"
               keypad
               :model-value="r.srcLevel"
-              @update:model-value="calc.setSrcLevel(r.id, $event)"
+              @update:model-value="(lv, coalesce) => calc.setSrcLevel(r.id, lv, coalesce)"
               :label="`${t('calc.row.srcLevel')}: Lv${r.srcLevel}`"
               :max="r.dstLevel"
               :disabled="r.linkBroken"
@@ -400,7 +400,7 @@
               @update:open="rowLevelPickerOpen = $event"
               keypad
               :model-value="r.dstLevel"
-              @update:model-value="calc.setDstLevel(r.id, $event)"
+              @update:model-value="(lv, coalesce) => calc.setDstLevel(r.id, lv, coalesce)"
               :label="`${t('calc.row.dstLevel')}: Lv${r.dstLevel}`"
               :min="r.srcLevel"
               :max="MAX_LEVEL"
@@ -435,7 +435,7 @@
               @update:open="rowLevelPickerOpen = $event"
               keypad
               :model-value="r.ui.boostReachLevel"
-              @update:model-value="calc.setBoostLevel(r.id, $event)"
+              @update:model-value="(lv, coalesce) => calc.setBoostLevel(r.id, lv, coalesce)"
               :label="`${t('calc.row.boostReachLevel')}: Lv${r.ui.boostReachLevel}`"
               :min="r.srcLevel"
               :max="r.ui.boostReachLevelMax"
@@ -1035,8 +1035,8 @@ const props = defineProps<{
 const calc = props.calc;
 const { t, locale } = useI18n();
 
-/** シンプルモードの入口を出すか（対象にできる行が1行以上） */
-const canFineTune = computed(() => hasFineTuneTarget(calc.rows.value, calc.evaluateRows));
+/** シンプルモードの入口を出すか（目標Lvを動かせる行が1行以上） */
+const canFineTune = computed(() => hasFineTuneTarget(calc.rows.value));
 
 /** 行ごとの計画結果（テンプレートで getPokemonResult を繰り返さず Map を O(1) 参照） */
 function rowP(r: CalcRowView): PokemonPlanResult | null {

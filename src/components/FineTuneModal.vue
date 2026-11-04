@@ -144,6 +144,7 @@ import type { Change } from "../domain/fine-tune/rowView";
 import { useFineTune, type FineTuneRaiseResult } from "../composables/useFineTune";
 import { useFocusTrap } from "../composables/useFocusTrap";
 import { useHistoryShortcuts } from "../composables/useHistoryShortcuts";
+import type { HistoryRecordOptions } from "../composables/useHistory";
 import { useRowReorderDrag } from "../composables/useRowReorderDrag";
 import { showToast } from "../composables/useToast";
 import type { CalcRow, CalcStore } from "../composables/useCalcStore";
@@ -178,8 +179,9 @@ const discardConfirmRef = ref<InstanceType<typeof InlineConfirm> | null>(null);
 const listRef = ref<HTMLElement | null>(null);
 
 // ===== op =====
-function dispatch(op: FineTuneOp): void {
-  fineTune.dispatch(op);
+/** `coalesce` は Lvピッカーのスライダーの1回のドラッグの目印（元に戻すの1件にまとめる） */
+function dispatch(op: FineTuneOp, coalesce?: HistoryRecordOptions): void {
+  fineTune.dispatch(op, coalesce);
 }
 
 // ===== 選んだ欄（同じ欄をもう一度押すと閉じる） =====

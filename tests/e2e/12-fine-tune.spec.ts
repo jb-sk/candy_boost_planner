@@ -187,7 +187,7 @@ test.describe('12-fine-tune（PC）', () => {
     await expect(calc.getRowBoostCandyInput(calc.getRow(1))).toHaveValue(hitokageBefore);
   });
 
-  test('目標Lv: Lv の欄（Lvピッカー）・◀ ▶・スライダー・Lv の丸いボタンで動かした目標Lvが計算機へ移る。全員届いていれば「〇〇のLvを上げる」は出ない', async ({ page }) => {
+  test('目標Lv: 操作パネルは Lv の欄だけ（直接打つか ▾ の Lvピッカー）で、動かした目標Lvが計算機へ移る。全員届いていれば「〇〇のLvを上げる」は出ない', async ({ page }) => {
     const { calc, fineTune } = await setupScenario(page, ALL_REACHED);
     await fineTune.open();
     await fineTune.waitForSettled();
@@ -201,12 +201,11 @@ test.describe('12-fine-tune（PC）', () => {
     await expect(fineTune.cell(pikachu, 'target')).toHaveClass(/fineTuneRow__cell--changed/);
     // 全員届いているので、おすすめは出ない
     await expect(fineTune.editorRecommend).toHaveCount(0);
+    // アメブ目標Lvと同じく Lv の欄だけ。◀ ▶・スライダー・Lv の丸いボタンは操作パネルに置かない（▾ の Lvピッカーの中にある）
+    await expect(fineTune.editor.getByTestId('fine-tune-editor-step')).toHaveCount(0);
+    await expect(fineTune.editor.locator('input[type="range"]')).toHaveCount(0);
+    await expect(fineTune.editor.locator('.levelChip')).toHaveCount(0);
 
-    // Lv の丸いボタン。今の値のボタンが選ばれた形になり、Lv の欄にも出る
-    await fineTune.levelChip(50).click();
-    expect(await fineTune.targetLevel(pikachu)).toBe(50);
-    await expect(fineTune.levelChip(50)).toHaveClass(/levelChip--on/);
-    await expect(fineTune.levelInput('target')).toHaveValue('50');
     // Lv の欄に直接打つ（Enter で確定）。範囲の外は端に収まる
     await fineTune.typeLevel('target', 52);
     expect(await fineTune.targetLevel(pikachu)).toBe(52);
@@ -216,25 +215,80 @@ test.describe('12-fine-tune（PC）', () => {
     await expect(fineTune.levelInput('target')).toHaveValue('70');
     // ▾ で計算機と同じ Lvピッカーが開き、選んだ Lv が目標Lvになる
     await fineTune.levelField('target').getByTestId('level-picker-chevron').click();
-    const picker = fineTune.levelField('target').getByTestId('level-picker-popover');
+    const picker = fineTune.levelPopover('target');
     await expect(picker).toBeVisible();
     await picker.locator('.levelChip', { hasText: /^\s*60\s*$/ }).click();
     expect(await fineTune.targetLevel(pikachu)).toBe(60);
+    await expect(fineTune.levelInput('target')).toHaveValue('60');
+    // 現在Lv（10）は下の端。◀ は押せない
+    await picker.locator('.levelChip', { hasText: /^\s*10\s*$/ }).click();
+    expect(await fineTune.targetLevel(pikachu)).toBe(10);
+    await expect(picker.getByTestId('level-picker-decrement')).toBeDisabled();
+    // スライダー
+    await picker.locator('input[type="range"]').fill('45');
+    expect(await fineTune.targetLevel(pikachu)).toBe(45);
+    await expect(fineTune.editorChange).toHaveText('40 → 45');
     // ▾ をもう一度押すと閉じる（Escape は調整バーの選択を外すので使わない）
     await fineTune.levelField('target').getByTestId('level-picker-chevron').click();
     await expect(picker).toBeHidden();
-    // 現在Lv（10）は下の端。◀ は押せない
-    await fineTune.levelChip(10).click();
-    expect(await fineTune.targetLevel(pikachu)).toBe(10);
-    await expect(fineTune.stepButton(-1)).toBeDisabled();
-    // スライダー
-    await fineTune.setLevel(45);
-    expect(await fineTune.targetLevel(pikachu)).toBe(45);
-    await expect(fineTune.editorChange).toHaveText('40 → 45');
     await fineTune.waitForSettled();
 
     await fineTune.apply();
     await expect(calc.getRowDstLevelInput(calc.getRow(0))).toHaveValue('45');
+  });
+
+  test('目標Lv: 睡眠だけで届くLvまで下げても目標Lvの欄は消えず、さらに下げても上げ直してもよい（計算機と同じ）', async ({ page }) => {
+    const { fineTune } = await setupScenario(page, ALL_REACHED);
+    await fineTune.open();
+    await fineTune.waitForSettled();
+    const pikachu = fineTune.rowByName('ピカチュウ');
+    await fineTune.chooseSleep(pikachu, 'h2000');
+    await fineTune.waitForSettled();
+
+    // 現在Lv10 → 12 は睡眠だけで届く。アメブは動かせなくなるが、目標Lvは動かせる
+    await fineTune.select(pikachu, 'target');
+    await fineTune.typeLevel('target', 12);
+    expect(await fineTune.targetLevel(pikachu)).toBe(12);
+    await fineTune.waitForSettled();
+    await expect(fineTune.editor).toHaveAttribute('data-field', 'target');
+    await expect(fineTune.levelField('target')).toBeVisible();
+    await expect(fineTune.cell(pikachu, 'target')).not.toHaveClass(/fineTuneRow__cell--locked/);
+    await expect(fineTune.cell(pikachu, 'boost')).toHaveClass(/fineTuneRow__cell--locked/);
+
+    // さらに下げられる
+    await fineTune.typeLevel('target', 11);
+    expect(await fineTune.targetLevel(pikachu)).toBe(11);
+    // 上げ直すと、アメが要るようになりアメブも動かせる
+    await fineTune.typeLevel('target', 60);
+    expect(await fineTune.targetLevel(pikachu)).toBe(60);
+    await fineTune.waitForSettled();
+    await expect(fineTune.cell(pikachu, 'boost')).not.toHaveClass(/fineTuneRow__cell--locked/);
+  });
+
+  test('目標Lv: Lvピッカーのスライダーを1回ドラッグした分は、元に戻す1回でまとめて戻る', async ({ page }) => {
+    const { fineTune } = await setupScenario(page, ALL_REACHED);
+    await fineTune.open();
+    await fineTune.waitForSettled();
+    const pikachu = fineTune.rowByName('ピカチュウ');
+    await fineTune.select(pikachu, 'target');
+    await fineTune.levelField('target').getByTestId('level-picker-chevron').click();
+    const range = fineTune.levelPopover('target').locator('input[type="range"]');
+    const box = (await range.boundingBox())!;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(box.x + 4, y);
+    await page.mouse.down();
+    for (let i = 1; i <= 10; i += 1) {
+      await page.mouse.move(box.x + 4 + ((box.width - 8) * i) / 10, y);
+      // 1秒より長く止めても割れない
+      if (i === 5) await page.waitForTimeout(1200);
+    }
+    await page.mouse.up();
+    expect(await fineTune.targetLevel(pikachu)).toBe(70);
+    await fineTune.levelField('target').getByTestId('level-picker-chevron').click();
+
+    await fineTune.undoButton.click();
+    expect(await fineTune.targetLevel(pikachu)).toBe(40);
+    await expect(fineTune.undoButton).toBeDisabled();
   });
 
   test('調整バー: どの欄を選んでも（何も選んでいなくても）調整バーとモーダルの高さが変わらない', async ({ page }) => {
@@ -416,10 +470,10 @@ test.describe('12-fine-tune（PC）', () => {
     await expect(fineTune.editor).toHaveAttribute('data-field', 'candy');
     await expect(fineTune.cell(pikachu, 'boost')).toHaveClass(/fineTuneRow__cell--input/);
     await fineTune.select(pikachu, 'target');
-    await fineTune.levelChip(60).click();
+    await fineTune.typeLevel('target', 60);
     await fineTune.resetEditButton.click();
     expect(await fineTune.targetLevel(pikachu)).toBe(40);
-    await expect(fineTune.levelChip(40)).toHaveClass(/levelChip--on/);
+    await expect(fineTune.levelInput('target')).toHaveValue('40');
     await fineTune.chooseSleep(pikachu, 'h500');
     await fineTune.resetEditButton.click();
     await expect(fineTune.cell(pikachu, 'sleep')).toHaveText('-');
@@ -513,9 +567,13 @@ test.describe('12-fine-tune（PC）', () => {
     await fineTune.typeLevel('boostLevel', 30);
     expect(await fineTune.boostValue(pikachu)).toBe(toLv30);
 
-    // 目標Lv・現在Lvの Lv の欄も同じ高さ
+    // 目標Lvの Lv の欄は、アメブ目標Lvと同じ位置・同じ大きさ。現在Lvの Lv の欄も同じ高さ
     await fineTune.select(pikachu, 'target');
-    expect((await fineTune.levelField('target').boundingBox())!.height).toBeCloseTo(boostLevelBox.height, 0);
+    const targetBox = (await fineTune.levelField('target').boundingBox())!;
+    expect(targetBox.height).toBeCloseTo(boostLevelBox.height, 0);
+    expect(targetBox.width).toBeCloseTo(boostLevelBox.width, 0);
+    expect(targetBox.x).toBeCloseTo(boostLevelBox.x, 0);
+    expect(targetBox.y).toBeCloseTo(boostLevelBox.y, 0);
     await fineTune.select(pikachu, 'row');
     expect((await fineTune.levelField('srcLevel').boundingBox())!.height).toBeCloseTo(boostLevelBox.height, 0);
 

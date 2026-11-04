@@ -28,20 +28,22 @@ export interface FineTuneHistoryStep {
 }
 
 /**
- * op が通って中身が変わったときに呼ぶ。1秒以内の同じ coalesceKey は前の件にまとめる。redo を空にする。
- * `before` は op を通す直前の下書き。
+ * op が通って中身が変わったときに呼ぶ。1秒以内（`windowMs`）の同じ coalesceKey は前の件にまとめる。redo を空にする。
+ * `before` は op を通す直前の下書き。目印そのものが1回の操作を表すとき（Lvピッカーのスライダーの1回のドラッグ）は
+ * `windowMs` に Infinity を渡す（ゆっくりしたドラッグを途中で割らない）。
  */
 export function recordDraft(
   history: FineTuneHistory,
   before: FineTuneState,
   coalesceKey: string | undefined,
   now: number,
+  windowMs = FINE_TUNE_COALESCE_MS,
 ): FineTuneHistory {
   const last = history.undo[history.undo.length - 1];
   if (
     coalesceKey !== undefined
     && last?.coalesceKey === coalesceKey
-    && now - last.recordedAt <= FINE_TUNE_COALESCE_MS
+    && now - last.recordedAt <= windowMs
   ) {
     return { undo: [...history.undo.slice(0, -1), { ...last, recordedAt: now }], redo: [] };
   }

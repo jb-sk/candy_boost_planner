@@ -7,10 +7,12 @@ import { cancelPersist } from "../../../persistence/deferredPersist";
 import { addBoxRow, createCalcStore } from "../../../../tests/helpers/fakeIndividuals";
 import type { LevelPlannerResult } from "../../level-planner/types";
 import {
+  canAdjustTarget,
   candyUnitsOf,
   initialFineTuneState,
   opRange,
   reduceFineTune,
+  rowExclusion,
   type FineTuneBase,
   type FineTuneDeps,
   type FineTuneOp,
@@ -141,6 +143,26 @@ describe("reduceFineTune: 本物のストアを deps に渡す", () => {
     let plain = s.initial;
     for (let i = 0; i < 48; i += 1) plain = s.ok(plain, { kind: "targetStep", rowId: a, by: -1 });
     expect(plain.rows[0]!.dstLevel).toBe(lowered.rows[0]!.dstLevel);
+  });
+
+  it("時間の睡眠目標の行は、睡眠だけで届くLvまで目標Lvを下げても目標Lvを動かせ（さらに下げられ）、上げ直すとアメブも動かせる", () => {
+    const store = newStore(100_000);
+    const d = add(store, "d", 25, 10, 60);
+    store.setRowSleepTarget(d, 2000);
+    const s = session(store);
+    expect(rowExclusion(rowOf(s.base.rows, d), s.base.evaluated)).toBeNull();
+
+    const low = s.ok(s.initial, { kind: "targetSet", rowId: d, level: 12 });
+    expect(rowExclusion(rowOf(low.rows, d), s.deps.evaluateRows(low.rows))).toBe("sleepOnly");
+    expect(canAdjustTarget(rowOf(low.rows, d))).toBe(true);
+    expect(rowOf(s.ok(low, { kind: "targetStep", rowId: d, by: -1 }).rows, d).dstLevel).toBe(11);
+    // アメブは睡眠だけで届く間は動かせない
+    const boost = reduceFineTune(s.base, low, { kind: "step", rowId: d, by: 1 }, s.deps, s.deps.evaluateRows(low.rows));
+    expect(boost).toEqual({ rejected: "excluded" });
+
+    const back = s.ok(low, { kind: "targetSet", rowId: d, level: 60 });
+    expect(rowOf(back.rows, d).dstLevel).toBe(60);
+    expect(rowExclusion(rowOf(back.rows, d), s.deps.evaluateRows(back.rows))).toBeNull();
   });
 
   it("時間の睡眠目標の行の使うアメの数は、プランナーへ渡す総アメ数（睡眠EXPを引いた数）と同じ", () => {

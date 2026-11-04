@@ -228,6 +228,19 @@ describe("useFineTune（設計書 §10.4）", () => {
     }
   });
 
+  it("Lvピッカーのスライダーの1回のドラッグ（coalesce を添えた op）は、元に戻す1回で戻る", async () => {
+    const { store, a } = await makeStore();
+    const { fineTune } = open(store);
+    const dstOf = () => fineTune.state.value!.rows.find((r) => r.id === a)!.dstLevel;
+    const before = dstOf();
+    const drag = { coalesceKey: "levelPicker:slider:1", coalesceWindowMs: Number.POSITIVE_INFINITY };
+    for (const level of [before - 1, before - 2, before - 3]) fineTune.dispatch({ kind: "targetSet", rowId: a, level }, drag);
+    expect(dstOf()).toBe(before - 3);
+    fineTune.history.undo();
+    expect(dstOf()).toBe(before);
+    expect(fineTune.history.canUndo.value).toBe(false);
+  });
+
   it("元に戻す・やり直すは1件ずつで、ラベルは常に null、undo() は null を返す（D41）", async () => {
     const { store, a, b } = await makeStore();
     const { fineTune } = open(store);
@@ -324,9 +337,9 @@ describe("useFineTune（設計書 §10.4）", () => {
 
   it("入口のボタンは、対象にできる行が1行以上あるときだけ出す", async () => {
     const empty = createCalcStore({ locale: ref("ja"), t });
-    expect(hasFineTuneTarget(empty.rows.value, empty.evaluateRows)).toBe(false);
+    expect(hasFineTuneTarget(empty.rows.value)).toBe(false);
     const { store } = await makeStore();
-    expect(hasFineTuneTarget(store.rows.value, store.evaluateRows)).toBe(true);
+    expect(hasFineTuneTarget(store.rows.value)).toBe(true);
   });
 
   it("全体のLvを伸ばす: 上の行のアメブを動かして届かない行が届き、1件の履歴で入り、解いた結果がそのまま最新の結果になる", async () => {
@@ -425,19 +438,19 @@ describe("useFineTune（設計書 §10.4）", () => {
     addBoxRow(store, { boxId: "m", pokedexId: 133, srcLevel: 70, dstLevelDefault: 70, expType: 600, nature: "normal" });
     const maxRowId = store.rows.value[0]!.id;
     store.onRowCandyTarget(maxRowId, "5");
-    expect(hasFineTuneTarget(store.rows.value, store.evaluateRows)).toBe(false);
+    expect(hasFineTuneTarget(store.rows.value)).toBe(false);
     // 個数指定の行は目標Lv・アメブを動かせないので数えない。個数指定を外せば true
     addBoxRow(store, { boxId: "n", pokedexId: 133, srcLevel: 10, dstLevelDefault: 50, expType: 600, nature: "normal" });
     const normalRowId = store.rows.value[1]!.id;
     store.onRowCandyTarget(normalRowId, "20");
     expect(store.rows.value[1]!.candyTarget).toBe(20);
-    expect(hasFineTuneTarget(store.rows.value, store.evaluateRows)).toBe(false);
+    expect(hasFineTuneTarget(store.rows.value)).toBe(false);
     store.onRowCandyTarget(normalRowId, "");
     expect(store.rows.value[1]!.candyTarget).toBeUndefined();
-    expect(hasFineTuneTarget(store.rows.value, store.evaluateRows)).toBe(true);
+    expect(hasFineTuneTarget(store.rows.value)).toBe(true);
     // 睡眠目標モードにすると個数指定は外れ、対象外
     store.setRowSleepTarget(normalRowId, "all");
-    expect(hasFineTuneTarget(store.rows.value, store.evaluateRows)).toBe(false);
+    expect(hasFineTuneTarget(store.rows.value)).toBe(false);
   });
 
   it("基準が今の計算機と別物なら、適用せず stale を返す（黙って当て直さない）", async () => {

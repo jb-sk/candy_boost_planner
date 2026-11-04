@@ -43,12 +43,12 @@
 
     <button
       class="fineTuneRow__cell"
-      :class="cellClass('target', row.levelAdjustable, row.targetLevel.base !== row.targetLevel.value)"
+      :class="cellClass('target', row.targetAdjustable, row.targetLevel.base !== row.targetLevel.value)"
       type="button"
       data-testid="fine-tune-row-target"
       :aria-label="`${t('calc.fineTune.field.target')} ${row.targetLevel.value}`"
       :aria-pressed="selectedField === 'target'"
-      @click="emit('select', row.levelAdjustable ? 'target' : 'row')"
+      @click="emit('select', row.targetAdjustable ? 'target' : 'row')"
     >{{ row.targetLevel.value }}</button>
 
     <!-- 睡眠目標（200h〜2000h・全て・おひるね島）。アメ在庫・チケットを使うときは印を付ける -->

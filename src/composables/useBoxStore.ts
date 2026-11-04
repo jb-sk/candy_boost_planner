@@ -28,7 +28,7 @@ import { schedulePersist } from "../persistence/deferredPersist";
 import { clampExpRemaining, resolveIndividual, type Individual, type IndividualPatch } from "../domain/individual";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { normalizeSleepHoursInput, normalizeSleepHoursValue } from "../domain/box/sleep-milestones";
-import { INDIVIDUAL_ADD_SCOPES, INDIVIDUAL_EDIT_SCOPES, stepHistoryWithToast, type History, type HistoryScope } from "./useHistory";
+import { INDIVIDUAL_ADD_SCOPES, INDIVIDUAL_EDIT_SCOPES, stepHistoryWithToast, type History, type HistoryRecordOptions, type HistoryScope } from "./useHistory";
 import { showToast } from "./useToast";
 type FilterJoinMode = "and" | "or";
 
@@ -845,8 +845,9 @@ export function useBoxStore(opts: {
    * ボックスのデータを変える直前に呼ぶ。同じ欄への連続編集は `coalesceKey` で1件にまとめる。
    * 計画（計算機の行）に影響する操作は `INDIVIDUAL_EDIT_SCOPES` を渡して組で記録する。
    */
-  function recordBox(label: string, coalesceKey?: string, scopes: readonly HistoryScope[] = ["box"]) {
-    history.record(label, scopes, coalesceKey === undefined ? {} : { coalesceKey });
+  /** `coalesce` は目印だけ（文字列。まとめる間隔は既定）か、間隔も決めた組（Lvピッカーのドラッグ） */
+  function recordBox(label: string, coalesce?: string | HistoryRecordOptions, scopes: readonly HistoryScope[] = ["box"]) {
+    history.record(label, scopes, typeof coalesce === "string" ? { coalesceKey: coalesce } : coalesce ?? {});
   }
 
   /**
@@ -857,14 +858,14 @@ export function useBoxStore(opts: {
     id: string,
     label: string,
     next: (x: BoxEntry) => BoxEntry,
-    coalesceKey?: string,
+    coalesce?: string | HistoryRecordOptions,
     scopes?: readonly HistoryScope[],
   ): boolean {
     const current = boxEntries.value.find((x) => x.id === id);
     if (!current) return false;
     const candidate = next(current);
     if (JSON.stringify(candidate) === JSON.stringify(current)) return false;
-    recordBox(label, coalesceKey, scopes);
+    recordBox(label, coalesce, scopes);
     const updated = { ...candidate, updatedAt: new Date().toISOString() };
     boxEntries.value = boxEntries.value.map((x) => (x.id === id ? updated : x));
     return true;
@@ -999,7 +1000,7 @@ export function useBoxStore(opts: {
   function updateIndividual(
     boxId: string,
     patch: IndividualPatch,
-    opts0: { label: string; coalesceKey?: string },
+    opts0: { label: string } & HistoryRecordOptions,
   ): void {
     const current = boxEntries.value.find((x) => x.id === boxId);
     if (!current) throw new Error(`updateIndividual: unknown boxId ${boxId}`);
@@ -1030,18 +1031,22 @@ export function useBoxStore(opts: {
       ...x,
       label,
       planner: Object.keys(planner).length ? { ...x.planner, ...planner } : x.planner,
-    }), opts0.coalesceKey, INDIVIDUAL_EDIT_SCOPES);
+    }), { coalesceKey: opts0.coalesceKey, coalesceWindowMs: opts0.coalesceWindowMs }, INDIVIDUAL_EDIT_SCOPES);
   }
 
-  function writeSelectedLevel(lvl: unknown) {
+  /** `coalesce` は Lvピッカーのスライダーの1回のドラッグの目印（無ければ1秒以内の続けた入力をまとめる） */
+  function writeSelectedLevel(lvl: unknown, coalesce?: HistoryRecordOptions) {
     const e = selectedBox.value;
     if (!e) return;
-    updateIndividual(e.id, { level: Number(lvl) }, { label: t("box.undoLabel.field", { name: displayBoxTitle(e), field: t("calc.row.srcLevel") }), coalesceKey: `boxEdit:${e.id}:level` });
+    updateIndividual(e.id, { level: Number(lvl) }, {
+      label: t("box.undoLabel.field", { name: displayBoxTitle(e), field: t("calc.row.srcLevel") }),
+      ...(coalesce ?? { coalesceKey: `boxEdit:${e.id}:level` }),
+    });
     importStatus.value = t("status.levelUpdated");
   }
 
-  function setBoxLevel(v: unknown) {
-    writeSelectedLevel(v);
+  function setBoxLevel(v: unknown, coalesce?: HistoryRecordOptions) {
+    writeSelectedLevel(v, coalesce);
   }
   function onEditSelectedLabel(v: string) {
     const e = selectedBox.value;

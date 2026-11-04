@@ -845,6 +845,35 @@ test.describe('04-calculator C. 元に戻す/やり直し', () => {
     await expect(calc.undoButton).toBeDisabled();
     await expect(calc.redoButton).toHaveAttribute('title', /^やり直す：インポート \(/);
   });
+
+  test('16b. Lvピッカーのスライダーを1回ドラッグした分は、元に戻す1回でまとめて戻る（1歩ずつ履歴を使わない）', async ({ page }) => {
+    const box = new BoxPanelPage(page);
+    const calc = new CalcPanelPage(page);
+    await box.selectBoxTile(0);
+    await box.clickApplyToCalc();
+    await calc.expectRowCount(1);
+    const row = calc.getRow(0);
+    const dst = calc.getRowDstLevelInput(row);
+    const before = await dst.inputValue();
+
+    const picker = row.getByTestId('dstLevel');
+    await picker.getByTestId('level-picker-chevron').click();
+    const range = picker.locator('input[type="range"]');
+    const box0 = (await range.boundingBox())!;
+    const y = box0.y + box0.height / 2;
+    // 左端から右端まで、何段にも分けて動かす（Lv が何度も変わる）
+    await page.mouse.move(box0.x + 4, y);
+    await page.mouse.down();
+    for (let i = 1; i <= 20; i += 1) await page.mouse.move(box0.x + 4 + ((box0.width - 8) * i) / 20, y);
+    await page.mouse.up();
+    await expect(dst).toHaveValue('70');
+    await picker.getByTestId('level-picker-chevron').click();
+
+    await calc.clickUndo();
+    await expect(dst).toHaveValue(before);
+    // 戻したのはドラッグだけ（その前の「計算機へ追加」は残る）
+    await calc.expectRowCount(1);
+  });
 });
 
 // ============================================================

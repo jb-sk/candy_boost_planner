@@ -37,7 +37,7 @@ import {
 } from "../domain/fine-tune/rowView";
 import { createPlannerRunner, type PlannerRunner } from "../workers/plannerRunner";
 import type { CalcRow, CalcStore } from "./useCalcStore";
-import type { HistoryControls } from "./useHistory";
+import type { HistoryControls, HistoryRecordOptions } from "./useHistory";
 
 /** プレビューを間引く待ち時間（通常の計算は 150ms） */
 export const FINE_TUNE_PREVIEW_DELAY_MS = 300;
@@ -183,7 +183,11 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
   const previewing = computed(() => stale.value && !previewFailed.value);
 
   // ===== op =====
-  function dispatch(op: FineTuneOp): FineTuneReduceResult | { rejected: "notReady" | "busy" } {
+  /**
+   * `coalesce` は Lvピッカーのスライダーの1回のドラッグの目印。添えると、そのドラッグの op を元に戻すの1件にまとめる
+   * （欄ごとの目印 `coalesceKeyOf` に足し、間隔は `coalesceWindowMs`）。
+   */
+  function dispatch(op: FineTuneOp, coalesce?: HistoryRecordOptions): FineTuneReduceResult | { rejected: "notReady" | "busy" } {
     const b = base.value;
     const s = state.value;
     const ev = evaluated.value;
@@ -193,7 +197,10 @@ export function useFineTune(calc: CalcStore, options: UseFineTuneOptions) {
     if ("rejected" in out) return out;
     // 中身が変わらない op は、状態も履歴も動かさない（版も進めない）
     if (isSameDraftContent(s, out.state)) return { state: s };
-    history.value = recordDraft(history.value, s, coalesceKeyOf(op), now());
+    const key = coalesceKeyOf(op);
+    history.value = coalesce?.coalesceKey === undefined
+      ? recordDraft(history.value, s, key, now())
+      : recordDraft(history.value, s, `${key ?? op.kind}:${coalesce.coalesceKey}`, now(), coalesce.coalesceWindowMs);
     state.value = out.state;
     return out;
   }

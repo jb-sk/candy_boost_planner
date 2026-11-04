@@ -122,7 +122,7 @@ export interface FineTuneLatest {
 export type RejectReason =
   | "unknownRow"
   | "invalidValue"
-  /** 対象外の行に目標Lv・アメブの操作 */
+  /** 対象外の行に目標Lv・アメブの操作（睡眠だけで届く行は目標Lvを動かせる。`canAdjustTarget`） */
   | "excluded"
   /** 睡眠EXPだけで目標に届き、アメブを使えない行のアメブ目標Lv（計算機でもピッカーを無効にしている） */
   | "boostLevelLocked"
@@ -186,32 +186,35 @@ export function candyUnitsOf(row: CalcRow, evaluated: EvaluatedRows): number {
   return evaluated.byId.get(row.id)?.candyNeed ?? 0;
 }
 
-/**
- * 目標Lv・アメブを動かせない理由。動かせる行は null。
- * 評価が要るのは時間の睡眠目標の行（総アメ数が 0 か）だけなので、`evaluated` は関数でも渡せる（入口のボタンの判定で遅らせる）。
- */
-export function rowExclusion(row: CalcRow, evaluated: EvaluatedRows | (() => EvaluatedRows)): RowExclusion | null {
+/** 目標Lv・アメブを動かせない理由。動かせる行は null。 */
+export function rowExclusion(row: CalcRow, evaluated: EvaluatedRows): RowExclusion | null {
   if (row.candyTarget !== undefined) return "candyTarget";
   if (sleepTargetTraits(row).candy === "none") return "noCandy";
-  if (row.sleepTargetHours !== undefined && candyUnitsOf(row, typeof evaluated === "function" ? evaluated() : evaluated) === 0) {
-    return "sleepOnly";
-  }
+  if (row.sleepTargetHours !== undefined && candyUnitsOf(row, evaluated) === 0) return "sleepOnly";
+  return levelExclusion(row);
+}
+
+/** Lv上限・ポケモンが不明（目標Lvも動かせない理由のうち、評価に頼らないもの） */
+function levelExclusion(row: CalcRow): "maxLevel" | "unknownPokemon" | null {
   if (row.srcLevel >= MAX_LEVEL) return "maxLevel";
   if (row.pokedexId === undefined || !isValidPokedexId(row.pokedexId)) return "unknownPokemon";
   return null;
 }
 
 /**
- * 入口のボタンを出すか。目標Lv・アメブを動かせる行が1行以上ある。
- * 行一覧の評価は、時間の睡眠目標の行があって初めて必要になるときだけ、1回行う。
+ * 目標Lvを動かせる行。アメブを動かせる行（`canAdjustLevel`）と、睡眠だけで届く行（`sleepOnly`）。
+ * 睡眠だけで届くかは目標Lvで決まるので、そこで目標Lvを止めない（計算機と同じく、睡眠で届くLvより下げても、上げ直してもよい。
+ * 上げてアメが要るようになれば、アメブも動かせる）。評価に頼らない。
  */
-export function hasFineTuneTarget(
-  rows: readonly CalcRow[],
-  evaluate: (rows: readonly CalcRow[]) => EvaluatedRows,
-): boolean {
-  let evaluated: EvaluatedRows | null = null;
-  const lazy = (): EvaluatedRows => (evaluated ??= evaluate(rows));
-  return rows.some((row) => rowExclusion(row, lazy) === null);
+export function canAdjustTarget(row: CalcRow): boolean {
+  return row.candyTarget === undefined && sleepTargetTraits(row).candy !== "none" && levelExclusion(row) === null;
+}
+
+/**
+ * 入口のボタンを出すか。目標Lvを動かせる行が1行以上ある（アメブを動かせる行は目標Lvも動かせる）。評価しない。
+ */
+export function hasFineTuneTarget(rows: readonly CalcRow[]): boolean {
+  return rows.some((row) => canAdjustTarget(row));
 }
 
 /** 目標Lv・アメブを動かせる行。対象外の行（アメの数を変えた行は個数指定の行）は不可。 */
@@ -430,7 +433,7 @@ export function reduceFineTune(
     }
     case "targetStep":
     case "targetSet": {
-      if (rowExclusion(row, evaluated) !== null) return { rejected: "excluded" };
+      if (!canAdjustTarget(row)) return { rejected: "excluded" };
       const requested = op.kind === "targetStep" ? row.dstLevel + op.by : op.level;
       if (!Number.isFinite(requested)) return { rejected: "invalidValue" };
       const lv = clampToRange(requested, opRange(base, state, evaluated, { kind: "target", rowId: row.id }));

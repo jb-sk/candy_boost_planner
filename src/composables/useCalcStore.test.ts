@@ -3417,6 +3417,41 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     }
   });
 
+  it("Lvピッカーのスライダーの1回のドラッグ（同じ coalesceKey・間隔 Infinity）は、目標Lv・現在Lv・アメブ目標Lvとも undo 1回で戻る", () => {
+    vi.useFakeTimers();
+    try {
+      const { store, id } = makeStore();
+      const drag = (n: number) => ({ coalesceKey: `levelPicker:slider:${n}`, coalesceWindowMs: Number.POSITIVE_INFINITY });
+      const expectDragUndo = (steps: Array<() => void>) => {
+        const before = JSON.parse(JSON.stringify(rowOf(store, id))) as CalcRow;
+        for (const step of steps) {
+          step();
+          // ドラッグの途中で1秒より長く止めても割れない
+          vi.advanceTimersByTime(1500);
+        }
+        expect(rowOf(store, id)).not.toEqual(before);
+        store.undo();
+        expect(rowOf(store, id)).toEqual(before);
+      };
+      expectDragUndo([31, 32, 33, 34].map((lv) => () => store.setDstLevel(id, lv, drag(1))));
+      expectDragUndo([11, 12, 13].map((lv) => () => store.setSrcLevel(id, lv, drag(2))));
+      expectDragUndo([20, 21, 22].map((lv) => () => store.setBoostLevel(id, lv, drag(3))));
+
+      // 目印が無ければ（チップ・◀ ▶・直接入力）1歩ずつ
+      store.setDstLevel(id, 31);
+      store.setDstLevel(id, 32);
+      store.undo();
+      expect(rowOf(store, id).dstLevel).toBe(31);
+      // 別のドラッグは別の履歴
+      store.setDstLevel(id, 40, drag(4));
+      store.setDstLevel(id, 45, drag(5));
+      store.undo();
+      expect(rowOf(store, id).dstLevel).toBe(40);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("行の各確定 API は1操作ずつ undo できる", () => {
     const { store, id } = makeStore();
     const expectRowUndo = (edit: () => void) => {

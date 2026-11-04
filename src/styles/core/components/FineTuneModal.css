@@ -744,40 +744,10 @@ button.fineTuneRow__cell {
   opacity: 1;
 }
 
-/* 目標Lv: Lv の欄・◀ スライダー ▶ と、Lv の丸いボタン（1段に9個） */
+/* 目標Lv: Lv の欄だけ（アメブ目標Lvと同じ幅で左に置く。スライダー・Lv の丸いボタンは ▾ の Lvピッカーの中） */
 .fineTuneEditor__levelRow {
-  display: grid;
-  grid-template-columns: 104px 44px minmax(0, 1fr) 44px;
+  display: flex;
   align-items: center;
-  gap: 6px;
-}
-
-.fineTuneEditor__levelStep {
-  font-size: 13px;
-}
-
-.fineTuneEditor__levelRange {
-  height: 44px;
-  margin: 0;
-}
-
-.fineTuneEditor__levelChips {
-  display: grid;
-  grid-template-columns: repeat(9, minmax(0, 1fr));
-  gap: 4px;
-}
-
-.fineTuneEditor__levelChips .levelChip {
-  width: auto;
-  height: 36px;
-  border-color: var(--ft-control-border);
-  background: var(--paper);
-}
-
-.fineTuneEditor__levelChips .levelChip--on {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--btn-ink);
 }
 
 /* 睡眠目標の選択肢（1段に7つ並べる切り替え）と、チケット・アメ在庫 */
@@ -849,11 +819,11 @@ button.fineTuneRow__cell {
 }
 
 /*
- * アメブ目標Lv（最小アメブ・再計算・「〇〇のLvを上げる」と同じ段。目標Lvの欄と同じ幅）。
+ * 目標Lv・アメブ目標Lvの Lv の欄（同じ幅）。アメブ目標Lvは最小アメブ・再計算・「〇〇のLvを上げる」と同じ段に並ぶ。
  * 「〇〇のLvを上げる」のほうがずっと縮みやすい比にしてあるので、あちらが増減の数だけになっても入らないとき
- * （とても狭い幅の英語）だけ、こちらが縮む
+ * （とても狭い幅の英語）だけ、こちらが縮む（目標Lvは1つだけなので縮まない）
  */
-.fineTuneEditor__boostLevel.fineTuneLevelField {
+.fineTuneEditor__levelField.fineTuneLevelField {
   flex: 0 1 104px;
   min-width: 84px;
 }
@@ -1075,7 +1045,7 @@ button.fineTuneRow__cell {
     padding: 0 8px;
   }
 
-  .fineTuneEditor__boostLevel.fineTuneLevelField {
+  .fineTuneEditor__levelField.fineTuneLevelField {
     flex-basis: 96px;
     min-width: 64px;
   }
@@ -1406,15 +1376,6 @@ button.fineTuneRow__cell {
     font-size: 22px;
   }
 
-  .fineTuneEditor__levelRow {
-    grid-template-columns: 180px 56px minmax(0, 1fr) 56px;
-    gap: 8px;
-  }
-
-  .fineTuneEditor__levelRange {
-    height: 52px;
-  }
-
   /* Lv の欄は、行の詳細のほかの欄と同じく名前を左・数字を右に1段で並べる */
   .fineTuneLevelField__label {
     top: 50%;
@@ -1430,24 +1391,8 @@ button.fineTuneRow__cell {
     text-align: right;
   }
 
-  .fineTuneEditor__boostLevel.fineTuneLevelField {
+  .fineTuneEditor__levelField.fineTuneLevelField {
     flex-basis: 180px;
-  }
-
-  .fineTuneEditor__levelStep {
-    font-size: 15px;
-  }
-
-  /* PC幅は丸いまま（幅を広げると横長になる） */
-  .fineTuneEditor__levelChips {
-    grid-template-columns: repeat(9, 48px);
-    gap: 8px;
-  }
-
-  .fineTuneEditor__levelChips .levelChip {
-    width: 48px;
-    height: 48px;
-    font-size: 15px;
   }
 
   .fineTuneEditor__options {

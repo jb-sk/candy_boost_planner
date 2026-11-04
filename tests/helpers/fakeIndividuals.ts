@@ -78,7 +78,7 @@ export function createFakeIndividuals(history: History): FakeIndividuals {
         { ...current, expRemaining: 0 },
       );
       if (JSON.stringify(next) === JSON.stringify(current)) return;
-      history.record(opts.label, INDIVIDUAL_EDIT_SCOPES, opts.coalesceKey === undefined ? {} : { coalesceKey: opts.coalesceKey });
+      history.record(opts.label, INDIVIDUAL_EDIT_SCOPES, { coalesceKey: opts.coalesceKey, coalesceWindowMs: opts.coalesceWindowMs });
       const map = new Map(individualById.value);
       map.set(boxId, next);
       replace(map);

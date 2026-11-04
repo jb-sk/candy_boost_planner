@@ -43,7 +43,7 @@ import { buildPlannerInputSignature } from "../domain/level-planner/signature";
 import { createPlannerRunner, loadPlannerFallbackModule } from "../workers/plannerRunner";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { isPerfEnabled } from "../utils/perf";
-import { stepHistoryWithToast, useHistory, type CalcHistoryScope, type History, type HistoryScope } from "./useHistory";
+import { stepHistoryWithToast, useHistory, type CalcHistoryScope, type History, type HistoryRecordOptions, type HistoryScope } from "./useHistory";
 export type CalcRow = CalcRowV1;
 /** unreachable の neededCandy は、指定Lvへ届く最小の総アメ数（全部アメブで上げたとき）。 */
 export type ApplyMinBoostForCandyTargetResult =
@@ -245,7 +245,7 @@ export type IndividualsPort = {
   updateIndividual: (
     boxId: string,
     patch: IndividualPatch,
-    opts: { label: string; coalesceKey?: string },
+    opts: { label: string } & HistoryRecordOptions,
   ) => void;
 };
 
@@ -490,7 +490,8 @@ export type CalcStore = {
   nudgeDstLevel: (id: string, delta: number) => void;
   nudgeSrcLevel: (id: string, delta: number) => void;
   nudgeBoostLevel: (id: string, delta: number) => void;
-  setDstLevel: (id: string, v: unknown) => void;
+  /** `coalesce` は Lvピッカーのスライダーの1回のドラッグの目印（履歴を1件にまとめる）。srcLevel・boostLevel も同じ */
+  setDstLevel: (id: string, v: unknown, coalesce?: HistoryRecordOptions) => void;
   /**
    * 渡された行一覧を、保存されたとおりに評価する。行を書き換えない（正規化しない）。
    * `speciesCandy` を渡すと、その進化系の種族アメの在庫をその数として評価する（シンプルの下書き）。
@@ -549,8 +550,8 @@ export type CalcStore = {
   }) => boolean;
   /** ゲーム内の日付の更新だけを止める。戻り値の関数で再開する（2回呼んでも1回分）。 */
   holdGameDate: () => () => void;
-  setSrcLevel: (id: string, v: unknown) => void;
-  setBoostLevel: (id: string, v: unknown) => void;
+  setSrcLevel: (id: string, v: unknown, coalesce?: HistoryRecordOptions) => void;
+  setBoostLevel: (id: string, v: unknown, coalesce?: HistoryRecordOptions) => void;
   fillBoostCandyToCap: (id: string) => void;
 
   onRowExpRemaining: (id: string, v: string) => void;
@@ -2417,11 +2418,11 @@ export function useCalcStore(opts: {
    * アメブ目標Lvは据え置き、明示個数は新しい目標の上限までクランプする（§9.2）。
    * calcCandyPatch による自動最大化は行わない（ユーザーのアメブ目標Lv指定を破棄しない）。
    */
-  function setDstLevel(id: string, v: unknown) {
+  function setDstLevel(id: string, v: unknown, coalesce: HistoryRecordOptions = {}) {
     activeRowId.value = id;
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
-    commitRowValue(r, withTargetLevel(r, v, rows.value), rowFieldUndoLabel(r, t("calc.row.dstLevel")));
+    commitRowValue(r, withTargetLevel(r, v, rows.value), rowFieldUndoLabel(r, t("calc.row.dstLevel")), coalesce);
   }
 
   /**
@@ -2507,7 +2508,7 @@ export function useCalcStore(opts: {
    * 「累計◯時間寝かせる」という宣言は元Lvが変わっても意味が変わらない。
    * 遷移後は「個数指定なし＋睡眠目標あり」という正規の状態になる。
    */
-  function setSrcLevel(id: string, v: unknown) {
+  function setSrcLevel(id: string, v: unknown, coalesce: HistoryRecordOptions = {}) {
     activeRowId.value = id;
     const r = rows.value.find((x) => x.id === id);
     if (!r) return;
@@ -2516,7 +2517,7 @@ export function useCalcStore(opts: {
     individuals.updateIndividual(
       individualBoxIdOf(r),
       { level: src, expRemaining: undefined },
-      { label: rowFieldUndoLabel(r, t("calc.row.srcLevel")) },
+      { label: rowFieldUndoLabel(r, t("calc.row.srcLevel")), ...coalesce },
     );
   }
 
@@ -2580,14 +2581,14 @@ export function useCalcStore(opts: {
    * ユーザーが選んでいないLvが意図として残り、睡眠目標を解除しても戻らない（§10.18 / §11.12）。
    * T' 以下は睡眠なしと同じく自由に上げ下げできる。
    */
-  function setBoostLevel(id: string, v: unknown) {
+  function setBoostLevel(id: string, v: unknown, coalesce: HistoryRecordOptions = {}) {
     activeRowId.value = id;
     const r = rows.value.find((x) => x.id === id);
     if (!r || sleepTargetTraits(r).candy === "none") return;
     if (isBoostInputDisabledBySleep(r)) return;
     const mid = clampInt(v, r.srcLevel, MAX_LEVEL, r.srcLevel);
     if (mid > boostReachLevelCapFor(r)) return;
-    commitRowValue(r, withBoostReachLevel(r, mid), rowFieldUndoLabel(r, t("calc.row.boostReachLevel")));
+    commitRowValue(r, withBoostReachLevel(r, mid), rowFieldUndoLabel(r, t("calc.row.boostReachLevel")), coalesce);
   }
 
   /**

@@ -4,6 +4,7 @@ import type { LevelPlannerResult } from "../../level-planner/types";
 import { maxLevel as MAX_LEVEL } from "../../pokesleep/tables";
 import {
   boostSlotRemaining,
+  canAdjustTarget,
   coalesceKeyOf,
   hasFineTuneTarget,
   initialFineTuneState,
@@ -228,7 +229,7 @@ describe("opRange / reduceFineTune: アメブ（D36、D37）", () => {
     expect(t.ok(t.initial, { kind: "set", rowId: "a", boost: 0 }).rows[0]!.boostOrExpAdjustment).toBe(0);
   });
 
-  it("対象外の行（§7）には、目標Lv・アメブの op を拒否する", () => {
+  it("対象外の行（§7）には、アメブの op を拒否する。目標Lvの op は、睡眠だけで届く行のほかは拒否する", () => {
     const rows = [makeRow("c", { candyTarget: 100 }), makeRow("n", { sleepTargetMode: "all" }), makeRow("s", { sleepTargetHours: 1000 }), makeRow("m", { srcLevel: MAX_LEVEL, dstLevel: MAX_LEVEL })];
     const t = setup(rows, {
       c: { full: 10, need: 10 }, n: { full: 0, need: 0 }, s: { full: 0, need: 0 }, m: { full: 0, need: 0 }, u: { full: 0, need: 1 },
@@ -236,18 +237,30 @@ describe("opRange / reduceFineTune: アメブ（D36、D37）", () => {
     for (const rowId of ["c", "n", "s", "m"]) {
       expect(t.run(t.initial, { kind: "step", rowId, by: 1 })).toEqual({ rejected: "excluded" });
       expect(t.run(t.initial, { kind: "set", rowId, boost: 1 })).toEqual({ rejected: "excluded" });
+    }
+    for (const rowId of ["c", "n", "m"]) {
       expect(t.run(t.initial, { kind: "targetStep", rowId, by: 1 })).toEqual({ rejected: "excluded" });
       expect(t.run(t.initial, { kind: "targetSet", rowId, level: 40 })).toEqual({ rejected: "excluded" });
     }
     expect(rows.map((r) => rowExclusion(r, t.deps.evaluateRows(rows)))).toEqual(["candyTarget", "noCandy", "sleepOnly", "maxLevel"]);
+    expect(rows.map((r) => canAdjustTarget(r))).toEqual([false, false, true, false]);
     expect(rowExclusion(makeRow("u", { pokedexId: 0 }), t.deps.evaluateRows([makeRow("u")]))).toBe("unknownPokemon");
+    expect(canAdjustTarget(makeRow("u", { pokedexId: 0, sleepTargetHours: 1000 }))).toBe(false);
+    expect(canAdjustTarget(makeRow("m", { srcLevel: MAX_LEVEL, dstLevel: MAX_LEVEL, sleepTargetHours: 1000 }))).toBe(false);
     expect(t.run(t.initial, { kind: "step", rowId: "nope", by: 1 })).toEqual({ rejected: "unknownRow" });
+  });
+
+  it("睡眠だけで届く行（sleepOnly）も目標Lvは動かせる（計算機と同じく下げても上げてもよい）", () => {
+    const t = setup([makeRow("s", { sleepTargetHours: 2000, dstLevel: 48 })], { s: { full: 0, need: 0 } });
+    expect(rowExclusion(t.initial.rows[0]!, t.deps.evaluateRows(t.initial.rows))).toBe("sleepOnly");
+    expect(t.ok(t.initial, { kind: "targetStep", rowId: "s", by: -1 }).rows[0]!.dstLevel).toBe(47);
+    expect(t.ok(t.initial, { kind: "targetSet", rowId: "s", level: 30 }).rows[0]!.dstLevel).toBe(30);
+    expect(t.ok(t.initial, { kind: "targetSet", rowId: "s", level: 70 }).rows[0]!.dstLevel).toBe(70);
   });
 });
 
 describe("hasFineTuneTarget: 入口のボタン（§4.1）", () => {
-  const info = { c: { full: 10, need: 10 }, n: { full: 0, need: 0 }, m: { full: 0, need: 0 }, ok: { full: 10, need: 10 } };
-  const has = (rows: CalcRow[]) => hasFineTuneTarget(rows, makeDeps(info).deps.evaluateRows);
+  const has = (rows: CalcRow[]) => hasFineTuneTarget(rows);
 
   it("個数指定の行だけでは false（目標Lv・アメブを動かせない）", () => {
     expect(has([makeRow("n", { candyTarget: 5, sleepTargetMode: "all" })])).toBe(false);
@@ -261,18 +274,9 @@ describe("hasFineTuneTarget: 入口のボタン（§4.1）", () => {
     expect(has([makeRow("m", { srcLevel: MAX_LEVEL, dstLevel: MAX_LEVEL })])).toBe(false);
   });
 
-  it("評価は必要なときだけ、1回に限る", () => {
-    const { deps } = makeDeps(info);
-    let evaluations = 0;
-    const evaluate = (rows: readonly CalcRow[]) => {
-      evaluations += 1;
-      return deps.evaluateRows(rows);
-    };
-    hasFineTuneTarget([makeRow("ok")], evaluate);
-    expect(evaluations).toBe(0);
-    // 評価が要るのは時間の睡眠目標の行（睡眠だけで届くか）だけ
-    hasFineTuneTarget([makeRow("c", { sleepTargetHours: 100 }), makeRow("m", { sleepTargetHours: 100 })], evaluate);
-    expect(evaluations).toBe(1);
+  it("睡眠だけで届く行（時間の睡眠目標）も目標Lvを動かせるので true。アメを使わない睡眠目標の行だけなら false", () => {
+    expect(has([makeRow("s", { sleepTargetHours: 2000 })])).toBe(true);
+    expect(has([makeRow("n", { sleepTargetMode: "all" })])).toBe(false);
   });
 });
 

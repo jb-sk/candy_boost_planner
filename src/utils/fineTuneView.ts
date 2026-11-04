@@ -6,14 +6,11 @@ import { sleepTargetHoursLabel } from "./sleepTimeText";
 /** シンプルで選べる欄。`row` は行の詳細（動かせる欄が無い行・名前を押したとき）。 */
 export type FineTuneField = "row" | "target" | "sleep" | "boost" | "candy";
 
-/** 調整バーで選べる量（アメブ・アメの個数の刻み）。大きい順。目標Lvは Lvピッカーと同じ形で動かす。 */
+/** 調整バーで選べる量（アメブ・アメの個数の刻み）。大きい順。目標Lvは Lv の欄（直接打つか Lvピッカー）で動かす。 */
 export const FINE_TUNE_STEPS: Readonly<Record<"boost" | "candy", readonly number[]>> = {
   boost: [100, 10, 1],
   candy: [100, 10, 1],
 };
-
-/** 目標Lvの丸いボタン（計算機の Lvピッカーと同じ並び） */
-export const LEVEL_PRESETS: readonly number[] = [10, 25, 30, 40, 50, 55, 60, 65, 70];
 
 /**
  * 押せない見た目のボタン（全体のLvを伸ばす・最小アメブ）を押したときに出す、理由のトーストの表示時間（ふつうのトーストは 2 秒）。

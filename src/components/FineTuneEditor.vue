@@ -91,12 +91,12 @@
         </div>
       </template>
 
-      <!-- 目標Lv: 1段目に Lv の欄（現在Lv・アメブ目標Lvと同じ形。直接打つか ▾ の Lvピッカー）と ◀ スライダー ▶、
-           2段目に Lv の丸いボタン -->
+      <!-- 目標Lv: 1段目に Lv の欄だけ（アメブ目標Lv・現在Lvと同じ形・同じ幅。直接打つか ▾ の Lvピッカー）。2段目は空ける -->
       <template v-else-if="stepper !== null && field === 'target'">
         <div class="fineTuneEditor__line">
           <div class="fineTuneEditor__levelRow" data-testid="fine-tune-editor-level">
             <FineTuneLevelField
+              class="fineTuneEditor__levelField"
               kind="target"
               :label="stepper.label"
               :value="stepper.value"
@@ -105,55 +105,11 @@
               :max="stepper.max"
               :from="row!.individual.srcLevel.value"
               :disabled="busy"
-              @set="setLevel(String($event))"
+              @set="setLevel"
             />
-            <button
-              class="fineTuneEditor__step fineTuneEditor__levelStep"
-              type="button"
-              data-testid="fine-tune-editor-step"
-              data-delta="-1"
-              :aria-label="t('calc.fineTune.stepAria', { field: stepper.label, delta: '−1' })"
-              :disabled="busy || stepper.value <= stepper.min"
-              @click="stepBy(-1)"
-            >◀</button>
-            <input
-              class="levelPick__range fineTuneEditor__levelRange"
-              type="range"
-              data-testid="fine-tune-editor-level-range"
-              :aria-label="stepper.inputLabel"
-              :min="stepper.min"
-              :max="stepper.max"
-              step="1"
-              :value="stepper.value"
-              :disabled="busy"
-              @input="setLevel(($event.target as HTMLInputElement).value)"
-            />
-            <button
-              class="fineTuneEditor__step fineTuneEditor__levelStep"
-              type="button"
-              data-testid="fine-tune-editor-step"
-              data-delta="1"
-              :aria-label="t('calc.fineTune.stepAria', { field: stepper.label, delta: '+1' })"
-              :disabled="busy || stepper.value >= stepper.max"
-              @click="stepBy(1)"
-            >▶</button>
           </div>
         </div>
-        <div class="fineTuneEditor__line">
-          <div class="fineTuneEditor__levelChips">
-            <button
-              v-for="lv in LEVEL_PRESETS"
-              :key="lv"
-              type="button"
-              class="levelChip fineTuneEditor__levelChip"
-              :class="{ 'levelChip--on': lv === stepper.value }"
-              data-testid="fine-tune-editor-level-chip"
-              :data-level="lv"
-              :disabled="busy || lv < stepper.min || lv > stepper.max"
-              @click="setLevel(String(lv))"
-            >{{ lv }}</button>
-          </div>
-        </div>
+        <div class="fineTuneEditor__line"></div>
       </template>
 
       <!-- アメブ・アメ: 1段目に最小アメブ・再計算と「〇〇のLvを上げる」（アメブのとき）、2段目に刻みのボタンと個数欄 -->
@@ -161,10 +117,10 @@
         <div class="fineTuneEditor__line">
           <div v-if="boostTools !== null" class="fineTuneEditor__tools">
             <!-- アメブ目標Lv（計算機のアメブ目標Lvと同じ。選ぶと個数は自動へ戻り、そのLvまでをアメブで賄う）。
-                 現在Lv・目標Lvと同じ形の Lv の欄 -->
+                 現在Lv・目標Lvと同じ形の Lv の欄（目標Lvと同じ幅） -->
             <FineTuneLevelField
               v-if="boostTools.level !== null"
-              class="fineTuneEditor__boostLevel"
+              class="fineTuneEditor__levelField"
               kind="boostLevel"
               :label="t('calc.row.boostReachLevel')"
               :value="boostTools.level.value"
@@ -173,7 +129,7 @@
               :max="boostTools.level.range.max"
               :from="row!.individual.srcLevel.value"
               :disabled="busy || boostTools.level.disabled"
-              @set="emit('op', { kind: 'boostLevelSet', rowId: row!.id, level: $event })"
+              @set="(level, coalesce) => emit('op', { kind: 'boostLevelSet', rowId: row!.id, level }, coalesce)"
             />
             <!-- 最小アメブ（手持ちのアメから最小限のアメブを自動で決める）と再計算（計算機の ↺ と同じ。自動の値へ戻す） -->
             <!-- 入れられないとき（アメが足りない・設定で全員が最小アメブ・在庫の種族が無い）は押せない見た目にし、押すと理由を出す -->
@@ -271,7 +227,7 @@
               :min="row!.individual.srcLevel.min"
               :max="row!.individual.srcLevel.max"
               :disabled="busy || !row!.individual.editable"
-              @set="emit('op', { kind: 'srcLevelSet', rowId: row!.id, level: $event })"
+              @set="(level, coalesce) => emit('op', { kind: 'srcLevelSet', rowId: row!.id, level }, coalesce)"
             />
             <label
               v-for="prop in rowProps"
@@ -340,12 +296,12 @@ import type { FineTuneOp, RowExclusion } from "../domain/fine-tune/draft";
 import type { FineTuneRowView } from "../domain/fine-tune/rowView";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { vKeypad } from "../composables/useNumericKeypad";
+import type { HistoryRecordOptions } from "../composables/useHistory";
 import FineTuneLevelField from "./FineTuneLevelField.vue";
 import { showToast } from "../composables/useToast";
 import {
   FINE_TUNE_REASON_TOAST,
   FINE_TUNE_STEPS,
-  LEVEL_PRESETS,
   SLEEP_STOCK_EMOJI,
   SLEEP_TICKET_EMOJI,
   sleepReachText,
@@ -358,7 +314,7 @@ import { sleepTargetOfChoice, type SleepTargetChoice } from "../domain/sleep-tar
 /**
  * シンプルの調整バー。表で押した欄（目標Lv・アメブ・アメ）を刻みのボタンと個数欄で、睡眠を選択肢で動かす。
  * 現在Lv・目標Lv・アメブ目標Lvは同じ形の Lv の欄（`FineTuneLevelField`。直接打つか、計算機と同じ Lvピッカー）。
- * 目標Lvには ◀ スライダー ▶ と Lv の丸いボタンも置く。アメブにはアメブ目標Lv・最小アメブ・再計算も置く（2段に収める）。
+ * 目標Lvは Lv の欄だけ（スライダー・Lv の丸いボタンは ▾ の Lvピッカーの中）。アメブにはアメブ目標Lv・最小アメブ・再計算も置く（2段に収める）。
  * 見出しのリセットは、この欄を押してからの変更を取り消す（戻すのは親。`canReset` と `reset`）。
  * 行の詳細（名前を押したとき）では、現在Lv・あとEXP（個体）とアメ在庫（その行の進化系）を直接打って変えられる。
  * 到達・睡眠のあと・足りないもの・動かせない理由と「〇〇のLvを上げる」もここに出す。見出しの名前の横に EXP補正（▲▲▼▼）を出す。
@@ -382,7 +338,8 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: "op", op: FineTuneOp): void;
+  /** `coalesce` は Lv の欄のスライダーの1回のドラッグの目印（元に戻すの1件にまとめる） */
+  (e: "op", op: FineTuneOp, coalesce?: HistoryRecordOptions): void;
   /** リセット（この欄を押す前の値へ戻す。選択はそのまま） */
   (e: "reset"): void;
 }>();
@@ -425,7 +382,8 @@ const stepper = computed<Stepper | null>(() => {
   const rowId = row.id;
   const labelOf = (key: "target" | "boost" | "candy") => t(`calc.fineTune.field.${key}`);
   const inputLabelOf = (label: string) => t("calc.fineTune.inputAria", { field: label, name: row.title });
-  if (field === "target" && row.levelAdjustable) {
+  // 睡眠だけで届く行（アメブは動かせない）も、目標Lvは動かせる（睡眠で届くLvより下げても、上げ直しても欄が消えない）
+  if (field === "target" && row.targetAdjustable) {
     const label = labelOf("target");
     return {
       label,
@@ -434,7 +392,7 @@ const stepper = computed<Stepper | null>(() => {
       base: row.targetLevel.base,
       min: row.targetLevel.range.min,
       max: row.targetLevel.range.max,
-      // 目標Lvは刻みのボタンでなく、Lvピッカーと同じ形（◀ ▶・スライダー・Lv の丸いボタン）で動かす
+      // 目標Lvは刻みのボタンでなく、Lv の欄（直接打つか Lvピッカー）で動かす
       steps: [],
       stepOp: (by) => ({ kind: "targetStep", rowId, by }),
       setOp: (level) => ({ kind: "targetSet", rowId, level }),
@@ -739,11 +697,10 @@ function stepBy(by: number): void {
   if (s !== null) emit("op", s.stepOp(by));
 }
 
-/** 目標Lvのスライダー・Lv の丸いボタン（欄に打った値は blur で setOp） */
-function setLevel(raw: string): void {
+/** 目標Lvの Lv の欄（直接打つ・Lvピッカー）で選んだ Lv */
+function setLevel(level: number, coalesce?: HistoryRecordOptions): void {
   const s = stepper.value;
-  const level = Number(raw);
-  if (s !== null && Number.isFinite(level) && level !== s.value) emit("op", s.setOp(level));
+  if (s !== null && Number.isFinite(level) && level !== s.value) emit("op", s.setOp(level), coalesce);
 }
 
 const inputRef = ref<HTMLInputElement | null>(null);

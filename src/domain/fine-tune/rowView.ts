@@ -15,6 +15,7 @@ import {
   boostSlotRemaining,
   canAdjustCandy,
   canAdjustLevel,
+  canAdjustTarget,
   candyValueOf,
   opRange,
   rowExclusion,
@@ -49,6 +50,8 @@ export interface FineTuneRowView {
   exclusion: RowExclusion | null;
   /** 目標Lv・アメブを動かせる行 */
   levelAdjustable: boolean;
+  /** 目標Lvを動かせる行（アメブを動かせる行と、睡眠だけで届く行） */
+  targetAdjustable: boolean;
   /** アメの数を変えた行（変える前は個数指定でなかった行）。目標Lv・アメブは動かせない */
   candyEdited: boolean;
   targetLevel: Change<number> & { range: OpRange };
@@ -221,6 +224,7 @@ export function buildRowViews(input: RowViewInput): FineTuneRowView[] {
       index,
       exclusion: rowExclusion(row, evaluated),
       levelAdjustable: canAdjustLevel(evaluated, row),
+      targetAdjustable: canAdjustTarget(row),
       candyEdited: state.candyRecords[id] !== undefined,
       targetLevel: {
         base: baseRow.dstLevel,

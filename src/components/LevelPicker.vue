@@ -10,6 +10,9 @@
  * 作られるため共有されない（実際にそれで排他が効かなかった）。
  */
 let closeOpenPicker: (() => void) | null = null;
+
+/** スライダーの1回のドラッグに振る通し番号。ピッカーをまたいで目印が重ならないよう、インスタンスで共有する */
+let sliderGestureSeq = 0;
 </script>
 
 <script setup lang="ts">
@@ -17,6 +20,7 @@ import { computed, ref, watch, nextTick, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import { vKeypad } from "../composables/useNumericKeypad";
+import type { HistoryRecordOptions } from "../composables/useHistory";
 
 const props = defineProps<{
   modelValue: number;
@@ -61,7 +65,11 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: "update:modelValue", value: number): void;
+  /**
+   * 選んだ Lv。スライダーのドラッグ中は `coalesce`（1回のドラッグで同じ目印、`coalesceWindowMs: Infinity`）を添える。
+   * 親はこれを元に戻すの履歴へ渡し、ドラッグ1回を1件にまとめる（添えなければ1歩ずつ記録され、上限30件を使い切る）
+   */
+  (e: "update:modelValue", value: number, coalesce?: Required<HistoryRecordOptions>): void;
   /** `canExceedMax` のとき、上限より上へ上げようとした */
   (e: "exceedMax"): void;
   /** 開閉。親が開いている間だけ重なり順を上げるのに使う（CSS の :has() は iOS 15.4・Chrome 105 からなので使わない） */
@@ -179,6 +187,7 @@ async function toggle() {
 function close() {
   isOpen.value = false;
   bumpedAgainstMax.value = false;
+  sliderCoalesce = null;
   if (closeOpenPicker === close) closeOpenPicker = null;
 }
 
@@ -187,12 +196,29 @@ function close() {
  * 未変更でも emit すると、目標Lv欄を開いて閉じただけで個数指定・睡眠目標が解除され、
  * planner が再計算されてしまう（設計書§6.2）。
  */
-function setValue(v: number) {
+function setValue(v: number, coalesce?: Required<HistoryRecordOptions>) {
   if (v === props.modelValue) return;
-  emit("update:modelValue", v);
+  emit("update:modelValue", v, coalesce);
 }
 
-function update(v: number) {
+/**
+ * スライダーの1回のドラッグ（指・マウスを置いてから、離して change が来るまで）の目印。
+ * ドラッグ中は動かすたびに値を親へ渡すので、同じ目印を添えて履歴を1件にまとめてもらう。
+ * キーボードの矢印は1回ごとに input → change が来るので、1回押すごとに1件のまま。
+ */
+let sliderCoalesce: Required<HistoryRecordOptions> | null = null;
+
+function onRangeInput(event: Event) {
+  sliderCoalesce ??= { coalesceKey: `levelPicker:slider:${++sliderGestureSeq}`, coalesceWindowMs: Number.POSITIVE_INFINITY };
+  update(parseInt((event.target as HTMLInputElement).value), sliderCoalesce);
+}
+
+/** 離した（change）・次のドラッグを始めた（pointerdown）ら、次は別の1件にする */
+function endRangeGesture() {
+  sliderCoalesce = null;
+}
+
+function update(v: number, coalesce?: Required<HistoryRecordOptions>) {
   if (isEditing.value) {
     commitInput();
   }
@@ -207,7 +233,7 @@ function update(v: number) {
   if (v < min) v = min;
   if (v > max) v = max;
   inputValue.value = String(v);
-  setValue(v);
+  setValue(v, coalesce);
 }
 
 function nudge(delta: number) {
@@ -349,7 +375,9 @@ onUnmounted(() => {
           step="1"
           :value="modelValue"
           :disabled="disabled"
-          @input="update(parseInt(($event.target as HTMLInputElement).value))"
+          @pointerdown="endRangeGesture"
+          @input="onRangeInput"
+          @change="endRangeGesture"
           @click.stop
         />
         <button
