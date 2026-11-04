@@ -907,14 +907,14 @@ test.describe('12-fine-tune（PC）', () => {
     await fineTune.typeSetting('s', 5);
     await expect(fineTune.setting('s')).toHaveValue('5');
     await fineTune.settingsMinimizeButton.click();
-    await expect(fineTune.settingsMinimizeButton).toHaveAttribute('aria-pressed', 'true');
+    await expect(fineTune.settingsMinimizeButton).toHaveAttribute('aria-checked', 'true');
 
     // リセットで設定を開いた時点へ戻す
     await expect(fineTune.resetEditButton).toBeEnabled();
     await fineTune.resetEditButton.click();
     await expect(fineTune.setting('shards')).toHaveValue('3,000,000');
     await expect(fineTune.setting('s')).toHaveValue('0');
-    await expect(fineTune.settingsMinimizeButton).toHaveAttribute('aria-pressed', 'false');
+    await expect(fineTune.settingsMinimizeButton).toHaveAttribute('aria-checked', 'false');
     await expect(fineTune.applyButton).toBeDisabled();
 
     // 適用: 計算機の設定・在庫が変わり、計算機の元に戻す1回で戻る

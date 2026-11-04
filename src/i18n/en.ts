@@ -171,6 +171,8 @@ export const en = {
       },
       settingsMinimize: "Minimum boost",
       settingsUniversal: "Handy {size}",
+      settingsUniversalGroup: "Handy candy",
+      settingsNote: "Settings used for everyone. OK saves them to the calculator",
       resetSettingsTitle: "Returns the settings to how they were when you opened this",
       sleepOption: {
         none: "Unset",

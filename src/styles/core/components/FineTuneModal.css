@@ -848,11 +848,6 @@ button.fineTuneRow__cell {
   min-width: 84px;
 }
 
-/* 設定欄の既定のアメブ目標Lv。名前が長く、空欄は「目標Lvと同じ」と出すので広めにする */
-.fineTuneEditor__levelField--default.fineTuneLevelField {
-  flex-basis: 156px;
-}
-
 /* 空欄の文言（「目標Lvと同じ」）は、数字より小さく薄く出す */
 .fineTuneLevelField .levelPick__input::placeholder {
   font-size: 13px;
@@ -977,14 +972,139 @@ button.fineTuneRow__cell {
   gap: 6px;
 }
 
-/* 設定欄のかけら在庫・万能アメ S・M・L。かけらは桁が多い（9桁・区切り付き）ので広くする */
-.fineTuneEditor__props--settings {
-  grid-template-columns: minmax(0, 1.9fr) repeat(3, minmax(0, 1fr));
+/*
+ * 設定欄。2段を同じ2列の格子にして、上下の枠の端をそろえる
+ * （左: 既定のアメブ目標Lv・かけら在庫、右: 最小限のアメブ・万能アメ在庫）。枠はどれも同じ線・下地・角丸・高さ
+ */
+.fineTuneEditor__settingsRow {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 6px;
 }
 
-.fineTuneEditor__props--settings .fineTuneEditor__prop {
-  padding-left: 6px;
-  padding-right: 6px;
+/* 最小限のアメブ: 名前とスイッチを入れた枠（押すと切り替わる） */
+.fineTuneEditor__switchBox {
+  -webkit-appearance: none;
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  height: var(--ft-line-h);
+  margin: 0;
+  padding: 0 10px 0 9px;
+  border: 1.5px solid var(--ft-control-border);
+  border-radius: var(--radius-md);
+  background: var(--input-bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  text-align: left;
+  box-shadow: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: border-color 0.12s, background-color 0.12s;
+}
+
+.fineTuneEditor__switchBox--changed {
+  border-color: rgba(var(--accent-rgb), 0.7);
+  background: var(--ft-tint);
+}
+
+.fineTuneEditor__switchBox:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.fineTuneEditor__switchLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.fineTuneEditor__switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 36px;
+  height: 20px;
+  border-radius: var(--radius-pill);
+  background: rgba(var(--ink-rgb), 0.2);
+  transition: background-color 0.15s;
+}
+
+.fineTuneEditor__switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--paper);
+  transition: transform 0.15s;
+}
+
+.fineTuneEditor__switch--on {
+  background: var(--accent);
+}
+
+.fineTuneEditor__switch--on::after {
+  transform: translateX(16px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fineTuneEditor__switch,
+  .fineTuneEditor__switch::after {
+    transition: none;
+  }
+}
+
+/* 万能アメ在庫: 1つの枠の中を S・M・L に細い線で区切る */
+.fineTuneEditor__universal {
+  cursor: default;
+}
+
+.fineTuneEditor__universalItems {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.fineTuneEditor__universalItem {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 6px;
+  cursor: text;
+}
+
+.fineTuneEditor__universalItem:first-child {
+  padding-left: 0;
+}
+
+.fineTuneEditor__universalItem + .fineTuneEditor__universalItem {
+  border-left: 1px solid var(--ft-line-strong);
+}
+
+.fineTuneEditor__universalSize {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* 枠は「どれかを変えた」で変えた見た目にし、数字は変えたものだけ色を付ける */
+.fineTuneEditor__prop--changed .fineTuneEditor__universalItem .fineTuneEditor__propInput {
+  color: var(--ink);
+}
+
+.fineTuneEditor__prop--changed .fineTuneEditor__universalItem--changed .fineTuneEditor__propInput {
+  color: var(--accent-strong);
 }
 
 .fineTuneEditor__prop {
@@ -1042,6 +1162,14 @@ button.fineTuneRow__cell {
   font-variant-numeric: tabular-nums;
   line-height: 22px;
   outline: none;
+  /* 枠は外側（.fineTuneEditor__prop）で見せる。テーマの入力欄の影（Vivid の内側の影）を付けない */
+  box-shadow: none;
+}
+
+/* フォーカスも外側の枠で見せる（テーマの input:focus の輪を付けない） */
+.fineTuneEditor__prop .fineTuneEditor__propInput:focus {
+  border: none;
+  box-shadow: none;
 }
 
 .fineTuneEditor__prop--changed .fineTuneEditor__propInput {
@@ -1356,8 +1484,7 @@ button.fineTuneRow__cell {
     gap: 8px;
   }
 
-  .fineTuneEditor__prop,
-  .fineTuneEditor__props--settings .fineTuneEditor__prop {
+  .fineTuneEditor__prop {
     flex-direction: row;
     align-items: center;
     gap: 10px;
@@ -1403,6 +1530,7 @@ button.fineTuneRow__cell {
 
   /* 操作は左に寄せ、広げすぎない */
   .fineTuneEditor__stepper,
+  .fineTuneEditor__settingsRow,
   .fineTuneEditor__levelRow,
   .fineTuneEditor__options,
   .fineTuneEditor__tools,
@@ -1440,9 +1568,6 @@ button.fineTuneRow__cell {
     flex-basis: 180px;
   }
 
-  .fineTuneEditor__levelField--default.fineTuneLevelField {
-    flex-basis: 300px;
-  }
 
   .fineTuneEditor__options {
     height: 48px;
@@ -1470,6 +1595,46 @@ button.fineTuneRow__cell {
 
   .fineTuneEditor__tools {
     gap: 8px;
+  }
+
+  .fineTuneEditor__settingsRow {
+    gap: 8px;
+  }
+
+  .fineTuneEditor__switchBox {
+    padding: 0 14px;
+  }
+
+  .fineTuneEditor__switchLabel {
+    font-size: 13px;
+  }
+
+  .fineTuneEditor__switch {
+    width: 44px;
+    height: 24px;
+  }
+
+  .fineTuneEditor__switch::after {
+    width: 20px;
+    height: 20px;
+  }
+
+  .fineTuneEditor__switch--on::after {
+    transform: translateX(20px);
+  }
+
+  /* 万能アメは名前を左に、S・M・L を右に並べる（数字は区切りの中で右寄せ） */
+  .fineTuneEditor__universalItems {
+    flex: 1 1 auto;
+  }
+
+  .fineTuneEditor__universalItem {
+    align-items: center;
+    padding: 0 10px;
+  }
+
+  .fineTuneEditor__universalSize {
+    font-size: 13px;
   }
 
   .fineTuneEditor__tool {

@@ -170,6 +170,8 @@ export const ja = {
       },
       settingsMinimize: "最小限のアメブ",
       settingsUniversal: "万能アメ{size}",
+      settingsUniversalGroup: "万能アメ",
+      settingsNote: "全員の計算に使う設定です。OK で計算機に反映します",
       resetSettingsTitle: "設定を、開いた時点の値に戻します",
       sleepOption: {
         none: "未設定",

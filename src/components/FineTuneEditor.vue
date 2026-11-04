@@ -22,8 +22,8 @@
         <span v-if="fieldLabel !== null" class="fineTuneEditor__field">{{ fieldLabel }}</span>
         <span v-if="changeText !== null" class="fineTuneEditor__change" data-testid="fine-tune-editor-change">{{ changeText }}</span>
       </template>
-      <!-- 何も選んでいないとき: 設定欄 -->
-      <span v-else-if="settings !== null" class="fineTuneEditor__field" data-testid="fine-tune-editor-settings-label">{{ t("calc.fineTune.field.settings") }}</span>
+      <!-- 何も選んでいないとき: 設定欄。行を選んだときの名前と同じ形の見出し -->
+      <span v-else-if="settings !== null" class="fineTuneEditor__name" data-testid="fine-tune-editor-settings-label">{{ t("calc.fineTune.field.settings") }}</span>
       <template v-if="row !== null || settings !== null">
         <span class="fineTuneEditor__spacer"></span>
         <!-- 選んだポケモンを、開いた時点の状態へまるごと戻す（どの欄で押しても同じ。選んだまま続けて動かせる）。
@@ -280,13 +280,13 @@
       </template>
 
       <!-- 何も選んでいないとき: 設定欄（下書き。OK で計算機の設定・在庫へ入る）。
-           1段目に既定のアメブ目標Lvと最小限のアメブ（アメブのあるスロットだけ）、2段目にかけら在庫と万能アメ在庫 S・M・L -->
+           2段を同じ2列の格子にして枠の端をそろえる。1段目に既定のアメブ目標Lvと最小限のアメブ（アメブのあるスロットだけ）、
+           2段目にかけら在庫と万能アメ在庫（S・M・L を1つの枠にまとめる） -->
       <template v-else-if="row === null && settings !== null">
         <div class="fineTuneEditor__line">
-          <div v-if="hasBoost" class="fineTuneEditor__tools" data-testid="fine-tune-editor-settings-boost">
+          <div v-if="hasBoost" class="fineTuneEditor__settingsRow" data-testid="fine-tune-editor-settings-boost">
             <!-- 変えると、自動の行（アメブ個数もアメブ目標Lvも選んでいない行）をすぐ新しい既定で配り直す -->
             <FineTuneLevelField
-              class="fineTuneEditor__levelField fineTuneEditor__levelField--default"
               kind="defaultBoostLevel"
               :label="t('settings.defaultBoostReachLevelLabel')"
               :value="settings.value.defaultBoostReachLevel"
@@ -299,25 +299,30 @@
               @set="(level, coalesce) => emit('op', { kind: 'defaultBoostLevelSet', level }, coalesce)"
               @clear="emit('op', { kind: 'defaultBoostLevelSet', level: null })"
             />
+            <!-- 最小限のアメブ: ほかの欄と同じ枠に、名前とスイッチ -->
             <button
-              class="fineTuneEditor__tool"
-              :class="{ 'fineTuneEditor__tool--on': settings.value.minimizeBoost }"
+              class="fineTuneEditor__switchBox"
+              :class="{ 'fineTuneEditor__switchBox--changed': settings.value.minimizeBoost !== settings.base.minimizeBoost }"
               type="button"
+              role="switch"
               data-testid="fine-tune-editor-settings-minimize"
-              :aria-pressed="settings.value.minimizeBoost"
+              :aria-checked="settings.value.minimizeBoost"
               :title="t('settings.minimizeBoostLabel')"
               :disabled="busy"
               @click="emit('op', { kind: 'minimizeBoostSet', on: !settings.value.minimizeBoost })"
-            >{{ t("calc.fineTune.settingsMinimize") }}</button>
+            >
+              <span class="fineTuneEditor__switchLabel">{{ t("calc.fineTune.settingsMinimize") }}</span>
+              <span class="fineTuneEditor__switch" :class="{ 'fineTuneEditor__switch--on': settings.value.minimizeBoost }" aria-hidden="true"></span>
+            </button>
           </div>
         </div>
         <div class="fineTuneEditor__line">
-          <div class="fineTuneEditor__props fineTuneEditor__props--settings" data-testid="fine-tune-editor-idle">
+          <div class="fineTuneEditor__settingsRow" data-testid="fine-tune-editor-idle">
             <label
-              v-for="prop in settingProps"
+              v-for="prop in shardsProps"
               :key="prop.key"
               class="fineTuneEditor__prop"
-              :class="{ 'fineTuneEditor__prop--changed': prop.value !== prop.base, 'fineTuneEditor__prop--disabled': prop.disabled }"
+              :class="{ 'fineTuneEditor__prop--changed': prop.value !== prop.base }"
             >
               <span class="fineTuneEditor__propLabel">{{ prop.label }}</span>
               <input
@@ -330,7 +335,7 @@
                 autocomplete="off"
                 :maxlength="prop.maxLength"
                 :aria-label="prop.inputLabel"
-                :disabled="busy || prop.disabled"
+                :disabled="busy"
                 :value="propDraft?.key === prop.key ? propDraft.text : propText(prop)"
                 @focus="onPropFocus(prop, $event.target as HTMLInputElement)"
                 @input="onPropInput(prop.key, ($event.target as HTMLInputElement).value)"
@@ -338,6 +343,42 @@
                 @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
               />
             </label>
+            <!-- 万能アメ: 1つの枠の中を S・M・L に区切る（名前を3回繰り返さない） -->
+            <div
+              class="fineTuneEditor__prop fineTuneEditor__universal"
+              :class="{ 'fineTuneEditor__prop--changed': universalProps.some((prop) => prop.value !== prop.base) }"
+              role="group"
+              :aria-label="t('calc.candy.universalLabel')"
+            >
+              <span class="fineTuneEditor__propLabel">{{ t("calc.fineTune.settingsUniversalGroup") }}</span>
+              <div class="fineTuneEditor__universalItems">
+                <label
+                  v-for="prop in universalProps"
+                  :key="prop.key"
+                  class="fineTuneEditor__universalItem"
+                  :class="{ 'fineTuneEditor__universalItem--changed': prop.value !== prop.base }"
+                >
+                  <span class="fineTuneEditor__universalSize" aria-hidden="true">{{ prop.short }}</span>
+                  <input
+                    v-keypad="{ label: prop.inputLabel, maxLength: prop.maxLength }"
+                    class="fineTuneEditor__propInput"
+                    data-testid="fine-tune-editor-setting"
+                    :data-setting="prop.key"
+                    type="text"
+                    inputmode="numeric"
+                    autocomplete="off"
+                    :maxlength="prop.maxLength"
+                    :aria-label="prop.inputLabel"
+                    :disabled="busy"
+                    :value="propDraft?.key === prop.key ? propDraft.text : propText(prop)"
+                    @focus="onPropFocus(prop, $event.target as HTMLInputElement)"
+                    @input="onPropInput(prop.key, ($event.target as HTMLInputElement).value)"
+                    @blur="onPropBlur(prop.key, $event.target as HTMLInputElement)"
+                    @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
+                  />
+                </label>
+              </div>
+            </div>
           </div>
         </div>
       </template>
@@ -531,7 +572,8 @@ type InfoTone = "normal" | "danger" | "note";
 const infoItems = computed(() => {
   const { row } = props;
   const items: Array<{ text: string; tone: InfoTone }> = [];
-  if (row === null) return items;
+  // 設定欄は、何の設定かを1行で添える（空いた段を残さない）
+  if (row === null) return props.settings === null ? items : [{ text: t("calc.fineTune.settingsNote"), tone: "note" }];
   const level = row.reachLevel.value;
   if (level !== null) {
     const exp = row.expToNext.value;
@@ -700,6 +742,8 @@ interface RowProp {
   maxLength: number;
   /** 3桁ごとに区切って出す（かけら） */
   grouping?: boolean;
+  /** 枠の中で区切って並べるときの短い名前（万能アメの S・M・L） */
+  short?: string;
   op: (value: number) => FineTuneOp;
 }
 
@@ -715,11 +759,13 @@ const settingProps = computed<RowProp[] | null>(() => {
   if (row !== null || settings === null) return null;
   const shardsLabel = t("calc.maxShardsLabel");
   const universal = (size: UniversalCandySize): RowProp => {
-    const label = t("calc.fineTune.settingsUniversal", { size: t(`calc.candy.universal${size.toUpperCase()}`) });
+    const short = t(`calc.candy.universal${size.toUpperCase()}`);
+    const label = t("calc.fineTune.settingsUniversal", { size: short });
     return {
       key: size,
       label,
       inputLabel: label,
+      short,
       value: settings.value.universalCandy[size],
       base: settings.base.universalCandy[size],
       disabled: false,
@@ -744,6 +790,9 @@ const settingProps = computed<RowProp[] | null>(() => {
     universal("l"),
   ];
 });
+/** 設定欄の2段目: かけら（1つの枠）と万能アメ（S・M・L を1つの枠に） */
+const shardsProps = computed(() => settingProps.value?.filter((prop) => prop.key === "shards") ?? []);
+const universalProps = computed(() => settingProps.value?.filter((prop) => prop.key !== "shards") ?? []);
 
 const rowProps = computed<RowProp[] | null>(() => {
   const { row, field } = props;
