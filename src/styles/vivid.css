@@ -4,7 +4,7 @@
 
 /* ===== Variables ===== */
 :root {
-  /* テンキーのリセットキー（C と見分ける色。ピンクに黒（育成プランの合計カード）。ユーザー指示でシアンから変更。
+  /* テンキーのリセットキー（C と見分ける色。ピンクに黒（育成プランの合計カード）。
      ⌫ もピンクだが、あちらは淡い下地にピンクの記号、こちらはピンクの面に黒の記号で見分けられる）。
      下地 bg・枠と厚み rgb・記号 ink */
   --numKeypad-reset-bg: #f02d7d;
@@ -240,8 +240,9 @@ input:focus, select:focus, textarea:focus {
   transform: none;
 }
 
-/* 入力項目が多い追加フォームは、罫線と文字を水平に保つ。 */
-.modal.addModal {
+/* 入力項目が多い追加フォーム・シンプルモードは、罫線と文字を水平に保つ。 */
+.modal.addModal,
+.modal.fineTuneModal {
   transform: none;
 }
 

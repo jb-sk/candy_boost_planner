@@ -2020,6 +2020,197 @@ describe('単一最適化パイプライン', () => {
     });
   });
 
+  it('同じタイプの上の行がいる境界の行にも、配れる最大まで配る（EXP最大とバランスで同じ境界）', () => {
+    // 上にドラゴンのミニリュウ、境界に別系統のドラゴンのラティアス。境界の行は64個まで配れ、65個から配れない。
+    // 同じタイプの境界で「配れない」を「分からない」と返すと、EXP最大の二分探索が65個で打ち切られ、61個で止まっていた
+    const input = (itemCompareMode: SolverItemCompareMode): TestLevelPlannerInput => ({
+      pokemonList: [
+        { pokemonId: 'dratini', pokedexId: 147, name: 'ミニリュウ', type: 'dragon', currentLevel: 41, currentExpInLevel: 0, targetLevel: 48, targetExpInLevel: 0, expType: 900, nature: 'normal', requestedBoostCandy: 17, boostAllowed: true, priorityIndex: 0 },
+        { pokemonId: 'latias', pokedexId: 380, name: 'ラティアス', type: 'dragon', currentLevel: 56, currentExpInLevel: 0, targetLevel: 62, targetExpInLevel: 0, expType: 1080, nature: 'normal', requestedBoostCandy: 48, boostAllowed: true, priorityIndex: 1 },
+        { pokemonId: 'bulbasaur', pokedexId: 1, name: 'フシギダネ', type: 'grass', currentLevel: 23, currentExpInLevel: 0, targetLevel: 36, targetExpInLevel: 0, expType: 600, nature: 'normal', requestedBoostCandy: 85, boostAllowed: true, priorityIndex: 2 },
+      ],
+      dreamShards: 10_000_000,
+      boost: { kind: 'full', limit: 160 },
+      candyInventory: {
+        species: { '1': 56, '147': 154, '380': 56 },
+        typeCandy: { dragon: { s: 2, m: 0 }, grass: { s: 0, m: 2 } },
+        universal: { s: 1, m: 2, l: 2 },
+      },
+      options: { itemCompareMode },
+    });
+
+    for (const mode of ['legacyImproved', 'surplusGateFirst'] as const) {
+      const result = solveLevelPlan(input(mode));
+      const latias = result.pokemonResults.find(row => row.pokemonId === 'latias')?.reachableLine;
+      expect(latias?.candyDemandMet, mode).toBe(false);
+      expect(latias?.totalCandyUnitsUsed, mode).toBe(64);
+      expect(latias?.expInLevel, mode).toBe(2800);
+      expect(result.performance?.boundarySearch, mode).toMatchObject({ boundaryIndex: 1, selectedTotalCandy: 64 });
+    }
+  });
+
+  it('かけらで止まる行は到達prefixに入れず境界として探索し、バランスは余り0を、EXP最大はEXPを先に見る', () => {
+    // 3行目のヒトカゲは、かけらが尽きて目標に届かない。到達prefixに含めると境界の探索を通らず、
+    // バランスの「余り0〜2を先に見る」比較が働かない（EXP最大と同じ59個・余り66になっていた）
+    const input = (itemCompareMode: SolverItemCompareMode): TestLevelPlannerInput => ({
+      pokemonList: [
+        { pokemonId: 'bulbasaur', pokedexId: 1, name: 'フシギダネ', type: 'grass', currentLevel: 19, currentExpInLevel: 0, targetLevel: 23, targetExpInLevel: 0, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 0 },
+        { pokemonId: 'charmander-a', pokedexId: 4, name: 'ヒトカゲ', type: 'fire', currentLevel: 17, currentExpInLevel: 0, targetLevel: 18, targetExpInLevel: 0, expType: 600, nature: 'normal', requestedBoostCandy: 6, boostAllowed: true, priorityIndex: 1 },
+        { pokemonId: 'charmander-b', pokedexId: 4, name: 'ヒトカゲ', type: 'fire', currentLevel: 18, currentExpInLevel: 0, targetLevel: 24, targetExpInLevel: 0, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 2 },
+      ],
+      dreamShards: 10_868,
+      boost: { kind: 'full', limit: 88 },
+      candyInventory: {
+        species: { '1': 58, '4': 31 },
+        typeCandy: {},
+        universal: { s: 2, m: 1, l: 1 },
+      },
+      options: { itemCompareMode },
+    });
+    const expected = {
+      surplusGateFirst: { totalCandyUnitsUsed: 51, level: 22, expInLevel: 8, surplusCandyValue: 0 },
+      legacyImproved: { totalCandyUnitsUsed: 59, level: 22, expInLevel: 328, surplusCandyValue: 66 },
+    } as const;
+
+    for (const mode of ['surplusGateFirst', 'legacyImproved'] as const) {
+      const result = solveLevelPlan(input(mode));
+      const boundary = result.pokemonResults.find(row => row.pokemonId === 'charmander-b')?.reachableLine;
+      expect(boundary?.candyDemandMet, mode).toBe(false);
+      expect(boundary, mode).toMatchObject(expected[mode]);
+      expect(result.performance?.prefixSearchAttempts?.[0]?.maxFeasiblePrefix, mode).toBe(2);
+      expect(result.performance?.boundarySearch, mode).toMatchObject({ boundaryIndex: 2 });
+    }
+  });
+
+  it.each(['surplusFirst', 'surplusGateFirst', 'legacyImproved'] as const)('最初の届かない行より後ろは、届いた行があっても到達prefixに入れない: %s', mode => {
+    // 3行目のヒトカゲはかけらが尽きて届かない。4行目のゼニガメは目標に届いている（アメ不要）が、到達prefixは2行まで
+    const result = solveLevelPlan({
+      pokemonList: [
+        { pokemonId: 'bulbasaur', pokedexId: 1, name: 'フシギダネ', type: 'grass', currentLevel: 19, currentExpInLevel: 0, targetLevel: 23, targetExpInLevel: 0, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 0 },
+        { pokemonId: 'charmander-a', pokedexId: 4, name: 'ヒトカゲ', type: 'fire', currentLevel: 17, currentExpInLevel: 0, targetLevel: 18, targetExpInLevel: 0, expType: 600, nature: 'normal', requestedBoostCandy: 6, boostAllowed: true, priorityIndex: 1 },
+        { pokemonId: 'charmander-b', pokedexId: 4, name: 'ヒトカゲ', type: 'fire', currentLevel: 18, currentExpInLevel: 0, targetLevel: 24, targetExpInLevel: 0, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 2 },
+        { pokemonId: 'squirtle', pokedexId: 7, name: 'ゼニガメ', type: 'water', currentLevel: 10, currentExpInLevel: 0, targetLevel: 10, targetExpInLevel: 0, expType: 600, nature: 'normal', requestedBoostCandy: 0, boostAllowed: true, priorityIndex: 3 },
+      ],
+      dreamShards: 10_868,
+      boost: { kind: 'full', limit: 88 },
+      candyInventory: {
+        species: { '1': 58, '4': 31 },
+        typeCandy: {},
+        universal: { s: 2, m: 1, l: 1 },
+      },
+      options: { itemCompareMode: mode },
+    });
+
+    expect(result.pokemonResults.map(row => row.reachableLine.candyDemandMet)).toEqual([true, true, false, true]);
+    expect(result.performance?.prefixSearchAttempts?.[0]?.maxFeasiblePrefix).toBe(2);
+    expect(result.performance?.boundarySearch).toMatchObject({ boundaryIndex: 2 });
+  });
+
+  it('上の行と同じ系統の境界の行は、種族アメの分け方を変えれば余り0〜2で配れる個数を飛ばさない', () => {
+    // ミニリュウ2匹（同じ系統）。境界の行（2匹目）だけで種族アメを11個使う前提だと、27個は余り0〜2にできない
+    // （残り16個をタイプアメM 25 で賄うと余り9）。上の行と分け方を変えると、境界の行は種族アメ2個＋タイプアメM 1個で余り0、
+    // 上の行は種族アメ9個＋タイプアメS 1個＋万能S 2個で余り0になる
+    const result = solveLevelPlan({
+      pokemonList: [
+        { pokemonId: 'dratini-a', pokedexId: 147, name: 'ミニリュウ', type: 'dragon', currentLevel: 18, currentExpInLevel: 0, targetLevel: 19, targetExpInLevel: 0, expType: 900, nature: 'normal', requestedBoostCandy: 0, boostAllowed: false, priorityIndex: 0 },
+        { pokemonId: 'dratini-b', pokedexId: 147, name: 'ミニリュウ', type: 'dragon', currentLevel: 11, currentExpInLevel: 0, targetLevel: 16, targetExpInLevel: 0, expType: 900, nature: 'normal', requestedBoostCandy: 0, boostAllowed: false, priorityIndex: 1 },
+      ],
+      dreamShards: 5_054,
+      boost: { kind: 'none', limit: 0 },
+      candyInventory: {
+        species: { '147': 11 },
+        typeCandy: { dragon: { s: 1, m: 1 } },
+        universal: { s: 2, m: 0, l: 0 },
+      },
+      options: { itemCompareMode: 'surplusFirst' },
+    });
+    const [upper, boundary] = result.pokemonResults.map(row => row.reachableLine);
+
+    expect(upper).toMatchObject({ candyDemandMet: true, surplusCandyValue: 0 });
+    expect(boundary).toMatchObject({ candyDemandMet: false, totalCandyUnitsUsed: 27, level: 12, expInLevel: 516, surplusCandyValue: 0 });
+    expect(result.performance?.boundarySearch).toMatchObject({ boundaryIndex: 1, selectedTotalCandy: 27, rowSurplusGateSkippedTotals: 0 });
+  });
+
+  describe('境界の行のアメブを余りの都合で減らさない（境界修正設計書 §9）', () => {
+    // ヒトカゲ1匹（Lv10→60）。種族アメ300・万能アメL30・かけら100万。かけらで使えるのはアメブ802個まで（通常アメは0個）
+    const hitokage = (itemCompareMode: SolverItemCompareMode, requestedBoostCandy: number, universalL = 30): TestLevelPlannerInput => ({
+      pokemonList: [
+        { pokemonId: 'charmander', pokedexId: 4, name: 'ヒトカゲ', type: 'fire', currentLevel: 10, currentExpInLevel: 0, targetLevel: 60, targetExpInLevel: 0, expType: 600, nature: 'normal', requestedBoostCandy, boostAllowed: true, priorityIndex: 0 },
+      ],
+      dreamShards: 1_000_000,
+      boost: { kind: 'full', limit: 3000 },
+      candyInventory: { species: { '4': 300 }, typeCandy: {}, universal: { s: 0, m: 0, l: universalL } },
+      options: { itemCompareMode },
+    });
+
+    it.each(['surplusFirst', 'surplusGateFirst', 'legacyImproved'] as const)('アメブ802個を使い切り、減らすと得なときはおすすめを出す: %s', mode => {
+      const [row] = solveLevelPlan(hitokage(mode, 926)).pokemonResults;
+      // 余り0にするにはアメブを800個に減らす（種族300＋L5）。減らさず802個（種族300＋L6、余り98）を配る
+      expect(row.reachableLine).toMatchObject({ totalCandyUnitsUsed: 802, boostedCandyUnits: 802, level: 57, expInLevel: 1802, surplusCandyValue: 98, candyDemandMet: false });
+      // アメブ699個（かけらで届くアメブの最大）なら、浮いたかけらで通常アメを使って目標Lvに届く（3方式）
+      expect(row.boostAdvice?.reach).toEqual({ boostCandy: 699 });
+      if (mode === 'legacyImproved') {
+        // EXP最大は余りのおすすめを出さない（目標Lvに届くときだけ）
+        expect(row.boostAdvice?.surplus).toBeUndefined();
+      } else {
+        expect(row.boostAdvice?.surplus).toEqual({ boostCandy: 800, surplusBefore: 98, surplusAfter: 0, levelAfter: 57, expInLevelAfter: 1702 });
+      }
+    });
+
+    it('届くおすすめは「その個数」で、それより少ないアメブは在庫で届くとは限らない', () => {
+      // 万能アメL9個。アメブ699個なら種族300＋L9で賄えて届くが、アメブを減らすほど要るアメが増え、0個では在庫が足りない
+      const [advised] = solveLevelPlan(hitokage('legacyImproved', 926, 9)).pokemonResults;
+      expect(advised.boostAdvice?.reach).toEqual({ boostCandy: 699 });
+      const [atAdvice] = solveLevelPlan(hitokage('legacyImproved', 699, 9)).pokemonResults;
+      expect(atAdvice.reachableLine.candyDemandMet).toBe(true);
+      const [noBoost] = solveLevelPlan(hitokage('legacyImproved', 0, 9)).pokemonResults;
+      expect(noBoost.reachableLine.candyDemandMet).toBe(false);
+    });
+
+    it.each(['surplusFirst', 'surplusGateFirst'] as const)('アメブより後ろの通常アメは、余りのために減らす: %s', mode => {
+      // アメブ800個を指定すると、かけらの残りで通常アメ13個まで使える（813個）。通常アメを減らして800個・余り0にする
+      const [row] = solveLevelPlan(hitokage(mode, 800)).pokemonResults;
+      expect(row.reachableLine).toMatchObject({ totalCandyUnitsUsed: 800, boostedCandyUnits: 800, surplusCandyValue: 0 });
+      expect(row.boostAdvice?.surplus).toBeUndefined();
+    });
+
+    it.each(['surplusFirst', 'surplusGateFirst', 'legacyImproved'] as const)('在庫でアメブの数まで配れないときは、配れる最大まで減らす: %s', mode => {
+      // 万能アメL2個なら、配れるのは種族300＋L2＝500個まで
+      const [row] = solveLevelPlan(hitokage(mode, 926, 2)).pokemonResults;
+      expect(row.reachableLine).toMatchObject({ totalCandyUnitsUsed: 500, boostedCandyUnits: 500, surplusCandyValue: 0 });
+    });
+
+    it('余り最小で、アメブを使い切ると余り0〜2に収まらないときは、上の行の余りを増やさず境界の行の余りを増やす', () => {
+      // ミニリュウ（届く）とラティアス（境界。かけらでアメブ38個まで）。ラティアスを余り0〜2にするには、上のミニリュウの余りを
+      // 0→1 にする必要がある。届いたミニリュウの余りはその後使わないので増やさず、届いていないラティアスの余りを増やす
+      const result = solveLevelPlan({
+        pokemonList: [
+          { pokemonId: 'dratini', pokedexId: 147, name: 'ミニリュウ', type: 'dragon', currentLevel: 26, currentExpInLevel: 0, targetLevel: 34, targetExpInLevel: 0, expType: 900, nature: 'normal', requestedBoostCandy: 72, boostAllowed: true, priorityIndex: 0 },
+          { pokemonId: 'latias', pokedexId: 380, name: 'ラティアス', type: 'dragon', currentLevel: 48, currentExpInLevel: 0, targetLevel: 54, targetExpInLevel: 0, expType: 1080, nature: 'normal', requestedBoostCandy: 145, boostAllowed: true, priorityIndex: 1 },
+        ],
+        dreamShards: 94_869,
+        boost: { kind: 'mini', limit: 258 },
+        candyInventory: {
+          species: { '147': 199, '380': 25 },
+          typeCandy: { dragon: { s: 3, m: 2 } },
+          universal: { s: 1, m: 1, l: 1 },
+        },
+        options: { itemCompareMode: 'surplusFirst' },
+      });
+      const [upper, boundary] = result.pokemonResults.map(row => row.reachableLine);
+      expect(upper).toMatchObject({ candyDemandMet: true, surplusCandyValue: 0 });
+      expect(boundary).toMatchObject({ candyDemandMet: false, totalCandyUnitsUsed: 38, boostedCandyUnits: 38, surplusCandyValue: 12 });
+      expect(result.performance?.boundarySearch).toMatchObject({ mode: 'surplusFirst', stoppedReason: 'boundary_surplus_ungated' });
+    });
+
+    it('余り最小で行が1つだけでも、ゲート内で届かなければゲートを外して届かせる', () => {
+      // アメブ600個なら目標Lvに届くが、万能アメLで余り47が出る（余り0〜2では届かない）。複数行と同じくバランスへ切り替えて届かせる
+      const result = solveLevelPlan(hitokage('surplusFirst', 600));
+      expect(result.pokemonResults[0].reachableLine).toMatchObject({ totalCandyUnitsUsed: 1253, boostedCandyUnits: 600, candyDemandMet: true, surplusCandyValue: 47 });
+      expect(result.performance?.prefixSearchAttempts?.map(attempt => attempt.maxFeasiblePrefix)).toEqual([0, 1]);
+    });
+  });
+
   it('余り0〜2優先は境界を下げて共有資源をprefixへ戻せる場合を見落とさない', () => {
     const result = solveLevelPlan({
       pokemonList: [

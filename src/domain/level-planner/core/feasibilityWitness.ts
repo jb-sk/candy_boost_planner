@@ -2,6 +2,7 @@ import { CANDY_VALUES } from '../constants';
 import { isCandyFamilyKey } from '../../pokesleep/candy-family';
 import { refineExactSupply } from './exactSupplyRefine';
 import { addItemPriority, compareItemPriority, emptyItemPriority, itemCountsFromPriority, itemPriorityOf } from './itemPriority';
+import { compareRowSurplusGate } from './surplusGate';
 import type { ItemPriorityTuple } from './itemPriority';
 import { lastOf } from '../../../utils/lastOf';
 import { flatMapOf } from '../../../utils/flatMapOf';
@@ -205,11 +206,11 @@ function compareQuality(a: RepresentativeQuality, b: RepresentativeQuality, mode
     return compareItemPriority(a.priority, b.priority);
   }
   if (mode === 'legacyImproved' || mode === 'surplusGateFirst') {
+    // §6: 供給内訳では、バランスも EXP最大と同じく LvMAX余り0 → 各行余り0〜2（LvMAX の行を余り0にするためなら、ほかの行が余り3以上になってよい）
     if (a.zeroSurplusCount !== b.zeroSurplusCount) return a.zeroSurplusCount > b.zeroSurplusCount ? 1 : -1;
-    const acceptableA = a.normalizedSurplus === 0;
-    const acceptableB = b.normalizedSurplus === 0;
-    if (acceptableA !== acceptableB) return acceptableA ? 1 : -1;
-    if (!acceptableA && a.normalizedSurplus !== b.normalizedSurplus) return a.normalizedSurplus < b.normalizedSurplus ? 1 : -1;
+    // 正規化余りは行ごとに足せる値なので、frontier の支配判定で使っても順は崩れない
+    const gate = compareRowSurplusGate(a.normalizedSurplus, b.normalizedSurplus);
+    if (gate) return gate;
     if (a.speciesLex !== b.speciesLex) return a.speciesLex > b.speciesLex ? 1 : -1;
     const priority = compareItemPriority(a.priority, b.priority);
     if (priority) return priority;
@@ -227,7 +228,7 @@ function compareQuality(a: RepresentativeQuality, b: RepresentativeQuality, mode
 
 function shouldKeepDecisionSurplusQuality(context?: SolverContext): boolean {
   return Boolean(context?.options.decisionOnly
-    && (context.options.maxTotalSurplus !== undefined || context.options.maxReachedSurplus !== undefined));
+    && context.options.maxReachedSurplus !== undefined);
 }
 
 function qualityAtLeast(a: RepresentativeQuality, b: RepresentativeQuality, context?: SolverContext): boolean {
@@ -244,11 +245,9 @@ function qualityGreater(a: RepresentativeQuality, b: RepresentativeQuality, cont
   return compareQuality(a, b, context?.options.itemCompareMode) > 0;
 }
 
-function withinTotalSurplusBudget(quality: RepresentativeQuality, context?: SolverContext): boolean {
-  const maxTotalSurplus = context?.options.maxTotalSurplus;
+function withinReachedSurplusBudget(quality: RepresentativeQuality, context?: SolverContext): boolean {
   const maxReachedSurplus = context?.options.maxReachedSurplus;
-  return (maxTotalSurplus === undefined || quality.rawSurplus <= maxTotalSurplus)
-    && (maxReachedSurplus === undefined || quality.reachedSurplus <= maxReachedSurplus);
+  return maxReachedSurplus === undefined || quality.reachedSurplus <= maxReachedSurplus;
 }
 
 function compareFinalBlockState(a: BlockState, b: BlockState, mode?: SolverItemCompareMode): number {
@@ -706,7 +705,6 @@ function pruneBlockStates(states: BlockState[], context?: SolverContext): BlockS
 function buildUniversalDecisionEnvelope(
   prefixStates: BlockState[],
   inventory: CandyInventory,
-  maxRawSurplus?: number,
   maxReachedSurplus?: number,
 ): UniversalDecisionEnvelope {
   const mediumDim = inventory.universal.m + 1;
@@ -716,7 +714,6 @@ function buildUniversalDecisionEnvelope(
   minUniversalS.fill(impossible);
 
   for (const state of prefixStates) {
-    if (maxRawSurplus !== undefined && state.quality.rawSurplus > maxRawSurplus) continue;
     if (maxReachedSurplus !== undefined && state.quality.reachedSurplus > maxReachedSurplus) continue;
     if (state.universalM > inventory.universal.m || state.universalL > inventory.universal.l || state.universalS > inventory.universal.s) continue;
     const index = state.universalM * largeDim + state.universalL;
@@ -874,7 +871,7 @@ function normalizeSharedGroup(
     quality: addQuality(acc.quality, qualityForOption(entry.option, rows[index].totalCandy, rows[index].preferZeroSurplus, rows[index].speciesLexOrder, rows[index].candyDemandMet)),
     path: normalizedPath,
   }), { typeS: {}, typeM: {}, universalS: 0, universalM: 0, universalL: 0, quality: emptyQuality(), path: normalizedPath });
-  return withinTotalSurplusBudget(normalized.quality, context) ? normalized : null;
+  return withinReachedSurplusBudget(normalized.quality, context) ? normalized : null;
 }
 
 function rowOptionsForSpecies(
@@ -892,12 +889,10 @@ function rowOptionsForSpecies(
     row.itemsAllowed !== false,
   );
   const maxRowSurplus = context?.options.maxRowSurplus;
-  const maxTotalSurplus = context?.options.maxTotalSurplus;
-  if (maxRowSurplus === undefined && maxTotalSurplus === undefined) return options;
+  if (maxRowSurplus === undefined) return options;
   return options.filter(option => {
     const surplus = Math.max(0, supplyValue(option) - row.totalCandy);
-    return (maxRowSurplus === undefined || surplus <= maxRowSurplus)
-      && (maxTotalSurplus === undefined || surplus <= maxTotalSurplus);
+    return surplus <= maxRowSurplus;
   });
 }
 
@@ -913,7 +908,7 @@ function buildRowFrontierForSpecies(
   for (const option of options) {
     checkpoint(context);
     const quality = qualityForOption(option, row.totalCandy, row.preferZeroSurplus, row.speciesLexOrder, row.candyDemandMet);
-    if (!withinTotalSurplusBudget(quality, context)) continue;
+    if (!withinReachedSurplusBudget(quality, context)) continue;
     const state: ResourceState = {
       typeS: option.typeS > 0 ? { [row.type]: option.typeS } : {},
       typeM: option.typeM > 0 ? { [row.type]: option.typeM } : {},
@@ -943,7 +938,6 @@ function buildUniqueGroupFrontier(
     inventory,
     context.options.itemCompareMode,
     context.options.maxRowSurplus,
-    context.options.maxTotalSurplus,
     context.options.maxReachedSurplus,
     context.options.decisionOnly,
   );
@@ -1116,7 +1110,7 @@ function buildSharedGroupFrontier(
             || universalM > inventory.universal.m
             || universalL > inventory.universal.l) continue;
           const quality = addQuality(state.quality, qualityForOption(option, row.totalCandy, row.preferZeroSurplus, row.speciesLexOrder, row.candyDemandMet));
-          if (!withinTotalSurplusBudget(quality, context)) continue;
+          if (!withinReachedSurplusBudget(quality, context)) continue;
           const candidate: SharedResourceState = {
             speciesUsed: state.speciesUsed + option.species,
             typeS: sharedType === null ? { ...state.typeS, [row.type]: typeS } : { [sharedType]: typeS },
@@ -1146,7 +1140,7 @@ function buildSharedGroupFrontier(
   for (const state of states) {
     if (state.speciesUsed !== targetSpecies) continue;
     const normalizedState = normalizeSharedGroup(rowIndexes.map(index => rows[index]), state, targetSpecies, context);
-    if (normalizedState && withinTotalSurplusBudget(normalizedState.quality, context)) normalized.push(normalizedState);
+    if (normalizedState && withinReachedSurplusBudget(normalizedState.quality, context)) normalized.push(normalizedState);
   }
   return pruneResourceStates(normalized, false, context);
 }
@@ -1345,7 +1339,7 @@ function combineLargeSingleTypeFrontiers(
             const key = `${typeS}|${typeM}|${universalS}|${universalM}|${universalL}`;
             const previous = exact.get(key);
             const quality = addQuality(stateEntry.state.quality, optionEntry.state.quality);
-            if (!withinTotalSurplusBudget(quality, context)) return;
+            if (!withinReachedSurplusBudget(quality, context)) return;
             if (previous) {
               const comparison = compareQuality(quality, previous.state.quality, context.options.itemCompareMode);
               const earlier = stateEntry.order < previous.stateOrder
@@ -1440,7 +1434,6 @@ function combineResourceFrontierWithGroup(
     bucket.optionIndexes.sort((a, b) => fastOptionUniversalM![a] - fastOptionUniversalM![b]);
   }
   const decisionResourceOnly = context.options.decisionOnly
-    && context.options.maxTotalSurplus === undefined
     && context.options.maxReachedSurplus === undefined;
   const decisionEmptyQuality = decisionResourceOnly ? emptyQuality() : null;
   for (const state of states) {
@@ -1478,7 +1471,7 @@ function combineResourceFrontierWithGroup(
           if (previous && context.options.decisionOnly) continue;
           const quality = decisionEmptyQuality
             ?? addQuality(stateQuality, fastOptionQualities[optionIndex]);
-          if (!withinTotalSurplusBudget(quality, context)) continue;
+          if (!withinReachedSurplusBudget(quality, context)) continue;
           if (previous && compareQuality(quality, previous.quality, context.options.itemCompareMode) <= 0) continue;
           nextByKey.set(key, {
             typeS: typeS > 0 ? { [fastType]: typeS } : {},
@@ -1496,7 +1489,7 @@ function combineResourceFrontierWithGroup(
     for (const option of groupFrontier) {
       transition(context);
       const candidate = addResourceState(state, option, appendPath(state.path, option.path));
-      if (!withinTotalSurplusBudget(candidate.quality, context)) continue;
+      if (!withinReachedSurplusBudget(candidate.quality, context)) continue;
       if (!resourceWithinInventory(candidate, inventory)) continue;
       next.push(candidate);
     }
@@ -1563,7 +1556,7 @@ function buildTypeBlockFrontier(
   rows: PreparedRow[],
   inventory: CandyInventory,
   context: SolverContext,
-  cacheKey = typeBlockFrontierCacheKey(rowIndexes, rows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxTotalSurplus, context.options.maxReachedSurplus, context.options.decisionOnly),
+  cacheKey = typeBlockFrontierCacheKey(rowIndexes, rows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxReachedSurplus, context.options.decisionOnly),
 ): BlockState[] {
   const cached = context.options.frontierCache?.get(cacheKey);
   if (cached) {
@@ -1618,7 +1611,6 @@ function rowFrontierCacheKey(
   inventory: CandyInventory,
   mode?: SolverItemCompareMode,
   maxRowSurplus?: number,
-  maxTotalSurplus?: number,
   maxReachedSurplus?: number,
   decisionOnly?: boolean,
 ): string {
@@ -1627,7 +1619,6 @@ function rowFrontierCacheKey(
     row: demandRowCacheKey(row),
     mode: mode ?? '',
     maxRowSurplus: maxRowSurplus ?? '',
-    maxTotalSurplus: maxTotalSurplus ?? '',
     maxReachedSurplus: maxReachedSurplus ?? '',
     decisionOnly: decisionOnly ? 1 : 0,
     species: inventory.species[row.candyFamilyKey] ?? 0,
@@ -1642,7 +1633,6 @@ function typeBlockFrontierCacheKey(
   inventory: CandyInventory,
   mode?: SolverItemCompareMode,
   maxRowSurplus?: number,
-  maxTotalSurplus?: number,
   maxReachedSurplus?: number,
   decisionOnly?: boolean,
 ): string {
@@ -1651,7 +1641,6 @@ function typeBlockFrontierCacheKey(
   return JSON.stringify({
     mode: mode ?? '',
     maxRowSurplus: maxRowSurplus ?? '',
-    maxTotalSurplus: maxTotalSurplus ?? '',
     maxReachedSurplus: maxReachedSurplus ?? '',
     decisionOnly: decisionOnly ? 1 : 0,
     rows: rowIndexes.map(index => [index, demandRowCacheKey(rows[index])]),
@@ -1954,7 +1943,6 @@ function validateFeasibilityWitnessInternal(
   const errors: string[] = [];
   if (witness.rows.length !== demandRows.length) errors.push('row_count_mismatch');
   const rowCount = Math.min(witness.rows.length, demandRows.length);
-  let totalSurplus = 0;
   let reachedSurplus = 0;
   for (let index = 0; index < rowCount; index++) {
     const expected = demandRows[index];
@@ -1972,13 +1960,11 @@ function validateFeasibilityWitnessInternal(
       if (!isMinimumCover({ ...actual.supply, species: 0 }, residual)) errors.push(`row_option_not_minimum_cover:${index}`);
     }
     const rowSurplus = Math.max(0, supplyValue(actual.supply) - actual.totalCandy);
-    totalSurplus += rowSurplus;
     if (actual.candyDemandMet) reachedSurplus += rowSurplus;
     if (options.maxRowSurplus !== undefined && rowSurplus > options.maxRowSurplus) {
       errors.push(`max_row_surplus_exceeded:${index}`);
     }
   }
-  if (options.maxTotalSurplus !== undefined && totalSurplus > options.maxTotalSurplus) errors.push('max_total_surplus_exceeded');
   if (options.maxReachedSurplus !== undefined && reachedSurplus > options.maxReachedSurplus) errors.push('max_reached_surplus_exceeded');
 
   const demandError = validateDemandRows(demandRows, options);
@@ -2007,7 +1993,7 @@ export function validateFeasibilityWitness(
   return validateFeasibilityWitnessInternal(witness, demandRows, inventory, options, true);
 }
 
-function hasSharedCandyFamily(rows: FeasibilityDemandRow[]): boolean {
+export function hasSharedCandyFamily(rows: readonly FeasibilityDemandRow[]): boolean {
   const seen = new Set<string>();
   for (const row of rows) {
     if (seen.has(row.candyFamilyKey)) return true;
@@ -2102,7 +2088,7 @@ function solveFeasibilityForFixedRowsOnce(
   try {
     checkpoint(context);
     const blockFrontiers = buildTypeBlockComponents(rows).map(rowIndexes => {
-      const key = typeBlockFrontierCacheKey(rowIndexes, rows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxTotalSurplus, context.options.maxReachedSurplus, context.options.decisionOnly);
+      const key = typeBlockFrontierCacheKey(rowIndexes, rows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxReachedSurplus, context.options.decisionOnly);
       return { key, frontier: buildTypeBlockFrontier(rowIndexes, rows, inventory, context, key) };
     });
     if (blockFrontiers.some(block => block.frontier.length === 0)) return finish(context, { status: 'infeasible', reason: 'no_type_block_feasible_state' });
@@ -2116,31 +2102,43 @@ function solveFeasibilityForFixedRowsOnce(
   }
 }
 
+/** 同じ系統の行があり、種族アメの分け方を呼び出し側が決めていないとき、種族アメを上から使う候補を先に試す */
+function shouldTryTopDownCandidate(rows: PreparedRow[], internal: InternalFeasibilitySolverOptions): boolean {
+  return internal.sharedSpeciesStrategy === undefined
+    && internal.abortAfterTransitions === undefined
+    && hasSharedCandyFamily(rows);
+}
+
+/**
+ * 種族アメを上から使う候補を解く。最適と証明できた・分からない（inconclusive）ならその結果、ほかは null
+ * （候補で配れないことは配れない証明にならない。分け方を上からに絞っている）
+ */
+function solveTopDownCertifiedCandidate(
+  rows: PreparedRow[],
+  inventory: CandyInventory,
+  internal: InternalFeasibilitySolverOptions,
+): FeasibilityResult | null {
+  const candidate = solveFeasibilityForFixedRowsOnce(rows, inventory, candidateSolverOptions(internal));
+  if (candidate.status === 'inconclusive') return candidate;
+  if (candidate.status === 'feasible' && hasGlobalTopDownOptimalityCertificate(candidate, rows, inventory, internal.itemCompareMode)) return candidate;
+  return null;
+}
+
 function solveFeasibilityForFixedRowsPrepared(
   rows: PreparedRow[],
   inventory: CandyInventory,
   options: FeasibilitySolverOptions = {},
 ): FeasibilityResult {
   const internal = options as InternalFeasibilitySolverOptions;
-  const shouldTryTopDownCandidate = internal.sharedSpeciesStrategy === undefined
-    && internal.abortAfterTransitions === undefined
-    && hasSharedCandyFamily(rows);
-  if (!shouldTryTopDownCandidate) {
+  if (!shouldTryTopDownCandidate(rows, internal)) {
     return solveFeasibilityForFixedRowsOnce(rows, inventory, {
       ...internal,
       sharedSpeciesStrategy: internal.sharedSpeciesStrategy ?? 'complete',
     });
   }
-
   const startedAt = performance.now();
-  const candidate = solveFeasibilityForFixedRowsOnce(rows, inventory, candidateSolverOptions(internal));
-  const candidateCertified = candidate.status === 'feasible'
-    && hasGlobalTopDownOptimalityCertificate(candidate, rows, inventory, internal.itemCompareMode);
-  if (candidateCertified) {
-    return candidate;
-  }
-  if (candidate.status === 'inconclusive') return candidate;
-  return solveFeasibilityForFixedRowsOnce(rows, inventory, completeSolverOptionsAfter(internal, startedAt));
+  return solveTopDownCertifiedCandidate(rows, inventory, internal)
+    ?? solveFeasibilityForFixedRowsOnce(rows, inventory, completeSolverOptionsAfter(internal, startedAt));
 }
 
 export function solveFeasibilityForFixedRows(
@@ -2149,6 +2147,25 @@ export function solveFeasibilityForFixedRows(
   options: FeasibilitySolverOptions = {},
 ): FeasibilityResult {
   return solveFeasibilityForFixedRowsPrepared(prepareRows(rows), inventory, options);
+}
+
+/**
+ * 全行を解く。ただし同じ系統の行があるときは、種族アメを上から使う候補が最適と証明できたときだけ答えを返し、
+ * 証明できなければ、種族アメの分け方をすべて試す解き方（重い）へ進まずに null を返す。
+ * 候補で配れないことは配れない証明にならない（分け方を上からに絞っている）ので、それも null。
+ * 同じ系統の行が無ければ `solveFeasibilityForFixedRows` と同じ。
+ *
+ * null のときに、ほかの方法（キャッシュを使える境界のセッションなど）で解ける呼び出し側が使う
+ */
+export function solveFeasibilityForFixedRowsIfTopDownCertified(
+  rows: FeasibilityDemandRow[],
+  inventory: CandyInventory,
+  options: FeasibilitySolverOptions = {},
+): FeasibilityResult | null {
+  const preparedRows = prepareRows(rows);
+  const internal = options as InternalFeasibilitySolverOptions;
+  if (!shouldTryTopDownCandidate(preparedRows, internal)) return solveFeasibilityForFixedRowsPrepared(preparedRows, inventory, options);
+  return solveTopDownCertifiedCandidate(preparedRows, inventory, internal);
 }
 
 function solveFeasibilityDecisionForFixedRowsOnce(
@@ -2165,7 +2182,7 @@ function solveFeasibilityDecisionForFixedRowsOnce(
   try {
     checkpoint(context);
     const blockFrontiers = buildTypeBlockComponents(rows).map(rowIndexes => {
-      const key = typeBlockFrontierCacheKey(rowIndexes, rows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxTotalSurplus, context.options.maxReachedSurplus, context.options.decisionOnly);
+      const key = typeBlockFrontierCacheKey(rowIndexes, rows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxReachedSurplus, context.options.decisionOnly);
       return { key, frontier: buildTypeBlockFrontier(rowIndexes, rows, inventory, context, key) };
     });
     if (blockFrontiers.some(block => block.frontier.length === 0)) return finishDecision(context, { status: 'infeasible', reason: 'no_type_block_feasible_state' });
@@ -2242,7 +2259,6 @@ export function createPrefixDecisionSession(
 
   const tryIndependentDecisionSearch = (length: number): FeasibilityDecisionResult | null => {
     if (sessionOptions.abortAfterTransitions !== undefined
-      || sessionOptions.maxTotalSurplus !== undefined
       || sessionOptions.maxReachedSurplus !== undefined) return null;
     const searchRows = preparedRows.slice(0, length);
     if (new Set(searchRows.map(row => row.candyFamilyKey)).size !== searchRows.length) return null;
@@ -2344,11 +2360,11 @@ export function createPrefixDecisionSession(
     const clamped = Math.max(0, Math.min(preparedRows.length, Math.floor(length)));
     const cached = decisions.get(clamped);
     if (cached) return cached;
-    if (sessionOptions.maxTotalSurplus === undefined && sessionOptions.maxReachedSurplus === undefined) {
+    if (sessionOptions.maxReachedSurplus === undefined) {
       // Shared-species prefixes need the full type-block construction anyway
       // when the selected prefix is restored or extended by a boundary row.
       // Build it once under the witness cache key instead of first building a
-      // separate decision-only frontier that cannot be reused. Total-surplus
+      // separate decision-only frontier that cannot be reused. Reached-surplus
       // budget probes keep the decision-only path because most are not restored.
       const full = solveFeasibilityForFixedRowsPrepared(preparedRows.slice(0, clamped), inventory, witnessOptions());
       const result: FeasibilityDecisionResult = full.status === 'feasible'
@@ -2370,7 +2386,7 @@ export function createPrefixDecisionSession(
     for (const block of blockByType.values()) {
       if (!block.dirty) continue;
       block.frontier = projectTypeBlockFrontier(block.states, context);
-      block.key = typeBlockFrontierCacheKey(block.rowIndexes, preparedRows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxTotalSurplus, context.options.maxReachedSurplus, context.options.decisionOnly);
+      block.key = typeBlockFrontierCacheKey(block.rowIndexes, preparedRows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxReachedSurplus, context.options.decisionOnly);
       block.dirty = false;
       rememberTypeBlock(block);
     }
@@ -2515,7 +2531,7 @@ function combineGlobalBlockFrontiers(
           path: appendPath(globalState.path, blockState.path),
         };
         if (candidate.universalS > inventory.universal.s || candidate.universalM > inventory.universal.m || candidate.universalL > inventory.universal.l) continue;
-        if (!withinTotalSurplusBudget(candidate.quality, context)) continue;
+        if (!withinReachedSurplusBudget(candidate.quality, context)) continue;
         keepBestBlockState(next, candidate, context);
       }
     }
@@ -2580,7 +2596,7 @@ function solveFeasibilityForIndependentBoundaryPrepared(
     checkpoint(context);
     const prefixComponents = buildTypeBlockComponents(prefixRows);
     const prefixBlockFrontiers = prefixComponents.map(rowIndexes => {
-      const key = typeBlockFrontierCacheKey(rowIndexes, rows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxTotalSurplus, context.options.maxReachedSurplus, context.options.decisionOnly);
+      const key = typeBlockFrontierCacheKey(rowIndexes, rows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxReachedSurplus, context.options.decisionOnly);
       return { key, frontier: buildTypeBlockFrontier(rowIndexes, rows, inventory, context, key) };
     });
     if (prefixBlockFrontiers.some(block => block.frontier.length === 0)) return finish(context, { status: 'infeasible', reason: 'no_type_block_feasible_state' });
@@ -2588,7 +2604,7 @@ function solveFeasibilityForIndependentBoundaryPrepared(
     if (prefixCombined.status === 'infeasible') return finish(context, { status: 'infeasible', reason: prefixCombined.reason });
 
     const boundaryRowIndex = prefixRows.length;
-    const boundaryKey = typeBlockFrontierCacheKey([boundaryRowIndex], rows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxTotalSurplus, context.options.maxReachedSurplus, context.options.decisionOnly);
+    const boundaryKey = typeBlockFrontierCacheKey([boundaryRowIndex], rows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxReachedSurplus, context.options.decisionOnly);
     const boundaryFrontier = buildTypeBlockFrontier([boundaryRowIndex], rows, inventory, context, boundaryKey);
     if (boundaryFrontier.length === 0) return finish(context, { status: 'infeasible', reason: 'no_type_block_feasible_state' });
 
@@ -2604,7 +2620,7 @@ function solveFeasibilityForIndependentBoundaryPrepared(
           path: appendPath(prefixState.path, boundaryState.path),
         };
         if (candidate.universalS > inventory.universal.s || candidate.universalM > inventory.universal.m || candidate.universalL > inventory.universal.l) continue;
-        if (!withinTotalSurplusBudget(candidate.quality, context)) continue;
+        if (!withinReachedSurplusBudget(candidate.quality, context)) continue;
         keepBestBlockState(next, candidate, context);
       }
     }
@@ -2638,16 +2654,16 @@ function createIndependentBoundaryFeasibilitySessionPrepared(
   inventory: CandyInventory,
   options: FeasibilitySolverOptions = {},
 ): {
-  solve: (boundaryRow: FeasibilityDemandRow, limits?: { maxTotalSurplus?: number; maxReachedSurplus?: number }) => FeasibilityResult | null;
-  canSolve: (boundaryRow: FeasibilityDemandRow, limits?: { maxTotalSurplus?: number; maxReachedSurplus?: number }) => FeasibilityDecisionResult | null;
-  canSolveSupply: (boundaryRow: FeasibilityDemandRow, supply: Supply, limits?: { maxTotalSurplus?: number; maxReachedSurplus?: number }) => FeasibilityDecisionResult | null;
+  solve: (boundaryRow: FeasibilityDemandRow, limits?: { maxReachedSurplus?: number }) => FeasibilityResult | null;
+  canSolve: (boundaryRow: FeasibilityDemandRow, limits?: { maxReachedSurplus?: number }) => FeasibilityDecisionResult | null;
+  canSolveSupply: (boundaryRow: FeasibilityDemandRow, supply: Supply, limits?: { maxReachedSurplus?: number }) => FeasibilityDecisionResult | null;
   maxBoundaryTotal: (boundaryRow: FeasibilityDemandRow, maxTotalCandy: number) => number | null;
   solveMaxBoundaryTotal: (
     boundaryRow: FeasibilityDemandRow,
     maxTotalCandy: number,
     boundaryRowForTotal: (totalCandy: number) => FeasibilityDemandRow,
   ) => FeasibilityResult | null;
-  maxBoundaryUniversalS: (boundaryRow: FeasibilityDemandRow, universalM: number, universalL: number, limits?: { maxTotalSurplus?: number }) => number | null;
+  maxBoundaryUniversalS: (boundaryRow: FeasibilityDemandRow, universalM: number, universalL: number) => number | null;
 } | null {
   const prefixTypes = new Set(prefixRows.map(row => row.type));
   const prefixSpecies = new Set(prefixRows.map(row => row.candyFamilyKey));
@@ -2665,7 +2681,7 @@ function createIndependentBoundaryFeasibilitySessionPrepared(
     checkpoint(context);
     const prefixComponents = buildTypeBlockComponents(prefixRows);
     const prefixBlockFrontiers = prefixComponents.map(rowIndexes => {
-      const key = typeBlockFrontierCacheKey(rowIndexes, prefixRows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxTotalSurplus, context.options.maxReachedSurplus, context.options.decisionOnly);
+      const key = typeBlockFrontierCacheKey(rowIndexes, prefixRows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxReachedSurplus, context.options.decisionOnly);
       return { key, frontier: buildTypeBlockFrontier(rowIndexes, prefixRows, inventory, context, key) };
     });
     if (prefixBlockFrontiers.some(block => block.frontier.length === 0)) return null;
@@ -2740,7 +2756,7 @@ function createIndependentBoundaryFeasibilitySessionPrepared(
         const stock = inventoryType(inventory, boundaryRow.type);
         for (const option of boundaryOptions) {
           const optionQuality = qualityForOption(option, boundaryRow.totalCandy, boundaryRow.preferZeroSurplus, boundaryRow.speciesLexOrder, boundaryRow.candyDemandMet);
-          if (!withinTotalSurplusBudget(optionQuality, context)) continue;
+          if (!withinReachedSurplusBudget(optionQuality, context)) continue;
           for (const state of affectedStates) {
             transition(context);
             const typeS = (state.typeS[boundaryRow.type] ?? 0) + option.typeS;
@@ -2750,7 +2766,7 @@ function createIndependentBoundaryFeasibilitySessionPrepared(
             const universalL = state.universalL + option.universalL;
             if (typeS > stock.s || typeM > stock.m || universalS > inventory.universal.s || universalM > inventory.universal.m || universalL > inventory.universal.l) continue;
             const quality = addQuality(state.quality, optionQuality);
-            if (!withinTotalSurplusBudget(quality, context)) continue;
+            if (!withinReachedSurplusBudget(quality, context)) continue;
             if (canCombineWithUniversalDecisionEnvelope(envelope, { universalS, universalM, universalL, quality, path: null }, inventory)) {
               return finishDecision(context, { status: 'feasible' });
             }
@@ -2762,30 +2778,27 @@ function createIndependentBoundaryFeasibilitySessionPrepared(
         throw error;
       }
     };
-    const sameTypeBoundaryBlockFrontiers = (
-      boundaryRow: PreparedRow,
-      rows: PreparedRow[],
-    ): Array<{ key: string; frontier: BlockState[] }> | null => {
+    /**
+     * 境界の行が上の行と同じタイプのとき、境界の行を加えたブロックだけを作り直して解く。
+     * 上の行だけのブロックはセッションを作るときに空でないことを確かめてあるので、空になりうるのは境界の行を加えたブロックだけ。
+     * 空ならその場で「配れない」（`sameTypeBoundaryDecision` の `boundaryOptions.length === 0` と同じ形）
+     */
+    const sameTypeBoundarySolve = (boundaryRow: PreparedRow, rows: PreparedRow[]): FeasibilityResult | null => {
       const affectedComponentIndex = sameTypeBoundaryComponentIndex(boundaryRow);
       if (affectedComponentIndex === null) return null;
-      const affectedFrontier = sameTypeAffectedFrontier(boundaryRow, affectedComponentIndex);
-      if (affectedFrontier.length === 0) return [];
-      return prefixBlockFrontiers.map((block, componentIndex) => {
-        if (componentIndex !== affectedComponentIndex) return block;
-        const boundaryRowIndex = prefixRows.length;
-        const rowIndexes = [...prefixComponents[componentIndex], boundaryRowIndex];
-        return {
-          key: typeBlockFrontierCacheKey(rowIndexes, rows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxTotalSurplus, context.options.maxReachedSurplus, context.options.decisionOnly),
-          frontier: affectedFrontier,
-        };
-      });
-    };
-    const sameTypeBoundarySolve = (boundaryRow: PreparedRow, rows: PreparedRow[]): FeasibilityResult | null => {
       try {
         checkpoint(context);
-        const blockFrontiers = sameTypeBoundaryBlockFrontiers(boundaryRow, rows);
-        if (blockFrontiers === null) return null;
-        if (blockFrontiers.some(block => block.frontier.length === 0)) return finish(context, { status: 'infeasible', reason: 'no_type_block_feasible_state' });
+        const affectedFrontier = sameTypeAffectedFrontier(boundaryRow, affectedComponentIndex);
+        if (affectedFrontier.length === 0) return finish(context, { status: 'infeasible', reason: 'no_type_block_feasible_state' });
+        const boundaryRowIndex = prefixRows.length;
+        const blockFrontiers = prefixBlockFrontiers.map((block, componentIndex) => (
+          componentIndex === affectedComponentIndex
+            ? {
+              key: typeBlockFrontierCacheKey([...prefixComponents[componentIndex], boundaryRowIndex], rows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxReachedSurplus, context.options.decisionOnly),
+              frontier: affectedFrontier,
+            }
+            : block
+        ));
         const combined = combineGlobalBlockFrontiers(blockFrontiers, inventory, context);
         if (combined.status === 'infeasible') return finish(context, { status: 'infeasible', reason: combined.reason });
         return restoreWitnessResult(rows, inventory, context, combined.global);
@@ -2796,12 +2809,12 @@ function createIndependentBoundaryFeasibilitySessionPrepared(
     };
     const decisionEnvelope = buildUniversalDecisionEnvelope(prefixCombined.global, inventory);
     const surplusDecisionEnvelopes = new Map<string, UniversalDecisionEnvelope>();
-    const decisionEnvelopeForSurplusBudget = (maxRawSurplus?: number, maxReachedSurplus?: number): UniversalDecisionEnvelope => {
-      if (maxRawSurplus === undefined && maxReachedSurplus === undefined) return decisionEnvelope;
-      const key = `${maxRawSurplus ?? ''}|${maxReachedSurplus ?? ''}`;
+    const decisionEnvelopeForSurplusBudget = (maxReachedSurplus?: number): UniversalDecisionEnvelope => {
+      if (maxReachedSurplus === undefined) return decisionEnvelope;
+      const key = String(maxReachedSurplus);
       const cached = surplusDecisionEnvelopes.get(key);
       if (cached) return cached;
-      const envelope = buildUniversalDecisionEnvelope(prefixCombined.global, inventory, maxRawSurplus, maxReachedSurplus);
+      const envelope = buildUniversalDecisionEnvelope(prefixCombined.global, inventory, maxReachedSurplus);
       surplusDecisionEnvelopes.set(key, envelope);
       return envelope;
     };
@@ -2809,13 +2822,9 @@ function createIndependentBoundaryFeasibilitySessionPrepared(
       boundaryRow: PreparedRow,
       universalM: number,
       universalL: number,
-      limits: { maxTotalSurplus?: number } = {},
     ): number | null => {
       if (sameTypeBoundaryComponentIndex(boundaryRow) !== null || prefixSpecies.has(boundaryRow.candyFamilyKey)) return null;
-      const maxTotalSurplus = limits.maxTotalSurplus ?? context.options.maxTotalSurplus;
-      const envelope = maxTotalSurplus === undefined
-        ? decisionEnvelope
-        : decisionEnvelopeForSurplusBudget(maxTotalSurplus);
+      const envelope = decisionEnvelope;
       const remainingM = inventory.universal.m - universalM;
       const remainingL = inventory.universal.l - universalL;
       if (remainingM < 0 || remainingL < 0 || remainingM >= envelope.mediumDim || remainingL >= envelope.largeDim) return -1;
@@ -2828,7 +2837,7 @@ function createIndependentBoundaryFeasibilitySessionPrepared(
       maxTotalCandy: number,
     ): number | null => {
       const componentIndex = sameTypeBoundaryComponentIndex(boundaryRow);
-      if (componentIndex === null || context.options.maxRowSurplus === undefined || context.options.maxTotalSurplus !== undefined) return null;
+      if (componentIndex === null || context.options.maxRowSurplus === undefined) return null;
       const envelope = unaffectedDecisionEnvelopeFor(componentIndex);
       if (!envelope) return -1;
       const affectedStates = affectedPrefixStatesFor(componentIndex);
@@ -2957,7 +2966,7 @@ function createIndependentBoundaryFeasibilitySessionPrepared(
     const solveWithBoundaryFrontier = (
       rows: PreparedRow[],
       boundaryFrontier: BlockState[],
-      limits: { maxTotalSurplus?: number; maxReachedSurplus?: number } = {},
+      limits: { maxReachedSurplus?: number } = {},
     ): FeasibilityResult => {
       const next = new Map<string, BlockState>();
       for (const prefixState of prefixCombined.global) {
@@ -2971,8 +2980,7 @@ function createIndependentBoundaryFeasibilitySessionPrepared(
             path: appendPath(prefixState.path, boundaryState.path),
           };
           if (candidate.universalS > inventory.universal.s || candidate.universalM > inventory.universal.m || candidate.universalL > inventory.universal.l) continue;
-          if (!withinTotalSurplusBudget(candidate.quality, context)) continue;
-          if (limits.maxTotalSurplus !== undefined && candidate.quality.rawSurplus > limits.maxTotalSurplus) continue;
+          if (!withinReachedSurplusBudget(candidate.quality, context)) continue;
           if (limits.maxReachedSurplus !== undefined && candidate.quality.reachedSurplus > limits.maxReachedSurplus) continue;
           keepBestBlockState(next, candidate, context);
         }
@@ -2984,7 +2992,7 @@ function createIndependentBoundaryFeasibilitySessionPrepared(
     };
 
     return {
-      canSolve(boundaryRow: FeasibilityDemandRow, limits: { maxTotalSurplus?: number; maxReachedSurplus?: number } = {}): FeasibilityDecisionResult | null {
+      canSolve(boundaryRow: FeasibilityDemandRow, limits: { maxReachedSurplus?: number } = {}): FeasibilityDecisionResult | null {
         const preparedBoundaryRow = prepareBoundaryRow(boundaryRow);
         const rows = [...prefixRows, preparedBoundaryRow];
         const rowError = validateDemandRows(rows, options);
@@ -2992,8 +3000,6 @@ function createIndependentBoundaryFeasibilitySessionPrepared(
         const rowRelaxationError = relaxationInfeasible(rows, inventory);
         if (rowRelaxationError) return finishDecision(context, { status: 'infeasible', reason: rowRelaxationError });
         if (prefixSpecies.has(preparedBoundaryRow.candyFamilyKey)) return null;
-        if (context.options.maxTotalSurplus !== undefined) return null;
-        if (limits.maxTotalSurplus !== undefined && limits.maxTotalSurplus !== context.options.maxTotalSurplus) return null;
         // Type candy stock is shared with the prefix in every policy. Treating
         // this row as an independent block can restore an over-stock witness.
         if (sameTypeBoundaryComponentIndex(preparedBoundaryRow) !== null) {
@@ -3003,22 +3009,17 @@ function createIndependentBoundaryFeasibilitySessionPrepared(
         try {
           checkpoint(context);
           const boundaryRowIndex = prefixRows.length;
-          const boundaryKey = typeBlockFrontierCacheKey([boundaryRowIndex], rows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxTotalSurplus, context.options.maxReachedSurplus, context.options.decisionOnly);
+          const boundaryKey = typeBlockFrontierCacheKey([boundaryRowIndex], rows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxReachedSurplus, context.options.decisionOnly);
           const boundaryFrontier = buildTypeBlockFrontier([boundaryRowIndex], rows, inventory, context, boundaryKey);
           if (boundaryFrontier.length === 0) return finishDecision(context, { status: 'infeasible', reason: 'no_type_block_feasible_state' });
-          const maxTotalSurplus = limits.maxTotalSurplus ?? context.options.maxTotalSurplus;
           for (const boundaryState of boundaryFrontier) {
             transition(context);
-            const remainingSurplusBudget = maxTotalSurplus === undefined
-              ? undefined
-              : maxTotalSurplus - boundaryState.quality.rawSurplus;
             const remainingReachedSurplusBudget = limits.maxReachedSurplus === undefined
               ? undefined
               : limits.maxReachedSurplus - boundaryState.quality.reachedSurplus;
-            if (remainingSurplusBudget !== undefined && remainingSurplusBudget < 0) continue;
             if (remainingReachedSurplusBudget !== undefined && remainingReachedSurplusBudget < 0) continue;
             const feasible = canCombineWithUniversalDecisionEnvelope(
-              decisionEnvelopeForSurplusBudget(remainingSurplusBudget, remainingReachedSurplusBudget),
+              decisionEnvelopeForSurplusBudget(remainingReachedSurplusBudget),
               boundaryState,
               inventory,
             );
@@ -3032,7 +3033,7 @@ function createIndependentBoundaryFeasibilitySessionPrepared(
           throw error;
         }
       },
-      canSolveSupply(boundaryRow: FeasibilityDemandRow, supply: Supply, limits: { maxTotalSurplus?: number; maxReachedSurplus?: number } = {}): FeasibilityDecisionResult | null {
+      canSolveSupply(boundaryRow: FeasibilityDemandRow, supply: Supply, limits: { maxReachedSurplus?: number } = {}): FeasibilityDecisionResult | null {
         const preparedBoundaryRow = prepareBoundaryRow(boundaryRow);
         if (sameTypeBoundaryComponentIndex(preparedBoundaryRow) !== null || prefixSpecies.has(preparedBoundaryRow.candyFamilyKey)) return null;
         const rows = [...prefixRows, preparedBoundaryRow];
@@ -3059,21 +3060,14 @@ function createIndependentBoundaryFeasibilitySessionPrepared(
             path: null,
           }, inventory)) return finishDecision(context, { status: 'infeasible', reason: 'boundary_supply_stock_exceeded' });
 
-          const maxTotalSurplus = limits.maxTotalSurplus ?? context.options.maxTotalSurplus;
-          const remainingSurplusBudget = maxTotalSurplus === undefined
-            ? undefined
-            : maxTotalSurplus - boundaryState.quality.rawSurplus;
           const remainingReachedSurplusBudget = limits.maxReachedSurplus === undefined
             ? undefined
             : limits.maxReachedSurplus - boundaryState.quality.reachedSurplus;
-          if (remainingSurplusBudget !== undefined && remainingSurplusBudget < 0) {
-            return finishDecision(context, { status: 'infeasible', reason: 'boundary_supply_surplus_exceeded' });
-          }
           if (remainingReachedSurplusBudget !== undefined && remainingReachedSurplusBudget < 0) {
             return finishDecision(context, { status: 'infeasible', reason: 'boundary_supply_reached_surplus_exceeded' });
           }
           const feasible = canCombineWithUniversalDecisionEnvelope(
-            decisionEnvelopeForSurplusBudget(remainingSurplusBudget, remainingReachedSurplusBudget),
+            decisionEnvelopeForSurplusBudget(remainingReachedSurplusBudget),
             boundaryState,
             inventory,
           );
@@ -3094,7 +3088,7 @@ function createIndependentBoundaryFeasibilitySessionPrepared(
         boundaryRowForTotal: (totalCandy: number) => FeasibilityDemandRow,
       ): FeasibilityResult | null {
         const preparedBoundaryRow = prepareBoundaryRow(boundaryRow);
-        if (sameTypeBoundaryComponentIndex(preparedBoundaryRow) !== null && context.options.itemCompareMode !== 'legacyImproved' && context.options.maxRowSurplus !== undefined && context.options.maxTotalSurplus === undefined) {
+        if (sameTypeBoundaryComponentIndex(preparedBoundaryRow) !== null && context.options.itemCompareMode !== 'legacyImproved' && context.options.maxRowSurplus !== undefined) {
           const maxTotal = findMaxSameTypeBoundaryTotal(preparedBoundaryRow, maxTotalCandy);
           if (maxTotal === null) return null;
           if (maxTotal >= 0) {
@@ -3117,7 +3111,7 @@ function createIndependentBoundaryFeasibilitySessionPrepared(
         try {
           checkpoint(context);
           const boundaryRowIndex = prefixRows.length;
-          const boundaryKey = typeBlockFrontierCacheKey([boundaryRowIndex], rows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxTotalSurplus, context.options.maxReachedSurplus, context.options.decisionOnly);
+          const boundaryKey = typeBlockFrontierCacheKey([boundaryRowIndex], rows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxReachedSurplus, context.options.decisionOnly);
           const boundaryFrontier = buildTypeBlockFrontier([boundaryRowIndex], rows, inventory, context, boundaryKey);
           if (boundaryFrontier.length === 0) return finish(context, { status: 'infeasible', reason: 'no_type_block_feasible_state' });
           return solveWithBoundaryFrontier(rows, boundaryFrontier);
@@ -3126,10 +3120,10 @@ function createIndependentBoundaryFeasibilitySessionPrepared(
           throw error;
         }
       },
-      maxBoundaryUniversalS(boundaryRow: FeasibilityDemandRow, universalM: number, universalL: number, limits: { maxTotalSurplus?: number } = {}): number | null {
-        return maxBoundaryUniversalSFor(prepareBoundaryRow(boundaryRow), universalM, universalL, limits);
+      maxBoundaryUniversalS(boundaryRow: FeasibilityDemandRow, universalM: number, universalL: number): number | null {
+        return maxBoundaryUniversalSFor(prepareBoundaryRow(boundaryRow), universalM, universalL);
       },
-      solve(boundaryRow: FeasibilityDemandRow, limits: { maxTotalSurplus?: number; maxReachedSurplus?: number } = {}): FeasibilityResult | null {
+      solve(boundaryRow: FeasibilityDemandRow, limits: { maxReachedSurplus?: number } = {}): FeasibilityResult | null {
         const preparedBoundaryRow = prepareBoundaryRow(boundaryRow);
         const rows = [...prefixRows, preparedBoundaryRow];
         const rowError = validateDemandRows(rows, options);
@@ -3138,13 +3132,13 @@ function createIndependentBoundaryFeasibilitySessionPrepared(
         if (rowRelaxationError) return finish(context, { status: 'infeasible', reason: rowRelaxationError });
         if (prefixSpecies.has(preparedBoundaryRow.candyFamilyKey)) return null;
         if (sameTypeBoundaryComponentIndex(preparedBoundaryRow) !== null) {
-          if (limits.maxTotalSurplus !== undefined || limits.maxReachedSurplus !== undefined) return null;
+          if (limits.maxReachedSurplus !== undefined) return null;
           return sameTypeBoundarySolve(preparedBoundaryRow, rows);
         }
         try {
           checkpoint(context);
           const boundaryRowIndex = prefixRows.length;
-          const boundaryKey = typeBlockFrontierCacheKey([boundaryRowIndex], rows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxTotalSurplus, context.options.maxReachedSurplus, context.options.decisionOnly);
+          const boundaryKey = typeBlockFrontierCacheKey([boundaryRowIndex], rows, inventory, context.options.itemCompareMode, context.options.maxRowSurplus, context.options.maxReachedSurplus, context.options.decisionOnly);
           const boundaryFrontier = buildTypeBlockFrontier([boundaryRowIndex], rows, inventory, context, boundaryKey);
           if (boundaryFrontier.length === 0) return finish(context, { status: 'infeasible', reason: 'no_type_block_feasible_state' });
           return solveWithBoundaryFrontier(rows, boundaryFrontier, limits);
@@ -3168,24 +3162,46 @@ export function createIndependentBoundaryFeasibilitySession(
   return createIndependentBoundaryFeasibilitySessionPrepared(prepareRows(prefixRows), inventory, options);
 }
 
+/**
+ * 行だけを、種族アメを min(在庫, 総数) 使って在庫で賄う配り方（最小の被覆）。
+ * 候補は在庫の個数以内で作られ、余りが `maxRowSurplus` を超えるものは除いてある（`rowOptionsForSpecies`）。
+ * `maxRowSurplus` を渡さなければ余りの上限なし
+ */
+function singleRowSupplyOptions(
+  row: FeasibilityDemandRow,
+  inventory: CandyInventory,
+  maxRowSurplus?: number,
+): { row: PreparedRow; options: Supply[] } {
+  const preparedRow = prepareRows([row])[0];
+  const species = Math.min(inventory.species[preparedRow.candyFamilyKey] ?? 0, preparedRow.totalCandy);
+  return { row: preparedRow, options: rowOptionsForSpecies(preparedRow, species, inventory, createContext({ maxRowSurplus })) };
+}
+
 export function hasSingleRowSupplyWithinSurplus(
   row: FeasibilityDemandRow,
   inventory: CandyInventory,
-  maxRowSurplus: number,
+  maxRowSurplus?: number,
 ): boolean {
-  const preparedRow = prepareRows([row])[0];
-  const context = createContext({ maxRowSurplus });
-  const species = Math.min(inventory.species[preparedRow.candyFamilyKey] ?? 0, preparedRow.totalCandy);
-  const options = rowOptionsForSpecies(preparedRow, species, inventory, context);
-  return options.some(option => resourceWithinInventory({
-    typeS: { [preparedRow.type]: option.typeS },
-    typeM: { [preparedRow.type]: option.typeM },
-    universalS: option.universalS,
-    universalM: option.universalM,
-    universalL: option.universalL,
-    quality: qualityForOption(option, preparedRow.totalCandy, preparedRow.preferZeroSurplus, preparedRow.speciesLexOrder, preparedRow.candyDemandMet),
-    path: null,
-  }, inventory));
+  return singleRowSupplyOptions(row, inventory, maxRowSurplus).options.length > 0;
+}
+
+/**
+ * 行だけを、種族アメを min(在庫, 総数) 使って在庫で賄うときの、余りがいちばん小さい配り方の余り。
+ * 余りが `maxRowSurplus` 以内の配り方が無ければ null
+ */
+export function minSingleRowSupplySurplus(
+  row: FeasibilityDemandRow,
+  inventory: CandyInventory,
+  maxRowSurplus: number,
+): number | null {
+  const { row: preparedRow, options } = singleRowSupplyOptions(row, inventory, maxRowSurplus);
+  let best: number | null = null;
+  for (const option of options) {
+    const surplus = supplyValue(option) - preparedRow.totalCandy;
+    if (best === null || surplus < best) best = surplus;
+    if (best === 0) break;
+  }
+  return best;
 }
 
 function demandRowsFromWitness(witness: FeasibilityWitness): FeasibilityDemandRow[] {

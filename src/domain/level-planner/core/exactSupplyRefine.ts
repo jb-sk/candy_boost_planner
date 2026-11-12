@@ -1,6 +1,7 @@
 import { CANDY_VALUES, MAX_ACCEPTABLE_SURPLUS } from '../constants';
 import type { CandyInventory, SolverItemCompareMode } from '../types';
 import { addItemPriority, compareItemPriority, emptyItemPriority, itemPriorityOf } from './itemPriority';
+import { compareRowSurplusGate } from './surplusGate';
 import type { ItemPriorityTuple } from './itemPriority';
 
 export type ExactSupplyMode = SolverItemCompareMode;
@@ -259,11 +260,11 @@ export function compareExactSupplyObjective(a: ExactSupplyObjective, b: ExactSup
     if (a.rawSurplus !== b.rawSurplus) return a.rawSurplus < b.rawSurplus ? 1 : -1;
     if (a.speciesLex !== b.speciesLex) return a.speciesLex > b.speciesLex ? 1 : -1;
   } else if (isLegacyLikeMode(mode)) {
+    // §6: 供給内訳では、バランスも EXP最大と同じく LvMAX余り0 → 各行余り0〜2（LvMAX の行を余り0にするためなら、ほかの行が余り3以上になってよい）
     if (a.zeroSurplusCount !== b.zeroSurplusCount) return a.zeroSurplusCount > b.zeroSurplusCount ? 1 : -1;
-    const acceptableA = a.normalizedSurplus === 0;
-    const acceptableB = b.normalizedSurplus === 0;
-    if (acceptableA !== acceptableB) return acceptableA ? 1 : -1;
-    if (!acceptableA && a.normalizedSurplus !== b.normalizedSurplus) return a.normalizedSurplus < b.normalizedSurplus ? 1 : -1;
+    // 正規化余りは行ごとに足せる値なので、行ごとの最良の和を上界にする枝刈りで使っても順は崩れない
+    const gate = compareRowSurplusGate(a.normalizedSurplus, b.normalizedSurplus);
+    if (gate) return gate;
     if (a.speciesLex !== b.speciesLex) return a.speciesLex > b.speciesLex ? 1 : -1;
     const priority = compareItemPriority(a.priority, b.priority);
     if (priority) return priority;
@@ -509,14 +510,21 @@ function cannotBeatIncumbent(
   return compareExactSupplyObjective(optimistic, incumbent, mode) < 0;
 }
 
-function solveExactSupplyRowsDirect(
+type ExactWorkItem = { index: number; row: PreparedInputRow; options: ExactSupplyUsage[] };
+
+/**
+ * 行ごとの供給の候補（支配された候補を除いたもの）。候補を数えきれない・候補が無い行があれば、その理由。
+ * `needsSharedStockTracking` は、系統かタイプを共有する行があり、種族アメ・タイプアメの使用量を状態に持つ必要があるか
+ */
+function prepareExactRowOptions(
   rows: PreparedInputRow[],
   inventory: CandyInventory,
   mode: ExactSupplyMode,
-  selectedObjective?: ExactSupplyObjective,
-  maxSurplus: number = CANDY_VALUES.universal.l,
+  maxSurplus: number,
   checkpoint?: ExactSupplyCheckpoint,
-): ExactSupplyRefineResult {
+):
+  | { status: 'ok'; localOptions: ExactSupplyUsage[][]; needsSharedStockTracking: boolean }
+  | { status: 'inconclusive' | 'no_feasible_combination'; reason: string } {
   const hasSharedSpecies = hasDuplicate(rows.map(row => row.candyFamilyKey));
   const hasSharedType = hasDuplicate(rows.map(row => row.type));
   const needsSharedStockTracking = hasSharedSpecies || hasSharedType;
@@ -525,34 +533,33 @@ function solveExactSupplyRowsDirect(
     checkpoint?.();
     const options = enumerateRowOptions(row, inventory, maxSurplus, hasSharedSpecies, needsSharedStockTracking, mode, checkpoint);
     if (options === 'too_many_options' || options === 'too_many_visits') {
-      return { status: 'inconclusive', reason: options === 'too_many_options' ? 'too_many_local_options' : options, selectedObjective };
+      return { status: 'inconclusive', reason: options === 'too_many_options' ? 'too_many_local_options' : options };
     }
     if (options.length === 0) {
-      return { status: 'no_feasible_combination', reason: `no_local_options:${row.id}`, selectedObjective };
+      return { status: 'no_feasible_combination', reason: `no_local_options:${row.id}` };
     }
     localOptions.push(pruneDominatedRowOptions(row, options, needsSharedStockTracking, mode));
   }
-  const workItems = localOptions
-    .map((options, index) => ({ index, row: rows[index], options }))
-    .sort((a, b) => a.options.length - b.options.length);
-  const workItemRemainingUpperBounds = remainingUpperBounds(workItems.map(item => (
-    bestObjective(item.options.map(option => exactSupplyObjectiveFor([option], [item.row])), mode)
-  )));
+  return { status: 'ok', localOptions, needsSharedStockTracking };
+}
 
-  const stateKey = (state: Pick<ExactState, 'species' | 'typeS' | 'typeM' | 'universalS' | 'universalM' | 'universalL'>): string => {
-    if (!needsSharedStockTracking) {
-      return `${state.universalS}|${state.universalM}|${state.universalL}`;
-    }
-    return JSON.stringify({
-      s: state.species,
-      ts: state.typeS,
-      tm: state.typeM,
-      us: state.universalS,
-      um: state.universalM,
-      ul: state.universalL,
-    });
-  };
+type ExactDpResult =
+  | { status: 'ok'; states: Map<string, ExactState> }
+  | { status: 'inconclusive'; reason: 'too_many_transitions' | 'too_many_states'; finalStates: number };
 
+/**
+ * 行の候補を候補の少ない行から1行ずつ足していく DP。在庫の使用量が同じ状態（キー）は、目的の良い方だけを残す。
+ * `prune` を渡すと、残りの行の最良を足しても `incumbent` に届かない状態を捨てる。
+ * 行の配列（`rows`、`workItems` の順）は、その状態を残すと決めてから写す（捨てる候補のために写さない）
+ */
+function runExactRowDp(
+  workItems: readonly ExactWorkItem[],
+  inventory: CandyInventory,
+  needsSharedStockTracking: boolean,
+  mode: ExactSupplyMode,
+  checkpoint?: ExactSupplyCheckpoint,
+  prune?: { bounds: ExactSupplyObjective[]; incumbent: ExactSupplyObjective },
+): ExactDpResult {
   const initialState: ExactState = {
     objective: exactSupplyObjectiveFor([], []),
     rows: [],
@@ -564,7 +571,7 @@ function solveExactSupplyRowsDirect(
     universalL: 0,
   };
   let states = new Map<string, ExactState>();
-  states.set(stateKey(initialState), initialState);
+  states.set(needsSharedStockTracking ? exactStateKey(initialState) : '0|0|0', initialState);
   let transitions = 0;
 
   for (let rowIndex = 0; rowIndex < workItems.length; rowIndex++) {
@@ -575,14 +582,7 @@ function solveExactSupplyRowsDirect(
       for (const option of workItems[rowIndex].options) {
         transitions++;
         if (transitions % 1024 === 0) checkpoint?.();
-        if (transitions > MAX_EXACT_TRANSITIONS) {
-          return {
-            status: 'inconclusive',
-            reason: 'too_many_transitions',
-            selectedObjective,
-            stats: { localCandidateCounts: localOptions.map(options => options.length), finalStates: states.size },
-          };
-        }
+        if (transitions > MAX_EXACT_TRANSITIONS) return { status: 'inconclusive', reason: 'too_many_transitions', finalStates: states.size };
         const speciesUsed = (state.species[rowSpeciesKey] ?? 0) + option.species;
         const typeSUsed = (state.typeS[row.type] ?? 0) + option.typeS;
         const typeMUsed = (state.typeM[row.type] ?? 0) + option.typeM;
@@ -593,30 +593,63 @@ function solveExactSupplyRowsDirect(
         const typeStock = inventory.typeCandy[row.type] ?? { s: 0, m: 0 };
         if (typeSUsed > typeStock.s || typeMUsed > typeStock.m) continue;
         if (universalS > inventory.universal.s || universalM > inventory.universal.m || universalL > inventory.universal.l) continue;
-        const candidateRows = [...state.rows, option];
         const objective = addExactSupplyObjective(state.objective, exactSupplyObjectiveFor([option], [row]));
-        if (cannotBeatIncumbent(objective, workItemRemainingUpperBounds[rowIndex + 1], selectedObjective, mode)) continue;
+        if (prune && cannotBeatIncumbent(objective, prune.bounds[rowIndex + 1], prune.incumbent, mode)) continue;
         const species = { ...state.species, [rowSpeciesKey]: speciesUsed };
         const typeS = { ...state.typeS, [row.type]: typeSUsed };
         const typeM = { ...state.typeM, [row.type]: typeMUsed };
-        const candidate: ExactState = { objective, rows: candidateRows, species, typeS, typeM, universalS, universalM, universalL };
-        const key = stateKey(candidate);
+        const key = needsSharedStockTracking
+          ? exactStateKey({ species, typeS, typeM, universalS, universalM, universalL })
+          : `${universalS}|${universalM}|${universalL}`;
         const previous = next.get(key);
-        if (!previous || compareExactSupplyObjective(candidate.objective, previous.objective, mode) > 0) {
-          next.set(key, candidate);
-          if (next.size > MAX_EXACT_STATES) {
-            return {
-              status: 'inconclusive',
-              reason: 'too_many_states',
-              selectedObjective,
-              stats: { localCandidateCounts: localOptions.map(options => options.length), finalStates: next.size },
-            };
-          }
-        }
+        if (previous && compareExactSupplyObjective(objective, previous.objective, mode) <= 0) continue;
+        next.set(key, { objective, rows: [...state.rows, option], species, typeS, typeM, universalS, universalM, universalL });
+        if (next.size > MAX_EXACT_STATES) return { status: 'inconclusive', reason: 'too_many_states', finalStates: next.size };
       }
     }
     states = next;
   }
+  return { status: 'ok', states };
+}
+
+/** 種族アメ・タイプアメ・万能アメの使用量のキー（系統かタイプを共有する行があるとき） */
+function exactStateKey(state: Pick<ExactState, 'species' | 'typeS' | 'typeM' | 'universalS' | 'universalM' | 'universalL'>): string {
+  return JSON.stringify({
+    s: state.species,
+    ts: state.typeS,
+    tm: state.typeM,
+    us: state.universalS,
+    um: state.universalM,
+    ul: state.universalL,
+  });
+}
+
+function solveExactSupplyRowsDirect(
+  rows: PreparedInputRow[],
+  inventory: CandyInventory,
+  mode: ExactSupplyMode,
+  selectedObjective?: ExactSupplyObjective,
+  maxSurplus: number = CANDY_VALUES.universal.l,
+  checkpoint?: ExactSupplyCheckpoint,
+): ExactSupplyRefineResult {
+  const prepared = prepareExactRowOptions(rows, inventory, mode, maxSurplus, checkpoint);
+  if (prepared.status !== 'ok') return { ...prepared, selectedObjective };
+  const { localOptions } = prepared;
+  const localCandidateCounts = localOptions.map(options => options.length);
+  const workItems = localOptions
+    .map((options, index) => ({ index, row: rows[index], options }))
+    .sort((a, b) => a.options.length - b.options.length);
+  const prune = selectedObjective === undefined ? undefined : {
+    bounds: remainingUpperBounds(workItems.map(item => (
+      bestObjective(item.options.map(option => exactSupplyObjectiveFor([option], [item.row])), mode)
+    ))),
+    incumbent: selectedObjective,
+  };
+  const dp = runExactRowDp(workItems, inventory, prepared.needsSharedStockTracking, mode, checkpoint, prune);
+  if (dp.status !== 'ok') {
+    return { status: 'inconclusive', reason: dp.reason, selectedObjective, stats: { localCandidateCounts, finalStates: dp.finalStates } };
+  }
+  const { states } = dp;
 
   const best = [...states.values()].sort((a, b) => -compareExactSupplyObjective(a.objective, b.objective, mode))[0];
   if (!best) {
@@ -624,7 +657,7 @@ function solveExactSupplyRowsDirect(
       status: 'no_feasible_combination',
       reason: 'no_global_state',
       selectedObjective,
-      stats: { localCandidateCounts: localOptions.map(options => options.length), finalStates: states.size },
+      stats: { localCandidateCounts, finalStates: states.size },
     };
   }
   const bestRows = workItems.reduce<ExactSupplyUsage[]>((acc, item, processedIndex) => {
@@ -638,7 +671,7 @@ function solveExactSupplyRowsDirect(
     selectedObjective: effectiveSelectedObjective,
     bestObjective: best.objective,
     bestRows,
-    stats: { localCandidateCounts: localOptions.map(options => options.length), finalStates: states.size },
+    stats: { localCandidateCounts, finalStates: states.size },
     scope: 'fixed-demand',
   };
 }
@@ -651,23 +684,10 @@ function solveExactSupplyComponentFrontier(
   checkpoint?: ExactSupplyCheckpoint,
 ): ExactComponentFrontierResult {
   const rows = component.rows;
-  const hasSharedSpecies = hasDuplicate(rows.map(row => row.candyFamilyKey));
-  const hasSharedType = hasDuplicate(rows.map(row => row.type));
-  const needsSharedStockTracking = hasSharedSpecies || hasSharedType;
-  const localOptions: ExactSupplyUsage[][] = [];
-
-  for (const row of rows) {
-    checkpoint?.();
-    const options = enumerateRowOptions(row, inventory, maxSurplus, hasSharedSpecies, needsSharedStockTracking, mode, checkpoint);
-    if (options === 'too_many_options' || options === 'too_many_visits') {
-      return { status: 'inconclusive', reason: options === 'too_many_options' ? 'too_many_local_options' : options };
-    }
-    if (options.length === 0) {
-      return { status: 'no_feasible_combination', reason: `no_local_options:${row.id}` };
-    }
-    localOptions.push(pruneDominatedRowOptions(row, options, needsSharedStockTracking, mode));
-  }
-
+  const prepared = prepareExactRowOptions(rows, inventory, mode, maxSurplus, checkpoint);
+  if (prepared.status !== 'ok') return prepared;
+  const { localOptions } = prepared;
+  const localCandidateCounts = localOptions.map(options => options.length);
   const workItems = localOptions
     .map((options, componentIndex) => ({
       index: component.indexes[componentIndex],
@@ -675,92 +695,9 @@ function solveExactSupplyComponentFrontier(
       options,
     }))
     .sort((a, b) => a.options.length - b.options.length);
-
-  const stateKey = (state: Pick<ExactState, 'species' | 'typeS' | 'typeM' | 'universalS' | 'universalM' | 'universalL'>): string => {
-    if (!needsSharedStockTracking) {
-      return `${state.universalS}|${state.universalM}|${state.universalL}`;
-    }
-    return JSON.stringify({
-      s: state.species,
-      ts: state.typeS,
-      tm: state.typeM,
-      us: state.universalS,
-      um: state.universalM,
-      ul: state.universalL,
-    });
-  };
-
-  const initialState: ExactState = {
-    objective: exactSupplyObjectiveFor([], []),
-    rows: [],
-    species: {},
-    typeS: {},
-    typeM: {},
-    universalS: 0,
-    universalM: 0,
-    universalL: 0,
-  };
-  let states = new Map<string, ExactState>();
-  states.set(stateKey(initialState), initialState);
-  let transitions = 0;
-
-  for (let rowIndex = 0; rowIndex < workItems.length; rowIndex++) {
-    const row = workItems[rowIndex].row;
-    const rowSpeciesKey = row.candyFamilyKey;
-    const next = new Map<string, ExactState>();
-    for (const state of states.values()) {
-      for (const option of workItems[rowIndex].options) {
-        transitions++;
-        if (transitions % 1024 === 0) checkpoint?.();
-        if (transitions > MAX_EXACT_TRANSITIONS) {
-          return {
-            status: 'inconclusive',
-            reason: 'too_many_transitions',
-            localCandidateCounts: localOptions.map(options => options.length),
-            finalStates: states.size,
-          };
-        }
-        const speciesUsed = (state.species[rowSpeciesKey] ?? 0) + option.species;
-        const typeSUsed = (state.typeS[row.type] ?? 0) + option.typeS;
-        const typeMUsed = (state.typeM[row.type] ?? 0) + option.typeM;
-        const universalS = state.universalS + option.universalS;
-        const universalM = state.universalM + option.universalM;
-        const universalL = state.universalL + option.universalL;
-        if (speciesUsed > (inventory.species[rowSpeciesKey] ?? 0)) continue;
-        const typeStock = inventory.typeCandy[row.type] ?? { s: 0, m: 0 };
-        if (typeSUsed > typeStock.s || typeMUsed > typeStock.m) continue;
-        if (universalS > inventory.universal.s || universalM > inventory.universal.m || universalL > inventory.universal.l) continue;
-        const objective = addExactSupplyObjective(state.objective, exactSupplyObjectiveFor([option], [row]));
-        const species = { ...state.species, [rowSpeciesKey]: speciesUsed };
-        const typeS = { ...state.typeS, [row.type]: typeSUsed };
-        const typeM = { ...state.typeM, [row.type]: typeMUsed };
-        const candidate: ExactState = {
-          objective,
-          rows: [...state.rows, option],
-          species,
-          typeS,
-          typeM,
-          universalS,
-          universalM,
-          universalL,
-        };
-        const key = stateKey(candidate);
-        const previous = next.get(key);
-        if (!previous || compareExactSupplyObjective(candidate.objective, previous.objective, mode) > 0) {
-          next.set(key, candidate);
-          if (next.size > MAX_EXACT_STATES) {
-            return {
-              status: 'inconclusive',
-              reason: 'too_many_states',
-              localCandidateCounts: localOptions.map(options => options.length),
-              finalStates: next.size,
-            };
-          }
-        }
-      }
-    }
-    states = next;
-  }
+  const dp = runExactRowDp(workItems, inventory, prepared.needsSharedStockTracking, mode, checkpoint);
+  if (dp.status !== 'ok') return { status: 'inconclusive', reason: dp.reason, localCandidateCounts, finalStates: dp.finalStates };
+  const { states } = dp;
 
   const projected = new Map<string, ExactComponentOption>();
   for (const state of states.values()) {
@@ -786,7 +723,7 @@ function solveExactSupplyComponentFrontier(
     return {
       status: 'no_feasible_combination',
       reason: 'no_component_state',
-      localCandidateCounts: localOptions.map(options => options.length),
+      localCandidateCounts,
       finalStates: states.size,
     };
   }
@@ -794,7 +731,7 @@ function solveExactSupplyComponentFrontier(
   return {
     status: 'ok',
     options: [...projected.values()],
-    localCandidateCounts: localOptions.map(options => options.length),
+    localCandidateCounts,
     finalStates: projected.size,
   };
 }
@@ -877,23 +814,17 @@ function solveExactSupplyRowsByComponents(
         const universalL = state.universalL + option.universalL;
         if (universalS > inventory.universal.s || universalM > inventory.universal.m || universalL > inventory.universal.l) continue;
 
-        const candidateRows = state.rows.slice();
-        for (const entry of option.entries) {
-          candidateRows[entry.index] = entry.usage;
-        }
         const objective = addExactSupplyObjective(state.objective, option.objective);
         if (cannotBeatIncumbent(objective, componentRemainingUpperBounds[frontierIndex + 1], selectedObjective, mode)) continue;
-        const candidate: ComponentGlobalState = {
-          objective,
-          rows: candidateRows,
-          universalS,
-          universalM,
-          universalL,
-        };
         const key = `${universalS}|${universalM}|${universalL}`;
         const previous = next.get(key);
-        if (!previous || compareExactSupplyObjective(candidate.objective, previous.objective, mode) > 0) {
-          next.set(key, candidate);
+        // 行の配列は、その状態を残すと決めてから写す（捨てる候補のために写さない）
+        if (!previous || compareExactSupplyObjective(objective, previous.objective, mode) > 0) {
+          const candidateRows = state.rows.slice();
+          for (const entry of option.entries) {
+            candidateRows[entry.index] = entry.usage;
+          }
+          next.set(key, { objective, rows: candidateRows, universalS, universalM, universalL });
           if (next.size > MAX_EXACT_STATES) {
             return {
               status: 'inconclusive',
@@ -939,56 +870,6 @@ function solveExactSupplyRows(
   checkpoint?: ExactSupplyCheckpoint,
 ): ExactSupplyRefineResult {
   return solveExactSupplyRowsByComponents(rows, inventory, mode, selectedObjective, maxSurplus, checkpoint);
-}
-
-export function solveExactSupplyForFixedRows(
-  rows: ExactSupplyDemandRow[],
-  inventory: CandyInventory,
-  mode: ExactSupplyMode,
-  checkpoint?: ExactSupplyCheckpoint,
-): ExactSupplyRefineResult {
-  const preparedRows: PreparedDemandRow[] = rows.map((row, originalIndex) => ({
-    ...row,
-    speciesLexOrder: -originalIndex,
-  }));
-  const speciesUsed: Record<string, number> = {};
-  let totalResidual = 0;
-  const residualByType: Record<string, number> = {};
-  for (const row of preparedRows) {
-    const key = row.candyFamilyKey;
-    speciesUsed[key] = (speciesUsed[key] ?? 0) + row.fixedSpecies;
-    if (speciesUsed[key] > (inventory.species[key] ?? 0)) return { status: 'no_feasible_combination', reason: `species_stock_exceeded:${key}` };
-    const residual = Math.max(0, row.totalCandyCount - row.fixedSpecies);
-    totalResidual += residual;
-    residualByType[row.type] = (residualByType[row.type] ?? 0) + residual;
-  }
-  const universalValue = inventory.universal.s * CANDY_VALUES.universal.s
-    + inventory.universal.m * CANDY_VALUES.universal.m
-    + inventory.universal.l * CANDY_VALUES.universal.l;
-  const typeValue = Object.values(inventory.typeCandy).reduce((sum, stock) => sum + stock.s * CANDY_VALUES.type.s + stock.m * CANDY_VALUES.type.m, 0);
-  if (totalResidual > typeValue + universalValue + preparedRows.length * CANDY_VALUES.universal.l) {
-    return { status: 'no_feasible_combination', reason: 'insufficient_total_value' };
-  }
-  for (const [type, residual] of Object.entries(residualByType)) {
-    const stock = inventory.typeCandy[type] ?? { s: 0, m: 0 };
-    const localTypeValue = stock.s * CANDY_VALUES.type.s + stock.m * CANDY_VALUES.type.m;
-    if (residual > localTypeValue + universalValue + preparedRows.length * CANDY_VALUES.universal.l) {
-      return { status: 'no_feasible_combination', reason: `insufficient_type_or_universal_value:${type}` };
-    }
-  }
-  if (isLegacyLikeMode(mode)) {
-    const acceptable = solveExactSupplyRows(preparedRows, inventory, mode, undefined, MAX_ACCEPTABLE_SURPLUS, checkpoint);
-    if (acceptable.status === 'ok') return acceptable;
-    if (acceptable.status !== 'no_feasible_combination') return acceptable;
-  } else {
-    for (let maxSurplus = 0; maxSurplus <= CANDY_VALUES.universal.l; maxSurplus++) {
-      checkpoint?.();
-      const solved = solveExactSupplyRows(preparedRows, inventory, mode, undefined, maxSurplus, checkpoint);
-      if (solved.status === 'ok') return solved;
-      if (solved.status !== 'no_feasible_combination') return solved;
-    }
-  }
-  return solveExactSupplyRows(preparedRows, inventory, mode, undefined, CANDY_VALUES.universal.l, checkpoint);
 }
 
 export function refineExactSupply(

@@ -1,5 +1,5 @@
 <template>
-  <div class="exportOverlay" data-testid="export-overlay" @click.self="emit('close')" role="dialog" :aria-label="t('calc.export.open')">
+  <div ref="overlayRef" class="exportOverlay" tabindex="-1" data-testid="export-overlay" @click.self="emit('close')" role="dialog" :aria-label="t('calc.export.open')">
     <div class="exportSheetWrap" @click.self="emit('close')">
       <div
         ref="exportSheetEl"
@@ -329,6 +329,7 @@ import { createExportImageCanvas, ExportImageError } from "../export/renderExpor
 import { saveExportImage, type SaveImageAdapter } from "../export/saveExportImage";
 import { isSharePending, setSharePending } from "../export/sharePendingState";
 import { showToast } from "../composables/useToast";
+import { useFocusTrap } from "../composables/useFocusTrap";
 
 const props = defineProps<{
   rows: ExportImageRow[];
@@ -375,6 +376,9 @@ function closeFallback() {
   }
   fallbackImageUrl.value = "";
 }
+
+const overlayRef = ref<HTMLElement | null>(null);
+useFocusTrap(overlayRef);
 
 onUnmounted(() => {
   closeFallback();

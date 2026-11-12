@@ -1,0 +1,2493 @@
+/* FineTuneModal — シンプル。
+   全員を数字だけの1行の表で並べ、押した欄を下の調整バー（FineTuneEditor）で動かす。
+   スマホ・タブレット（1400px 未満）は全画面。1400px 以上（PC）は中央のカード。
+   680px 以上は、表は同じ列のまま、列の幅・文字・押す部品を大きくする。
+   色は CSS 変数だけで書き、テーマの装飾は各テーマの CSS 側に置く。
+   罫線はテーマの濃い枠線（--border）でなく文字色を薄めた線にし、押せる部品は影を付けず、下地と枠の濃さで見せる。
+   しゃれっ気: 調整バーは角の丸いシート、刻みは溝に並べた鍵、増減は札、機械の調整にはキラキラ、
+   選ぶ欄を変えると調整バーの中身がふわっと出る。どれも大きさと高さは変えない。 */
+
+/* ===== 器 =====
+   タブレット幅（680〜1399px）も全画面にする。カードにすると左右の余白と枠で表が狭くなり、
+   700px 前後で名前の列が潰れていた。PC（1400px 以上。ui_spec のブレークポイント）だけ中央のカード */
+@media (min-width: 1400px) {
+  .modal-overlay.fineTune-overlay {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  /* components.css の `.modal`（max-width: 890px、top/left: 0）より後ろに読まれても勝てるよう、クラスを重ねる */
+  .modal.fineTuneModal {
+    position: relative;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    width: 100%;
+    max-width: 960px;
+    max-height: 100%;
+    margin: 0;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+  }
+}
+
+/* シンプルの中だけで使う線と下地 */
+.fineTuneModal {
+  --ft-line: rgba(var(--ink-rgb), 0.07);
+  --ft-line-strong: rgba(var(--ink-rgb), 0.14);
+  --ft-tint: rgba(var(--accent-rgb), 0.07);
+  --ft-tint-strong: rgba(var(--accent-rgb), 0.15);
+  --ft-control-border: rgba(var(--ink-rgb), 0.16);
+  /* 切り替え（睡眠の選択肢）と刻みのボタンを並べる溝 */
+  --ft-track: rgba(var(--ink-rgb), 0.07);
+}
+
+/* 上部はテーマの色をごく淡く敷き、下へ向かって紙の色に溶かす */
+.fineTuneModal__header.modal__header {
+  gap: 8px;
+  min-height: 52px;
+  padding: 6px 8px 6px 16px;
+  border-bottom: 1px solid var(--ft-line-strong);
+  background: var(--paper);
+  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.08), rgba(var(--accent-rgb), 0.02)), var(--paper);
+}
+
+/* × は淡い下地の丸いボタンに、細い線の × */
+.fineTuneModal__close.modal__close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-left: auto;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  background: var(--ft-track);
+  color: var(--ink);
+  transition: background-color 0.12s;
+}
+
+.fineTuneModal__close.modal__close:hover {
+  background: var(--ft-line-strong);
+  color: var(--ink);
+}
+
+.fineTuneModal__closeIcon {
+  display: block;
+  flex-shrink: 0;
+}
+
+/* 「全体のLvを伸ばす」を求めている間は、表と調整バーを押せなくする */
+.fineTuneModal--busy .fineTuneModal__list,
+.fineTuneModal--busy .fineTuneEditor {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.fineTuneModal__loading {
+  margin: 0;
+  padding: 24px 16px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.fineTuneModal__warn {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 4px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+/* ===== サマリー（ヘッダーの段に置く。名前を上、数字を下に積む） ===== */
+.fineTuneSummary {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 2つ目からは左に細い区切り線（同じ段に並ぶ数字を、枠を使わずに分ける） */
+.fineTuneSummary__item + .fineTuneSummary__item {
+  padding-left: 16px;
+  border-left: 1px solid var(--ft-line-strong);
+}
+
+.fineTuneSummary__item {
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  column-gap: 4px;
+  white-space: nowrap;
+}
+
+.fineTuneSummary__k {
+  grid-column: 1 / -1;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  color: var(--muted);
+}
+
+.fineTuneSummary__v {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--ink);
+}
+
+/* 開いた時点からの増減は、淡い下地の札にする */
+.fineTuneSummary__d {
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--ft-tint-strong);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.6;
+  color: var(--accent-strong);
+}
+
+.fineTuneSummary__item--over .fineTuneSummary__v,
+.fineTuneSummary__item--over .fineTuneSummary__d {
+  color: var(--danger);
+}
+
+.fineTuneSummary__item--over .fineTuneSummary__d {
+  background: rgba(var(--danger-rgb), 0.12);
+}
+
+/* 計算中は小さな札にし、点を明滅させる */
+/* 点（::before）と文字の間は gap でなく点の margin で空ける。古い端末の gap の補正（flexGapPolyfill）は
+   要素の子だけに margin を足すので、擬似要素と文字の間は空かない */
+.fineTuneSummary__calculating {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--ft-tint);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-strong);
+}
+
+.fineTuneSummary__calculating::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: fineTunePulse 1s ease-in-out infinite;
+}
+
+@keyframes fineTunePulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fineTuneSummary__calculating::before {
+    animation: none;
+  }
+}
+
+/* ===== 表 =====
+   列: 取っ手 | ポケモン | 目標 | 睡眠 | 到達 | アメブ | アメ（アメブのあるスロットは見出し「アメ合計」） | アメ1個あたりのかけら
+   アメブの列はアメブのあるスロットだけ。列の幅は一覧の --ft-cols で決める。
+   各列は「最小〇px、余った幅は fr の比で分ける」（2026-11-05。固定幅だと 670px で名前が広すぎ、700px で狭すぎた）。
+   最小は中身が収まる幅（680px 未満は以前の固定幅と同じ）。fr の比は最小の幅に合わせ、名前だけ多めに取る。
+   余りが少ない狭い画面では数字の列が最小のまま（以前と同じ並び）になり、広がるにつれて全部の列が釣り合って広がる。
+   全行が同じ指定なので、列は行どうしでずれない（中身の幅で決まる auto は行ごとにずれるので使わない）
+   アメの列は、アメブのあるスロットの見出し「アメ合計」が字間 0.04em で切れないよう 48px */
+.fineTuneModal__list {
+  --ft-cols: minmax(0, 1.5fr) minmax(32px, 0.32fr) minmax(50px, 0.5fr) minmax(32px, 0.32fr) minmax(46px, 0.46fr) minmax(48px, 0.48fr) minmax(64px, 0.64fr);
+  padding: 0;
+}
+
+.fineTuneModal__list--noBoost {
+  --ft-cols: minmax(0, 1.5fr) minmax(36px, 0.36fr) minmax(56px, 0.56fr) minmax(40px, 0.4fr) minmax(56px, 0.56fr) minmax(72px, 0.72fr);
+}
+
+/* 取っ手（と見出しのその列）は PC幅（680px 以上）だけ。スマホ幅は名前の列を広く取り、名前を長押ししてつかむ */
+.fineTuneHead__cell--handle {
+  display: none;
+}
+
+.fineTuneHead,
+.fineTuneRow {
+  display: grid;
+  grid-template-columns: var(--ft-cols);
+  padding: 0 6px 0 8px;
+}
+
+.fineTuneHead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-height: 28px;
+  align-items: center;
+  border-bottom: 1px solid var(--ft-line-strong);
+  background: var(--paper);
+}
+
+/*
+ * 見出しの文字（680px 未満）。2026-11-05 に 10.5px から 1px 大きくした（アメ1個あたりかけらの2段は下の --wrap のまま）。
+ * 大きくしたぶん、英語の「Goal」が 32px の列に入るよう左右の余白を 4px から 3px に詰めた
+ */
+.fineTuneHead__cell {
+  padding: 0 3px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.fineTuneHead__cell--name {
+  text-align: left;
+}
+
+/* 見出し「ポケモン」の左の ⌃⌄（名前をつかんで並べ替えられる印）。取っ手の無いスマホ幅だけ */
+.fineTuneHead__reorderIcon {
+  display: inline-block;
+  position: relative;
+  top: -1px;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+/* 長い見出し（アメ1個あたりのかけら）は2段。段の中では折り返さない */
+.fineTuneHead__cell--wrap {
+  padding: 2px 2px;
+  font-size: 9px;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+.fineTuneHead__cell--sleep {
+  text-align: center;
+}
+
+.fineTuneHead__line {
+  display: block;
+}
+
+.fineTuneRow {
+  min-height: 40px;
+  border-bottom: 1px solid var(--ft-line);
+  background: var(--paper);
+}
+
+/* 選んだ行は、うっすら色を敷くだけにする（押した欄は塗りで分かる） */
+.fineTuneRow--selected {
+  background: rgba(var(--accent-rgb), 0.05);
+}
+
+.fineTuneRow--dragging {
+  opacity: 0.5;
+}
+
+.fineTuneRow--dragOver {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+.fineTuneRow__handle {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: rgba(var(--ink-rgb), 0.3);
+  cursor: grab;
+  touch-action: none;
+}
+
+.fineTuneRow__handle:active {
+  cursor: grabbing;
+  color: var(--accent);
+}
+
+.fineTuneRow__handleIcon {
+  display: block;
+  flex-shrink: 0;
+}
+
+.fineTuneRow__name {
+  -webkit-appearance: none;
+  appearance: none;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin: 5px 2px 5px 0;
+  padding: 0 4px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  /* 長押しでつかむので、文字の選択と iOS の長押しのメニューを出さない（スクロールはそのまま） */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
+.fineTuneRow--excluded .fineTuneRow__name {
+  color: var(--muted);
+}
+
+.fineTuneRow__nameText {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+.fineTuneRow__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fineTuneRow__nature {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.fineTuneRow__nature--up {
+  color: var(--nature-up);
+}
+
+.fineTuneRow__nature--down {
+  color: var(--nature-down);
+}
+
+/* 表の中の押す部品（取っ手・名前・数字の欄）は、テーマのボタンの影と押したときの沈みを付けない（表に見せる） */
+.fineTuneRow__handle,
+.fineTuneRow__name,
+.fineTuneRow__cell {
+  box-shadow: none;
+}
+
+.fineTuneRow__handle:active,
+.fineTuneRow__name:active,
+.fineTuneRow__cell:active {
+  transform: none;
+  box-shadow: none;
+}
+
+/* 数字の欄。動かせる欄は薄い下地で「押せる」と分かるようにする */
+.fineTuneRow__cell {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  margin: 0;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: background-color 0.12s, color 0.12s;
+}
+
+button.fineTuneRow__cell {
+  cursor: pointer;
+}
+
+/* 目標Lvの欄は Lvピッカーの開閉ボタン。包み（.levelPick）を格子の1マスにし、欄はその全体に広げる
+   （ほかの欄と同じ大きさ・余白になる） */
+.fineTuneRow__targetPick.levelPick {
+  display: flex;
+  min-width: 0;
+}
+
+.fineTuneRow__targetPick > .fineTuneRow__cell {
+  flex: 1 1 auto;
+}
+
+/* LvUp! でアメブを固定した行の印（アメブの欄の左上の小さな錠）。数字の幅を取らないよう、欄の隅に重ねる */
+.fineTuneRow__lock {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  display: block;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.fineTuneRow__cell--on > .fineTuneRow__lock {
+  color: inherit;
+}
+
+.fineTuneRow__cell--input {
+  margin: 5px 1px;
+  border-radius: var(--radius-md);
+  background: var(--ft-tint);
+  font-weight: 700;
+}
+
+.fineTuneRow__cell--locked {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* 変えた欄は色を濃くする */
+.fineTuneRow__cell--changed {
+  font-weight: 700;
+  color: var(--accent-strong);
+}
+
+.fineTuneRow__cell--input.fineTuneRow__cell--changed {
+  background: var(--ft-tint-strong);
+}
+
+.fineTuneRow__cell--short {
+  font-weight: 700;
+  color: var(--danger);
+}
+
+.fineTuneRow__name.fineTuneRow__cell--on,
+.fineTuneRow__cell--on,
+.fineTuneRow__cell--input.fineTuneRow__cell--on {
+  background: var(--accent);
+  color: var(--btn-ink);
+}
+
+/* アメ1個あたりのかけら（判断の材料）は、到達より一段控えめにする */
+.fineTuneRow__cell--shards {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.fineTuneRow__cell--shards.fineTuneRow__cell--changed {
+  font-weight: 700;
+  color: var(--accent-strong);
+}
+
+/* 睡眠目標の欄。名前（200h・睡眠・おひるね島）と印。狭い幅ではおひるね島を「島」と縮める */
+.fineTuneRow__cell--sleep {
+  justify-content: center;
+  gap: 1px;
+  font-size: 11px;
+}
+
+/* 入りきらないとき（英語の「Island🎫🍬」など）は名前を「…」で省き、チケット・アメ在庫の印は必ず見せる */
+.fineTuneRow__sleepName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fineTuneRow__sleepName--full {
+  display: none;
+}
+
+.fineTuneRow__sleepIcons {
+  flex-shrink: 0;
+  font-size: 10px;
+}
+
+/* 計算中は、結果から出す欄を薄くする */
+.fineTuneRow--pending .fineTuneRow__cell--result {
+  opacity: 0.45;
+}
+
+@media (hover: hover) {
+  .fineTuneRow__name:hover:not(.fineTuneRow__cell--on),
+  button.fineTuneRow__cell:hover:not(.fineTuneRow__cell--on) {
+    background: var(--ft-tint-strong);
+  }
+
+  .fineTuneRow__handle:hover {
+    color: var(--accent);
+  }
+}
+
+/* ===== 調整バー =====
+   見出し・詳細・操作の2段は、どの欄を選んでも高さが同じ（調整バーとモーダルの高さを変えない）。
+   操作の段は 1段目（選択肢・Lv の欄・目標Lvに届く最小限のアメブ個数など）と 2段目（刻みのボタン・チケットなど）。
+   上の角を丸めたシートにして、表の下から引き出したように見せる。 */
+.fineTuneEditor {
+  --ft-head-h: 30px;
+  --ft-info-font: 12px;
+  --ft-info-lines: 2;
+  --ft-info-h: calc(var(--ft-info-font) * 1.4 * var(--ft-info-lines));
+  --ft-line-h: 44px;
+  --ft-gap: 6px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ft-gap);
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--ft-line-strong);
+  /* 境界は角丸にしない（candy など角の大きいテーマで、角の丸みと表の背景の横線が重なって見えた） */
+  border-radius: 0;
+  background: var(--surface);
+}
+
+/* 選ぶ欄を変えると調整バーは作り直される。中身だけをふわっと出す（大きさ・位置は動かさない。不透明度だけ） */
+.fineTuneEditor__head,
+.fineTuneEditor__info,
+.fineTuneEditor__body {
+  animation: fineTuneFadeIn 0.18s ease-out;
+}
+
+@keyframes fineTuneFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fineTuneEditor__head,
+  .fineTuneEditor__info,
+  .fineTuneEditor__body {
+    animation: none;
+  }
+}
+
+/* 設定欄（何も選んでいないとき）の詳細の段は「その他の設定はこちら」。リンクは押しやすい高さにし、段の中で縦の中央に置く */
+.fineTuneEditor--idle .fineTuneEditor__info {
+  align-items: center;
+  align-content: center;
+}
+
+.fineTuneEditor__link {
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-block;
+  min-height: 24px;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  color: var(--accent-strong);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.fineTuneEditor__link:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.fineTuneEditor__settingsIcon {
+  display: block;
+  flex-shrink: 0;
+  margin-right: -2px;
+  color: var(--accent-strong);
+}
+
+.fineTuneEditor__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--ft-head-h);
+  min-width: 0;
+}
+
+.fineTuneEditor__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* 行の詳細の名前（ニックネームの欄）。名前と同じ太さで、欄だと分かる細い枠を付ける。
+   文字は 16px（iOS が入力時に拡大しない）。狭い画面では縮み、右の「計算機から削除」・リセットに場所を譲る */
+.fineTuneEditor__nameInput {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 0 1 220px;
+  min-width: 64px;
+  height: 28px;
+  margin: 0;
+  padding: 0 8px;
+  /* 行の詳細のほかの欄（あとEXP・アメ在庫）と同じ枠 */
+  border: 1.5px solid var(--ft-control-border);
+  border-radius: var(--radius-md);
+  background: var(--input-bg);
+  box-shadow: none;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.fineTuneEditor__nameInput::placeholder {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.fineTuneEditor__nameInput:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* 開いた時点から変えた名前は、ほかの欄と同じく濃い色 */
+.fineTuneEditor__nameInput--changed {
+  color: var(--accent-strong);
+}
+
+.fineTuneEditor__nameInput:disabled {
+  opacity: 0.6;
+}
+
+/* EXP補正（▲▲▼▼）。表の名前の横と同じ色 */
+.fineTuneEditor__nature.fineTuneRow__nature {
+  margin-left: -4px;
+  font-size: 11px;
+}
+
+/* 欄の名前は小さな札にする */
+.fineTuneEditor__field {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--ft-tint-strong);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--accent-strong);
+}
+
+/* 開いた時点の値 → 今の値。開いた時点の値と矢印は薄く、今の値に色を付ける */
+.fineTuneEditor__change {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-strong);
+  white-space: nowrap;
+}
+
+.fineTuneEditor__changeFrom {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.fineTuneEditor__changeArrow {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.fineTuneEditor__spacer {
+  flex: 1 1 auto;
+}
+
+/* リセット（この欄を押す前の値へ戻す） */
+.fineTuneEditor__resetEdit {
+  -webkit-appearance: none;
+  appearance: none;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--ft-control-border);
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.fineTuneEditor__resetEdit:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.fineTuneEditor__resetIcon {
+  display: block;
+  flex-shrink: 0;
+}
+
+/* 計算機から削除（行の詳細の2段目の右端）。リセットと同じ形で、文字を危険の色にする。
+   動かせない理由は残りの幅に収める（2行まで） */
+.fineTuneEditor__line--detail {
+  gap: 8px;
+}
+
+.fineTuneEditor__line--detail > .fineTuneEditor__remove {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+/* LvUp!でアメブ固定（2段目の左）。設定欄の最小限のアメブと同じ、名前とスイッチを入れた枠。名前の幅だけ取る */
+.fineTuneEditor__line--detail > .fineTuneEditor__lock {
+  flex: 0 1 auto;
+}
+
+.fineTuneEditor__remove {
+  -webkit-appearance: none;
+  appearance: none;
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(var(--danger-rgb), 0.45);
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  color: var(--danger);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.fineTuneEditor__remove:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* 詳細（到達・睡眠のあと・足りないもの）。決めた行数ぶんの高さを取り、選んでも操作の場所が動かないようにする。並びはベースラインでそろえる */
+.fineTuneEditor__info {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: baseline;
+  gap: 0 12px;
+  height: var(--ft-info-h);
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--ft-info-font);
+  font-weight: 600;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.fineTuneEditor__info > span {
+  white-space: nowrap;
+}
+
+/*
+ * 足りないもの（「かけらが足りません」など）は、赤の淡い下地の札に点を添える。
+ * 高さは詳細の1行（1.4em）に決め、行の高さ 1 ＋ 上の余白 0.2em で、文字を行の高さ 1.4 のときと同じ位置に置く。
+ * 行の高さで札の高さを決めると、古い iPhone で行が下へ膨らんで札も膨らむ。文字を札の中央に置くと、膨らんだ隣の行と
+ * 段差ができるので、並びのベースラインでそろえる
+ */
+.fineTuneEditor__info--danger {
+  height: 1.4em;
+  padding: 0.2em 8px 0 7px;
+  border-radius: var(--radius-pill);
+  background: rgba(var(--danger-rgb), 0.1);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--danger);
+}
+
+.fineTuneEditor__info--danger::before {
+  content: "";
+  display: inline-block;
+  position: relative;
+  top: -1px;
+  width: 5px;
+  height: 5px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: middle;
+}
+
+.fineTuneEditor__info--note {
+  white-space: normal;
+}
+
+/* 操作の2段 */
+.fineTuneEditor__body {
+  display: grid;
+  grid-template-rows: var(--ft-line-h) var(--ft-line-h);
+  gap: var(--ft-gap);
+}
+
+.fineTuneEditor__line {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.fineTuneEditor__line > * {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 押す部品の共通の形。影は付けず、下地と枠で見せる */
+.fineTuneEditor__step,
+.fineTuneEditor__tool,
+.fineTuneEditor__toggle,
+.fineTuneEditor__option {
+  -webkit-appearance: none;
+  appearance: none;
+  font-family: var(--font-body);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.fineTuneEditor__tool:disabled,
+.fineTuneEditor__toggle:disabled,
+.fineTuneEditor__option:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/*
+ * 刻みのボタン（減らす・増やす）と個数欄。親指で押せる高さにする。
+ * 減らす3つ・増やす3つは、それぞれ1つの枠（Lv の欄・行の詳細の欄と同じ線・角丸）を細い線で区切った形にし、
+ * 個数欄も同じ線の枠で左右から少し離して置く。3つの枠の線・高さ・角丸をそろえて、1本の段として落ち着いて見せる
+ */
+.fineTuneEditor__stepper {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(72px, 1.6fr) minmax(0, 3fr);
+}
+
+.fineTuneEditor__stepGroup {
+  display: flex;
+  min-width: 0;
+  height: var(--ft-line-h);
+  border: 1.5px solid var(--ft-control-border);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  overflow: hidden;
+}
+
+/* 区切りは左の細い線（枠より薄い）。押せないときは線を残して文字だけ薄くする（opacity だと線まで消えて段が欠けて見える） */
+.fineTuneEditor__step {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fineTuneEditor__step + .fineTuneEditor__step {
+  border-left: 1px solid var(--ft-line-strong);
+}
+
+.fineTuneEditor__step:disabled {
+  color: rgba(var(--ink-rgb), 0.25);
+  cursor: default;
+}
+
+.fineTuneEditor__step:active:not(:disabled) {
+  background: var(--ft-tint-strong);
+}
+
+/*
+ * 個数欄。枠は刻みのボタンの枠と同じ線（以前は accent の線で、ボタンの溝と形がそろわなかった）。打っている間だけ accent。
+ * テーマの入力欄の影（内側の影・フォーカスの輪）は付けない。appearance は none（古い iOS の Safari が上辺に灰色の内側の影を描く）
+ */
+.fineTuneEditor__input.field__input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: auto;
+  min-width: 0;
+  height: var(--ft-line-h);
+  margin: 0 6px;
+  padding: 0 4px;
+  border: 1.5px solid var(--ft-control-border);
+  border-radius: var(--radius-md);
+  background: var(--input-bg);
+  box-shadow: none;
+  color: var(--ink);
+  text-align: center;
+  /* 16px 未満だと iOS が入力時に拡大する */
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.fineTuneEditor__input.field__input:focus {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: none;
+}
+
+/*
+ * Lv の欄（現在Lv・目標Lv・アメブ目標Lv。`FineTuneLevelField`）。3つとも同じ形にする。
+ * 枠の左上に欄の名前、その下に Lv（直接打てる）、右端に Lvピッカーを開く ▾。枠は行の詳細のほかの欄（あとEXP・アメ在庫）と同じ。
+ * 枠は Lvピッカーの入力欄そのものにする（ピッカーの吹き出しは入力欄の位置で出るので、欄と吹き出しがずれない）。
+ */
+.fineTuneLevelField {
+  position: relative;
+  min-width: 0;
+  height: var(--ft-line-h);
+}
+
+.fineTuneLevelField__label {
+  position: absolute;
+  z-index: 1;
+  top: 5px;
+  left: 9px;
+  right: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.fineTuneLevelField__pick.levelPick {
+  height: 100%;
+}
+
+/*
+ * Lv の欄の入力（type="number"）。appearance は none にする。textfield だと古い iOS の Safari が
+ * 上辺に灰色の内側の影を描く（2026-11-05 に古い iPhone で見えた）。上下の矢印は下の ::-webkit-*-spin-button で消す。
+ * Firefox の矢印を消す -moz-appearance: textfield は、下の @supports に分けて置く。同じ規則に並べると、
+ * ビルドの CSS の圧縮が appearance を1つにまとめ、-webkit-appearance まで textfield にしてしまう（実際にそうなっていた）
+ */
+.fineTuneLevelField .levelPick .field__input.levelPick__input {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 100%;
+  padding: 15px 30px 0 9px;
+  border: 1.5px solid var(--ft-control-border);
+  border-radius: var(--radius-md);
+  background: var(--input-bg);
+  color: var(--ink);
+  /* 16px 未満だと iOS が入力時に拡大する */
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  box-shadow: none;
+}
+
+/* Firefox だけ（-moz-appearance を知っているブラウザ）。Safari・Chrome はこの段落を読まない */
+@supports (-moz-appearance: textfield) {
+  .fineTuneLevelField .levelPick .field__input.levelPick__input {
+    -moz-appearance: textfield;
+  }
+}
+
+.fineTuneLevelField .levelPick__input::-webkit-inner-spin-button,
+.fineTuneLevelField .levelPick__input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.fineTuneLevelField .levelPick .field__input.levelPick__input:focus {
+  border-color: var(--accent);
+}
+
+.fineTuneLevelField--changed .levelPick .field__input.levelPick__input {
+  border-color: rgba(var(--accent-rgb), 0.7);
+  background: var(--ft-tint);
+  color: var(--accent-strong);
+}
+
+.fineTuneLevelField--disabled {
+  opacity: 0.45;
+}
+
+.fineTuneLevelField--disabled .levelPick .field__input.levelPick__input:disabled {
+  color: var(--muted);
+  opacity: 1;
+}
+
+/* 睡眠目標の選択肢（1段に7つ並べる切り替え）と、チケット・アメ在庫 */
+.fineTuneEditor__options {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) minmax(0, 1.6fr);
+  gap: 2px;
+  height: 40px;
+  padding: 2px;
+  border-radius: var(--radius-md);
+  background: var(--ft-track);
+}
+
+.fineTuneEditor__option {
+  min-width: 0;
+  padding: 0 2px;
+  border: none;
+  border-radius: calc(var(--radius-md) - 1px);
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.fineTuneEditor__option--on {
+  background: var(--accent);
+  color: var(--btn-ink);
+}
+
+.fineTuneEditor__optionLabel--short {
+  display: none;
+}
+
+/*
+ * チケット・アメ在庫は中身の幅の丸いチップにして左に並べる。幅の広いボタンの中央に置くと、
+ * 左の絵文字が淡いぶん、濃い文字だけが右に寄って見える
+ */
+.fineTuneEditor__checks {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fineTuneEditor__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  gap: 6px;
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--ft-control-border);
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.fineTuneEditor__toggle--on {
+  border-color: var(--accent);
+  background: var(--ft-tint);
+  color: var(--accent-strong);
+}
+
+.fineTuneEditor__toggleIcon {
+  font-size: 14px;
+}
+
+/* アメブの1段目（アメブ目標Lv・目標Lvに届く最小限のアメブ個数・再割当） */
+.fineTuneEditor__tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/*
+ * アメブ目標Lvの Lv の欄。目標Lvに届く最小限のアメブ個数・再割当と同じ段に並ぶ。
+ * ボタンは縮めないので、入らないとき（とても狭い幅の英語）はこちらが縮む
+ */
+.fineTuneEditor__levelField.fineTuneLevelField {
+  flex: 0 1 104px;
+  min-width: 84px;
+}
+
+/*
+ * 既定のアメブ目標Lv（設定欄）は、目標Lvに届く最小限のアメブ個数がオンの間、控えの値（在庫が足りない行などにだけ使う）。
+ * 枠を破線にして下地を抜き、数字を薄くする（変えたときは、ほかの欄と同じく変えた色を優先する）。押せなくはしない
+ */
+.fineTuneEditor__fallbackLevel .levelPick .field__input.levelPick__input {
+  border-style: dashed;
+}
+
+.fineTuneEditor__fallbackLevel:not(.fineTuneLevelField--changed) .levelPick .field__input.levelPick__input {
+  background: transparent;
+  color: var(--muted);
+}
+
+/* 空欄の文言（「目標Lvと同じ」）は、数字より小さく薄く出す */
+.fineTuneLevelField .levelPick__input::placeholder {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  opacity: 0.8;
+}
+
+.fineTuneEditor__tool {
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--ft-control-border);
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+/*
+ * 「目標Lvに届く最小限のアメブ個数」の名前の部分（文言の改行で分けたもの。`FineTuneStackedLabel.vue`）。部分の途中では折らない。
+ * 680px 未満は部分ごとに必ず改行する（2行）。680px 以上は並べて置き、入らないときだけ部分の間（<wbr>・空白）で折り返す
+ */
+.fineTuneEditor__stackPart {
+  display: block;
+  white-space: nowrap;
+}
+
+/* 部分の間の区切り（英語の空白と <wbr>）。680px 未満は改行で区切るので出さない（出すと部分の間に空の行ができる） */
+.fineTuneEditor__stackSep {
+  display: none;
+}
+
+/* 「目標Lvに届く最小限のアメブ個数」。長いので文言の改行の位置で2行に分け、高さはほかのボタンと同じに収める */
+.fineTuneEditor__tool--stacked {
+  white-space: normal;
+  font-size: 11px;
+  line-height: 1.2;
+  border-radius: var(--radius-md);
+}
+
+.fineTuneEditor__tool--on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--btn-ink);
+}
+
+/* 最小限のアメブが入っているが、アメが足りず既定のアメブ目標Lvを使っている（計算機の警告と同じ）。警告の色で塗る */
+.fineTuneEditor__tool--warn {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: var(--btn-ink);
+}
+
+/* 入れられないとき。押せない見た目にする（押すと理由のトーストだけ出す） */
+.fineTuneEditor__tool--off,
+.fineTuneEditor__tool--off:hover {
+  border-color: var(--ft-control-border);
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* 動かせない理由（行の詳細）。1段目の高さに2行まで */
+/*
+ * 行の詳細の2段目の理由。日本語を語の途中で折らない（文言の中の U+200B と句読点・空白で折り返す。
+ * 1語が欄より長いときだけ途中で折る）
+ */
+.fineTuneEditor__note {
+  max-height: 100%;
+  margin: 0;
+  overflow: hidden;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* 行の詳細の欄（現在Lv・あとEXP・アメ在庫）。名前を上、数字を下に積んだ枠（PC幅は横に並べる） */
+.fineTuneEditor__props {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+/*
+ * 設定欄。2段を同じ2列の格子にして、上下の枠の端をそろえる
+ * （左: 既定のアメブ目標Lv・かけら在庫、右: 最小限のアメブ・万能アメ在庫）。枠はどれも同じ線・下地・角丸・高さ
+ */
+.fineTuneEditor__settingsRow {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 6px;
+}
+
+/* 最小限のアメブ: 名前とスイッチを入れた枠（押すと切り替わる） */
+.fineTuneEditor__switchBox {
+  -webkit-appearance: none;
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  height: var(--ft-line-h);
+  margin: 0;
+  padding: 0 10px 0 9px;
+  border: 1.5px solid var(--ft-control-border);
+  border-radius: var(--radius-md);
+  background: var(--input-bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  text-align: left;
+  box-shadow: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: border-color 0.12s, background-color 0.12s;
+}
+
+.fineTuneEditor__switchBox--changed {
+  border-color: rgba(var(--accent-rgb), 0.7);
+  background: var(--ft-tint);
+}
+
+.fineTuneEditor__switchBox:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* 名前は「目標Lvに届く最小限のアメブ個数」。長いので文言の改行の位置で2行に分ける（PC・タブレット幅は入れば1行） */
+.fineTuneEditor__switchLabel {
+  min-width: 0;
+  overflow: hidden;
+  white-space: normal;
+  line-height: 1.25;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.fineTuneEditor__switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 36px;
+  height: 20px;
+  border-radius: var(--radius-pill);
+  background: rgba(var(--ink-rgb), 0.2);
+  transition: background-color 0.15s;
+}
+
+.fineTuneEditor__switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--paper);
+  transition: transform 0.15s;
+}
+
+.fineTuneEditor__switch--on {
+  background: var(--accent);
+}
+
+.fineTuneEditor__switch--on::after {
+  transform: translateX(16px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fineTuneEditor__switch,
+  .fineTuneEditor__switch::after {
+    transition: none;
+  }
+}
+
+/* 万能アメ在庫: 1つの枠の中を S・M・L に細い線で区切る */
+.fineTuneEditor__universal {
+  cursor: default;
+}
+
+.fineTuneEditor__universalItems {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.fineTuneEditor__universalItem {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 6px;
+  cursor: text;
+}
+
+.fineTuneEditor__universalItem:first-child {
+  padding-left: 0;
+}
+
+.fineTuneEditor__universalItem + .fineTuneEditor__universalItem {
+  border-left: 1px solid var(--ft-line-strong);
+}
+
+.fineTuneEditor__universalSize {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* 枠は「どれかを変えた」で変えた見た目にし、数字は変えたものだけ色を付ける */
+.fineTuneEditor__prop--changed .fineTuneEditor__universalItem .fineTuneEditor__propInput {
+  color: var(--ink);
+}
+
+.fineTuneEditor__prop--changed .fineTuneEditor__universalItem--changed .fineTuneEditor__propInput {
+  color: var(--accent-strong);
+}
+
+.fineTuneEditor__prop {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  height: 44px;
+  padding: 2px 8px;
+  border: 1.5px solid var(--ft-control-border);
+  border-radius: var(--radius-md);
+  background: var(--input-bg);
+  cursor: text;
+}
+
+.fineTuneEditor__prop:focus-within {
+  border-color: var(--accent);
+}
+
+.fineTuneEditor__prop--changed {
+  border-color: rgba(var(--accent-rgb), 0.7);
+  background: var(--ft-tint);
+}
+
+.fineTuneEditor__prop--disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.fineTuneEditor__propLabel {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fineTuneEditor__propInput {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  min-width: 0;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-body);
+  /* 16px 未満だと iOS が入力時に拡大する */
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 22px;
+  outline: none;
+  /* 枠は外側（.fineTuneEditor__prop）で見せる。テーマの入力欄の影（Vivid の内側の影）を付けない */
+  box-shadow: none;
+}
+
+/* フォーカスも外側の枠で見せる（テーマの input:focus の輪を付けない） */
+.fineTuneEditor__prop .fineTuneEditor__propInput:focus {
+  border: none;
+  box-shadow: none;
+}
+
+.fineTuneEditor__prop--changed .fineTuneEditor__propInput {
+  color: var(--accent-strong);
+}
+
+.fineTuneEditor__propInput:disabled {
+  color: var(--muted);
+  opacity: 1;
+}
+
+@media (hover: hover) {
+  .fineTuneEditor__prop:hover:not(.fineTuneEditor__prop--disabled) {
+    border-color: var(--accent);
+  }
+
+  .fineTuneEditor__step:hover:not(:disabled) {
+    background: var(--ft-tint);
+  }
+
+  .fineTuneEditor__tool:hover:not(:disabled):not(.fineTuneEditor__tool--on):not(.fineTuneEditor__tool--off),
+  .fineTuneEditor__toggle:hover:not(:disabled),
+  .fineTuneEditor__resetEdit:hover:not(:disabled) {
+    border-color: var(--accent);
+  }
+
+  .fineTuneEditor__remove:hover:not(:disabled) {
+    background: rgba(var(--danger-rgb), 0.08);
+  }
+
+  .fineTuneEditor__option:hover:not(:disabled):not(.fineTuneEditor__option--on) {
+    background: var(--paper);
+  }
+}
+
+/* とても狭い幅では、おひるね島を「島」と縮める。アメブの1段目（アメブ目標Lv・目標Lvに届く最小限のアメブ個数・再割当）も詰める */
+@media (max-width: 359px) {
+  .fineTuneEditor__tools {
+    gap: 4px;
+  }
+
+  .fineTuneEditor__tool {
+    padding: 0 8px;
+  }
+
+  /* 「目標Lvに届く最小限のアメブ個数」は長いので、さらに詰めてアメブ目標Lvの欄の名前が切れないようにする */
+  .fineTuneEditor__tool--stacked {
+    padding: 0 6px;
+    font-size: 10px;
+  }
+
+  .fineTuneEditor__levelField.fineTuneLevelField {
+    flex-basis: 96px;
+    min-width: 64px;
+  }
+
+  .fineTuneEditor__optionLabel--full {
+    display: none;
+  }
+
+  .fineTuneEditor__optionLabel--short {
+    display: inline;
+  }
+
+  .fineTuneEditor__options {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+
+  .fineTuneEditor__option {
+    font-size: 11px;
+  }
+}
+
+/* ===== 確認・フッター ===== */
+.fineTuneModal__confirm {
+  flex-shrink: 0;
+  padding: 0 16px;
+}
+
+.fineTuneModal__confirm:not(:empty) {
+  padding-top: 8px;
+}
+
+/* ===== 全体のLvを伸ばしたときの小窓（FineTuneRaiseReport.vue） =====
+   シンプルの上に重ね、変わった行ごとの増減を出す。行が多いときは一覧だけをスクロールする。影は付けない（S22）。
+   モバイル幅（680px 未満）は数字の列が5つ並ぶので、左右の余白を取らず横幅いっぱいに出す（左右の枠線と角の丸みも付けない） */
+.fineTuneReport {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 0;
+  background: rgba(var(--ink-rgb), 0.28);
+}
+
+.fineTuneReport__card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: 100%;
+  padding: 14px 12px;
+  border-top: 1px solid var(--ft-line-strong);
+  border-bottom: 1px solid var(--ft-line-strong);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.fineTuneReport__card:focus {
+  outline: none;
+}
+
+/* アメ節約・かけら節約のタブ（結果が違うときだけ）。睡眠目標の切り替えと同じ、1本のバーの中で切り替える形 */
+.fineTuneReport__tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  flex-shrink: 0;
+  gap: 2px;
+  height: 36px;
+  margin: 0 0 10px;
+  padding: 2px;
+  border-radius: var(--radius-md);
+  background: var(--ft-track);
+}
+
+.fineTuneReport__tab {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  padding: 0 4px;
+  border: none;
+  border-radius: calc(var(--radius-md) - 1px);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color 0.12s, color 0.12s;
+}
+
+.fineTuneReport__tab--on {
+  background: var(--accent);
+  color: var(--btn-ink);
+}
+
+/* かけら節約を裏で求めている間のタブ（押せない） */
+.fineTuneReport__tab--pending {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  cursor: default;
+}
+
+/* タブの中身（見出し・表・残り）。表だけがスクロールするよう、カードと同じく縦に並べて縮める */
+.fineTuneReport__panel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.fineTuneReport__title {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+/* 機械がまとめて調整した印（全体のLvを伸ばすのボタンと同じキラキラ）。1行目の文字の高さにそろえる */
+.fineTuneReport__icon {
+  display: block;
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--accent);
+}
+
+/* 表（列の見出しは1回）。行が多いときはここだけをスクロールし、見出しは上に貼り付ける */
+.fineTuneReport__table {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 列: 到達Lv | あとEXP | アメブ | アメ合計 | かけら。モバイル幅（680px 未満）は名前を1段目（5列をまたぐ）、値を2段目に置く。
+   全行が同じ指定なので列は行どうしでずれない（中身の幅で決まる auto は使わない）。
+   比は、いちばん長い値（到達Lv「61 → 64」、あとEXP「7,161 → 1,234」（1Lvぶんの EXP は最大 7,161）、
+   アメブ「−3,500」、アメ合計は見出し「アメ合計」、かけら「−3,456,789」）を iOS の字体（SF Pro の太字）で測った幅に合わせる */
+.fineTuneReport__head,
+.fineTuneReport__row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.54fr) minmax(0, 0.9fr) minmax(0, 0.46fr) minmax(0, 0.52fr) minmax(0, 0.72fr);
+  align-items: baseline;
+}
+
+.fineTuneReport__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--ft-line-strong);
+  background: var(--paper);
+}
+
+.fineTuneReport__h {
+  overflow: hidden;
+  padding: 0 3px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* 見出し「ポケモン」は、名前が1段目に来るスマホ幅では読み上げだけ（並びから外す） */
+.fineTuneReport__h--name {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  padding: 0;
+}
+
+.fineTuneReport__row {
+  padding: 6px 0;
+  border-top: 1px solid var(--ft-line);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.fineTuneReport__head + .fineTuneReport__row {
+  border-top: none;
+}
+
+/* 到達点が良くなった行（到達Lvが上がった・経験値が増えた）は、淡い下地を敷いて一番の結果に目が行くようにする */
+.fineTuneReport__row--raised {
+  background: var(--ft-tint);
+}
+
+.fineTuneReport__name {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  padding: 0 3px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.fineTuneReport__cell {
+  position: relative;
+  padding: 0 3px;
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* 前の値と矢印は薄く、後の値に色を付ける（操作パネルの見出しの変化と同じ形） */
+.fineTuneReport__before,
+.fineTuneReport__arrow {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.fineTuneReport__after {
+  color: var(--accent-strong);
+}
+
+.fineTuneReport__after--down {
+  color: var(--danger);
+}
+
+/* 前後とも目標に届いた行など、到達点が良くも悪くもならないのにあとEXPだけ違う行（目標を越えた端数）は、後の値も薄く */
+.fineTuneReport__after--same,
+.fineTuneReport__same,
+.fineTuneReport__none {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.fineTuneReport__none {
+  opacity: 0.6;
+}
+
+.fineTuneReport__srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* 残りは「名前　前 → 後 [増減]」。入らなければ値を次の段の右へ回す */
+.fineTuneReport__remaining {
+  padding-top: 8px;
+  border-top: 1px solid var(--ft-line-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.fineTuneReport__rem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin: 0;
+  padding: 2px 3px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.fineTuneReport__rem + .fineTuneReport__rem {
+  border-top: 1px solid var(--ft-line);
+}
+
+.fineTuneReport__remK {
+  margin-right: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.fineTuneReport__remV {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/*
+ * 前の値・後の値・増減の札は、行をまたいで同じ幅（いちばん長い行の文字数 + 1。`ch` は各欄の字の大きさ・太さで測る）に右寄せする。
+ * 最小幅でなく決まった幅にするのは、数字が等幅にならない字体や符号（+ と −）の幅の違いで、中身が `ch` の幅を超えた行だけ
+ * 欄が広がり、端がずれるため。1文字ぶんはその違いを吸収する余り
+ */
+.fineTuneReport__remB,
+.fineTuneReport__remAfter,
+.fineTuneReport__remD {
+  display: inline-block;
+  box-sizing: border-box;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.fineTuneReport__remB {
+  width: calc((var(--rem-before) + 1) * 1ch);
+}
+
+.fineTuneReport__remAfter {
+  width: calc((var(--rem-after) + 1) * 1ch);
+  font-weight: 700;
+}
+
+/* 増減は上部のサマリーと同じ淡い下地の札 */
+.fineTuneReport__remD {
+  width: calc((var(--rem-delta) + 1) * 1ch + 12px);
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--ft-tint-strong);
+  font-size: 0.9em;
+  font-weight: 700;
+  color: var(--accent-strong);
+}
+
+.fineTuneReport__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.fineTuneReport__ok {
+  min-width: 88px;
+}
+
+/* キャンセルはシンプルのフッターと同じく文字だけのボタンにして、OK を目立たせる。
+   テーマの `.btn` は後から読まれるので、親を重ねて詳細度を上げる */
+.fineTuneReport__actions .fineTuneReport__cancel.btn {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.fineTuneReport__actions .fineTuneReport__cancel.btn:hover {
+  background: rgba(var(--ink-rgb), 0.06);
+  color: var(--ink);
+}
+
+/* いちばん長い値が列に入るよう、狭い画面では数字を小さくする（375px 未満 12px、360px 未満 11px） */
+@media (max-width: 374px) {
+  .fineTuneReport__row {
+    font-size: 12px;
+  }
+
+  .fineTuneReport__name {
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 359px) {
+  .fineTuneReport__card {
+    padding: 12px 10px;
+  }
+
+  .fineTuneReport__h {
+    font-size: 10.5px;
+  }
+
+  .fineTuneReport__row {
+    font-size: 11px;
+  }
+
+  .fineTuneReport__name {
+    font-size: 12px;
+  }
+}
+
+/* 680px 以上は中央のカードにし、名前を先頭の列にして1行に並べる */
+@media (min-width: 680px) {
+  .fineTuneReport {
+    padding: 16px;
+  }
+
+  .fineTuneReport__card {
+    max-width: 560px;
+    padding: 20px 24px;
+    border: 1px solid var(--ft-line-strong);
+    border-radius: var(--radius-lg);
+  }
+
+  .fineTuneReport__title {
+    font-size: 16px;
+  }
+
+  .fineTuneReport__head,
+  .fineTuneReport__row {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.54fr) minmax(0, 0.9fr) minmax(0, 0.46fr) minmax(0, 0.52fr) minmax(0, 0.72fr);
+  }
+
+  .fineTuneReport__h {
+    padding: 0 4px;
+    font-size: 12px;
+  }
+
+  .fineTuneReport__h--name {
+    position: static;
+    width: auto;
+    height: auto;
+    clip: auto;
+    text-align: left;
+  }
+
+  .fineTuneReport__row {
+    padding: 8px 0;
+    font-size: 14px;
+  }
+
+  .fineTuneReport__name,
+  .fineTuneReport__cell,
+  .fineTuneReport__rem {
+    padding: 0 4px;
+  }
+
+  .fineTuneReport__name {
+    grid-column: auto;
+    font-size: 15px;
+  }
+
+  .fineTuneReport__rem {
+    font-size: 14px;
+  }
+}
+
+.fineTuneModal__footer {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 10px;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--ft-line-strong);
+  background: var(--paper);
+}
+
+.fineTuneModal__history {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fineTuneModal__history .historyBtn {
+  height: 36px;
+  padding: 0 4px;
+}
+
+.fineTuneModal__raise {
+  flex-shrink: 1;
+  min-width: 0;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* 機械がまとめて調整する印。求めている間は明滅させる。どの幅でも出す（文言が短いので 320px でも1段に入る） */
+.fineTuneModal__raiseIcon {
+  display: block;
+  flex-shrink: 0;
+}
+
+.fineTuneModal--busy .fineTuneModal__raiseIcon {
+  animation: fineTunePulse 1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fineTuneModal--busy .fineTuneModal__raiseIcon {
+    animation: none;
+  }
+}
+
+/* 伸ばせないと分かっているとき。押せない見た目にする（押すと理由のトーストだけ出す） */
+.fineTuneModal__footer .fineTuneModal__raise--off.btn,
+.fineTuneModal__footer .fineTuneModal__raise--off.btn:hover {
+  background: rgba(var(--accent-rgb), 0.1);
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* スマホ幅（375px〜）でも 元に戻す・やり直す・全体のLvを伸ばす・キャンセル・適用 が1段に入るよう、文字と左右を詰める
+   （それより狭いときは2段に折り返す） */
+.fineTuneModal__raise.btn,
+.fineTuneModal__cancel.btn,
+.fineTuneModal__apply.btn {
+  min-height: 36px;
+  padding-left: 8px;
+  padding-right: 8px;
+  font-size: 12px;
+}
+
+/* 適用（OK）は主ボタンなので角の形をテーマに任せる（グリーンの葉の形など。LvUp! の小窓の OK と同じ） */
+.fineTuneModal__raise.btn,
+.fineTuneModal__cancel.btn {
+  border-radius: var(--radius-md);
+}
+
+.fineTuneModal__raise.btn {
+  gap: 4px;
+}
+
+/* キャンセルは文字だけのボタンにして、適用を目立たせる。
+   テーマの `.btn`（Booklet の塗りと墨の枠など）は後から読まれるので、親を重ねて詳細度を上げる */
+.fineTuneModal__footer .fineTuneModal__cancel.btn {
+  flex-shrink: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.fineTuneModal__footer .fineTuneModal__cancel.btn:hover:not(:disabled) {
+  background: rgba(var(--ink-rgb), 0.06);
+  color: var(--ink);
+}
+
+.fineTuneModal__apply {
+  flex-shrink: 0;
+  min-width: 64px;
+}
+
+/* 何も変えていない（・全体のLvを伸ばしている）間は押せない。押せないと分かるよう薄くする */
+.fineTuneModal__footer .fineTuneModal__apply.btn:disabled,
+.fineTuneModal__footer .fineTuneModal__apply.btn:disabled:hover {
+  opacity: 0.45;
+  box-shadow: none;
+  cursor: default;
+}
+
+/* ===== 狭い画面（初代 iPhone SE などの 320px、Android の 360px） =====
+   375px 未満: 名前の列が狭いので、名前は省略せず2行まで折り返す。
+   360px 未満: 数字の列と文字を詰めて名前の列を空け、フッターの5つ（元に戻す・やり直す・全体のLvを伸ばす・キャンセル・OK）を1段に収める */
+@media (max-width: 374px) {
+  .fineTuneRow__name {
+    font-size: 12px;
+    line-height: 1.15;
+  }
+
+  /* 名前と印を1つの文にして2行まで（3行目は「…」）。印は名前の後ろに続けて折り返す */
+  .fineTuneRow__nameText {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    white-space: normal;
+    word-break: break-all;
+  }
+
+  .fineTuneRow__nameText .fineTuneRow__title {
+    display: inline;
+    white-space: normal;
+  }
+
+  .fineTuneRow__nameText .fineTuneRow__nature {
+    margin-left: 2px;
+  }
+}
+
+@media (max-width: 359px) {
+  .fineTuneModal__list {
+    --ft-cols: minmax(0, 1.5fr) minmax(26px, 0.32fr) minmax(46px, 0.5fr) minmax(26px, 0.32fr) minmax(44px, 0.46fr) minmax(44px, 0.46fr) minmax(56px, 0.64fr);
+  }
+
+  .fineTuneModal__list--noBoost {
+    --ft-cols: minmax(0, 1.5fr) minmax(30px, 0.36fr) minmax(50px, 0.56fr) minmax(32px, 0.4fr) minmax(50px, 0.56fr) minmax(64px, 0.72fr);
+  }
+
+  .fineTuneHead,
+  .fineTuneRow {
+    padding: 0 4px 0 6px;
+  }
+
+  .fineTuneHead__cell {
+    padding: 0 2px;
+    font-size: 11px;
+    letter-spacing: 0;
+  }
+
+  .fineTuneHead__cell--wrap {
+    padding: 2px 1px;
+    font-size: 8px;
+  }
+
+  .fineTuneRow__cell {
+    padding: 0 3px;
+    font-size: 12px;
+  }
+
+  .fineTuneRow__cell--sleep {
+    font-size: 10px;
+  }
+
+  .fineTuneRow__sleepIcons {
+    font-size: 9px;
+  }
+
+  .fineTuneModal__footer {
+    gap: 2px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .fineTuneModal__history {
+    gap: 0;
+  }
+
+  .fineTuneModal__raise.btn,
+  .fineTuneModal__cancel.btn,
+  .fineTuneModal__apply.btn {
+    padding-left: 6px;
+    padding-right: 6px;
+    font-size: 11px;
+  }
+
+  .fineTuneModal__apply {
+    min-width: 52px;
+  }
+}
+
+/* ===== 680px 以上は列・文字・押す部品を大きくする ===== */
+@media (min-width: 680px) {
+  .fineTuneModal__header.modal__header {
+    min-height: 64px;
+    padding: 8px 14px 8px 24px;
+  }
+
+  .fineTuneModal__close.modal__close {
+    width: 40px;
+    height: 40px;
+  }
+
+  .fineTuneModal__closeIcon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .fineTuneSummary {
+    gap: 4px 24px;
+  }
+
+  .fineTuneSummary__item + .fineTuneSummary__item {
+    padding-left: 24px;
+  }
+
+  .fineTuneSummary__item {
+    column-gap: 6px;
+  }
+
+  .fineTuneSummary__k {
+    font-size: 12px;
+  }
+
+  .fineTuneSummary__v {
+    font-size: 22px;
+  }
+
+  .fineTuneSummary__calculating {
+    font-size: 14px;
+  }
+
+  .fineTuneSummary__d {
+    padding: 0 8px;
+    font-size: 13px;
+  }
+
+  .fineTuneSummary__calculating {
+    padding: 4px 12px;
+  }
+
+  .fineTuneModal__warn {
+    padding: 6px 24px;
+    font-size: 14px;
+  }
+
+  /*
+   * 最小は 680〜700px の全画面でも名前が読める幅まで詰める。睡眠だけは「おひるね島🎫🍬」が入る 128px を残す
+   * （96px では 700px で「おひ…」と省かれた）。fr の比は以前の固定幅（72 132 72 96 96 116）に合わせ、名前は多めに取る
+   */
+  .fineTuneModal__list {
+    --ft-cols: 36px minmax(0, 2.5fr) minmax(56px, 0.72fr) minmax(128px, 1.32fr) minmax(52px, 0.72fr) minmax(72px, 0.96fr) minmax(72px, 0.96fr) minmax(88px, 1.16fr);
+  }
+
+  .fineTuneModal__list--noBoost {
+    --ft-cols: 36px minmax(0, 2.5fr) minmax(56px, 0.8fr) minmax(128px, 1.32fr) minmax(56px, 0.8fr) minmax(80px, 1.2fr) minmax(96px, 1.4fr);
+  }
+
+  .fineTuneHead,
+  .fineTuneRow {
+    padding: 0 16px 0 8px;
+  }
+
+  .fineTuneHead {
+    min-height: 38px;
+  }
+
+  .fineTuneHead__cell,
+  .fineTuneHead__cell--wrap {
+    padding: 2px 10px;
+    font-size: 13px;
+  }
+
+  .fineTuneHead__cell--sleep {
+    padding: 2px 4px;
+  }
+
+  .fineTuneRow {
+    min-height: 54px;
+  }
+
+  .fineTuneRow__handle {
+    display: flex;
+  }
+
+  .fineTuneHead__cell--handle {
+    display: block;
+  }
+
+  /* PC幅は取っ手のグリップが並べ替えの印になるので、見出しの ⌃⌄ は出さない */
+  .fineTuneHead__reorderIcon {
+    display: none;
+  }
+
+  .fineTuneRow__handleIcon {
+    width: 16px;
+    height: 17px;
+  }
+
+  .fineTuneRow__name {
+    margin: 7px 4px 7px 0;
+    padding: 0 8px;
+    font-size: 16px;
+  }
+
+  .fineTuneRow__nameText {
+    gap: 4px;
+  }
+
+  .fineTuneRow__nature {
+    font-size: 11px;
+  }
+
+  .fineTuneRow__cell {
+    padding: 0 10px;
+    font-size: 16px;
+  }
+
+  .fineTuneRow__cell--input {
+    margin: 8px 3px;
+  }
+
+  .fineTuneRow__cell--sleep {
+    gap: 2px;
+    padding: 0 4px;
+    font-size: 16px;
+  }
+
+  .fineTuneRow__cell--sleep.fineTuneRow__cell--input {
+    margin: 8px 2px;
+  }
+
+  .fineTuneRow__sleepName--full {
+    display: inline;
+  }
+
+  .fineTuneRow__sleepName--short {
+    display: none;
+  }
+
+  .fineTuneRow__sleepIcons {
+    font-size: 14px;
+  }
+
+  .fineTuneEditor {
+    --ft-head-h: 36px;
+    --ft-info-font: 15px;
+    --ft-line-h: 52px;
+    --ft-gap: 8px;
+    padding: 14px 24px 18px;
+  }
+
+  .fineTuneEditor__head {
+    gap: 12px;
+  }
+
+  .fineTuneEditor__name {
+    font-size: 18px;
+  }
+
+  .fineTuneEditor__nature.fineTuneRow__nature {
+    margin-left: -6px;
+    font-size: 13px;
+  }
+
+  .fineTuneEditor__props {
+    max-width: 720px;
+    gap: 8px;
+  }
+
+  .fineTuneEditor__prop {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    height: 52px;
+    padding: 0 14px;
+  }
+
+  .fineTuneEditor__propLabel {
+    flex-shrink: 0;
+    font-size: 13px;
+  }
+
+  .fineTuneEditor__propInput {
+    flex: 1 1 auto;
+    height: 100%;
+    font-size: 20px;
+    line-height: normal;
+    text-align: right;
+  }
+
+  .fineTuneEditor__field {
+    padding: 3px 10px;
+    font-size: 13px;
+  }
+
+  .fineTuneEditor__change {
+    font-size: 16px;
+  }
+
+  .fineTuneEditor__resetEdit,
+  .fineTuneEditor__remove {
+    height: 34px;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+
+  .fineTuneEditor__nameInput {
+    flex-basis: 280px;
+    height: 34px;
+    font-size: 18px;
+  }
+
+  .fineTuneEditor__info {
+    gap: 0 18px;
+  }
+
+  .fineTuneEditor__note {
+    font-size: 15px;
+  }
+
+  /* 操作は左に寄せ、広げすぎない */
+  .fineTuneEditor__stepper,
+  .fineTuneEditor__settingsRow,
+  .fineTuneEditor__options,
+  .fineTuneEditor__tools {
+    max-width: 720px;
+  }
+
+  .fineTuneEditor__step {
+    font-size: 17px;
+  }
+
+  .fineTuneEditor__input.field__input {
+    margin: 0 8px;
+    font-size: 22px;
+  }
+
+  /* Lv の欄は、行の詳細のほかの欄と同じく名前を左・数字を右に1段で並べる */
+  .fineTuneLevelField__label {
+    top: 50%;
+    left: 14px;
+    right: auto;
+    transform: translateY(-50%);
+    font-size: 13px;
+  }
+
+  .fineTuneLevelField .levelPick .field__input.levelPick__input {
+    padding: 0 34px 0 14px;
+    font-size: 20px;
+    text-align: right;
+  }
+
+  .fineTuneEditor__levelField.fineTuneLevelField {
+    flex-basis: 180px;
+  }
+
+
+  .fineTuneEditor__options {
+    height: 48px;
+    padding: 3px;
+    gap: 3px;
+  }
+
+  .fineTuneEditor__option {
+    font-size: 15px;
+  }
+
+  .fineTuneEditor__checks {
+    gap: 10px;
+  }
+
+  .fineTuneEditor__toggle {
+    height: 44px;
+    padding: 0 20px;
+    font-size: 15px;
+  }
+
+  .fineTuneEditor__toggleIcon {
+    font-size: 17px;
+  }
+
+  .fineTuneEditor__tools {
+    gap: 8px;
+  }
+
+  .fineTuneEditor__settingsRow {
+    gap: 8px;
+  }
+
+  .fineTuneEditor__switchBox {
+    padding: 0 14px;
+  }
+
+  .fineTuneEditor__switchLabel {
+    font-size: 13px;
+  }
+
+  .fineTuneEditor__switch {
+    width: 44px;
+    height: 24px;
+  }
+
+  .fineTuneEditor__switch::after {
+    width: 20px;
+    height: 20px;
+  }
+
+  .fineTuneEditor__switch--on::after {
+    transform: translateX(20px);
+  }
+
+  /* 万能アメは名前を左に、S・M・L を右に並べる（数字は区切りの中で右寄せ） */
+  .fineTuneEditor__universalItems {
+    flex: 1 1 auto;
+  }
+
+  .fineTuneEditor__universalItem {
+    align-items: center;
+    padding: 0 10px;
+  }
+
+  .fineTuneEditor__universalSize {
+    font-size: 13px;
+  }
+
+  .fineTuneEditor__tool {
+    height: 40px;
+    padding: 0 18px;
+    font-size: 14px;
+  }
+
+  /*
+   * PC・タブレット幅は1行（ほかのボタンと同じ文字・丸い形）。部分は並べて置き、入らないときだけ部分の間で折り返す
+   * （設定欄のスイッチの名前。枠の幅で決まる）。
+   * アメブの1段目のボタンは縮めない（flex-shrink: 0 のまま）。縮める設定にすると、1〜2px でも縮んだだけで2行に折れてしまうため。
+   * 680px 以上は ja・en とも1行で入る（680〜1440px で測った）
+   */
+  .fineTuneEditor__stackPart,
+  .fineTuneEditor__stackSep {
+    display: inline;
+  }
+
+  /* 文字はほかのボタンと同じ 14px（上の .fineTuneEditor__tool）。名前が長いので、余白はほかのボタンより少し詰める */
+  .fineTuneEditor__tool--stacked {
+    padding: 0 14px;
+    border-radius: var(--radius-pill);
+  }
+
+  .fineTuneModal__confirm {
+    padding: 0 24px;
+  }
+
+  .fineTuneModal__footer {
+    gap: 12px;
+    padding: 12px 24px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .fineTuneModal__history .historyBtn {
+    height: 44px;
+    padding: 0 8px;
+  }
+
+  .fineTuneModal__history .historyBtn__icon {
+    width: 22px;
+    height: 22px;
+  }
+
+  .fineTuneModal__raise.btn,
+  .fineTuneModal__cancel.btn,
+  .fineTuneModal__apply.btn {
+    min-height: 44px;
+    padding: 10px 20px;
+    font-size: 15px;
+  }
+
+  .fineTuneModal__apply {
+    min-width: 120px;
+  }
+}
+
+/* 調整バーの詳細は、幅があれば1行に収まる */
+@media (min-width: 1000px) {
+  .fineTuneEditor {
+    --ft-info-lines: 1;
+  }
+}

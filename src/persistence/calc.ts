@@ -378,7 +378,8 @@ export function toRows(v: unknown, sourceSchemaVersion: 1 | 2): CalcRowV1[] {
       : candyTarget === undefined
         ? storedBoostOrExpAdjustment
         : Math.min(storedBoostOrExpAdjustment, candyTarget);
-    const boostMinimizeRow = boostOrExpAdjustment === undefined && o.boostMinimizeRow === true ? true : undefined;
+    // 行単位の最小化の印は、アメブ個数と一緒に持てる（ON にしても元の個数を残し、在庫で届かないときに使う）
+    const boostMinimizeRow = o.boostMinimizeRow === true ? true : undefined;
     // sleepHours: 累計睡眠時間（後方互換: 未設定 = undefined = 0h扱い）
     const sleepHours =
       typeof o.sleepHours === "number" && Number.isFinite(o.sleepHours)

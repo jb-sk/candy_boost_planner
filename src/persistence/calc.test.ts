@@ -564,13 +564,14 @@ describe("persistence/calc slots", () => {
     localStorage.setItem("candy-boost-planner:calc:slots:v1", serializeCalcSlots([slot]));
     expect(loadCalcSlots()[0]?.rows[0]?.boostMinimizeRow).toBe(true);
 
-    const conflictingRow = { ...row, boostOrExpAdjustment: 50, boostMinimizeRow: true as const };
+    // 印はアメブ個数と一緒に持てる（ON にしても元の個数を残し、在庫で届かないときに使う）
+    const minimizedWithCount = { ...row, boostOrExpAdjustment: 50, boostMinimizeRow: true as const };
     localStorage.setItem(
       "candy-boost-planner:calc:slots:v1",
-      serializeCalcSlots([{ ...slot, rows: [conflictingRow] }]),
+      serializeCalcSlots([{ ...slot, rows: [minimizedWithCount] }]),
     );
     expect(loadCalcSlots()[0]?.rows[0]?.boostOrExpAdjustment).toBe(50);
-    expect(loadCalcSlots()[0]?.rows[0]?.boostMinimizeRow).toBeUndefined();
+    expect(loadCalcSlots()[0]?.rows[0]?.boostMinimizeRow).toBe(true);
 
     const oldRow = { ...row, boostOrExpAdjustment: 50 } as Record<string, unknown>;
     delete oldRow.boostMinimizeRow;

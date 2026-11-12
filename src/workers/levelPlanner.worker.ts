@@ -5,9 +5,7 @@ import type { LevelPlannerInput, LevelPlannerResult } from '../domain/level-plan
 import { setPerfEnabled } from '../utils/perf';
 
 export type PlannerWorkerRequest = {
-  slotId: string;
   requestId: number;
-  inputSignature: string;
   input: LevelPlannerInput;
   perfEnabled: boolean;
 };
@@ -15,17 +13,13 @@ export type PlannerWorkerRequest = {
 export type PlannerWorkerResponse =
   | {
       kind: 'result';
-      slotId: string;
       requestId: number;
-      inputSignature: string;
       result: LevelPlannerResult;
       durationMs: number;
     }
   | {
       kind: 'error';
-      slotId: string;
       requestId: number;
-      inputSignature: string;
       error: string;
     };
 
@@ -45,18 +39,14 @@ ctx.onmessage = (event: MessageEvent<PlannerWorkerRequest>) => {
     }
     ctx.postMessage({
       kind: 'result',
-      slotId: request.slotId,
       requestId: request.requestId,
-      inputSignature: request.inputSignature,
       result,
       durationMs,
     } satisfies PlannerWorkerResponse);
   } catch (error) {
     ctx.postMessage({
       kind: 'error',
-      slotId: request.slotId,
       requestId: request.requestId,
-      inputSignature: request.inputSignature,
       error: error instanceof Error ? error.message : String(error),
     } satisfies PlannerWorkerResponse);
   }

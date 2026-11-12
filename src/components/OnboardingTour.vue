@@ -2,7 +2,9 @@
   <Teleport to="body">
     <div
       v-if="step"
+      ref="backdropRef"
       class="onboarding-backdrop"
+      tabindex="-1"
       @click.self="onboarding.next()"
       @touchmove="preventBackgroundScroll"
       @wheel="preventBackgroundScroll"
@@ -43,6 +45,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import type { useOnboarding } from "../composables/useOnboarding";
+import { useFocusTrap } from "../composables/useFocusTrap";
 
 const props = defineProps<{
   onboarding: ReturnType<typeof useOnboarding>;
@@ -50,6 +53,8 @@ const props = defineProps<{
 
 const { t } = useI18n();
 const onboarding = props.onboarding;
+const backdropRef = ref<HTMLElement | null>(null);
+useFocusTrap(backdropRef);
 const tooltipRef = ref<HTMLElement | null>(null);
 const spotlightRef = ref<HTMLElement | null>(null);
 

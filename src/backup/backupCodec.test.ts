@@ -227,9 +227,10 @@ describe("backup codec", () => {
       boostOrExpAdjustment: 50,
       boostMinimizeRow: true,
     }]), null, null];
+    // 印はアメブ個数と一緒に持てる（ON にしても元の個数を残し、在庫で届かないときに使う）
     const restored = parseBackup(stringifyBackup(value)).backup.data.calculator.slots[0]!.rows[0]!;
     expect(restored.boostOrExpAdjustment).toBe(50);
-    expect(restored.boostMinimizeRow).toBeUndefined();
+    expect(restored.boostMinimizeRow).toBe(true);
   });
 
   it("round-trips time zone, Growth Incense, and manual event settings", () => {

@@ -28,6 +28,11 @@
   /* children handle their own scroll */
 }
 
+/* useFocusTrap が開いたときにフォーカスする器。枠線は出さない */
+.modal:focus {
+  outline: none;
+}
+
 /* ===== Modal Interior ===== */
 .modal__header {
   display: flex;

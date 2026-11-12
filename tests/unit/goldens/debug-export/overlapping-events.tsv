@@ -12,7 +12,11 @@ actualDurationMs	feasibilityMs	refineMs	refineStatus	refineReason	loss
 <timing>	<timing>	<timing>	ok		false
 
 BOUNDARY_SEARCH
-status	none
+status	mode	boundaryIndex	targetTotalCandy	maxFeasibleTotalCandy	maxFeasibleScope	selectedTotalCandy	checkedLowerTotals	feasibleLowerTotals	rejectedLowerTotals	inconclusiveLowerTotals	rowSurplusGateSkippedTotals	decisionRejectedLowerTotals	firstZeroRawSurplusTotalCandy	selectedRawSurplus	selectedNormalizedSurplus	selectedBoundaryLv	selectedBoundaryExp	stoppedReason	rawSurplusTrend	samplesTruncated
+ok	surplusGateFirst	1	0	0	rowSurplusGate	0	1	1	0	0	0	0		0	0	10	225	first_acceptable_surplus	flat	false
+boundarySamples	totalCandy	status	rawSurplus	normalizedSurplus	boundaryLv	boundaryExp
+sample	0	feasible	0	0	10	225
+sample	0	max_feasible	0	0	10	225
 
 LOSS_LEDGER
 status	hasLoss	supplyCandidateCuts	frontierCuts	stateCaps	expansionCapReductions

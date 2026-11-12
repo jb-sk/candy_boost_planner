@@ -216,7 +216,7 @@ export type History = ReturnType<typeof useHistory>;
 
 /**
  * 元に戻す・やり直すのボタン（HistoryButtons.vue）が使う分だけの型。
- * 計算機の `useHistory()` の戻り値はそのまま渡せる。やりくりモーダルは自前の履歴をこの形で渡す
+ * 計算機の `useHistory()` の戻り値はそのまま渡せる。シンプルモードは自前の履歴をこの形で渡す
  * （操作名は出さないので、ラベルは常に null、`undo()` / `redo()` も null を返す）。
  */
 export type HistoryControls = {

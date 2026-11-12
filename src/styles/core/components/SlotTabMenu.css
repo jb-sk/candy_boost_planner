@@ -1,0 +1,124 @@
+/* Slot Tab Menu Styles (SlotTabMenu.vue)
+   タブへの広げ方とタブの枠は CalcPanel.css（.slotTab--active）。 */
+
+.slotTabMenu {
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-width: 0;
+}
+
+/*
+ * タブ全体を押せるボタン。左右の余白は ▼ の手前まで文字を通せる分（幅 320px で「ミニブ（かけら×4 / EXP×2）」が収まる）。
+ * Blue がすべてのボタンに付ける影と、押すと沈む動きは付けない。
+ * 角はタブと同じ丸み（開いている間の紙の色がタブの角からはみ出さないように）。
+ */
+.slotTabMenu__trigger {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 10px 28px 10px 10px;
+  border: 0;
+  border-radius: 10px 10px 0 0;
+  box-shadow: none;
+  font: inherit;
+  line-height: 16px;
+  color: var(--accent);
+  text-align: center;
+  cursor: pointer;
+  background: transparent;
+}
+
+.slotTabMenu__chevron {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  margin-top: -6px;
+}
+
+.slotTabMenu__trigger:active {
+  transform: none;
+  box-shadow: none;
+}
+
+/* 開いている間はタブの面を紙の色にして一覧とつなげる（ホバーでタブに付く薄い色を隠す） */
+.slotTabMenu--open .slotTabMenu__trigger {
+  background: var(--paper);
+}
+
+.slotTabMenu__value {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * タブの真下にタブと同じ幅で出し、上の線は引かずにタブの左右の線から続ける。
+ * 左右はタブの枠と同じく、タブの箱の端からずらさない（線の太さでずらすと、表示倍率が 100% 以外の Chrome で縦線が 1px ずれる）。
+ * 上端はタブの下端の 2px 上（タブは top: 2px で計算機の枠の線に重ねてある）＝計算機の枠の上端で、枠の線を一覧の下に隠す。
+ * 重なり: 計算機の枠（z-index: 1）より上、サマリー（sticky。z-index: 20）より下。
+ */
+.slotTabMenu__list {
+  position: absolute;
+  top: calc(100% - 2px);
+  left: 0;
+  right: 0;
+  z-index: 10;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--paper);
+  border: 2px solid var(--accent);
+  border-top: 0;
+  border-radius: 0 0 10px 10px;
+  /* タブの「折り返さない」を受け継がない。狭い画面の長い種類名は折り返す */
+  white-space: normal;
+  text-align: left;
+}
+
+.slotTabMenu__item {
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+  color: var(--accent);
+  cursor: pointer;
+  outline: none;
+}
+
+/* キーボードで選んでいる行。下の hover と同じ下地 */
+.slotTabMenu__item:focus {
+  background-color: rgba(var(--accent-rgb), 0.14);
+}
+
+.slotTabMenu__item[aria-checked="true"] {
+  background-color: var(--accent);
+  color: var(--paper);
+}
+
+.slotTabMenu__item--danger {
+  color: var(--danger);
+}
+
+/* 押せない行は薄い字（計算機の補助ボタンの押せないときと同じ濃さ） */
+.slotTabMenu__item[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.slotTabMenu__separator {
+  height: 1px;
+  margin: 4px 0;
+  background: rgba(var(--accent-rgb), 0.2);
+}
+
+/* hover はホバーできる端末だけ（タッチ端末ではタップ後も残る） */
+@media (hover: hover) {
+  .slotTabMenu__item:hover:not([aria-checked="true"]):not([aria-disabled="true"]) {
+    background-color: rgba(var(--accent-rgb), 0.14);
+  }
+}

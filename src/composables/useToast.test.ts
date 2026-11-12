@@ -52,4 +52,32 @@ describe("useToast", () => {
 
     expect(toasts.value.map((toast) => toast.testId)).toEqual([undefined, "export-toast"]);
   });
+
+  it("dismissOnPress は、出した後に画面のどこかを押すとすぐ消える（出したきっかけの押下では消えない）", () => {
+    const listeners = new Map<string, Set<EventListener>>();
+    const fakeDocument = {
+      addEventListener: (type: string, fn: EventListener) => {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type)!.add(fn);
+      },
+      removeEventListener: (type: string, fn: EventListener) => listeners.get(type)?.delete(fn),
+    };
+    vi.stubGlobal("document", fakeDocument);
+    try {
+      const { toasts } = useToast();
+      showToast("reason", { durationMs: 6000, dismissOnPress: true, wrap: true });
+      expect(toasts.value.map((toast) => [toast.message, toast.wrap])).toEqual([["reason", true]]);
+      // まだ受けていない（次の押下から）
+      expect(listeners.get("mousedown")?.size ?? 0).toBe(0);
+      vi.advanceTimersByTime(0);
+      expect(listeners.get("mousedown")?.size).toBe(1);
+      listeners.get("mousedown")!.forEach((fn) => fn(new Event("mousedown")));
+      expect(toasts.value).toEqual([]);
+      // 消したら受けるのもやめる
+      expect(listeners.get("mousedown")?.size).toBe(0);
+      expect(listeners.get("touchstart")?.size).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

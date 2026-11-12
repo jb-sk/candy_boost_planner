@@ -3,10 +3,10 @@ import type {
   CandyInventory, CandySupplyBreakdown, LevelPlannerInput, LevelPlannerResult,
   PokemonPlanInput, PokemonPlanLine, PokemonPlanResult, PokemonShortage,
   PokemonConstraintDiagnosis, PlannerLossLedger, PlannerOptions, TypeCandyStock, UniversalCandyStock,
-  PlannerTuning, ItemCompareMode, ShortageType,
+  PlannerTuning, ItemCompareMode, ShortageType, PokemonBoostAdvice,
 } from '../types';
 import { isPerfEnabled } from '../../../utils/perf';
-import { CANDY_VALUES, MAX_ACCEPTABLE_SURPLUS } from '../constants';
+import { CANDY_VALUES, MAX_ACCEPTABLE_SURPLUS, PLANNER_DEADLINE_MS } from '../constants';
 import { calcExp, calcExpAndCandyMixed } from '../../pokesleep/exp';
 import { minBoostForTarget } from '../../pokesleep/minBoostForTarget';
 import { simulateCandyBudget, simulateCandyRun } from '../../pokesleep/simulateCandyBudget';
@@ -16,7 +16,8 @@ import { lastOf } from '../../../utils/lastOf';
 import { flatMapOf } from '../../../utils/flatMapOf';
 import { addItemPriority, compareItemPriority, emptyItemPriority, itemPriorityOf } from './itemPriority';
 import type { ItemPriorityTuple } from './itemPriority';
-import { createIndependentBoundaryFeasibilitySession, createPrefixDecisionSession, fixedRowsFailFeasibilityRelaxation, hasSingleRowSupplyWithinSurplus, refineFeasibilityWitness, solveFeasibilityDecisionForFixedRows, solveFeasibilityForFixedRows } from './feasibilityWitness';
+import { compareRowSurplusGate } from './surplusGate';
+import { createIndependentBoundaryFeasibilitySession, createPrefixDecisionSession, fixedRowsFailFeasibilityRelaxation, hasSharedCandyFamily, hasSingleRowSupplyWithinSurplus, minSingleRowSupplySurplus, refineFeasibilityWitness, solveFeasibilityDecisionForFixedRows, solveFeasibilityForFixedRows, solveFeasibilityForFixedRowsIfTopDownCertified } from './feasibilityWitness';
 import { createPlannerLossLedger, toPublicPlannerLossLedger } from './lossLedger';
 import type { InternalPlannerLossLedger } from './lossLedger';
 import type { FeasibilityDemandRow, FeasibilityResult, FeasibilitySolverOptions, FeasibilityWitness } from '../types';
@@ -77,6 +78,8 @@ type CandyExpOptimizationResult = {
   boundarySearch?: BoundarySearchSummary;
   prefixSearch?: PrefixSearchSummary;
   prefixSearchAttempts?: PrefixSearchSummary[];
+  /** 境界の行のアメブのおすすめ（§9.2）。`surplusBefore` は結果を組み立てるときに最終の余りで決め直す */
+  boundaryBoostAdvice?: { pokemonId: string; advice: PokemonBoostAdvice };
 };
 type InternalPlannerTuning = PlannerTuning & {
   // Probe-only: lets tuning tests inspect large frontiers before the full DP completes.
@@ -923,32 +926,27 @@ function compareBoundaryProgress(a: State, b: State): number {
   const level = cmpLevel(a.boundary.line, b.boundary.line);
   return level ? level > 0 ? 1 : -1 : 0;
 }
+/**
+ * モードごとの状態の比較（`level-planner-allocation-policy-spec.md` §6 の比較タプル）。
+ * 余り最小・バランスは境界探索が使う比較関数そのものを使い、順を1か所に置く。
+ * EXP最大の境界探索は比較関数を使わず二分探索で境界進捗を最優先にするので、順はここだけが持つ。
+ */
 function compareState(a: State, b: State, mode: PlannerOptions['itemCompareMode'], includeStableOrder = true): number {
-  const surplusA = a.metrics.rawSurplus; const surplusB = b.metrics.rawSurplus;
-  if (mode === 'surplusFirst') {
-    if (a.reachedPrefixCount !== b.reachedPrefixCount) return a.reachedPrefixCount > b.reachedPrefixCount ? 1 : -1;
-    if (a.metrics.reachedSurplus !== b.metrics.reachedSurplus) return a.metrics.reachedSurplus < b.metrics.reachedSurplus ? 1 : -1;
-    const boundaryProgress = compareBoundaryProgress(a, b);
-    if (boundaryProgress) return boundaryProgress;
-    if (a.metrics.zeroSurplusCount !== b.metrics.zeroSurplusCount) return a.metrics.zeroSurplusCount > b.metrics.zeroSurplusCount ? 1 : -1;
-    if (surplusA !== surplusB) return surplusA < surplusB ? 1 : -1;
-    const item = compareItemPriority(a.metrics.itemPriority, b.metrics.itemPriority); if (item) return item;
-    if (a.metrics.surplusExp !== b.metrics.surplusExp) return a.metrics.surplusExp < b.metrics.surplusExp ? 1 : -1;
-    if (a.usage.shards !== b.usage.shards) return a.usage.shards < b.usage.shards ? 1 : -1;
-    return includeStableOrder ? compareStableOrder(a, b) : 0;
-  }
+  if (mode === 'surplusFirst') return compareSurplusFirstBoundaryState(a, b, includeStableOrder);
+  if (mode === 'surplusGateFirst') return compareSurplusGateBoundaryState(a, b, includeStableOrder);
+  return compareLegacyImprovedState(a, b, includeStableOrder);
+}
+function compareLegacyImprovedState(a: State, b: State, includeStableOrder = true): number {
   if (a.reachedPrefixCount !== b.reachedPrefixCount) return a.reachedPrefixCount > b.reachedPrefixCount ? 1 : -1;
   // §15: fbl01d の speciesUsed は各系統で最大使用を不変条件にするため、比較軸にしない。
   const boundaryProgress = compareBoundaryProgress(a, b);
   if (boundaryProgress) return boundaryProgress;
-  if (usesZeroSurplusPriority(mode) && a.metrics.zeroSurplusCount !== b.metrics.zeroSurplusCount) return a.metrics.zeroSurplusCount > b.metrics.zeroSurplusCount ? 1 : -1;
-  const acceptableA = hasOnlyAcceptableRowSurplus(a.metrics);
-  const acceptableB = hasOnlyAcceptableRowSurplus(b.metrics);
-  if (acceptableA !== acceptableB) return acceptableA > acceptableB ? 1 : -1;
-  if (!acceptableA && a.metrics.normalizedSurplus !== b.metrics.normalizedSurplus) return a.metrics.normalizedSurplus < b.metrics.normalizedSurplus ? 1 : -1;
+  if (a.metrics.zeroSurplusCount !== b.metrics.zeroSurplusCount) return a.metrics.zeroSurplusCount > b.metrics.zeroSurplusCount ? 1 : -1;
+  const gate = compareRowSurplusGate(a.metrics.normalizedSurplus, b.metrics.normalizedSurplus);
+  if (gate) return gate;
   const item = compareItemPriority(a.metrics.itemPriority, b.metrics.itemPriority); if (item) return item;
   // 余り0〜2を同等扱いする分、スコア同点でも供給価値がずれる。ここで明示的に詰める。
-  if (surplusA !== surplusB) return surplusA < surplusB ? 1 : -1;
+  if (a.metrics.rawSurplus !== b.metrics.rawSurplus) return a.metrics.rawSurplus < b.metrics.rawSurplus ? 1 : -1;
   if (a.metrics.surplusExp !== b.metrics.surplusExp) return a.metrics.surplusExp < b.metrics.surplusExp ? 1 : -1;
   if (a.usage.shards !== b.usage.shards) return a.usage.shards < b.usage.shards ? 1 : -1;
   return includeStableOrder ? compareStableOrder(a, b) : 0;
@@ -971,12 +969,11 @@ function compareSurplusFirstBoundaryState(a: State, b: State, includeStableOrder
 }
 function compareSurplusGateBoundaryState(a: State, b: State, includeStableOrder = true): number {
   if (a.reachedPrefixCount !== b.reachedPrefixCount) return a.reachedPrefixCount > b.reachedPrefixCount ? 1 : -1;
-  const acceptableA = hasOnlyAcceptableRowSurplus(a.metrics);
-  const acceptableB = hasOnlyAcceptableRowSurplus(b.metrics);
-  if (acceptableA !== acceptableB) return acceptableA ? 1 : -1;
-  if (!acceptableA && a.metrics.normalizedSurplus !== b.metrics.normalizedSurplus) return a.metrics.normalizedSurplus < b.metrics.normalizedSurplus ? 1 : -1;
+  const gate = compareRowSurplusGate(a.metrics.normalizedSurplus, b.metrics.normalizedSurplus);
+  if (gate) return gate;
   const boundaryProgress = compareBoundaryProgress(a, b);
   if (boundaryProgress) return boundaryProgress;
+  if (a.metrics.zeroSurplusCount !== b.metrics.zeroSurplusCount) return a.metrics.zeroSurplusCount > b.metrics.zeroSurplusCount ? 1 : -1;
   const item = compareItemPriority(a.metrics.itemPriority, b.metrics.itemPriority);
   if (item) return item;
   // 余り0〜2を同等扱いする分、スコア同点でも供給価値がずれる。ここで明示的に詰める。
@@ -1033,7 +1030,7 @@ function boundarySearchSummary(
     samples: params.samples,
   };
 }
-const FBL01D_DEFAULT_DEADLINE_MS = 30_000;
+const FBL01D_DEFAULT_DEADLINE_MS = PLANNER_DEADLINE_MS;
 const FBL01D_FAST_REFINE_MS = 250;
 /**
  * 下位行の合同探索に許す時間（§14.4.1）。下位は到達数の保証対象ではないので、
@@ -1383,6 +1380,21 @@ function cloneCandyInventory(inventory: CandyInventory): CandyInventory {
   for (const type of Object.keys(inventory.typeCandy)) typeCandy[type] = { ...inventory.typeCandy[type]! };
   return { species: { ...inventory.species }, typeCandy, universal: { ...inventory.universal } };
 }
+/** 在庫から、witness の行の配り方の分を引いた残り（境界の行のおすすめで、上の行の配り方を固定して境界の行だけを見るときに使う） */
+function inventoryAfterFeasibleRows(inventory: CandyInventory, rows: FeasibilityWitness['rows']): CandyInventory {
+  const remaining = cloneCandyInventory(inventory);
+  for (const row of rows) {
+    remaining.species[row.candyFamilyKey] = Math.max(0, (remaining.species[row.candyFamilyKey] ?? 0) - row.supply.species);
+    const type = remaining.typeCandy[row.type] ?? { s: 0, m: 0 };
+    remaining.typeCandy[row.type] = { s: Math.max(0, type.s - row.supply.typeS), m: Math.max(0, type.m - row.supply.typeM) };
+    remaining.universal = {
+      s: Math.max(0, remaining.universal.s - row.supply.universalS),
+      m: Math.max(0, remaining.universal.m - row.supply.universalM),
+      l: Math.max(0, remaining.universal.l - row.supply.universalL),
+    };
+  }
+  return remaining;
+}
 /**
  * フェーズ3: 境界より下の行を残資源で処理する。
  *
@@ -1484,6 +1496,22 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
     rowFrontierCache: fbl01dRowFrontierCache,
   });
   const targetRows = targetDemandRowsForInput(input);
+  const firstUnmetTargetRow = targetRows.findIndex(row => !row.candyDemandMet);
+  /**
+   * 到達prefixの長さの上限。最初の届かない行（かけらで止まる行）は境界で、到達prefixには入れない（配分方針 §3-3）。
+   *
+   * そこから、緩和（必要条件）で成り立たない長さを上から外す。緩和はアメブ・かけらの累計と種族アメの不足だけを見て、
+   * 余りの上限・配分方針を見ない（`validateDemandRows` が読むのは boostKind・boostLimit・dreamShards だけ）ので、
+   * 余り最小の1・2周目とバランスのゲート内外で同じ値になる。緩和は長さについて単調とは限らない（同じ系統に別タイプの
+   * 行が加わると、その系統の不足が計算から外れる。`relaxationInfeasible` の `types.size > 1`）が、上から外れる間だけ下げる。
+   * 上限に届かない長さが「最大」かどうかは緩和では言えないので、`prefix.low === prefixCeiling` のときだけ最大とみなす
+   */
+  let prefixCeiling = firstUnmetTargetRow === -1 ? targetRows.length : firstUnmetTargetRow;
+  while (prefixCeiling > 0 && fixedRowsFailFeasibilityRelaxation(targetRows.slice(0, prefixCeiling), input.candyInventory, options())) {
+    prefixCeiling--;
+  }
+  /** 到達prefixになりうる行（`findPrefix` の判定セッションに渡す。上限より後ろの行は準備しない） */
+  const prefixCandidateRows = targetRows.slice(0, prefixCeiling);
   /**
    * 先頭から続く「アメを1個も要さない行」の数（§14.4.3）。
    *
@@ -1499,9 +1527,9 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
     }
     return count;
   })();
-  // surplusFirst first treats row surplus 0..2 as a hard constraint. If that
-  // cannot produce a useful witness, retry without the hard gate.
-  const searchMaxRowSurplusAttempts: Array<number | undefined> = input.options.itemCompareMode === 'surplusFirst' && targetRows.length > 1
+  // 余り最小は、まず各行余り0〜2をハード制約にして探し、ゲート内でアメを要する行が1匹も届かなければゲートを外して
+  // （バランスへ切り替えて）探し直す（§14.4.3）。行が1つだけの入力も同じ規則（境界修正設計書 §9.1.3）
+  const searchMaxRowSurplusAttempts: Array<number | undefined> = input.options.itemCompareMode === 'surplusFirst'
     ? [MAX_ACCEPTABLE_SURPLUS, undefined]
     : [undefined];
   let mainSearchMaxRowSurplus: number | undefined = searchMaxRowSurplusAttempts[0];
@@ -1524,6 +1552,7 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
   let boundaryIndex: number | null = null;
   let shouldSearchBoundary = false;
   let boundarySearch: BoundarySearchSummary | undefined;
+  let boundaryBoostAdvice: CandyExpOptimizationResult['boundaryBoostAdvice'];
   let prefixSearch: PrefixSearchSummary | undefined;
   /**
    * attempt ごとの `prefixSearch`（`[0]` が1周目）。
@@ -1532,21 +1561,18 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
    * **周ごとの探索量・探索結果を検証するテストはこちらを読む**（§14.4.2 / §14.4.3）。
    */
   const prefixSearchAttempts: PrefixSearchSummary[] = [];
-  type SurplusLimits = { maxRowSurplus?: number; maxTotalSurplus?: number; maxReachedSurplus?: number };
-  const normalizeLimits = (limits: SurplusLimits = {}): SurplusLimits => {
-    if (limits.maxTotalSurplus === undefined) return limits;
-    const inheritedMaxRowSurplus = limits.maxRowSurplus ?? mainSearchMaxRowSurplus;
-    return {
-      ...limits,
-      maxRowSurplus: inheritedMaxRowSurplus === undefined
-        ? limits.maxTotalSurplus
-        : Math.min(inheritedMaxRowSurplus, limits.maxTotalSurplus),
-    };
-  };
+  /** 余りの上限。`maxRowSurplus` を渡さないときは共通の設定（`mainOptions`）の各行の上限に従う */
+  type SurplusLimits = { maxRowSurplus?: number; maxReachedSurplus?: number };
+  /**
+   * 境界の行に需要の総数まで配れないと、到達prefixの探索で分かっているか（境界の探索で上限の確かめを省く）。
+   * 境界の行が届く行（アメ在庫で落ちた行）なら、需要の総数を配った形は「到達prefixにこの行を加えた長さ」と同じ行になり、
+   * 到達prefixの探索がその長さを成り立たないと判定している
+   */
+  let prefixRejectsBoundaryUpper = false;
 
   for (const attemptMaxRowSurplus of searchMaxRowSurplusAttempts) {
     mainSearchMaxRowSurplus = attemptMaxRowSurplus;
-    mainSearchItemCompareMode = input.options.itemCompareMode === 'surplusFirst' && targetRows.length > 1 && attemptMaxRowSurplus === undefined
+    mainSearchItemCompareMode = input.options.itemCompareMode === 'surplusFirst' && attemptMaxRowSurplus === undefined
       ? 'surplusGateFirst'
       : input.options.itemCompareMode;
     const emptyResult = solveFeasibilityForFixedRows([], input.candyInventory, mainOptions());
@@ -1557,8 +1583,10 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
     prefixRows = [];
     selectedWitness = null;
     boundaryIndex = null;
+    prefixRejectsBoundaryUpper = false;
     shouldSearchBoundary = false;
     boundarySearch = undefined;
+    boundaryBoostAdvice = undefined;
     prefixSearch = undefined;
 
   if (canSearch && supplyInconclusiveCandidates === 0) {
@@ -1571,44 +1599,28 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
       /** §14.4.2 の上側スキャンだけで走らせた probe 数（探索量の上限をテストで固定するための診断値）。 */
       upperScanProbes: number;
       limits: SurplusLimits;
+      /**
+       * 次の行までの長さ（`low + 1`）が `limits` の下で成り立たないと分かっているか。二分探索・上側スキャンの判定か、
+       * 上限（`prefixCeiling`。それより長い長さは緩和で外れるか、届かない行を含む）で分かる。
+       * 選んだ長さの witness の復元に失敗して `low` を0に戻したときは分からない
+       */
+      nextRowRejected: boolean;
     };
-    const relaxationRejectsPrefix = (length: number): boolean => {
-      if (length <= 0 || length > targetRows.length) return false;
-      return fixedRowsFailFeasibilityRelaxation(
-        targetRows.slice(0, length),
-        input.candyInventory,
-        mainOptions(),
-      );
-    };
-    const findPrefix = (
-      rawLimits: SurplusLimits = {},
-      restoreWitness = true,
-    ): PrefixSearchResult => {
-      const limits = normalizeLimits(rawLimits);
+    const findPrefix = (limits: SurplusLimits = {}): PrefixSearchResult => {
       const prefixOptions = () => ({
         ...mainOptions(),
         ...(limits.maxRowSurplus === undefined ? {} : { maxRowSurplus: limits.maxRowSurplus }),
-        ...(limits.maxTotalSurplus === undefined ? {} : { maxTotalSurplus: limits.maxTotalSurplus }),
         ...(limits.maxReachedSurplus === undefined ? {} : { maxReachedSurplus: limits.maxReachedSurplus }),
       });
       let low = 0;
-      // The relaxation is a necessary condition only: rejection proves that
-      // exact feasibility is impossible, while acceptance says nothing. Check
-      // each trailing prefix explicitly, then probe the largest remaining
-      // candidate first. When that candidate is exact-feasible it is already
-      // the global maximum, so an expensive intermediate full frontier is not
-      // needed. If it is not feasible, the existing lower-prefix search and
-      // non-monotonic surplus-gate scan continue unchanged below this ceiling.
-      let relaxationCeiling = targetRows.length;
-      while (relaxationCeiling > 0 && relaxationRejectsPrefix(relaxationCeiling)) {
-        relaxationCeiling--;
-      }
-      let high = relaxationCeiling;
+      // 上限（`prefixCeiling`）を先に確かめる。成り立てばそれが最大なので、途中の長さの重い判定は要らない。
+      // 成り立たなければ、この上限より下で二分探索と、余りゲートの下の上側スキャンを続ける
+      let high = prefixCeiling;
       let solved = 0;
       let rejected = 0;
       let inconclusive = 0;
       let upperScanProbes = 0;
-      const prefixDecisionSession = createPrefixDecisionSession(targetRows, input.candyInventory, prefixOptions());
+      const prefixDecisionSession = createPrefixDecisionSession(prefixCandidateRows, input.candyInventory, prefixOptions());
       let bestPrefixDecision: ReturnType<typeof solveFeasibilityDecisionForFixedRows> | null = null;
       let bestPrefixDecisionLength = 0;
       if (high > 0) {
@@ -1650,10 +1662,9 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
       // ゲートが無ければ制約は資源だけになり、長い prefix ほど需要が増えて厳しくなる一方なので走らせない。
       // `inconclusive` を見たあとも走らせない（判定できていないものを feasible 側へ倒さない）。
       const hasSurplusGate = limits.maxRowSurplus !== undefined
-        || limits.maxTotalSurplus !== undefined
         || limits.maxReachedSurplus !== undefined;
-      if (hasSurplusGate && inconclusive === 0 && low < relaxationCeiling) {
-        for (let length = relaxationCeiling; length > low; length--) {
+      if (hasSurplusGate && inconclusive === 0 && low < prefixCeiling) {
+        for (let length = prefixCeiling; length > low; length--) {
           const result = prefixDecisionSession.canSolvePrefix(length);
           upperScanProbes++;
           if (result.status === 'feasible') {
@@ -1670,14 +1681,13 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
           rejected++;
         }
       }
-      if (low === 0) return { low, witness: null, solved, rejected, inconclusive, upperScanProbes, limits };
-      if (!restoreWitness && low < targetRows.length) return { low, witness: null, solved, rejected, inconclusive, upperScanProbes, limits };
+      if (low === 0) return { low, witness: null, solved, rejected, inconclusive, upperScanProbes, limits, nextRowRejected: true };
       const selectedResult = bestPrefixDecisionLength === low && bestPrefixDecision?.toWitness
         ? bestPrefixDecision.toWitness()
         : solveFeasibilityForFixedRows(targetRows.slice(0, low), input.candyInventory, prefixOptions());
-      if (selectedResult.status === 'feasible') return { low, witness: selectedResult.witness, solved: solved + 1, rejected, inconclusive, upperScanProbes, limits };
-      if (selectedResult.status === 'inconclusive') return { low: 0, witness: null, solved, rejected, inconclusive: inconclusive + 1, upperScanProbes, limits };
-      return { low: 0, witness: null, solved, rejected: rejected + 1, inconclusive, upperScanProbes, limits };
+      if (selectedResult.status === 'feasible') return { low, witness: selectedResult.witness, solved: solved + 1, rejected, inconclusive, upperScanProbes, limits, nextRowRejected: true };
+      if (selectedResult.status === 'inconclusive') return { low: 0, witness: null, solved, rejected, inconclusive: inconclusive + 1, upperScanProbes, limits, nextRowRejected: false };
+      return { low: 0, witness: null, solved, rejected: rejected + 1, inconclusive, upperScanProbes, limits, nextRowRejected: false };
     };
 
     const findSurplusFirstPrefix = (): PrefixSearchResult => findPrefix({
@@ -1688,8 +1698,9 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
       prefix = findSurplusFirstPrefix();
     } else if (input.options.itemCompareMode === 'surplusGateFirst') {
       const gatedPrefix = findPrefix({ maxRowSurplus: MAX_ACCEPTABLE_SURPLUS });
-      const gatedCountIsGloballyMaximal = gatedPrefix.low === targetRows.length
-        || relaxationRejectsPrefix(gatedPrefix.low + 1);
+      // 緩和は長さについて単調とは限らないので、`low + 1` が緩和で外れても、もっと長い prefix が成り立つことがある。
+      // 上限に届いたときだけ最大とみなし、それ以外はゲート外の探索もする
+      const gatedCountIsGloballyMaximal = gatedPrefix.low === prefixCeiling;
       if (gatedCountIsGloballyMaximal) {
         prefix = gatedPrefix;
       } else {
@@ -1720,10 +1731,20 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
       selectedWitness = prefix.witness;
     }
     prefixRows = targetRows.slice(0, prefix.low);
-    const canSearchBoundaryForPrefix = prefix.low < targetRows.length
-      && (input.options.itemCompareMode !== 'surplusFirst' || attemptMaxRowSurplus === MAX_ACCEPTABLE_SURPLUS || attemptMaxRowSurplus === undefined);
+    // 余り最小の1周目で、各行余り0〜2のゲート内でアメを要する行が1匹も届かなければ、2周目（バランス）へ進む（§14.4.3）。
+    // 2周目の初めに1周目の境界の探索の結果は捨てるので、1周目では探さない（境界の行が届く個数を D1 の探索で見つけても、
+    // それはゲートを外した結果で、ゲート内で届いたことにはならない）
+    const gatedAttemptReachedNothing = input.options.itemCompareMode === 'surplusFirst'
+      && attemptMaxRowSurplus !== undefined
+      && prefix.low <= trivialReachedPrefixCount;
+    const canSearchBoundaryForPrefix = prefix.low < targetRows.length && !gatedAttemptReachedNothing;
     if (canSearchBoundaryForPrefix) {
       boundaryIndex = prefix.low;
+      // 成り立たないと分かる条件: EXP最大・余り最小の2周目・バランスのゲート外の到達prefixは余りの上限なし。バランスでゲート内の
+      // 到達prefixが上限に届いたときは、次の長さは上限の外（緩和で外れる）なので余りの上限によらない。余り最小の1周目は各行余り0〜2の
+      // 下だけで、その周の境界の探索でこれを使うのは、同じかもっと厳しい条件の処理（上限の即決・ゲート内の走査）だけ
+      // （ゲートを外す D1 の探索は需要の総数から確かめる。上限なしの二分探索は余り最小では走らない）
+      prefixRejectsBoundaryUpper = prefix.nextRowRejected && Boolean(targetRows[prefix.low]?.candyDemandMet);
       shouldSearchBoundary = supplyInconclusiveCandidates === 0;
     }
   }
@@ -1733,10 +1754,23 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
     const currentBoundaryIndex = boundaryIndex;
     const boundaryPokemon = input.pokemonList[currentBoundaryIndex];
     const targetTotalCandy = targetRows[currentBoundaryIndex]?.totalCandy ?? 0;
+    /**
+     * 境界の探索で確かめる個数の上限。需要の総数を配れないと到達prefixの探索で分かっていれば（`prefixRejectsBoundaryUpper`）、
+     * 需要の総数は確かめない（同じ系統の行が上にいると、判定1回が全行の解き直しになる）
+     */
+    const boundarySearchUpper = prefixRejectsBoundaryUpper ? targetTotalCandy - 1 : targetTotalCandy;
+    /**
+     * アメブの床（境界修正設計書 §9.1.2）。計算機はユーザーが指定したアメブを、余りの都合で減らさない。
+     * 境界の行に配る個数は、アメブを使い切る個数（指定の個数を、アメブの残り枠とかけらで縮めた数）より下げない。
+     * アメを入れる順はアメブが先なので、床から上で個数を減らすと、減るのはアメブより後ろの通常アメだけになる。
+     * 在庫で床まで配れないときは、床より下の配れる最大だけが候補になる（下へ向かう走査は床で止まり、上限から
+     * 二分探索で求めた配れる最大が残る）。在庫の都合で減らすのは要件どおり
+     */
+    const boundaryBoostFloor = Math.min(targetRows[currentBoundaryIndex]?.boostCandy ?? 0, targetTotalCandy);
     const remainingBoost = remainingBoostAfterRows(input, prefixRows);
     const remainingShards = remainingShardsAfterRows(input, prefixRows);
     let low = 0;
-    let high = targetTotalCandy;
+    let high = boundarySearchUpper;
     let bestWitness: FeasibilityWitness | null = null;
     let bestWitnessTotalCandy = 0;
     let maxFeasibleScope: BoundarySearchSummary['maxFeasibleScope'] = 'unknown';
@@ -1748,8 +1782,6 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
     let rowSurplusGateSkippedTotals = 0;
     let decisionRejectedLowerTotals = 0;
     let firstZeroRawSurplusTotalCandy: number | undefined;
-    let surplusFirstZeroBudgetExhausted = false;
-    let keepExistingSurplusFirstPrefix = false;
     let stoppedReason: BoundarySearchSummary['stoppedReason'] = 'exp_first';
     let lastRawSurplus: number | undefined;
     let rawSurplusTrend: BoundarySearchSummary['rawSurplusTrend'] = 'not_checked';
@@ -1759,12 +1791,6 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
       if (samples.length < FBL01D_BOUNDARY_SEARCH_SAMPLE_LIMIT) samples.push(sample);
       else samplesTruncated = true;
     };
-    const isBoundaryRowGateInfeasible = (decision: { status: string; reason?: string } | null): boolean => (
-      decision?.status === 'infeasible'
-      && (decision.reason === 'boundary_row_surplus_gate_impossible'
-        || decision.reason === 'boundary_row_total_surplus_gate_impossible'
-        || decision.reason === 'boundary_row_zero_surplus_impossible')
-    );
     const observeRawSurplusTrend = (rawSurplus: number): void => {
       if (lastRawSurplus === undefined) {
         lastRawSurplus = rawSurplus;
@@ -1787,9 +1813,28 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
     const gateMaxRowSurplus = boundarySearchMode === 'surplusGateFirst' || boundarySearchMode === 'surplusFirst'
         ? MAX_ACCEPTABLE_SURPLUS
         : undefined;
-    const gatedBoundarySession = gateMaxRowSurplus === undefined
-      ? null
-      : createIndependentBoundaryFeasibilitySession(prefixRows, input.candyInventory, { ...boundaryOptions(), maxRowSurplus: gateMaxRowSurplus });
+    // 境界のセッションは上の行のブロックを全部作るので重い（同じ系統の行があると1秒を超える）。使うときに作る
+    let gatedBoundarySessionCache: ReturnType<typeof createIndependentBoundaryFeasibilitySession> | undefined;
+    const getGatedBoundarySession = (): ReturnType<typeof createIndependentBoundaryFeasibilitySession> => {
+      if (gateMaxRowSurplus === undefined) return null;
+      // 余り最小の1周目は共通の設定の各行の上限が同じなので、設定の同じセッションを2つ作らない
+      if (gateMaxRowSurplus === mainSearchMaxRowSurplus) return getIndependentBoundarySession();
+      if (gatedBoundarySessionCache === undefined) {
+        gatedBoundarySessionCache = createIndependentBoundaryFeasibilitySession(prefixRows, input.candyInventory, { ...boundaryOptions(), maxRowSurplus: gateMaxRowSurplus });
+      }
+      return gatedBoundarySessionCache;
+    };
+    /**
+     * 余りの上限に合う境界のセッション。セッションは作るときの各行の余りの上限を持ち、上位の余りの上限は呼ぶときに受け取る。
+     * 各行の上限が合うセッションが無い（作れなかった）ときは null で、呼び出し側は全行を解く。
+     * 合わないセッションで代わりに判定すると、各行の上限を見ずに「配れる」と返してしまう
+     */
+    const boundarySessionFor = (limits: BoundaryLimits): ReturnType<typeof createIndependentBoundaryFeasibilitySession> => {
+      const maxRowSurplus = limits.maxRowSurplus ?? mainSearchMaxRowSurplus;
+      if (maxRowSurplus === mainSearchMaxRowSurplus) return getIndependentBoundarySession();
+      if (maxRowSurplus === gateMaxRowSurplus) return getGatedBoundarySession();
+      return null;
+    };
     const minimumReachedSurplus = selectedWitness
       ? stateForWitness(selectedWitness, input).metrics.reachedSurplus
       : 0;
@@ -1798,12 +1843,25 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
     );
     type BoundaryLimits = SurplusLimits;
     const boundaryCacheKey = (totalCandy: number, limits: BoundaryLimits): string => (
-      `${totalCandy}|row:${limits.maxRowSurplus ?? ''}|total:${limits.maxTotalSurplus ?? ''}|reached:${limits.maxReachedSurplus ?? ''}`
+      `${totalCandy}|row:${limits.maxRowSurplus ?? ''}|reached:${limits.maxReachedSurplus ?? ''}`
     );
+    const boundaryFullSolveOptions = (limits: BoundaryLimits) => ({
+      ...boundaryOptions(),
+      ...(limits.maxRowSurplus === undefined ? {} : { maxRowSurplus: limits.maxRowSurplus }),
+      ...(limits.maxReachedSurplus === undefined ? {} : { maxReachedSurplus: limits.maxReachedSurplus }),
+    });
     const boundaryDecisionCache = new Map<string, ReturnType<typeof solveFeasibilityDecisionForFixedRows>>();
     const boundarySolveCache = new Map<string, ReturnType<typeof solveFeasibilityForFixedRows>>();
-    const decideBoundaryTotal = (totalCandy: number, rawLimits: BoundaryLimits = {}) => {
-      const limits = normalizeLimits(rawLimits);
+    /** 境界の行の系統が上の行にいるか */
+    const boundaryFamilyInPrefix = prefixRows.some(row => row.candyFamilyKey === boundaryPokemon.candyFamilyKey);
+    /**
+     * 境界の行だけで余りを上限以内にできるかの事前チェック（`hasSingleRowSupplyWithinSurplus`）を使えるか。
+     * 事前チェックは、境界の行が種族アメを min(在庫, 総数) 使う前提で調べる。上の行に同じ系統の行がいると、境界の行に回る
+     * 種族アメは上の行との分け方で変わり（少ないほどほかのアメが要り、余りの出方が変わる）、必要条件にならない
+     * （配れる個数を「余り2以内にできない」と誤って飛ばす）。そのときは事前チェックをせず、厳密な判定に任せる
+     */
+    const canPrecheckBoundaryRowSurplus = !boundaryFamilyInPrefix;
+    const decideBoundaryTotal = (totalCandy: number, limits: BoundaryLimits = {}) => {
       const cacheKey = boundaryCacheKey(totalCandy, limits);
       const cachedSolve = boundarySolveCache.get(cacheKey);
       if (cachedSolve) {
@@ -1813,7 +1871,7 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
       const cachedDecision = boundaryDecisionCache.get(cacheKey);
       if (cachedDecision) return cachedDecision;
       const row = boundaryRowForTotal(totalCandy);
-      if (limits.maxRowSurplus !== undefined && !hasSingleRowSupplyWithinSurplus(row, input.candyInventory, limits.maxRowSurplus)) {
+      if (canPrecheckBoundaryRowSurplus && limits.maxRowSurplus !== undefined && !hasSingleRowSupplyWithinSurplus(row, input.candyInventory, limits.maxRowSurplus)) {
         rowSurplusGateSkippedTotals++;
         const result = {
           status: 'infeasible',
@@ -1823,70 +1881,148 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
         boundaryDecisionCache.set(cacheKey, result);
         return result;
       }
-      if (limits.maxTotalSurplus !== undefined && !hasSingleRowSupplyWithinSurplus(row, input.candyInventory, limits.maxTotalSurplus)) {
-        rowSurplusGateSkippedTotals++;
-        const result = {
-          status: 'infeasible',
-          reason: 'boundary_row_total_surplus_gate_impossible',
-          stats: emptyFeasibilityStats(),
-        } as const;
-        boundaryDecisionCache.set(cacheKey, result);
-        return result;
-      }
-      const session = limits.maxReachedSurplus === minimumReachedSurplus
-        && limits.maxRowSurplus === MAX_ACCEPTABLE_SURPLUS
-        && limits.maxTotalSurplus === undefined
-        ? gatedBoundarySession
-        : limits.maxReachedSurplus === undefined && limits.maxRowSurplus !== undefined && gatedBoundarySession
-          ? gatedBoundarySession
-          : limits.maxReachedSurplus === undefined
-            ? getIndependentBoundarySession()
-            : null;
-      const result = session?.canSolve(row, {
-        maxTotalSurplus: limits.maxTotalSurplus,
-        maxReachedSurplus: limits.maxReachedSurplus,
-      })
-        ?? solveFeasibilityDecisionForFixedRows([...prefixRows, row], input.candyInventory, {
-          ...boundaryOptions(),
-          ...(limits.maxRowSurplus === undefined ? {} : { maxRowSurplus: limits.maxRowSurplus }),
-          ...(limits.maxTotalSurplus === undefined ? {} : { maxTotalSurplus: limits.maxTotalSurplus }),
-          ...(limits.maxReachedSurplus === undefined ? {} : { maxReachedSurplus: limits.maxReachedSurplus }),
-        });
+      const result = boundarySessionFor(limits)?.canSolve(row, { maxReachedSurplus: limits.maxReachedSurplus })
+        ?? solveFeasibilityDecisionForFixedRows([...prefixRows, row], input.candyInventory, boundaryFullSolveOptions(limits));
       boundaryDecisionCache.set(cacheKey, result);
       return result;
     };
-    const solveBoundaryTotal = (totalCandy: number, rawLimits: BoundaryLimits = {}): ReturnType<typeof solveFeasibilityForFixedRows> => {
-      const limits = normalizeLimits(rawLimits);
+    const solveBoundaryTotal = (totalCandy: number, limits: BoundaryLimits = {}): ReturnType<typeof solveFeasibilityForFixedRows> => {
       const cacheKey = boundaryCacheKey(totalCandy, limits);
       const cached = boundarySolveCache.get(cacheKey);
       if (cached) return cached;
       const row = boundaryRowForTotal(totalCandy);
-      const session = limits.maxReachedSurplus === minimumReachedSurplus
-        && limits.maxRowSurplus === MAX_ACCEPTABLE_SURPLUS
-        && limits.maxTotalSurplus === undefined
-        ? gatedBoundarySession
-        : limits.maxReachedSurplus === undefined && limits.maxRowSurplus === undefined && limits.maxTotalSurplus === undefined
-          ? getIndependentBoundarySession()
-          : limits.maxReachedSurplus === undefined && limits.maxRowSurplus !== undefined && limits.maxTotalSurplus === undefined
-            ? gatedBoundarySession
-            : null;
-      const result = session?.solve(row, {
-        maxTotalSurplus: limits.maxTotalSurplus,
-        maxReachedSurplus: limits.maxReachedSurplus,
-      })
-        ?? solveFeasibilityForFixedRows([...prefixRows, row], input.candyInventory, {
-          ...boundaryOptions(),
-          ...(limits.maxRowSurplus === undefined ? {} : { maxRowSurplus: limits.maxRowSurplus }),
-          ...(limits.maxTotalSurplus === undefined ? {} : { maxTotalSurplus: limits.maxTotalSurplus }),
-          ...(limits.maxReachedSurplus === undefined ? {} : { maxReachedSurplus: limits.maxReachedSurplus }),
-        });
-      boundarySolveCache.set(cacheKey, result);
-      if (result.status === 'feasible') boundaryDecisionCache.set(cacheKey, { status: 'feasible', stats: result.stats });
-      else boundaryDecisionCache.set(cacheKey, result);
+      const result = boundarySessionFor(limits)?.solve(row, { maxReachedSurplus: limits.maxReachedSurplus })
+        ?? solveFeasibilityForFixedRows([...prefixRows, row], input.candyInventory, boundaryFullSolveOptions(limits));
+      rememberBoundarySolve(cacheKey, result);
       return result;
     };
-    if (boundarySearchMode === 'surplusGateFirst') {
-      const result = gatedBoundarySession?.solveMaxBoundaryTotal(
+    /** 解いた結果を、解いた結果と判定の両方のキャッシュへ入れる（判定は配れるかだけを持つ） */
+    function rememberBoundarySolve(cacheKey: string, result: ReturnType<typeof solveFeasibilityForFixedRows>): void {
+      boundarySolveCache.set(cacheKey, result);
+      boundaryDecisionCache.set(cacheKey, result.status === 'feasible' ? { status: 'feasible', stats: result.stats } : result);
+    }
+    /**
+     * 境界の行のアメブのおすすめ（境界修正設計書 §9.2）。アメブを使い切る個数（床）で選んだ境界の行について求める。
+     * 出すのは、アメブを使っていて（床が1以上）、個数指定でない行だけ。
+     */
+    const adviseBoundaryBoost = (witness: FeasibilityWitness): PokemonBoostAdvice | undefined => {
+      if (boundaryBoostFloor <= 0 || boundaryPokemon.candyTarget || input.boost.kind === 'none') return undefined;
+      const chosen = lastOf(witness.rows);
+      if (!chosen) return undefined;
+      const advice: PokemonBoostAdvice = {};
+      // 上の行の配り方を選んだ witness のまま固定したときの残りの在庫（要るときに1回だけ求める）
+      let residualCache: CandyInventory | undefined;
+      const residual = (): CandyInventory => (residualCache ??= inventoryAfterFeasibleRows(input.candyInventory, witness.rows.slice(0, -1)));
+      // 余りが減る（余り最小・バランス。§9.2.1）。床で選んだ個数が余り0〜2に収まらないとき、床より少ないアメブで
+      // 境界の行を余り0〜2にできる最大の個数（床を付けない探索が選ぶ個数）。上の行の配り方は固定し、残りの在庫で境界の行だけを見る
+      const chosenSurplus = supplyValue(supplyFromFeasibleRow(chosen)) - chosen.totalCandy;
+      if (input.options.itemCompareMode !== 'legacyImproved' && chosenSurplus > MAX_ACCEPTABLE_SURPLUS) {
+        for (let total = Math.min(boundaryBoostFloor, chosen.totalCandy) - 1; total > 0; total--) {
+          const row = boundaryRowForTotal(total);
+          const surplus = minSingleRowSupplySurplus(row, residual(), MAX_ACCEPTABLE_SURPLUS);
+          if (surplus === null) continue;
+          advice.surplus = { boostCandy: row.boostCandy, surplusBefore: chosenSurplus, surplusAfter: surplus, levelAfter: row.reachedLv, expInLevelAfter: row.expInLevel };
+          break;
+        }
+      }
+      // 目標Lvに届く（3方式。§9.2.2）。アメブを減らすほど届くのに要るかけらは減り、アメの総数は増える。残りのかけらで届く
+      // アメブの最大を二分探索で求め、その需要が上の行と合わせて在庫で配れるかを1回だけ判定する（配れなければ、それより少ない
+      // アメブはもっとアメが要るので届かない）
+      if (!chosen.candyDemandMet) {
+        const reachRowFor = (boost: number): FeasibilityDemandRow => (
+          targetDemandRowForPokemon({ ...boundaryPokemon, requestedBoostCandy: boost }, input, remainingBoost, remainingShards)
+        );
+        if (reachRowFor(0).candyDemandMet) {
+          let lowBoost = 0;
+          let highBoost = boundaryBoostFloor - 1;
+          while (lowBoost < highBoost) {
+            const mid = Math.ceil((lowBoost + highBoost) / 2);
+            if (reachRowFor(mid).candyDemandMet) lowBoost = mid;
+            else highBoost = mid - 1;
+          }
+          const reachRow = reachRowFor(lowBoost);
+          // 上の行の配り方を選んだ witness のまま固定し、残りの在庫で境界の行だけを賄えれば配れる（全行の判定は、上の行のブロックを
+          // 作り直すので重い）。境界の行の系統が上の行にいると、系統の種族アメの使い方（min(在庫, 需要合計)）が上の行の配り方と
+          // 一緒に変わるので、この形では確かめられない
+          const reachableWithUpperRowsFixed = !boundaryFamilyInPrefix
+            && hasSingleRowSupplyWithinSurplus(reachRow, residual());
+          if (reachableWithUpperRowsFixed
+            || solveFeasibilityDecisionForFixedRows([...prefixRows, reachRow], input.candyInventory, options()).status === 'feasible') {
+            advice.reach = { boostCandy: lowBoost };
+          }
+        }
+      }
+      return advice.surplus || advice.reach ? advice : undefined;
+    };
+    /**
+     * 上限の即決。境界の行に需要の上限（かけらで縮めた総数）まで配れるなら、それが各方式の境界の探索の答えになる。
+     * - EXP最大: 境界の Lv+EXP が最大
+     * - バランス: 各行余り0〜2のゲート内で最大（ゲート内の最大を直接求める処理の答え）
+     * - 余り最小: ゲート内・上位の余りを最小のまま最大（上から1個ずつ見る走査の最初の候補）
+     *
+     * セッションを作らずに全行を1回解く。セッションは上の行のブロックを、種族アメの分け方をすべて試して作るので、
+     * 上の行に同じ系統の行があると、キャッシュが無ければ1秒を超える。即決では、同じ系統の行があるときは種族アメを上から使う
+     * 候補が最適と証明できたときだけ採り、証明できなければ今までどおりセッションで探索する。到達prefixの witness も証明できずに
+     * 分け方をすべて試して作った入力では、そのブロックがキャッシュにあってセッションは軽い（ここで全行を分け方をすべて試して
+     * 解き直すと、余りの上限が違うキャッシュのキーでもう一度作ることになり、かえって遅い）。配れないときもセッションで探索する。
+     *
+     * 即決が答えを返せないと先に分かるときは省く:
+     * - 需要の総数を配れないと到達prefixの探索で分かっている（`prefixRejectsBoundaryUpper`）
+     * - 余り最小で、到達prefixの余りの最小が1以上、上の行に同じ系統の行がいて、境界の行はその系統でない。上の行に同じ系統の行が
+     *   いるので即決は証明を要るが、余り最小の証明は全行の余り0を求める。境界の行が上の行と別の系統なら、上の行に回る種族アメは
+     *   変わらず（系統の種族アメ使用 = min(在庫, 需要合計)）、上の行の余りの和は到達prefixの最小より下がらないので、証明は通らない
+     */
+    const upperLimits: BoundaryLimits = boundarySearchMode === 'legacyImproved'
+      ? {}
+      : boundarySearchMode === 'surplusGateFirst'
+        ? { maxRowSurplus: MAX_ACCEPTABLE_SURPLUS }
+        : { maxRowSurplus: MAX_ACCEPTABLE_SURPLUS, maxReachedSurplus: minimumReachedSurplus };
+    const upperCertificateImpossible = boundarySearchMode === 'surplusFirst'
+      && minimumReachedSurplus > 0
+      && hasSharedCandyFamily(prefixRows)
+      && !boundaryFamilyInPrefix;
+    const upperResult = prefixRejectsBoundaryUpper || upperCertificateImpossible
+      ? null
+      : solveFeasibilityForFixedRowsIfTopDownCertified([...prefixRows, boundaryRowForTotal(targetTotalCandy)], input.candyInventory, boundaryFullSolveOptions(upperLimits));
+    if (upperResult) {
+      const result = upperResult;
+      rememberBoundarySolve(boundaryCacheKey(targetTotalCandy, upperLimits), result);
+      if (result.status === 'feasible') {
+        foundBoundary = true;
+        solvedCandidates++;
+        bestWitness = result.witness;
+        bestWitnessTotalCandy = targetTotalCandy;
+        low = targetTotalCandy;
+        if (boundarySearchMode === 'legacyImproved') {
+          maxFeasibleScope = 'unrestricted';
+        } else {
+          checkedLowerTotals++;
+          feasibleLowerTotals++;
+          maxFeasibleScope = 'rowSurplusGate';
+          stoppedReason = 'first_acceptable_surplus';
+          const candidateState = stateForWitness(result.witness, input);
+          observeRawSurplusTrend(candidateState.metrics.rawSurplus);
+          appendBoundarySearchSample({
+            totalCandy: targetTotalCandy,
+            status: 'feasible',
+            rawSurplus: candidateState.metrics.rawSurplus,
+            normalizedSurplus: candidateState.metrics.normalizedSurplus,
+            boundaryLevel: result.witness.boundaryLevel,
+            boundaryExpInLevel: result.witness.boundaryExpInLevel,
+          });
+          if (boundarySearchMode === 'surplusFirst' && candidateState.metrics.rawSurplus === 0) firstZeroRawSurplusTotalCandy = targetTotalCandy;
+        }
+      } else if (result.status === 'inconclusive') {
+        supplyInconclusiveCandidates++;
+        inconclusiveLowerTotals++;
+        stoppedReason = 'inconclusive';
+        appendBoundarySearchSample({ totalCandy: targetTotalCandy, status: 'inconclusive' });
+      } else {
+        supplyRejectedCandidates++;
+      }
+    }
+    if (boundarySearchMode === 'surplusGateFirst' && !foundBoundary && stoppedReason !== 'inconclusive') {
+      const result = getGatedBoundarySession()?.solveMaxBoundaryTotal(
         boundaryRowForTotal(targetTotalCandy),
         targetTotalCandy,
         boundaryRowForTotal,
@@ -1894,7 +2030,7 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
       const directGatedMax = result?.status === 'feasible'
         ? lastOf(result.witness.rows)?.totalCandy
         : undefined;
-      if (result?.status === 'feasible' && directGatedMax !== undefined && directGatedMax >= 0) {
+      if (result?.status === 'feasible' && directGatedMax !== undefined && directGatedMax >= boundaryBoostFloor) {
         checkedLowerTotals++;
         feasibleLowerTotals++;
         solvedCandidates++;
@@ -1921,19 +2057,19 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
         appendBoundarySearchSample({ totalCandy: targetTotalCandy, status: 'inconclusive' });
       }
     }
-    if (boundarySearchMode === 'surplusFirst' && !foundBoundary) {
+    if (boundarySearchMode === 'surplusFirst' && !foundBoundary && stoppedReason !== 'inconclusive') {
       // First fix the minimum surplus of the maximum reached prefix, then
       // maximize the final boundary within its independent row-surplus gate.
       const maximumBoundaryCandy = targetTotalCandy;
-      const gatedUpperResult = gatedBoundarySession?.solveMaxBoundaryTotal(
+      const gatedUpperResult = getGatedBoundarySession()?.solveMaxBoundaryTotal(
         boundaryRowForTotal(maximumBoundaryCandy),
         maximumBoundaryCandy,
         boundaryRowForTotal,
       );
       const gatedUpper = gatedUpperResult?.status === 'feasible'
         ? lastOf(gatedUpperResult.witness.rows)?.totalCandy ?? maximumBoundaryCandy
-        : maximumBoundaryCandy;
-      for (let total = gatedUpper; total >= 0; total--) {
+        : boundarySearchUpper;
+      for (let total = gatedUpper; total >= boundaryBoostFloor; total--) {
         checkedLowerTotals++;
         const limits = {
           maxRowSurplus: MAX_ACCEPTABLE_SURPLUS,
@@ -1986,14 +2122,73 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
         decisionRejectedLowerTotals++;
       }
     }
-    if (boundarySearchMode === 'surplusFirst' && !foundBoundary && stoppedReason !== 'inconclusive' && selectedWitness) {
-      const prefixState = stateForWitness(selectedWitness, input);
-      keepExistingSurplusFirstPrefix = prefixState.metrics.rawSurplus === 0;
+    if (boundarySearchMode === 'surplusFirst' && !foundBoundary && stoppedReason !== 'inconclusive' && boundaryBoostFloor > 0) {
+      // 床から上に、各行余り0〜2（と上位の余りを増やさない条件）を満たす個数が無い（§9.1.3。D1）。
+      // 上の届いた行の余りは増やさず（目標Lvに届いた行の余りは、その後使わない）、境界の行の余りだけ0〜2を外す
+      // （境界の行は届いていないので、余ったアメはかけらが増えたあとにLvを上げるのに使える）。比べ方は余り最小のまま
+      // （上位の余り → 境界の Lv+EXP → 境界の余り）で、上位の余りは最小に固定なので、配れる最大の個数を選ぶ。
+      // 境界の行の余りに上限が無いので、配れる個数は下へ閉じている（t+1 個で配れれば t 個でも配れる）。上限から二分探索する。
+      // 探すのは0個から上限まで全体。在庫で床まで配れないときは、配れる最大が床より下になる（在庫の都合で減らすのは要件どおり）。
+      // ここでバランスへ切り替えると、余り最小の1周目では共通の設定（`mainOptions`）の各行余り0〜2が探索に残り、
+      // ゲートのために床より下の個数を選んでアメブを減らしてしまう
+      const keepUpperOptions = { ...boundaryOptions(), maxRowSurplus: undefined, maxReachedSurplus: minimumReachedSurplus };
+      const keepUpperRows = (total: number): FeasibilityDemandRow[] => [...prefixRows, boundaryRowForTotal(total)];
+      // 0個は到達prefixの witness がそのまま満たす（境界の行は余り0、上位の余りは最小そのもの）ので確かめない
+      let feasibleTotal = 0;
+      let upperTotal = targetTotalCandy;
+      let probeUpper = true;
+      while (feasibleTotal < upperTotal) {
+        const mid = probeUpper ? upperTotal : Math.ceil((feasibleTotal + upperTotal) / 2);
+        probeUpper = false;
+        checkedLowerTotals++;
+        const decision = solveFeasibilityDecisionForFixedRows(keepUpperRows(mid), input.candyInventory, keepUpperOptions);
+        if (decision.status === 'feasible') {
+          feasibleTotal = mid;
+          continue;
+        }
+        if (decision.status === 'inconclusive') {
+          supplyInconclusiveCandidates++;
+          inconclusiveLowerTotals++;
+          stoppedReason = 'inconclusive';
+          appendBoundarySearchSample({ totalCandy: mid, status: 'inconclusive' });
+          break;
+        }
+        rejectedLowerTotals++;
+        decisionRejectedLowerTotals++;
+        upperTotal = mid - 1;
+      }
+      if (stoppedReason !== 'inconclusive') {
+        const result = solveFeasibilityForFixedRows(keepUpperRows(feasibleTotal), input.candyInventory, keepUpperOptions);
+        if (result.status === 'feasible') {
+          foundBoundary = true;
+          feasibleLowerTotals++;
+          solvedCandidates++;
+          low = feasibleTotal;
+          bestWitness = result.witness;
+          bestWitnessTotalCandy = feasibleTotal;
+          maxFeasibleScope = 'unrestricted';
+          stoppedReason = 'boundary_surplus_ungated';
+          const candidateState = stateForWitness(result.witness, input);
+          observeRawSurplusTrend(candidateState.metrics.rawSurplus);
+          appendBoundarySearchSample({
+            totalCandy: feasibleTotal,
+            status: 'feasible',
+            rawSurplus: candidateState.metrics.rawSurplus,
+            normalizedSurplus: candidateState.metrics.normalizedSurplus,
+            boundaryLevel: result.witness.boundaryLevel,
+            boundaryExpInLevel: result.witness.boundaryExpInLevel,
+          });
+        } else if (result.status === 'inconclusive') {
+          supplyInconclusiveCandidates++;
+          inconclusiveLowerTotals++;
+          stoppedReason = 'inconclusive';
+          appendBoundarySearchSample({ totalCandy: feasibleTotal, status: 'inconclusive' });
+        }
+      }
     }
-    if (boundarySearchMode === 'surplusFirst' && !foundBoundary && stoppedReason !== 'inconclusive') surplusFirstZeroBudgetExhausted = true;
-    if (!keepExistingSurplusFirstPrefix && !foundBoundary && stoppedReason !== 'inconclusive' && boundarySearchMode === 'legacyImproved') {
+    if (!foundBoundary && stoppedReason !== 'inconclusive' && boundarySearchMode === 'legacyImproved') {
       const directMax = getIndependentBoundarySession()?.maxBoundaryTotal(boundaryRowForTotal(targetTotalCandy), targetTotalCandy);
-      if (directMax !== undefined && directMax !== null && directMax > 0) {
+      if (directMax !== undefined && directMax !== null && directMax >= 0) {
         const result = solveBoundaryTotal(directMax);
         if (result.status === 'feasible') {
           bestWitness = result.witness;
@@ -2010,141 +2205,44 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
         }
       }
     }
-    while (!keepExistingSurplusFirstPrefix && !(boundarySearchMode === 'surplusGateFirst' && stoppedReason === 'first_acceptable_surplus') && (boundarySearchMode === 'legacyImproved' || boundarySearchMode === 'surplusGateFirst' || !foundBoundary) && stoppedReason !== 'inconclusive' && low < high) {
-      const mid = Math.ceil((low + high) / 2);
-      const decision = decideBoundaryTotal(mid);
-      if (decision?.status === 'feasible') {
-        foundBoundary = true;
-        solvedCandidates++;
-        low = mid;
-        maxFeasibleScope = 'unrestricted';
-        continue;
-      }
-      if (isBoundaryRowGateInfeasible(decision)) {
-        supplyRejectedCandidates++;
-        high = mid - 1;
-        continue;
-      }
-      if (decision?.status === 'inconclusive') {
-        supplyInconclusiveCandidates++;
-        break;
-      }
-      const result = solveBoundaryTotal(mid);
-      if (result.status === 'feasible') {
-        bestWitness = result.witness ?? null;
-        bestWitnessTotalCandy = mid;
-        foundBoundary = true;
-        solvedCandidates++;
-        low = mid;
-        maxFeasibleScope = 'unrestricted';
-      } else {
-        if (result.status === 'inconclusive') {
-          supplyInconclusiveCandidates++;
-          break;
-        }
-        supplyRejectedCandidates++;
-        high = mid - 1;
-      }
-    }
-    if (!keepExistingSurplusFirstPrefix && foundBoundary && (!bestWitness || bestWitnessTotalCandy !== low)) {
-      const result = solveBoundaryTotal(low);
-      if (result.status === 'feasible') {
-        bestWitness = result.witness;
-        bestWitnessTotalCandy = low;
-        maxFeasibleScope = maxFeasibleScope === 'unknown' ? 'unrestricted' : maxFeasibleScope;
-        solvedCandidates++;
-      } else if (result.status === 'inconclusive') {
-        supplyInconclusiveCandidates++;
-        foundBoundary = false;
-        stoppedReason = 'inconclusive';
-      } else {
-        supplyRejectedCandidates++;
-        foundBoundary = false;
-      }
-    }
-    if (!keepExistingSurplusFirstPrefix && foundBoundary && !bestWitness && boundarySearchMode === 'surplusFirst') {
-      const lowDecision = decideBoundaryTotal(low, { maxTotalSurplus: 0 });
-      if (lowDecision?.status === 'feasible') {
-        const result = solveBoundaryTotal(low, { maxTotalSurplus: 0 });
-        if (result.status === 'feasible') {
-          feasibleLowerTotals++;
+    // ここまでで決まらなかったとき（EXP最大・バランス）、配れる最大を二分探索で求める。余り最小はゲート内の走査か、床から上に
+    // ゲート内の個数が無いときの D1 の探索で必ず決まる（0個は到達prefixの witness がそのまま満たし、判定の「配れない」は厳密）ので、
+    // ここへは来ない。決まらないのは「分からない」が返ったとき（と、判定と解き直しが食い違ったとき）で、そのときは到達prefixの witness のまま
+    if (boundarySearchMode !== 'surplusFirst' && !foundBoundary && stoppedReason !== 'inconclusive') {
+      // 最初の1回は上限を確かめる。かけらで止まる境界の行は、需要をかけらで使える分に縮めてあるので、アメの在庫では配りきれることが
+      // 多い。配りきれれば、途中の個数の判定（境界の行が上の行と同じ系統だと1回ごとに全行を解き直す）は要らない。
+      // アメ在庫で落ちた行（需要の総数を配れないと分かっている）は、その1つ下も配れないことが多いので、確かめずに二分探索する
+      let probeUpperFirst = !prefixRejectsBoundaryUpper;
+      let binarySearchInconclusive = false;
+      while (low < high) {
+        const mid = probeUpperFirst ? high : Math.ceil((low + high) / 2);
+        probeUpperFirst = false;
+        const decision = decideBoundaryTotal(mid);
+        if (decision.status === 'feasible') {
+          foundBoundary = true;
           solvedCandidates++;
-          bestWitness = result.witness;
-          bestWitnessTotalCandy = low;
-          const candidateState = stateForWitness(result.witness, input);
-          maxFeasibleScope = 'totalSurplusGate';
-          observeRawSurplusTrend(candidateState.metrics.rawSurplus);
-          appendBoundarySearchSample({
-            totalCandy: low,
-            status: 'max_feasible',
-            rawSurplus: candidateState.metrics.rawSurplus,
-            normalizedSurplus: candidateState.metrics.normalizedSurplus,
-            boundaryLevel: result.witness.boundaryLevel,
-            boundaryExpInLevel: result.witness.boundaryExpInLevel,
-          });
-          firstZeroRawSurplusTotalCandy = low;
-          stoppedReason = 'first_zero_raw_surplus';
-        } else if (result.status === 'inconclusive') {
-          supplyInconclusiveCandidates++;
-          inconclusiveLowerTotals++;
-          stoppedReason = 'inconclusive';
-          appendBoundarySearchSample({ totalCandy: low, status: 'inconclusive' });
-        }
-      } else if (lowDecision?.status === 'inconclusive') {
-        supplyInconclusiveCandidates++;
-        inconclusiveLowerTotals++;
-        stoppedReason = 'inconclusive';
-        appendBoundarySearchSample({ totalCandy: low, status: 'inconclusive' });
-      }
-      for (let total = low - 1; total >= 0; total--) {
-        if (bestWitness || stoppedReason === 'inconclusive') break;
-        checkedLowerTotals++;
-        const decision = decideBoundaryTotal(total, { maxTotalSurplus: 0 });
-        if (decision?.status === 'infeasible') {
-          rejectedLowerTotals++;
-          decisionRejectedLowerTotals++;
+          low = mid;
+          maxFeasibleScope = 'unrestricted';
           continue;
         }
-        if (decision?.status === 'inconclusive') {
+        if (decision.status === 'inconclusive') {
           supplyInconclusiveCandidates++;
-          inconclusiveLowerTotals++;
-          stoppedReason = 'inconclusive';
-          appendBoundarySearchSample({ totalCandy: total, status: 'inconclusive' });
+          binarySearchInconclusive = true;
           break;
         }
-        const result = solveBoundaryTotal(total, { maxTotalSurplus: 0 });
-        if (result.status === 'feasible') {
-          feasibleLowerTotals++;
-          solvedCandidates++;
-          bestWitness = result.witness;
-          bestWitnessTotalCandy = total;
-          const candidateState = stateForWitness(result.witness, input);
-          maxFeasibleScope = 'totalSurplusGate';
-          observeRawSurplusTrend(candidateState.metrics.rawSurplus);
-          appendBoundarySearchSample({
-            totalCandy: total,
-            status: 'feasible',
-            rawSurplus: candidateState.metrics.rawSurplus,
-            normalizedSurplus: candidateState.metrics.normalizedSurplus,
-            boundaryLevel: result.witness.boundaryLevel,
-            boundaryExpInLevel: result.witness.boundaryExpInLevel,
-          });
-          firstZeroRawSurplusTotalCandy = total;
-          stoppedReason = 'first_zero_raw_surplus';
-          break;
-        }
-        if (result.status === 'inconclusive') {
-          supplyInconclusiveCandidates++;
-          inconclusiveLowerTotals++;
-          stoppedReason = 'inconclusive';
-          appendBoundarySearchSample({ totalCandy: total, status: 'inconclusive' });
-          break;
-        }
-        rejectedLowerTotals++;
+        // 判定の「配れない」は資源について厳密（品質の比較を省くだけ）なので、解き直さずに上限を下げる。
+        // 配る個数の復元は、ループのあとで1回だけ行う
+        supplyRejectedCandidates++;
+        high = mid - 1;
       }
-      surplusFirstZeroBudgetExhausted = !bestWitness && stoppedReason !== 'inconclusive';
+      if (!foundBoundary && !binarySearchInconclusive && boundaryBoostFloor > 0) {
+        // 在庫で1個も配れない（二分探索で0個より上が全部配れなかった）。床まで配れないときは配れる最大を採るので、0個にする。
+        // 床が無かったころは、余りゲート内の最大を求める処理や下へ向かう走査が0個を見つけていた
+        foundBoundary = true;
+        maxFeasibleScope = 'unrestricted';
+      }
     }
-    if (!keepExistingSurplusFirstPrefix && foundBoundary && !bestWitness) {
+    if (foundBoundary && (!bestWitness || bestWitnessTotalCandy !== low)) {
       const result = solveBoundaryTotal(low);
       if (result.status === 'feasible') {
         bestWitness = result.witness;
@@ -2154,13 +2252,14 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
       } else if (result.status === 'inconclusive') {
         supplyInconclusiveCandidates++;
         foundBoundary = false;
+        stoppedReason = 'inconclusive';
       } else {
         supplyRejectedCandidates++;
         foundBoundary = false;
       }
     }
-    if (!keepExistingSurplusFirstPrefix && foundBoundary && bestWitness && (boundarySearchMode === 'surplusFirst' || boundarySearchMode === 'surplusGateFirst')) {
-      if (stoppedReason !== 'first_zero_raw_surplus' && stoppedReason !== 'first_acceptable_surplus') stoppedReason = 'exhausted';
+    if (foundBoundary && bestWitness && (boundarySearchMode === 'surplusFirst' || boundarySearchMode === 'surplusGateFirst')) {
+      if (stoppedReason !== 'first_acceptable_surplus' && stoppedReason !== 'boundary_surplus_ungated') stoppedReason = 'exhausted';
       let bestState = stateForWitness(bestWitness, input);
       observeRawSurplusTrend(bestState.metrics.rawSurplus);
       appendBoundarySearchSample({
@@ -2177,48 +2276,50 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
       } else if (boundarySearchMode === 'surplusGateFirst' && hasOnlyAcceptableRowSurplus(bestState.metrics)) {
         stoppedReason = 'first_acceptable_surplus';
       }
-      const shouldScanLower = stoppedReason === 'exhausted';
-      let rowSurplusBoundProved = false;
-      if (shouldScanLower && boundarySearchMode === 'surplusGateFirst' && bestState.metrics.normalizedSurplus > 0) {
-        const improvingRowSurplusCap = bestState.metrics.normalizedSurplus - 1;
-        const improvingOptions = {
-          ...boundaryOptions(),
-          maxRowSurplus: improvingRowSurplusCap,
-        };
-        const improvingPrefixDecision = solveFeasibilityDecisionForFixedRows(prefixRows, input.candyInventory, improvingOptions);
-        if (improvingPrefixDecision.status === 'infeasible') {
-          rowSurplusBoundProved = true;
-        } else if (improvingPrefixDecision.status === 'feasible') {
-          const improvingBoundarySession = createIndependentBoundaryFeasibilitySession(prefixRows, input.candyInventory, improvingOptions);
-          const improvingMaxTotal = improvingBoundarySession?.maxBoundaryTotal(
-            boundaryRowForTotal(targetTotalCandy),
-            targetTotalCandy,
-          );
-          rowSurplusBoundProved = improvingMaxTotal !== null
-            && improvingMaxTotal !== undefined
-            && improvingMaxTotal < 0;
+      // 下へ探すのはバランスで、ゲート内の最大を直接求める処理で決まらず、上限なしの二分探索で選んだ個数がゲートを破ったときだけ
+      // （余り最小はゲート内の走査か D1 の探索で決まるので、ここで 'exhausted' にならない）
+      if (boundarySearchMode === 'surplusGateFirst' && stoppedReason === 'exhausted') {
+        let rowSurplusBoundProved = false;
+        if (bestState.metrics.normalizedSurplus > 0) {
+          const improvingRowSurplusCap = bestState.metrics.normalizedSurplus - 1;
+          const improvingOptions = {
+            ...boundaryOptions(),
+            maxRowSurplus: improvingRowSurplusCap,
+          };
+          const improvingPrefixDecision = solveFeasibilityDecisionForFixedRows(prefixRows, input.candyInventory, improvingOptions);
+          if (improvingPrefixDecision.status === 'infeasible') {
+            rowSurplusBoundProved = true;
+          } else if (improvingPrefixDecision.status === 'feasible') {
+            const improvingBoundarySession = createIndependentBoundaryFeasibilitySession(prefixRows, input.candyInventory, improvingOptions);
+            const improvingMaxTotal = improvingBoundarySession?.maxBoundaryTotal(
+              boundaryRowForTotal(targetTotalCandy),
+              targetTotalCandy,
+            );
+            rowSurplusBoundProved = improvingMaxTotal !== null
+              && improvingMaxTotal !== undefined
+              && improvingMaxTotal < 0;
+          }
         }
-      }
-      let foundByGatedScan = false;
-      if (shouldScanLower && boundarySearchMode === 'surplusFirst' && bestState.metrics.rawSurplus > 0) {
-        let selectedSurplusBudget: number | undefined;
-        const firstSurplusBudget = surplusFirstZeroBudgetExhausted ? 1 : 0;
-        // A coarse unrestricted probe can land below a better candidate with the
-        // same total surplus. Surplus-first must still compare reach/EXP within
-        // the chosen surplus budget, so scan the full boundary range for the
-        // gated proof pass.
-        const lowerSearchStart = targetTotalCandy;
-        for (let surplusBudget = firstSurplusBudget; surplusBudget <= bestState.metrics.rawSurplus; surplusBudget++) {
-          for (let total = lowerSearchStart; total >= 0; total--) {
-            if (surplusBudget === bestState.metrics.rawSurplus && total === bestWitnessTotalCandy) continue;
+        let foundByGatedScan = false;
+        if (!rowSurplusBoundProved) {
+          const checkedBeforeGatedScan = checkedLowerTotals;
+          const feasibleBeforeGatedScan = feasibleLowerTotals;
+          const rejectedBeforeGatedScan = rejectedLowerTotals;
+          const inconclusiveBeforeGatedScan = inconclusiveLowerTotals;
+          const skippedBeforeGatedScan = rowSurplusGateSkippedTotals;
+          const decisionRejectedBeforeGatedScan = decisionRejectedLowerTotals;
+          // バランスの境界の最大を直接求める処理は、境界の探索の最初（`solveMaxBoundaryTotal`）で1回だけ行う。
+          // ここへ来るのはそれが「配れる」でなかったときで、同じセッション・同じ引数で呼び直しても結果は変わらない
+          for (let total = low; total >= boundaryBoostFloor; total--) {
+            if (total === bestWitnessTotalCandy) continue;
             checkedLowerTotals++;
-            const decision = decideBoundaryTotal(total, { maxTotalSurplus: surplusBudget });
-            if (decision?.status === 'infeasible') {
+            const decision = decideBoundaryTotal(total, { maxRowSurplus: MAX_ACCEPTABLE_SURPLUS });
+            if (decision.status === 'infeasible') {
               rejectedLowerTotals++;
               decisionRejectedLowerTotals++;
               continue;
             }
-            if (decision?.status === 'inconclusive') {
+            if (decision.status === 'inconclusive') {
               supplyInconclusiveCandidates++;
               inconclusiveLowerTotals++;
               stoppedReason = 'inconclusive';
@@ -2226,7 +2327,7 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
               foundByGatedScan = true;
               break;
             }
-            const result = solveBoundaryTotal(total, { maxTotalSurplus: surplusBudget });
+            const result = solveBoundaryTotal(total, { maxRowSurplus: MAX_ACCEPTABLE_SURPLUS });
             if (result.status === 'feasible') {
               feasibleLowerTotals++;
               solvedCandidates++;
@@ -2240,19 +2341,12 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
                 boundaryLevel: result.witness.boundaryLevel,
                 boundaryExpInLevel: result.witness.boundaryExpInLevel,
               });
-              if (candidateState.metrics.rawSurplus === 0 && firstZeroRawSurplusTotalCandy === undefined) {
-                firstZeroRawSurplusTotalCandy = total;
-              }
-              const comparison = compareSurplusFirstBoundaryState(candidateState, bestState);
-              if (comparison > 0) {
-                bestWitness = result.witness;
-                bestWitnessTotalCandy = total;
-                bestState = candidateState;
-                selectedSurplusBudget = surplusBudget;
-                maxFeasibleScope = 'totalSurplusGate';
-                stoppedReason = surplusBudget === 0 ? 'first_zero_raw_surplus' : 'exhausted';
-              }
-              foundByGatedScan = selectedSurplusBudget !== undefined;
+              bestWitness = result.witness;
+              bestWitnessTotalCandy = total;
+              bestState = candidateState;
+              maxFeasibleScope = 'rowSurplusGate';
+              stoppedReason = 'first_acceptable_surplus';
+              foundByGatedScan = true;
               break;
             }
             if (result.status === 'inconclusive') {
@@ -2265,79 +2359,19 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
             }
             rejectedLowerTotals++;
           }
-          if (foundByGatedScan || selectedSurplusBudget !== undefined) break;
-        }
-      }
-      if (!rowSurplusBoundProved && (shouldScanLower || (boundarySearchMode === 'surplusGateFirst' && stoppedReason !== 'first_acceptable_surplus')) && gateMaxRowSurplus !== undefined) {
-        const checkedBeforeGatedScan = checkedLowerTotals;
-        const feasibleBeforeGatedScan = feasibleLowerTotals;
-        const rejectedBeforeGatedScan = rejectedLowerTotals;
-        const inconclusiveBeforeGatedScan = inconclusiveLowerTotals;
-        const skippedBeforeGatedScan = rowSurplusGateSkippedTotals;
-        const decisionRejectedBeforeGatedScan = decisionRejectedLowerTotals;
-        if (boundarySearchMode === 'surplusGateFirst') {
-          // Balance wants the highest boundary total that still satisfies the row surplus gate.
-          // For independent boundary rows, the session can answer and restore that candidate directly.
-          const result = gatedBoundarySession?.solveMaxBoundaryTotal(
-            boundaryRowForTotal(targetTotalCandy),
-            targetTotalCandy,
-            boundaryRowForTotal,
-          );
-          const directGatedMax = result?.status === 'feasible'
-            ? lastOf(result.witness.rows)?.totalCandy
-            : undefined;
-          if (result && directGatedMax !== undefined && directGatedMax >= 0 && directGatedMax !== bestWitnessTotalCandy) {
-            checkedLowerTotals++;
-            if (result.status === 'feasible') {
-              feasibleLowerTotals++;
-              solvedCandidates++;
-              const candidateState = stateForWitness(result.witness, input);
-              observeRawSurplusTrend(candidateState.metrics.rawSurplus);
-              appendBoundarySearchSample({
-                totalCandy: directGatedMax,
-                status: 'feasible',
-                rawSurplus: candidateState.metrics.rawSurplus,
-                normalizedSurplus: candidateState.metrics.normalizedSurplus,
-                boundaryLevel: result.witness.boundaryLevel,
-                boundaryExpInLevel: result.witness.boundaryExpInLevel,
-              });
-              bestWitness = result.witness;
-              bestWitnessTotalCandy = directGatedMax;
-              if (directGatedMax > low) low = directGatedMax;
-              bestState = candidateState;
-              maxFeasibleScope = 'rowSurplusGate';
-              stoppedReason = 'first_acceptable_surplus';
-              foundByGatedScan = true;
-            } else if (result.status === 'inconclusive') {
-              supplyInconclusiveCandidates++;
-              inconclusiveLowerTotals++;
-              stoppedReason = 'inconclusive';
-              appendBoundarySearchSample({ totalCandy: directGatedMax, status: 'inconclusive' });
-              foundByGatedScan = true;
-            } else {
-              rejectedLowerTotals++;
-            }
+          if (!foundByGatedScan) {
+            checkedLowerTotals = checkedBeforeGatedScan;
+            feasibleLowerTotals = feasibleBeforeGatedScan;
+            rejectedLowerTotals = rejectedBeforeGatedScan;
+            inconclusiveLowerTotals = inconclusiveBeforeGatedScan;
+            rowSurplusGateSkippedTotals = skippedBeforeGatedScan;
+            decisionRejectedLowerTotals = decisionRejectedBeforeGatedScan;
           }
         }
-        const gatedSearchStart = foundBoundary ? Math.min(targetTotalCandy, low) : targetTotalCandy;
-        for (let total = foundByGatedScan ? -1 : gatedSearchStart; total >= 0; total--) {
-          if (total === bestWitnessTotalCandy) continue;
+        // ゲート内の個数が無ければ、上限なしで配れる個数を下へ見て、ゲート外の余りが小さいものを選ぶ
+        for (let total = !foundByGatedScan && !rowSurplusBoundProved ? low - 1 : -1; total >= boundaryBoostFloor; total--) {
           checkedLowerTotals++;
-          const decision = decideBoundaryTotal(total, { maxRowSurplus: gateMaxRowSurplus });
-          if (decision?.status === 'infeasible') {
-            rejectedLowerTotals++;
-            decisionRejectedLowerTotals++;
-            continue;
-          }
-          if (decision?.status === 'inconclusive') {
-            supplyInconclusiveCandidates++;
-            inconclusiveLowerTotals++;
-            stoppedReason = 'inconclusive';
-            appendBoundarySearchSample({ totalCandy: total, status: 'inconclusive' });
-            foundByGatedScan = true;
-            break;
-          }
-          const result = solveBoundaryTotal(total, { maxRowSurplus: gateMaxRowSurplus });
+          const result = solveBoundaryTotal(total);
           if (result.status === 'feasible') {
             feasibleLowerTotals++;
             solvedCandidates++;
@@ -2351,93 +2385,40 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
               boundaryLevel: result.witness.boundaryLevel,
               boundaryExpInLevel: result.witness.boundaryExpInLevel,
             });
-            if (boundarySearchMode === 'surplusFirst' && candidateState.metrics.rawSurplus === 0 && firstZeroRawSurplusTotalCandy === undefined) {
+            if (candidateState.metrics.rawSurplus === 0 && firstZeroRawSurplusTotalCandy === undefined) {
               firstZeroRawSurplusTotalCandy = total;
             }
-            bestWitness = result.witness;
-            bestWitnessTotalCandy = total;
-            if (total > low) low = total;
-            bestState = candidateState;
-            maxFeasibleScope = 'rowSurplusGate';
-            stoppedReason = boundarySearchMode === 'surplusFirst'
-              ? 'first_zero_raw_surplus'
-              : 'first_acceptable_surplus';
-            foundByGatedScan = true;
-            break;
+            if (compareSurplusGateBoundaryState(candidateState, bestState) > 0) {
+              bestWitness = result.witness;
+              bestWitnessTotalCandy = total;
+              bestState = candidateState;
+              maxFeasibleScope = 'unrestricted';
+              if (hasOnlyAcceptableRowSurplus(candidateState.metrics)) {
+                stoppedReason = 'first_acceptable_surplus';
+                break;
+              }
+            }
+            continue;
           }
           if (result.status === 'inconclusive') {
             supplyInconclusiveCandidates++;
             inconclusiveLowerTotals++;
             stoppedReason = 'inconclusive';
             appendBoundarySearchSample({ totalCandy: total, status: 'inconclusive' });
-            foundByGatedScan = true;
             break;
           }
           rejectedLowerTotals++;
+          supplyRejectedCandidates++;
+          appendBoundarySearchSample({ totalCandy: total, status: 'infeasible' });
         }
-        if (!foundByGatedScan) {
-          checkedLowerTotals = checkedBeforeGatedScan;
-          feasibleLowerTotals = feasibleBeforeGatedScan;
-          rejectedLowerTotals = rejectedBeforeGatedScan;
-          inconclusiveLowerTotals = inconclusiveBeforeGatedScan;
-          rowSurplusGateSkippedTotals = skippedBeforeGatedScan;
-          decisionRejectedLowerTotals = decisionRejectedBeforeGatedScan;
-        }
+        if (rowSurplusBoundProved && stoppedReason === 'exhausted') stoppedReason = 'row_surplus_bound';
       }
-      for (let total = shouldScanLower && !foundByGatedScan && !rowSurplusBoundProved ? low - 1 : -1; total >= 0; total--) {
-        checkedLowerTotals++;
-        const result = solveBoundaryTotal(total);
-        if (result.status === 'feasible') {
-          feasibleLowerTotals++;
-          solvedCandidates++;
-          const candidateState = stateForWitness(result.witness, input);
-          observeRawSurplusTrend(candidateState.metrics.rawSurplus);
-          appendBoundarySearchSample({
-            totalCandy: total,
-            status: 'feasible',
-            rawSurplus: candidateState.metrics.rawSurplus,
-            normalizedSurplus: candidateState.metrics.normalizedSurplus,
-            boundaryLevel: result.witness.boundaryLevel,
-            boundaryExpInLevel: result.witness.boundaryExpInLevel,
-          });
-          if (candidateState.metrics.rawSurplus === 0 && firstZeroRawSurplusTotalCandy === undefined) {
-            firstZeroRawSurplusTotalCandy = total;
-          }
-          const comparison = boundarySearchMode === 'surplusGateFirst'
-            ? compareSurplusGateBoundaryState(candidateState, bestState)
-            : compareSurplusFirstBoundaryState(candidateState, bestState);
-          if (comparison > 0) {
-            bestWitness = result.witness;
-            bestWitnessTotalCandy = total;
-            bestState = candidateState;
-            maxFeasibleScope = 'unrestricted';
-            if (boundarySearchMode === 'surplusFirst' && candidateState.metrics.rawSurplus === 0) {
-              stoppedReason = 'first_zero_raw_surplus';
-              break;
-            }
-            if (boundarySearchMode === 'surplusGateFirst' && hasOnlyAcceptableRowSurplus(candidateState.metrics)) {
-              stoppedReason = 'first_acceptable_surplus';
-              break;
-            }
-          }
-          continue;
-        }
-        if (result.status === 'inconclusive') {
-          supplyInconclusiveCandidates++;
-          inconclusiveLowerTotals++;
-          stoppedReason = 'inconclusive';
-          appendBoundarySearchSample({ totalCandy: total, status: 'inconclusive' });
-          break;
-        }
-        rejectedLowerTotals++;
-        supplyRejectedCandidates++;
-        appendBoundarySearchSample({ totalCandy: total, status: 'infeasible' });
-      }
-      if (rowSurplusBoundProved && stoppedReason === 'exhausted') stoppedReason = 'row_surplus_bound';
     }
     if (foundBoundary) {
       selectedWitness = bestWitness;
       if (bestWitness) {
+        const advice = adviseBoundaryBoost(bestWitness);
+        if (advice) boundaryBoostAdvice = { pokemonId: boundaryPokemon.pokemonId, advice };
         boundarySearch = boundarySearchSummary(bestWitness, input, {
           mode: boundarySearchMode,
           boundaryIndex: currentBoundaryIndex,
@@ -2485,7 +2466,6 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
     const shouldTryNextSurplusFirstGate = Boolean(
       selectedWitness
         && input.options.itemCompareMode === 'surplusFirst'
-        && targetRows.length > 1
         && attemptMaxRowSurplus !== undefined
         && gatedProducedNothing
         && !selectedBoundaryReached,
@@ -2564,6 +2544,7 @@ function selectFbl01dChoices(input: NormalizedInput): { choices: Candidate[]; op
       boundarySearch,
       prefixSearch,
       prefixSearchAttempts,
+      boundaryBoostAdvice,
     },
   };
   } finally {
@@ -2807,7 +2788,10 @@ function solveLevelPlanBody(rawInput: LevelPlannerInput): LevelPlannerResult {
     const diagnostic = calcDiagnosis(pokemon, candidate.line, snapshot, input);
     const role = boundaryIndex === null || index < boundaryIndex ? 'upper' : index === boundaryIndex ? 'boundary' : 'lower';
     consumeInventory(inventory, pokemon, candidate.line); snapshot = mergeUsage(snapshot, candidate.usage);
-    return { pokemonId: pokemon.pokemonId, pokedexId: pokemon.pokedexId, name: pokemon.name, currentLevel: pokemon.currentLevel, currentExpInLevel: pokemon.currentExpInLevel, targetLevel: pokemon.targetLevel, targetExpInLevel: pokemon.targetExpInLevel, targetLine, reachableLine: candidate.line, candyDemandMet: candidate.line.candyDemandMet, shortage: diagnostic.shortage, constraintDiagnosis: diagnostic.diagnosis, role };
+    const boostAdvice = role === 'boundary' && optimized.boundaryBoostAdvice?.pokemonId === pokemon.pokemonId
+      ? finalBoostAdvice(optimized.boundaryBoostAdvice.advice, candidate.line)
+      : undefined;
+    return { pokemonId: pokemon.pokemonId, pokedexId: pokemon.pokedexId, name: pokemon.name, currentLevel: pokemon.currentLevel, currentExpInLevel: pokemon.currentExpInLevel, targetLevel: pokemon.targetLevel, targetExpInLevel: pokemon.targetExpInLevel, targetLine, reachableLine: candidate.line, candyDemandMet: candidate.line.candyDemandMet, shortage: diagnostic.shortage, constraintDiagnosis: diagnostic.diagnosis, role, ...(boostAdvice ? { boostAdvice } : {}) };
   });
   markPhase('renderResults');
   const boostUsed = pokemonResults.reduce((sum, result) => sum + result.reachableLine.boostedCandyUnits, 0);
@@ -2858,6 +2842,21 @@ function solveLevelPlanBody(rawInput: LevelPlannerInput): LevelPlannerResult {
   return result;
 }
 
+/**
+ * 境界の行のおすすめを、最終の行（refine のあと）で確かめ直す。余りは最終の余りより小さくなるときだけ、どちらもアメブを
+ * 今より減らすときだけ、届くは今が届いていないときだけ残す
+ */
+function finalBoostAdvice(advice: PokemonBoostAdvice, line: PokemonPlanLine): PokemonBoostAdvice | undefined {
+  const surplus = advice.surplus
+    && advice.surplus.boostCandy < line.boostedCandyUnits
+    && advice.surplus.surplusAfter < line.surplusCandyValue
+    ? { ...advice.surplus, surplusBefore: line.surplusCandyValue }
+    : undefined;
+  const reach = advice.reach && !line.candyDemandMet && advice.reach.boostCandy < line.boostedCandyUnits ? advice.reach : undefined;
+  if (!surplus && !reach) return undefined;
+  return { ...(surplus ? { surplus } : {}), ...(reach ? { reach } : {}) };
+}
+
 function boundaryIndexForChoices(choices: Candidate[]): number | null {
   const index = choices.findIndex(candidate => !candidate.line.candyDemandMet);
   return index >= 0 ? index : null;
@@ -2873,6 +2872,7 @@ export const __levelPlannerTestHooks = {
     fbl01dRowFrontierCache.clear();
   },
   candidateCacheSize: () => candidateCache.size,
+  hasActiveLossLedger: () => activeLossLedger !== null,
   fbl01dFrontierCacheSize: () => fbl01dFrontierCache.size + fbl01dGlobalPrefixCache.size + fbl01dRowFrontierCache.size,
   compareSyntheticStatesForTest: (
     a: Array<Partial<PokemonPlanLine> & { candyDemandMet: boolean; effectiveTargetReached: boolean; level: number; expInLevel: number; species?: number; surplusCandyValue?: number }>,

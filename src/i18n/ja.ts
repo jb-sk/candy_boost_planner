@@ -16,6 +16,9 @@ export const ja = {
     required: "（必須）",
     settings: "在庫・睡眠設定",
     settingsShort: "設定",
+    level: "Lv",
+    levelPickerOpen: "{label}（Lvを選ぶ）",
+    levelPickerOpenNoLabel: "Lvを選ぶ",
     help: "使い方",
     eventHistory: "イベント履歴",
     ariaOfuse: "OFUSEを新しいタブで開く",
@@ -27,7 +30,7 @@ export const ja = {
     defaultBoostReachLevelPlaceholder: "目標Lvと同じ",
     defaultBoostReachLevelHelp: "ポケモンを計算機に追加や、アメブ再割当などで使うアメブ目標Lvです。未設定は目標Lvと同じになります。",
     minimizeBoostLabel: "目標Lvに届く最小限のアメブ個数にする",
-    minimizeBoostHelp: "アメ在庫で足りない分だけアメブします。それでも在庫が足りない場合は既定のアメブ目標Lvを使います。設定でOFFの場合でも、アメブ個数の ? 内で個別にONにできます。",
+    minimizeBoostHelp: "アメ在庫で足りない分だけアメブします。それでも在庫が足りない場合は、そのポケモンのアメブ個数・アメブ目標Lv（入れていなければ既定のアメブ目標Lv）を使います。設定でOFFの場合でも、アメブ個数の ? 内で個別にONにできます。",
     itemCompareModeLabel: "配分方針",
     itemCompareModeSurplusFirst: "余り最小",
     itemCompareModeSurplusGateFirst: "バランス",
@@ -133,11 +136,147 @@ export const ja = {
       slotOrder: "スロットの順番",
       candyInventory: "アメ在庫",
       sleepHours: "累計睡眠時間",
+      fineTune: "シンプル",
+    },
+    // シンプル。動かせない理由・足りないものの文言は kind から引く表（FineTuneEditor.vue）で参照する
+    fineTune: {
+      open: "シンプル",
+      openTitle: "全員を一覧で見ながら目標Lv・アメブ・順番を調整し、まとめて計算機に反映します",
+      title: "シンプル",
+      loading: "計算機の結果を待っています…",
+      calculating: "計算中…",
+      previewFailed: "計算に失敗しました。もう一度操作してください",
+      summary: {
+        boostRemaining: "アメブ残り",
+        shardsRemaining: "かけら残り",
+      },
+      col: {
+        pokemon: "ポケモン",
+        target: "目標",
+        reach: "到達",
+        sleep: "睡眠",
+        boost: "アメブ",
+        candy: "アメ",
+        // アメブのあるスロットは、アメの数がアメブを含む合計なので「アメ合計」（計算機の calc.row.candyTotal と同じ呼び名）
+        candyTotal: "アメ合計",
+        shardsPerCandyLine1: "アメ1個あたり",
+        shardsPerCandyLine2: "かけら",
+      },
+      field: {
+        target: "目標Lv",
+        sleep: "睡眠",
+        boost: "アメブ",
+        candy: "アメ",
+        candyTotal: "アメ合計",
+        settings: "設定",
+      },
+      // 行の詳細。下書きから外し、OK で計算機の行から外す（ボックスの個体は消さない）
+      removeRow: "計算機から削除",
+      // 行の詳細。「LvUp!」にこのポケモンのアメブを動かさせない（シンプルを開いている間だけ。手では動かせる）。
+      // 改行は2行に分けて出す位置（680px 以上は入れば1行）
+      boostLock: "LvUp!で\nアメブ固定",
+      // 表のアメブの欄の 🔒 の読み上げ
+      boostLocked: "LvUp!で固定",
+      // 計算機の設定「目標Lvに届く最小限のアメブ個数にする」と同じ名前。改行は2行に分けて出す位置（white-space: pre-line）
+      settingsMinimize: "目標Lvに届く\n最小限のアメブ個数",
+      settingsUniversal: "万能アメ{size}",
+      settingsUniversalGroup: "万能アメ",
+      moreSettings: "その他の設定は{link}",
+      moreSettingsLink: "こちら",
+      sleepOption: {
+        none: "未設定",
+        all: "睡眠",
+        nap: "おひるね島",
+        napShort: "島",
+        stock: "アメ在庫",
+        ticket: "チケット",
+      },
+      // 改行は2行に分けて出す位置（white-space: pre-line）
+      boostMinimize: "目標Lvに届く\n最小限のアメブ個数",
+      boostMinimizeGlobal: "設定で全員に「目標Lvに届く最小限のアメブ個数」を使っています",
+      boostMinimizeCandyTarget: "個数指定の行は「目標Lvに届く最小限のアメブ個数」にできません",
+      boostMinimizeSleepTarget: "アメ在庫の睡眠目標では「目標Lvに届く最小限のアメブ個数」にできません",
+      boostMinimizeUnavailable: "この行は「目標Lvに届く最小限のアメブ個数」にできません",
+      boostMinimizeShortCandy: "{count}個以上のアメが必要です",
+      boostReset: "再割当",
+      reach: "到達Lv {level}",
+      expLeft: "（あとEXP {exp}）",
+      sleepReach: "睡眠到達Lv {level}",
+      napReach: "島到達Lv {level}",
+      short: "{factor}が足りません",
+      factor: {
+        candy: "アメ",
+        shards: "かけら",
+        boost: "アメブ枠",
+      },
+      stepAria: "{field}を{delta}",
+      inputAria: "{field}（{name}）",
+      hint: "数字を押して調整",
+      resetEdit: "リセット",
+      boostCapped: "アメ在庫が足りないため、アメブは{saved}個のうち{count}個を使います",
+      exclusion: {
+        sleepOnly: "睡眠だけで届くため、アメを使いません",
+        maxLevel: "LvMax です",
+        unknownPokemon: "不明なポケモンです",
+      },
+      // 行の詳細で出す「不明なポケモン」の説明。直し方はボックスの再リンク（直すと計算機の行にも伝わる）。
+      // U+200B は折り返してよい位置（.fineTuneEditor__note は語の途中で折らない。「再リン/ク」と切れないように）
+      unknownPokemonHint: "不明なポケモンです。\u200Bポケモンボックスで\u200Bポケモン図鑑と\u200B再リンク\u200Bしてください。",
+      // フッターのボタン。設計書・コメントでは機能を「全体のLvを伸ばす」と呼ぶ
+      raise: "LvUp!",
+      raiseStop: "LvUp中止",
+      // 伸ばしたあとの小窓。行ごとに、伸ばす前からの増減を表の形で出す（列のポケモン・アメブ・アメ合計は col、残りは summary）
+      raiseReport: {
+        // 見出し。name は届くLvが上がったいちばん上の行（ほかにも上がった行があれば Many）。
+        // Lvの上がった行が無いときは、到達点が良くなった（Lv 内の EXP が増えた）いちばん上の行（expGained）
+        levelUp: "{name}の到達Lvが上がりました",
+        levelUpMany: "{name}などの到達Lvが上がりました",
+        expGained: "{name}の経験値が増えました",
+        // どちらも無いとき（伸びたときには起きない。念のため）
+        adjusted: "アメブを調整しました",
+        level: "到達Lv",
+        // 到達Lvの列の下の段（次のLvまでのEXP。操作パネルの「（あとEXP 358）」と同じ呼び名）
+        expLeft: "あとEXP",
+        shards: "かけら",
+        // 変わらなかった値（画面は「—」）の読み上げ
+        unchanged: "変わらず",
+        // 残りの段の、全員の使うアメの合計（アメ節約・かけら節約を見比べる）
+        candyUsed: "アメ合計",
+        // 到達が同じ候補を、アメが少ない方・かけらが少ない方のどちらで選んだか。結果が違うときだけタブにする
+        savingTabs: "節約するもの",
+        savingCandy: "アメ節約",
+        savingShards: "かけら節約",
+        // かけら節約を裏で求めている間の（押せない）タブ
+        savingPending: "{name} 計算中…",
+        // 残りの段の万能アメ（S・M・L の個数）
+        universalRemaining: "万能アメ残り",
+        cancel: "キャンセル",
+        ok: "OK",
+      },
+      raiseAllReached: "全員が目標Lvに届いています",
+      raiseUnchanged: "これ以上は伸ばせませんでした",
+      raiseUnchangedCandy: "アメが足りないため、アメブを動かしても伸ばせません（上の行のアメを減らすと下の行が伸びます）",
+      raiseUnchangedShards: "かけらが足りないため、これ以上は伸ばせません",
+      raiseUnchangedBoost: "アメブ枠が足りないため、これ以上は伸ばせません",
+      raiseUnchangedSurplus: "設定から配分方針をバランス・EXP最大にすると到達Lvを伸ばせることがあります",
+      raiseFailed: "計算に失敗しました。もう一度押してください",
+      cancel: "キャンセル",
+      apply: "OK",
+      discardQuestion: "変更を破棄して閉じますか？",
+      discardNote: "適用していない変更は計算機に反映されません。",
+      discardConfirm: "破棄して閉じる",
+      discardSettingsQuestion: "変更を破棄して設定を開きますか？",
+      discardSettingsConfirm: "破棄して開く",
+      applied: "シンプルで調整した内容を適用しました",
+      applyStale: "計算機の内容が変わったため適用できませんでした",
     },
     copySlot: "コピー",
     copySlotTitle: "このスロットの内容をコピー",
     pasteSlot: "ペースト",
+    // コピー済みのときのメニューの行。count は貼り付けると入る体数
+    pasteSlotWithCount: "ペースト（{count}体）",
     pasteSlotTitle: "コピーした内容をこのスロットへ貼り付け（上書き）",
+    slotMenuLabel: "スロットのメニュー",
     shardsUsage: "かけら使用 {pct}%",
     shardsUsageDash: "かけら使用 -",
     boostCandyUsage: "アメブ使用 {pct}%",
@@ -195,7 +334,7 @@ export const ja = {
       boostCandyOverQuota: "アメブ上限を超えています。アメブ個数を減らしてください。足りない分は通常アメで補われます（? から上限を上げることもできます）",
       // 個数が未入力（導出モード）の行では、減らす対象は個数ではなくアメブ目標Lv。
       boostReachOverQuota: "アメブ上限を超えています。アメブ目標Lvを下げてください。足りない分は通常アメで補われます（アメブ個数の ? から上限を上げることもできます）",
-      boostCandyCountReset: "割り当て可能なアメブを再計算",
+      boostCandyCountReset: "このポケモンのアメブを再割当",
       candyTargetHintNote: "目標Lv（あとEXP）を上げ下げします。",
       candyTargetMinBoostNote: "指定したアメ個数でこのLvに届く最小限のアメブを計算する：",
       candyTargetMinBoostNoteWithSleep: "指定したアメ個数と睡眠でこのLvに届く最小限のアメブを計算する：",
@@ -206,7 +345,10 @@ export const ja = {
       boostSleepCapHint: "Lv{level} 以上は睡眠EXPの範囲です。アメブを操作するには、目標Lvを上げるか睡眠目標を解除してください。",
       boostCandyHintLabel: "アメブ個数のヒント",
       boostCandyHintWarnLabel: "アメブ個数のヒント（警告あり）",
-      boostMinimizeFallbackHint: "{count}個以上のアメが必要です。現在は既定のアメブ目標Lvを使用しています。",
+      boostAdviceSurplusHint: "アメブを{count}個にすると、余りが{before}→{after}になります（到達Lv{level}）。",
+      boostAdviceReachHint: "アメブを{count}個にすると、浮いたかけらで目標Lvに届きます。",
+      boostAdviceApply: "{count}個にする",
+      boostMinimizeFallbackHint: "{count}個以上のアメが必要です。現在は元のアメブ個数・アメブ目標Lvを使用しています。",
       boostMinimizeSharedStockHint: "同じアメを使うポケモンがリストの上位にいる場合、在庫はそちらが先に使います。",
       // 「すべて睡眠」でアメ関連3欄が無効化されている理由。**ヒントの中だけに出す。**
       // title ではスマホから読めず、アメブ目標Lvは disabled でピッカーの note も開けない。
@@ -693,7 +835,7 @@ export const ja = {
     itemPriority: {
       title: "アイテムの使用優先順位",
       item1: "タイプアメを最優先で使用（S＞M）",
-      item2: "万能アメはSから使用し、M/Lは温存",
+      item2: "万能アメは小さいものから使用（Lは温存）",
       item3: "各ポケモンの余りが0-2になるよう端数調整",
       note1: "※リスト上位のポケモンに優先的に使用",
       note2: "※バッグ圧縮のための参考値として",

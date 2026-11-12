@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 /**
- * EXP性格補正の記号色を全テーマで「▲▲ = 赤系 / ▼▼ = 青系」に保つ（2026-07-29・ユーザー指定）。
+ * EXP性格補正の記号色を全テーマで「▲▲ = 赤系 / ▼▼ = 青系」に保つ。
  *
  * テーマは `src/styles/*.css` を Design Switcher が自動検出して増える。
  * 色味はテーマごとに変えてよいが、**赤／青の対応を入れ替えてはいけない。**

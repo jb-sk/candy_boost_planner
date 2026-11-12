@@ -1,0 +1,541 @@
+/**
+ * FineTuneModal Page Object（シンプル）
+ * セレクタと操作をまとめる。すべてのセレクタは data-testid ベース（接頭辞は fine-tune-）
+ */
+import { type Page, type Locator, expect } from '@playwright/test';
+
+/** 表で押して調整バーを開く欄。`row` は名前（行の詳細）。目標Lvは調整バーを使わず、押すと Lvピッカーが開く（`openTargetPicker`） */
+export type FineTuneField = 'row' | 'sleep' | 'boost' | 'candy';
+
+/** 睡眠目標の選択肢（調整バーの data-option） */
+export type FineTuneSleepOption = 'none' | 'h200' | 'h500' | 'h1000' | 'h2000' | 'sleep' | 'nap';
+
+const CELL_TEST_ID: Record<Exclude<FineTuneField, 'row'> | 'target' | 'reach' | 'shardsPerCandy', string> = {
+  target: 'fine-tune-row-target',
+  sleep: 'fine-tune-row-sleep',
+  boost: 'fine-tune-row-boost',
+  candy: 'fine-tune-row-candy',
+  reach: 'fine-tune-row-reach',
+  shardsPerCandy: 'fine-tune-row-shards-per-candy',
+};
+
+export class FineTuneModalPage {
+  readonly page: Page;
+
+  // === 入口（計算機の補助ボタン） ===
+  readonly openButton: Locator;
+
+  // === モーダル本体 ===
+  readonly overlay: Locator;
+  readonly modal: Locator;
+  readonly closeButton: Locator;
+  readonly loading: Locator;
+
+  // === 上部 ===
+  readonly summary: Locator;
+  readonly summaryBoost: Locator;
+  readonly summaryShards: Locator;
+  readonly calculating: Locator;
+
+  // === 一覧 ===
+  readonly list: Locator;
+  readonly rows: Locator;
+
+  // === 調整バー ===
+  readonly editor: Locator;
+  readonly editorName: Locator;
+  readonly editorChange: Locator;
+  readonly editorInfo: Locator;
+  readonly editorNote: Locator;
+  readonly editorInput: Locator;
+  /** 何も選んでいないときの押せない刻みのボタン */
+  readonly editorIdle: Locator;
+
+  // === フッター ===
+  readonly raiseButton: Locator;
+  /** 全体のLvを伸ばしたときの小窓（変わった行ごとの増減）と、その見出し（「〇〇がレベルアップしました」など）・行・OK */
+  readonly raiseReport: Locator;
+  readonly raiseReportTitle: Locator;
+  readonly raiseReportRows: Locator;
+  readonly raiseReportOk: Locator;
+  readonly raiseReportCancel: Locator;
+  readonly undoButton: Locator;
+  readonly redoButton: Locator;
+  readonly applyButton: Locator;
+  /** 適用の隣のキャンセル（この画面での変更をすべて捨てて閉じる） */
+  readonly cancelButton: Locator;
+  readonly discardConfirm: Locator;
+  readonly discardConfirmYes: Locator;
+  readonly discardConfirmNo: Locator;
+
+  constructor(page: Page) {
+    this.page = page;
+
+    this.openButton = page.getByTestId('fine-tune-open-button');
+
+    this.overlay = page.getByTestId('fine-tune-overlay');
+    this.modal = page.getByTestId('fine-tune-modal');
+    this.closeButton = page.getByTestId('fine-tune-close');
+    this.loading = page.getByTestId('fine-tune-loading');
+
+    this.summary = page.getByTestId('fine-tune-summary');
+    this.summaryBoost = page.getByTestId('fine-tune-summary-boost');
+    this.summaryShards = page.getByTestId('fine-tune-summary-shards');
+    this.calculating = page.getByTestId('fine-tune-calculating');
+
+    this.list = page.getByTestId('fine-tune-list');
+    this.rows = page.getByTestId('fine-tune-row');
+
+    this.editor = page.getByTestId('fine-tune-editor');
+    this.editorName = page.getByTestId('fine-tune-editor-name');
+    this.editorChange = page.getByTestId('fine-tune-editor-change');
+    this.editorInfo = page.getByTestId('fine-tune-editor-info');
+    this.editorNote = page.getByTestId('fine-tune-editor-note');
+    this.editorInput = page.getByTestId('fine-tune-editor-input');
+    this.editorIdle = page.getByTestId('fine-tune-editor-idle');
+
+    this.raiseButton = page.getByTestId('fine-tune-raise');
+    this.raiseReport = page.getByTestId('fine-tune-raise-report');
+    this.raiseReportTitle = page.getByTestId('fine-tune-raise-report-title');
+    this.raiseReportRows = page.getByTestId('fine-tune-raise-report-row');
+    this.raiseReportOk = page.getByTestId('fine-tune-raise-report-ok');
+    this.raiseReportCancel = page.getByTestId('fine-tune-raise-report-cancel');
+    // 計算機のボタン（history-undo-button）と取り違えないよう、モーダル専用の testid を使う
+    this.undoButton = page.getByTestId('fine-tune-undo-button');
+    this.redoButton = page.getByTestId('fine-tune-redo-button');
+    this.applyButton = page.getByTestId('fine-tune-apply');
+    this.cancelButton = page.getByTestId('fine-tune-cancel');
+    this.discardConfirm = page.getByTestId('fine-tune-discard-confirm');
+    this.discardConfirmYes = page.getByTestId('fine-tune-discard-confirm-yes');
+    this.discardConfirmNo = page.getByTestId('fine-tune-discard-confirm-no');
+  }
+
+  // === 開閉 ===
+
+  /** 入口のボタンから開く。スマホ幅では先に計算機のタブへ移る。一覧が出る（計算が終わる）まで待つ。 */
+  async open(): Promise<void> {
+    const mobileCalcTab = this.page.getByTestId('mobile-nav-calc');
+    if (await mobileCalcTab.isVisible()) await mobileCalcTab.click();
+    await this.openButton.click();
+    await expect(this.modal).toBeVisible();
+    await expect(this.rows.first()).toBeVisible();
+  }
+
+  async apply(): Promise<void> {
+    await this.applyButton.click();
+    await expect(this.overlay).toHaveCount(0);
+  }
+
+  /** × で閉じる。下書きがあれば確認で「破棄して閉じる」を押す。 */
+  async discardAndClose(): Promise<void> {
+    await this.closeButton.click();
+    if (await this.discardConfirm.isVisible()) await this.discardConfirmYes.click();
+    await expect(this.overlay).toHaveCount(0);
+  }
+
+  // === 行へのアクセス ===
+
+  /** 名前（部分一致）で行を引く。 */
+  rowByName(name: string): Locator {
+    return this.rows.filter({ has: this.page.getByTestId('fine-tune-row-title').filter({ hasText: name }) });
+  }
+
+  /** 一覧の行の名前を上から順に返す。 */
+  async rowTitles(): Promise<string[]> {
+    return (await this.page.getByTestId('fine-tune-row-title').allTextContents()).map((s) => s.trim());
+  }
+
+  cell(row: Locator, name: keyof typeof CELL_TEST_ID): Locator {
+    return row.getByTestId(CELL_TEST_ID[name]);
+  }
+
+  /** 欄の数字（桁区切りを外す）。「-」は NaN。 */
+  async cellNumber(row: Locator, name: keyof typeof CELL_TEST_ID): Promise<number> {
+    const text = ((await this.cell(row, name).textContent()) ?? '').replace(/[,\s]/g, '');
+    return Number(text);
+  }
+
+  async targetLevel(row: Locator): Promise<number> {
+    return this.cellNumber(row, 'target');
+  }
+
+  async boostValue(row: Locator): Promise<number> {
+    return this.cellNumber(row, 'boost');
+  }
+
+  async candyValue(row: Locator): Promise<number> {
+    return this.cellNumber(row, 'candy');
+  }
+
+  /** アメで届く到達Lv（最新の結果）。 */
+  async reachLevel(row: Locator): Promise<number> {
+    return Number(await row.getAttribute('data-reach-level'));
+  }
+
+  /**
+   * 到達点を比べられる数（到達Lv が上、同じ Lv なら次までのEXPが少ないほど大きい）。
+   * 例: Lv26 あと483 と Lv26 あと100 なら後者が大きい。
+   */
+  async reachPoint(row: Locator): Promise<number> {
+    const level = await this.reachLevel(row);
+    const left = Number(await row.getAttribute('data-exp-left'));
+    return level * 1e8 - left;
+  }
+
+  // === 選ぶ・調整バー ===
+
+  /**
+   * 欄を押して、調整バーをその欄にする。すでにその欄なら押さない（同じ欄を押すと選択が外れるため）。
+   * 調整バーは常に出ているので、行と欄が切り替わるまで待つ。動かせない欄を押すと行の詳細（row）になる。
+   */
+  async select(row: Locator, field: FineTuneField): Promise<void> {
+    const rowId = (await row.getAttribute('data-row-id'))!;
+    const selected = await this.editor.getAttribute('data-row-id') === rowId
+      && await this.editor.getAttribute('data-field') === field;
+    if (!selected) {
+      const target = field === 'row' ? row.getByTestId('fine-tune-row-name') : this.cell(row, field);
+      await target.click();
+    }
+    await expect(this.editor).toHaveAttribute('data-row-id', rowId);
+  }
+
+  /** 何も選んでいない（調整バーが設定欄の）状態か */
+  async expectIdle(): Promise<void> {
+    await expect(this.editorIdle).toBeVisible();
+    await expect(this.editor).not.toHaveAttribute('data-row-id', /./);
+  }
+
+  /** 調整バーの刻みのボタン（アメブ・アメの -100 / -10 / -1 / +1 / +10 / +100）を押す。目標Lvは `typeLevel`。 */
+  async step(delta: number): Promise<void> {
+    await this.editor.locator(`[data-testid="fine-tune-editor-step"][data-delta="${delta}"]`).click();
+  }
+
+  stepButton(delta: number): Locator {
+    return this.editor.locator(`[data-testid="fine-tune-editor-step"][data-delta="${delta}"]`);
+  }
+
+  /** 調整バーの個数欄（アメブ・アメ）に打って Enter で確定する（PC幅。スマホはテンキーの読み取り専用欄）。Lv は `typeLevel`。 */
+  async typeValue(value: number): Promise<void> {
+    await this.editorInput.fill(String(value));
+    await this.editorInput.press('Enter');
+  }
+
+  /** 調整バーの見出しのリセット（この欄を押す前の値へ戻す。選択はそのまま） */
+  get resetEditButton(): Locator {
+    return this.editor.getByTestId('fine-tune-editor-reset');
+  }
+
+  /** 行の詳細の見出しのニックネームの欄（ボックスの個体の名前。空にすると種族名） */
+  get nicknameInput(): Locator {
+    return this.editor.getByTestId('fine-tune-editor-nickname');
+  }
+
+  /** ニックネームを打って確定する（change で入るので、明示的に blur する） */
+  async typeNickname(name: string): Promise<void> {
+    await this.nicknameInput.fill(name);
+    await this.nicknameInput.blur();
+  }
+
+  /** 行の詳細の「計算機から削除」 */
+  get removeButton(): Locator {
+    return this.editor.getByTestId('fine-tune-editor-remove');
+  }
+
+  /** 行の詳細の「LvUp!でアメブ固定」のスイッチ（role="switch"、aria-checked） */
+  get boostLockSwitch(): Locator {
+    return this.editor.getByTestId('fine-tune-editor-boost-lock');
+  }
+
+  /** 表のアメブの欄の錠（固定した行だけ） */
+  boostLockMark(row: Locator): Locator {
+    return row.getByTestId('fine-tune-row-boost-lock');
+  }
+
+  /** 行の詳細（名前を押したとき）の欄: あとEXP・アメ在庫（現在Lvは Lv の欄。`levelInput('srcLevel')`） */
+  rowProp(key: 'exp' | 'stock'): Locator {
+    return this.editor.locator(`[data-testid="fine-tune-editor-prop"][data-prop="${key}"]`);
+  }
+
+  /** 行の詳細の欄に打って Enter で確定する（PC幅） */
+  async typeRowProp(key: 'exp' | 'stock', value: number): Promise<void> {
+    await this.rowProp(key).fill(String(value));
+    await this.rowProp(key).press('Enter');
+  }
+
+  /** 調整バーの Lv の欄（現在Lv・アメブ目標Lv・既定のアメブ目標Lv。どれも同じ形で、計算機と同じ Lvピッカーを開ける） */
+  levelField(kind: 'srcLevel' | 'boostLevel' | 'defaultBoostLevel'): Locator {
+    return this.editor.locator(`[data-testid="fine-tune-editor-level-field"][data-level-field="${kind}"]`);
+  }
+
+  /** Lv の欄の入力欄（直接打てる。スマホはテンキーの読み取り専用欄） */
+  levelInput(kind: 'srcLevel' | 'boostLevel' | 'defaultBoostLevel'): Locator {
+    return this.levelField(kind).getByTestId('level-picker-trigger');
+  }
+
+  /** Lv の欄に打って Enter で確定する（PC幅） */
+  async typeLevel(kind: 'srcLevel' | 'boostLevel' | 'defaultBoostLevel', value: number | ''): Promise<void> {
+    await this.levelInput(kind).fill(String(value));
+    await this.levelInput(kind).press('Enter');
+  }
+
+  /** 設定欄（何も選んでいないとき）の欄: かけら在庫・万能アメ S・M・L */
+  setting(key: 'shards' | 's' | 'm' | 'l'): Locator {
+    return this.editor.locator(`[data-testid="fine-tune-editor-setting"][data-setting="${key}"]`);
+  }
+
+  /** 設定欄の欄に打って Enter で確定する（PC幅） */
+  async typeSetting(key: 'shards' | 's' | 'm' | 'l', value: number): Promise<void> {
+    await this.setting(key).fill(String(value));
+    await this.setting(key).press('Enter');
+  }
+
+  /** 設定欄の最小限のアメブ */
+  get settingsMinimizeButton(): Locator {
+    return this.editor.getByTestId('fine-tune-editor-settings-minimize');
+  }
+
+  /** Lv の欄の ▾ で開く Lvピッカー（計算機と同じ。◀ スライダー ▶・Lv の丸いボタン） */
+  levelPopover(kind: 'srcLevel' | 'boostLevel'): Locator {
+    return this.levelField(kind).getByTestId('level-picker-popover');
+  }
+
+  /**
+   * 表の目標Lvの欄から開く Lvピッカー（計算機と同じ。◀ スライダー ▶・Lv の丸いボタン）。
+   * 一覧の枠で切れないよう body へ出すので、ページから引く（開いているピッカーは常に1つだけ）
+   */
+  get targetPicker(): Locator {
+    return this.page.getByTestId('level-picker-popover');
+  }
+
+  /** 表の目標Lvの欄を押して Lvピッカーを開く（調整バーは変わらない。開いている欄をもう一度押すと閉じるので、閉じた状態から呼ぶ） */
+  async openTargetPicker(row: Locator): Promise<void> {
+    await this.cell(row, 'target').click();
+    await expect(this.targetPicker).toBeVisible();
+  }
+
+  /** 目標Lvの Lvピッカーを「閉じる」で閉じる */
+  async closeTargetPicker(): Promise<void> {
+    await this.targetPicker.getByRole('button', { name: /^(閉じる|Close)$/ }).click();
+    await expect(this.targetPicker).toBeHidden();
+  }
+
+  /** アメブの「目標Lvに届く最小限のアメブ個数」・再割当 */
+  get minimizeButton(): Locator {
+    return this.editor.getByTestId('fine-tune-editor-minimize');
+  }
+
+  get boostResetButton(): Locator {
+    return this.editor.getByTestId('fine-tune-editor-boost-reset');
+  }
+
+  /** 睡眠目標の選択肢・アメ在庫・チケット */
+  sleepOption(option: FineTuneSleepOption): Locator {
+    return this.editor.locator(`[data-testid="fine-tune-editor-sleep-option"][data-option="${option}"]`);
+  }
+
+  get sleepStockToggle(): Locator {
+    return this.editor.getByTestId('fine-tune-editor-sleep-stock');
+  }
+
+  get sleepTicketToggle(): Locator {
+    return this.editor.getByTestId('fine-tune-editor-sleep-ticket');
+  }
+
+  /** 行の睡眠の欄を押して、睡眠目標を選ぶ。 */
+  async chooseSleep(row: Locator, option: FineTuneSleepOption): Promise<void> {
+    await this.select(row, 'sleep');
+    await this.sleepOption(option).click();
+    await expect(this.sleepOption(option)).toHaveAttribute('aria-pressed', 'true');
+  }
+
+  /** 欄を選んで刻みを押す。目標Lvは欄から Lvピッカーを開き、◀ ▶ を押して閉じる（調整バーは変わらない）。 */
+  async adjust(row: Locator, field: 'target' | 'boost' | 'candy', delta: number): Promise<void> {
+    if (field === 'target') {
+      await this.openTargetPicker(row);
+      const button = this.targetPicker.getByTestId(delta > 0 ? 'level-picker-increment' : 'level-picker-decrement');
+      for (let i = 0; i < Math.abs(delta); i += 1) await button.click();
+      await this.closeTargetPicker();
+      return;
+    }
+    await this.select(row, field);
+    await expect(this.editor).toHaveAttribute('data-field', field);
+    await this.step(delta);
+  }
+
+  /** 欄を選んで値を打つ。目標Lvは欄から Lvピッカーを開き、スライダーで選んで閉じる（調整バーは変わらない）。 */
+  async setValue(row: Locator, field: 'target' | 'boost' | 'candy', value: number): Promise<void> {
+    if (field === 'target') {
+      await this.openTargetPicker(row);
+      await this.targetPicker.locator('input[type="range"]').fill(String(value));
+      await this.closeTargetPicker();
+      return;
+    }
+    await this.select(row, field);
+    await expect(this.editor).toHaveAttribute('data-field', field);
+    await this.typeValue(value);
+  }
+
+  /** 届いた行の数（最新の結果） */
+  async reachedCount(): Promise<number> {
+    return this.rows.and(this.page.locator('[data-reached="true"]')).count();
+  }
+
+  /**
+   * 「全体のLvを伸ばす」を押し、求め終わる（モーダルの計算中の印が外れ、計算中が消える）まで待つ。
+   * 伸ばせないと分かっているときのボタンは押せない見た目（aria-disabled）だが、押すと理由のトーストが出るので押す。
+   */
+  async raise(): Promise<void> {
+    const blocked = await this.raiseButton.getAttribute('aria-disabled') === 'true';
+    await this.raiseButton.click({ force: blocked });
+    await expect(this.modal).not.toHaveAttribute('aria-busy', 'true', { timeout: 20_000 });
+    await this.waitForSettled();
+  }
+
+  /**
+   * 小窓の、その行の値の欄（到達Lv「58 → 60」、あとEXP「869 → 1,477」、増減「−120」）。key は level / expLeft / boost / candy / shards。
+   * どの行も5つの欄があり、変わらなかった値は data-changed="false"（増減の画面は「—」）
+   */
+  raiseReportItem(row: Locator, key: 'level' | 'expLeft' | 'boost' | 'candy' | 'shards'): Locator {
+    return row.locator(`[data-testid="fine-tune-raise-report-item"][data-item="${key}"]`);
+  }
+
+  /**
+   * 小窓のアメ節約・かけら節約のタブ（結果が違うときだけ出る）。saving は candy / shards。
+   * かけら節約を裏で求めている間は、押せない「計算中」のタブ（data-pending="true"）も shards で拾う
+   */
+  raiseReportTab(saving: 'candy' | 'shards'): Locator {
+    return this.raiseReport.locator(`[data-testid="fine-tune-raise-report-tab"][data-saving="${saving}"]`);
+  }
+
+  /** 小窓の残りの段の値（アメブ残り・かけら残り・全員のアメ合計） */
+  raiseReportRemaining(key: 'boostRemaining' | 'shardsRemaining' | 'candyUsed'): Locator {
+    return this.raiseReport.locator(`[data-testid="fine-tune-raise-report-remaining-item"][data-item="${key}"]`);
+  }
+
+  /** 全体のLvを伸ばしたときの小窓を OK で閉じる */
+  async closeRaiseReport(): Promise<void> {
+    await this.raiseReportOk.click();
+    await expect(this.raiseReport).toBeHidden();
+  }
+
+  // === 並べ替え ===
+
+  /** 取っ手にフォーカスして ↑ キー（1つ上へ）。 */
+  async moveUp(row: Locator): Promise<void> {
+    await this.getHandle(row).press('ArrowUp');
+  }
+
+  /** 取っ手にフォーカスして ↓ キー（1つ下へ）。 */
+  async moveDown(row: Locator): Promise<void> {
+    await this.getHandle(row).press('ArrowDown');
+  }
+
+  getHandle(row: Locator): Locator {
+    return row.getByTestId('fine-tune-row-handle');
+  }
+
+  /** つかんで動かす並べ替えで浮かぶ全行ナビ（計算機と同じ部品） */
+  get reorderNav(): Locator {
+    return this.page.getByTestId('calc-reorder-nav');
+  }
+
+  /**
+   * 取っ手をつかんで、浮かぶ一覧の `toIndex` 番目（0 始まり）の位置へ落とす。
+   * 計算機の並べ替えのテスト（04）と同じく、Pointer Events を直接送る。
+   */
+  async dragRowTo(row: Locator, toIndex: number): Promise<void> {
+    const handle = this.getHandle(row);
+    await handle.hover();
+    const box = await handle.boundingBox();
+    expect(box).not.toBeNull();
+    const pointerId = 7;
+    await handle.dispatchEvent('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      pointerId,
+      isPrimary: true,
+      clientY: box!.y + box!.height / 2,
+    });
+    await expect(this.reorderNav).toBeVisible();
+    const targetY = await this.reorderNav.locator('.calcReorderNav__item').nth(toIndex).evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.top + rect.height / 2;
+    });
+    await this.page.evaluate(({ id, clientY }) => {
+      document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, cancelable: true, pointerId: id, clientY }));
+    }, { id: pointerId, clientY: targetY });
+    await expect(this.reorderNav.locator('.calcReorderNav__head')).toContainText(`${toIndex + 1} / `);
+    await this.page.evaluate(({ id, clientY }) => {
+      document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: id, clientY }));
+    }, { id: pointerId, clientY: targetY });
+    await expect(this.reorderNav).toBeHidden();
+  }
+
+  /** 並べ替えの一覧で toIndex 番目の項目の中央（画面の y） */
+  private async reorderItemY(toIndex: number): Promise<number> {
+    return this.reorderNav.locator('.calcReorderNav__item').nth(toIndex).evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.top + rect.height / 2;
+    });
+  }
+
+  /** 名前をマウスで押したまま動かして並べ替える（本物のマウス入力。取っ手の無い位置からつかむ） */
+  async dragRowByNameWithMouse(row: Locator, toIndex: number): Promise<void> {
+    const box = (await row.getByTestId('fine-tune-row-name').boundingBox())!;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await this.page.mouse.move(x, y);
+    await this.page.mouse.down();
+    // 押しただけ（タップ・クリック）とみなす幅を越えて動かすと、つかむ
+    await this.page.mouse.move(x, y + 12, { steps: 3 });
+    await expect(this.reorderNav).toBeVisible();
+    const targetY = await this.reorderItemY(toIndex);
+    await this.page.mouse.move(x, targetY, { steps: 5 });
+    await expect(this.reorderNav.locator('.calcReorderNav__head')).toContainText(`${toIndex + 1} / `);
+    await this.page.mouse.up();
+    await expect(this.reorderNav).toBeHidden();
+  }
+
+  /**
+   * 名前を指で長押ししてから動かして並べ替える（CDP のタッチ入力。chromium-mobile の端末で使う）。
+   * `holdMs` は動かし始めるまでの時間（長押しとみなすのは 400ms）
+   */
+  async longPressDragRowByName(row: Locator, toIndex: number, holdMs = 600): Promise<void> {
+    const box = (await row.getByTestId('fine-tune-row-name').boundingBox())!;
+    const x = Math.round(box.x + box.width / 2);
+    const y = Math.round(box.y + box.height / 2);
+    const cdp = await this.page.context().newCDPSession(this.page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    await this.page.waitForTimeout(holdMs);
+    await expect(this.reorderNav).toBeVisible();
+    const targetY = Math.round(await this.reorderItemY(toIndex));
+    const steps = 6;
+    for (let i = 1; i <= steps; i += 1) {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: Math.round(y + ((targetY - y) * i) / steps) }] });
+    }
+    await expect(this.reorderNav.locator('.calcReorderNav__head')).toContainText(`${toIndex + 1} / `);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect(this.reorderNav).toBeHidden();
+    await cdp.detach();
+  }
+
+  /** 名前に指を置いてすぐ動かす（長押しにならない。一覧のスクロールの操作） */
+  async swipeOnName(row: Locator, dy: number): Promise<void> {
+    const box = (await row.getByTestId('fine-tune-row-name').boundingBox())!;
+    const x = Math.round(box.x + box.width / 2);
+    const y = Math.round(box.y + box.height / 2);
+    const cdp = await this.page.context().newCDPSession(this.page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    for (let i = 1; i <= 4; i += 1) {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: Math.round(y + (dy * i) / 4) }] });
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await cdp.detach();
+  }
+
+  /** プレビュー計算が終わる（「計算中…」が消える）まで待つ。 */
+  async waitForSettled(): Promise<void> {
+    await expect(this.calculating).toHaveCount(0);
+  }
+}

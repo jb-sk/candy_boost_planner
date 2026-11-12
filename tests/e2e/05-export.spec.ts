@@ -539,7 +539,7 @@ test.describe('05-export E. リスト表示', () => {
   });
 
   test('18b. Lv列は左寄せで、見出しと値の左端がそろう', async ({ page }) => {
-    // Lv 列は幅 680px 以上でだけ出る。行ごとに長さが違うので左寄せ（2026-10-13 ユーザー指示）
+    // Lv 列は幅 680px 以上でだけ出る。行ごとに長さが違うので左寄せ
     await page.setViewportSize({ width: 1000, height: 900 });
     const head = page.locator('.exportList__lvHead > span');
     const value = page.getByTestId('listRow').first().locator('.exportList__lvWrap');

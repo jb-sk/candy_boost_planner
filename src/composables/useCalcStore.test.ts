@@ -382,7 +382,7 @@ describe("useCalcStore", () => {
 
   /**
    * 睡眠目標が無い行は寝る予定が無いので、睡眠・島の時間と到達Lvは空。
-   * 残EXPの睡眠換算（画面の「残EXP 約N日」）は別の列に出す（2026-10-13 ユーザー指摘）
+   * 残EXPの睡眠換算（画面の「残EXP 約N日」）は別の列に出す
    */
   it("leaves rest columns empty for rows without a sleep target and puts the sleep conversion in its own column", async () => {
     const t = ((key: string) => key) as unknown as Composer["t"];
@@ -449,7 +449,7 @@ describe("useCalcStore", () => {
 
   /**
    * 検算TSVのお香は、画面の必要アイテムと同じく実際に寝る期間で数える。
-   * 数値の睡眠目標で、目標Lvまでの日数（needed*）から数えると、睡眠目標を超えた期間のお香まで入る（2026-10-13 ユーザー指摘）
+   * 数値の睡眠目標で、目標Lvまでの日数（needed*）から数えると、睡眠目標を超えた期間のお香まで入る
    */
   it("counts debug TSV growth incense within the sleep target hours, like the screen", async () => {
     const t = ((key: string) => key) as unknown as Composer["t"];
@@ -660,15 +660,13 @@ describe("useCalcStore", () => {
       expect(ownRequests).toHaveLength(1);
       const { message: request, worker } = ownRequests[0]!;
       // 締切・近似・計算方式の指定は要求に含まれない（計算は常に exact）。
-      expect(Object.keys(request).sort()).toEqual(["input", "inputSignature", "perfEnabled", "requestId", "slotId"]);
+      expect(Object.keys(request).sort()).toEqual(["input", "perfEnabled", "requestId"]);
       const result = solveLevelPlan(request.input as LevelPlannerInput);
       expect(result.performance).toBeDefined();
 
       worker.onmessage?.({ data: {
         kind: "result",
-        slotId: request.slotId,
         requestId: request.requestId,
-        inputSignature: request.inputSignature,
         result,
         durationMs: 1,
       } } as MessageEvent);
@@ -1425,7 +1423,7 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     expect(boost()).toBe(0);
   });
 
-  describe("アメブ目標Lvの上限より上へ上げようとすると、T' までのアメブ個数の最大を入れる（2026-10-24 ユーザー規則）", () => {
+  describe("アメブ目標Lvの上限より上へ上げようとすると、T' までのアメブ個数の最大を入れる", () => {
     it("T' が現在Lvの途中: 現在Lv（アメブ0本）から、T' の端数まで全部アメブへ一発で戻せる", () => {
       const store = createCalcStore({ locale: ref("ja"), t });
       store.setSlotBoostKind("full");
@@ -2229,7 +2227,7 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     const inputMax = store.rowsView.value.find((row) => row.id === id)!.ui.boostCandyInputMax;
     expect(inputMax).toBeGreaterThan(0);
 
-    // 上限超は上限へクランプする（2026-08-25 ユーザー規則）。
+    // 上限超は上限へクランプする。
     // かつては捨てていた（§11.11）が、拒否された入力は導出値（多くは0）で再描画されるため、
     // ユーザーには「大きい数を入れたら0になった」としか見えなかった。
     store.onRowBoostCandy(id, String(inputMax + 100));
@@ -2394,7 +2392,7 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     expect(ui.boostCandyInput).toBeLessThan(ui.boostCandyInputMax);
   });
 
-  describe("勝手に通常アメを増やさない・減らすときは通常アメから（2026-09-26 ユーザー規則）", () => {
+  describe("勝手に通常アメを増やさない・減らすときは通常アメから", () => {
     /** アメが担当する終端 T'（目標から睡眠EXPを戻した点）。 */
     const candyEnd = (store: CalcStore, row: CalcRow) => {
       const sleepExp = row.sleepTargetHours === undefined ? 0 : store.rowSleepExpFor(row.id);
@@ -3419,6 +3417,41 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     }
   });
 
+  it("Lvピッカーのスライダーの1回のドラッグ（同じ coalesceKey・間隔 Infinity）は、目標Lv・現在Lv・アメブ目標Lvとも undo 1回で戻る", () => {
+    vi.useFakeTimers();
+    try {
+      const { store, id } = makeStore();
+      const drag = (n: number) => ({ coalesceKey: `levelPicker:slider:${n}`, coalesceWindowMs: Number.POSITIVE_INFINITY });
+      const expectDragUndo = (steps: Array<() => void>) => {
+        const before = JSON.parse(JSON.stringify(rowOf(store, id))) as CalcRow;
+        for (const step of steps) {
+          step();
+          // ドラッグの途中で1秒より長く止めても割れない
+          vi.advanceTimersByTime(1500);
+        }
+        expect(rowOf(store, id)).not.toEqual(before);
+        store.undo();
+        expect(rowOf(store, id)).toEqual(before);
+      };
+      expectDragUndo([31, 32, 33, 34].map((lv) => () => store.setDstLevel(id, lv, drag(1))));
+      expectDragUndo([11, 12, 13].map((lv) => () => store.setSrcLevel(id, lv, drag(2))));
+      expectDragUndo([20, 21, 22].map((lv) => () => store.setBoostLevel(id, lv, drag(3))));
+
+      // 目印が無ければ（チップ・◀ ▶・直接入力）1歩ずつ
+      store.setDstLevel(id, 31);
+      store.setDstLevel(id, 32);
+      store.undo();
+      expect(rowOf(store, id).dstLevel).toBe(31);
+      // 別のドラッグは別の履歴
+      store.setDstLevel(id, 40, drag(4));
+      store.setDstLevel(id, 45, drag(5));
+      store.undo();
+      expect(rowOf(store, id).dstLevel).toBe(40);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("行の各確定 API は1操作ずつ undo できる", () => {
     const { store, id } = makeStore();
     const expectRowUndo = (edit: () => void) => {
@@ -3796,7 +3829,7 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
    * §11.4-B。元の不具合は「往復のたびに値が変わり続ける（収束しない）」ことだった。
    *
    * **アメブ種別が変われば 1個あたりのEXPが変わるので、アメブは既定値で計算し直す**
-   * （§4.11 / 2026-07-31 ユーザー規則）。持ち越すのは個数指定だけで、アメブ目標Lvと
+   * （§4.11）。持ち越すのは個数指定だけで、アメブ目標Lvと
    * アメブ個数は戻らない。**固定するのは「1往復で収束し、以後は動かない」こと。**
    */
   it("アメブ種別 full→none→full ではアメブを既定値で計算し直し、以後は動かない（§11.4-B）", () => {
@@ -3825,7 +3858,7 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     expect(rowOf(store, id)).toEqual(first);
   });
 
-  describe("アメブ種別の変更・リセットで、個数指定の無い行は目標のLv内EXPを消す（D-4。2026-10-24 ユーザー決定）", () => {
+  describe("アメブ種別の変更・リセットで、個数指定の無い行は目標のLv内EXPを消す（D-4）", () => {
     // 行B（ラティアス Lv50→54）はアメブ個数300で Lv54＋3090 へ押し上がる。ミニブの枠350は上の行Aが使い切る
     const makeFractionRow = () => {
       const store = createCalcStore({ locale: ref("ja"), t });
@@ -3862,7 +3895,7 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
       expect(pick(rowOf(store, id))).toEqual({ dst: 54, dstExp: 3090 });
     });
 
-    // リセットも同じ配り直しなので、枠が足りるかどうかで端数が割れないようにそろえる（2026-10-24 ユーザー決定）
+    // リセットも同じ配り直しなので、枠が足りるかどうかで端数が割れないようにそろえる
     for (const kind of ["full", "mini"] as const) {
       it(`${kind}: 行のリセットでも全体リセットでも、枠の残りに関係なく端数が消える`, () => {
         for (const reset of ["row", "all"] as const) {
@@ -4022,7 +4055,7 @@ describe("useCalcStore: 個数指定と目標Lvの連動", () => {
     // 個数指定なしの行はアメブ100%で目標Lvへ届くので、最後の1個を通常アメへ置換している（前提）
     expect(beforeView.ui.boostCandyInput).toBe(needed - 1);
 
-    // 個数指定のある行はアメ数で目標が動くので置換しない（Lv70 へ届くときだけ。2026-09-26 ユーザー規則）。
+    // 個数指定のある行はアメ数で目標が動くので置換しない（Lv70 へ届くときだけ）。
     // 全部アメブになり、同じアメ数・同じLvのまま到達点がLv内で少し先へ進む
     store.onRowCandyTarget(id, String(needed));
     const withCandyTarget = snap();
@@ -4462,7 +4495,7 @@ describe("useCalcStore: すべて睡眠", () => {
 
   /**
    * 「アメ在庫＋睡眠」の行が使えるアメは在庫まで。アメブはその内数（`n ≤ m`）なので、
-   * **入力欄の上限も在庫で止める**（2026-08-25 ユーザー指摘）。
+   * **入力欄の上限も在庫で止める**。
    *
    * 以前は MAX_LEVEL 基準の上限しか見ていなかったため、在庫256の行に400と入力でき、
    * 欄は400のまま結果だけ256になった（`resolveEffectiveBoostCandy` が実効値だけを絞るため）。
@@ -4625,7 +4658,7 @@ describe("useCalcStore: すべて睡眠", () => {
       store.onRowBoostCandy(id, "10");
       store.setRowSleepTarget(id, "stock");
 
-      // 種族不明の行は全体計画に入れず、その行だけの計算では種族アメが無限（2026-10-24 ユーザー決定）
+      // 種族不明の行は全体計画に入れず、その行だけの計算では種族アメが無限
       expect(store.rowStockCandyTargetFor(id)).toBe(minCandyForTarget({
         srcLevel: 10, targetLevel: 40, targetExpInLevel: 0, expType: 600, nature: "normal",
         boostKind: "full", boostCandy: 10, expGot: 0,
@@ -4736,6 +4769,18 @@ describe("useCalcStore: すべて睡眠", () => {
     });
     expect(store.rows.value[0]!.sleepTargetHours).toBeUndefined();
     expect(store.rows.value[0]!.boostMinimizeRow).toBeUndefined();
+  });
+
+  it("スロットのコピー: 貼り付けると入る体数は、コピーした時点の行の数（コピーしていなければ 0）", () => {
+    const store = addRows(3);
+    expect(store.slotClipboardRowCount.value).toBe(0);
+    store.copySlot();
+    expect(store.slotClipboardRowCount.value).toBe(3);
+    // コピーの後で行を消しても、貼り付ける体数は変わらない（メニューの「ペースト（3体）」と貼り付けた結果が合う）
+    store.clear();
+    expect(store.slotClipboardRowCount.value).toBe(3);
+    store.pasteSlot();
+    expect(store.rows.value).toHaveLength(3);
   });
 
 
@@ -5285,6 +5330,57 @@ describe("useCalcStore: アメブ最小化", () => {
     }
   });
 
+  it("行スイッチは手で入れたアメブ個数・ピッカーで選んだアメブ目標Lvを消さず、在庫で届かない間はそれを使い、届けば最小値を使う", () => {
+    const candyStore = useCandyStore();
+    const original = candyStore.getInventory();
+    candyStore.resetInventory();
+    try {
+      const store = newBoostStore();
+      const row = addRow(store, "row-minimize-keeps-own");
+      const view = () => store.rowsView.value[0]!;
+      // 種族アメの在庫 0 では最小アメブにしても届かない
+      store.updateSpeciesCandy(row.pokedexId!, 0);
+      store.onRowBoostCandy(row.id, "50");
+      expect(view().ui.boostCandyInput).toBe(50);
+
+      // ON にしても手で入れた個数は残り、そのまま使う（以前は個数を消して 0 本になることがあった）
+      expect(store.setRowMinimizeBoost(row.id, true)).toBe("applied");
+      expect(store.rows.value[0]).toMatchObject({ boostOrExpAdjustment: 50, boostMinimizeRow: true });
+      expect(view().ui.boostCandyInput).toBe(50);
+      expect(view().ui.boostMinimizeFallback).toBe(true);
+      expect(view().ui.boostMinimized).toBe(false);
+
+      // 在庫で届くようになると最小値（手で入れた個数より優先）
+      store.updateSpeciesCandy(row.pokedexId!, 5_000);
+      const minimum = expectedMinimum(store, { ...store.rows.value[0]!, boostOrExpAdjustment: undefined });
+      expect(minimum).toBeDefined();
+      expect(view().ui.boostCandyInput).toBe(minimum);
+      expect(view().ui.boostMinimized).toBe(true);
+      expect(view().ui.boostMinimizeFallback).toBe(false);
+
+      // OFF で手で入れた個数へ戻る
+      expect(store.setRowMinimizeBoost(row.id, false)).toBe("applied");
+      expect(store.rows.value[0]!.boostOrExpAdjustment).toBe(50);
+      expect(view().ui.boostCandyInput).toBe(50);
+
+      // ピッカーで選んだアメブ目標Lvも残し、届かない間はそれを使う
+      store.updateSpeciesCandy(row.pokedexId!, 0);
+      store.setBoostLevel(row.id, 30);
+      const picked = view().ui.boostCandyInput;
+      expect(picked).toBeGreaterThan(0);
+      expect(store.setRowMinimizeBoost(row.id, true)).toBe("applied");
+      expect(store.rows.value[0]).toMatchObject({ boostReachLevel: 30, boostReachAuto: false, boostMinimizeRow: true });
+      expect(view().ui.boostCandyInput).toBe(picked);
+      expect(view().ui.boostReachLevel).toBe(30);
+
+      // 個数を入れ直すと、いま入れた個数が勝ちスイッチは外れる
+      store.onRowBoostCandy(row.id, "40");
+      expect(store.rows.value[0]).toMatchObject({ boostOrExpAdjustment: 40, boostMinimizeRow: undefined });
+    } finally {
+      candyStore.restoreInventory(original);
+    }
+  });
+
   it("行スイッチはグローバル設定と併用できる", () => {
     const candyStore = useCandyStore();
     const original = candyStore.getInventory();
@@ -5764,9 +5860,7 @@ describe("useCalcStore: アメブ最小化", () => {
           boostKind: store.boostKind.value,
         });
         expect(reach(cap).level).toBe(MAX_LEVEL);
-        // 保存前の導出値（298）と保存後の実効アメブ（299）は、アメブ1個→通常アメ1個の置換の扱いで1個ずれる。
-        // 上限が1個多いのは許容する（最小化の値 0 で出すと数百個多くなる）。
-        expect(reach(cap - 2).level).toBeLessThan(MAX_LEVEL);
+        expect(reach(cap - 1).level).toBeLessThan(MAX_LEVEL);
       } finally {
         candyStore.restoreInventory(original);
       }
@@ -6192,7 +6286,7 @@ describe("useCalcStore: おひるね島", () => {
   });
 
   it("「睡眠」「アメ在庫＋睡眠」は目標Lvに届くまで寝るので、zzZ と CSV の着地点は目標Lv", () => {
-    // 時間を持たないモードは rowSleepExp が 0。残EXPを睡眠EXPとして着地点を求める（2026-10-13 ユーザー指摘）
+    // 時間を持たないモードは rowSleepExp が 0。残EXPを睡眠EXPとして着地点を求める
     const store = addRows(2);
     const [stockId, allId] = store.rows.value.map((row) => row.id) as [string, string];
     store.setRowSleepTarget(stockId, "stock");
@@ -6620,7 +6714,7 @@ describe("useCalcStore: 総点検の続き（2026-10-24）", () => {
     });
   });
 
-  describe("種族不明の行は全体計画に入れず、結果だけをその行で計算する（2026-10-24 ユーザー決定）", () => {
+  describe("種族不明の行は全体計画に入れず、結果だけをその行で計算する", () => {
     /** 種族不明の個体。手入力で図鑑の名前と一致しないニックネームだけを入れたときのもの（EXPタイプは自分で設定）。 */
     function addSpeciesUnknownRow(store: CalcStore, boxId: string, srcLevel: number, dstLevel: number) {
       addBoxRow(store, { boxId, title: "ぴかちゃん", srcLevel, dstLevelDefault: dstLevel, expType: 600, nature: "normal" });

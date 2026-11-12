@@ -13,6 +13,11 @@
   -webkit-overflow-scrolling: touch;
 }
 
+/* useFocusTrap が開いたときにフォーカスする器。枠線は出さない */
+.exportOverlay:focus {
+  outline: none;
+}
+
 /* ===== Sheet ===== */
 .exportSheetWrap {
   min-height: 100%;
@@ -237,10 +242,10 @@
 }
 
 /* ===== Section title (shared) ===== */
+/* 帯（::before）と文字の間は gap でなく帯の margin で空ける（古い端末の gap の補正は擬似要素を数えない） */
 .exportSectionTitle {
   display: flex;
   align-items: center;
-  gap: 8px;
   font-family: var(--font-heading);
   font-weight: var(--export-font-weight-strong);
   font-size: 17px;
@@ -256,6 +261,7 @@
   content: "";
   width: 8px;
   height: 18px;
+  margin-right: 8px;
   flex: 0 0 auto;
   border-radius: 999px;
   background: var(--export-highlight);

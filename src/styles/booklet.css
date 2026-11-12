@@ -216,7 +216,6 @@ body {
 
 .slotTab--active {
   background: var(--paper);
-  border-bottom-color: var(--paper);
 }
 
 /* ===== Calc — Sticky Summary ===== */
@@ -233,6 +232,11 @@ body {
 
 .panel--calc .linkBtn--danger:hover:not(:disabled) {
   color: rgba(var(--booklet-destructive-rgb), 0.7);
+}
+
+/* スロットタブのメニューのクリアも、不足ではなく破壊的操作なので赤 */
+.panel--calc .slotTabMenu__item--danger {
+  color: var(--booklet-destructive);
 }
 
 .calcSticky {

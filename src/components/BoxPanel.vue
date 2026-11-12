@@ -909,7 +909,7 @@
                     <div class="boxDetail__v">
                       <LevelPicker
                         :model-value="selectedDetail?.level ?? 1"
-                        @update:model-value="box.setBoxLevel($event)"
+                        @update:model-value="(lv, coalesce) => box.setBoxLevel(lv, coalesce)"
                         keypad
                         :label="`${t('box.add.level')}: Lv${selectedDetail?.level ?? 1}`"
                         :max="MAX_LEVEL"

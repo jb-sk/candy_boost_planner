@@ -1,18 +1,24 @@
 import { nextTick, onUnmounted, reactive, ref, computed, type Ref } from "vue";
-import { trackPress, type Press } from "../utils/trackPress";
+import { trackPress, type Press, type PressPoint } from "../utils/trackPress";
+import { suppressNextClick } from "../utils/suppressNextClick";
 
 /**
- * 行をつかんで動かす並べ替え（計算機・やりくりモーダルで共用）。
+ * 行をつかんで動かす並べ替え（計算機・シンプルモードで共用）。
  *
  * 取っ手の押下を追跡し、画面の横に浮かぶ名前の一覧（RowReorderNav.vue）の位置と、落とす位置を出す。
  * 確定は `onCommit(rowId, toIndex)` で呼び出し側へ返す（計算機は `calc.moveRow`）。
  * 行の強調（計算機のストアの `dragRowId` など）は呼び出し側の都合なので持たず、
  * つかんでいる行と落とす位置の行を `draggingId` / `overId` で返す。
  *
+ * 入口は2つ。取っ手（`onHandlePress`）は押した瞬間につかむ。名前など、押すと別のことをする要素（`onItemPress`）は、
+ * マウスなら押したまま少し動かしたとき、指なら長押ししたときにつかむ（指をすぐ動かせば一覧のスクロール）。
+ *
  * Popover API / HTML Drag and Drop API は使わない。Pointer Events 非対応の古いSafari向けに
  * Touch Events と Mouse Events も同じ処理へ流す（trackPress.ts）。
  * 指での並べ替え中にページ・モーダル本文をスクロールさせないのは、trackPress が動きを受けている間
  * touchmove を止めるため（スクロールする要素を問わない）。body に付けるクラスは選択の抑止だけ。
+ * Pointer Events の経路では pointermove を止めてもスクロールは止まらないので、取っ手は `touch-action: none`、
+ * 名前などは要素の touchmove（passive でないもの）を `onItemTouchMove` へ渡し、つかんだあとだけ止める。
  */
 export type RowReorderItem = { id: string; title: string };
 
@@ -36,6 +42,10 @@ const NAV_HEADER_HEIGHT = 28;
 const NAV_MARGIN = 8;
 const START_THRESHOLD = 5;
 const REORDERING_BODY_CLASS = "calcRowReordering";
+/** 名前などからつかむとき、指の長押しとみなすまでの時間 */
+const LONG_PRESS_MS = 400;
+/** 名前などからつかむとき、押した点からこれだけ動くまでは、押しただけ（タップ・クリック）とみなす */
+const ITEM_SLOP = 8;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -72,6 +82,10 @@ export function useRowReorderDrag(options: {
   let startY = 0;
   /** つかんでいる指・ポインターの追跡（入力のまとめは trackPress.ts）。 */
   let press: Press | null = null;
+  /** 名前などから、つかむのを待っている間（長押し・動くのを待つ）。やめる関数 */
+  let pendingItem: (() => void) | null = null;
+  /** 指でつかんでいる間の、長押しのメニューの抑止を外す関数 */
+  let releaseContextMenu: (() => void) | null = null;
 
   function begin(rowId: string, clientY: number, handle: HTMLElement) {
     if (draggingId.value) return;
@@ -146,6 +160,77 @@ export function useRowReorderDrag(options: {
     if (!draggingId.value) finish(false);
   }
 
+  /**
+   * 名前など、押すと別のこと（click）をする要素からつかむ。
+   * マウスは押したまま `ITEM_SLOP` より動かしたら、指は `LONG_PRESS_MS` 長押ししたらつかむ。
+   * 指が長押しの前に動いたら何もしない（一覧のスクロールに任せる）。つかまずに離せば、ふつうに click が届く。
+   * つかんだあとに離したときは、続く click を捨てる（行の詳細を開かない）。
+   */
+  function onItemPress(rowId: string, ev: Event) {
+    if (draggingId.value || pendingItem) return;
+    const target = ev.currentTarget;
+    if (!(target instanceof HTMLElement)) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let origin: PressPoint = { x: 0, y: 0 };
+    let last: PressPoint = origin;
+    let started = false;
+    const quit = () => {
+      clearTimeout(timer);
+      tracked?.stop();
+      pendingItem = null;
+    };
+    const start = (y: number) => {
+      clearTimeout(timer);
+      pendingItem = null;
+      started = true;
+      press = tracked;
+      if (tracked?.touch) blockContextMenu();
+      begin(rowId, y, target);
+      if (!draggingId.value) finish(false);
+    };
+    const tracked = trackPress(ev, {
+      move: (point) => {
+        if (started) {
+          update(point.y);
+          return true;
+        }
+        last = point;
+        if (Math.abs(point.x - origin.x) <= ITEM_SLOP && Math.abs(point.y - origin.y) <= ITEM_SLOP) return false;
+        if (tracked?.touch) quit();
+        else start(point.y);
+        return started;
+      },
+      end: (commit) => {
+        if (!started) {
+          quit();
+          return;
+        }
+        suppressNextClick(tracked?.touch ? "touchstart" : "mousedown");
+        finish(commit);
+      },
+    });
+    if (!tracked) return;
+    origin = { x: tracked.x, y: tracked.y };
+    last = origin;
+    pendingItem = quit;
+    if (tracked.touch) timer = setTimeout(() => start(last.y), LONG_PRESS_MS);
+  }
+
+  /**
+   * 名前などの touchmove（passive でないリスナーで受ける）。指でつかんだあとはスクロールを止める。
+   * 要素に前もって付けておくのは、指を置いた時点で止められるリスナーが無いと、ブラウザがあとから止められない扱いにするため
+   */
+  function onItemTouchMove(ev: Event) {
+    if (draggingId.value && ev.cancelable) ev.preventDefault();
+  }
+
+  /** 長押しでつかんだあと、指を離すまで長押しのメニュー（Android の contextmenu）を出さない */
+  function blockContextMenu() {
+    const prevent = (e: Event) => e.preventDefault();
+    document.addEventListener("contextmenu", prevent);
+    releaseContextMenu = () => document.removeEventListener("contextmenu", prevent);
+  }
+
   function finish(commit: boolean) {
     const movingId = draggingId.value;
     const index = targetIndex.value;
@@ -153,14 +238,17 @@ export function useRowReorderDrag(options: {
     draggingId.value = null;
     press?.stop();
     press = null;
+    releaseContextMenu?.();
+    releaseContextMenu = null;
     visible.value = false;
     items.value = [];
     overId.value = null;
     document.body.classList.remove(REORDERING_BODY_CLASS);
   }
 
-  /** つかんでいる途中なら、確定せずにやめる。 */
+  /** つかんでいる途中なら、確定せずにやめる。名前などからつかむのを待っている途中なら、待つのをやめる。 */
   function cancel() {
+    pendingItem?.();
     if (draggingId.value) finish(false);
   }
 
@@ -184,6 +272,8 @@ export function useRowReorderDrag(options: {
     /** 落とす位置の行。 */
     overId: overId as Readonly<Ref<string | null>>,
     onHandlePress,
+    onItemPress,
+    onItemTouchMove,
     cancel,
     nav,
     /** RowReorderNav.vue の一覧の要素（端での自動スクロールと位置の計算に使う）。 */

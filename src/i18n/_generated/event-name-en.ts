@@ -38,6 +38,7 @@ export const eventNameJaToEnByPeriod: Record<string, string> = {
   "ミラクルスナップミッション ミニ@2026-08-31": "Mini Snapshot Surprise Missions",
   "ゆめのかけらGETウィーク@2025-04-21": "Dream Shard Week Vol. 1",
   "ゆめのかけらGETウィーク@2026-03-16": "Dream Shard Week Vol. 2",
+  "ゆめのかけらGETウィーク@2026-11-23": "Dream Shard Week Vol. 3",
   "連発！スキルウィーク vol.2@2025-08-11": "Super Skill Week Part 2",
   "連発！スキルウィーク vol.3@2026-01-19": "Super Skill Week Part 3",
   "連発！スキルウィーク@2025-01-20": "Super Skill Week",

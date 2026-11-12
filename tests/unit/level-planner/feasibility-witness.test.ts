@@ -5,6 +5,7 @@ import {
   refineFeasibilityWitness,
   solveFeasibilityDecisionForFixedRows,
   solveFeasibilityForFixedRows,
+  solveFeasibilityForFixedRowsIfTopDownCertified,
   validateFeasibilityWitness,
 } from '../../../src/domain/level-planner/core/feasibilityWitness';
 import { CANDY_VALUES, MAX_ACCEPTABLE_SURPLUS } from '../../../src/domain/level-planner/constants';
@@ -12,6 +13,7 @@ import { refineExactSupply } from '../../../src/domain/level-planner/core/exactS
 import { getCandyFamilyKey } from '../../../src/domain/pokesleep/candy-family';
 import { __levelPlannerTestHooks, solveLevelPlan } from '../../../src/domain/level-planner/core/solveLevelPlan';
 import { simulateCandyBudget } from '../../../src/domain/pokesleep/simulateCandyBudget';
+import { calcExp } from '../../../src/domain/pokesleep/exp';
 import type {
   CandyInventory,
   FeasibilityDemandRow,
@@ -98,7 +100,6 @@ describe('fbl01d feasibility witness', () => {
       itemCompareMode: 'surplusFirst',
       maxRowSurplus: 2,
       maxReachedSurplus: 2,
-      maxTotalSurplus: 4,
     });
     expectFeasible(valid);
     expect(valid.witness.rows.map(row => row.supply.universalM)).toEqual([1, 1, 1]);
@@ -111,8 +112,7 @@ describe('fbl01d feasibility witness', () => {
         itemCompareMode: 'surplusFirst',
         maxRowSurplus: 2,
         maxReachedSurplus: 2,
-        maxTotalSurplus: 4,
-      },
+        },
     );
     expect(threeReached.status).toBe('infeasible');
   });
@@ -708,6 +708,145 @@ describe('fbl01d feasibility witness', () => {
     expect(compare).toBeLessThan(0);
   });
 
+  it('バランスは到達数の次に各行余り0〜2を見て、境界EXPはその後（EXP最大は境界EXPが先）', () => {
+    // 到達1行 + 境界。境界が Lv30 で全行余り0〜2 の案と、境界が Lv31 で到達行の余りが3の案
+    const acceptable = [
+      { candyDemandMet: true, effectiveTargetReached: true, level: 40, expInLevel: 0, totalCandyUnitsUsed: 0, surplusCandyValue: 1 },
+      { candyDemandMet: false, effectiveTargetReached: false, level: 30, expInLevel: 0, totalCandyUnitsUsed: 0, surplusCandyValue: 0 },
+    ];
+    const higherBoundary = [
+      { candyDemandMet: true, effectiveTargetReached: true, level: 40, expInLevel: 0, totalCandyUnitsUsed: 0, surplusCandyValue: 3 },
+      { candyDemandMet: false, effectiveTargetReached: false, level: 31, expInLevel: 0, totalCandyUnitsUsed: 0, surplusCandyValue: 0 },
+    ];
+
+    expect(__levelPlannerTestHooks.compareSyntheticStatesForTest(acceptable, higherBoundary, 'surplusGateFirst')).toBeGreaterThan(0);
+    expect(__levelPlannerTestHooks.compareSyntheticStatesForTest(acceptable, higherBoundary, 'legacyImproved')).toBeLessThan(0);
+  });
+
+  it('バランスは到達数・余り0〜2・境界進捗が同じならLvMAX余り0達成数を余り合計より先に見る', () => {
+    const zeroAtMax = [
+      { candyDemandMet: true, effectiveTargetReached: true, level: 70, expInLevel: 0, totalCandyUnitsUsed: 0, surplusCandyValue: 0 },
+      { candyDemandMet: true, effectiveTargetReached: true, level: 60, expInLevel: 0, totalCandyUnitsUsed: 0, surplusCandyValue: 2 },
+    ];
+    const smallerTotal = [
+      { candyDemandMet: true, effectiveTargetReached: true, level: 70, expInLevel: 0, totalCandyUnitsUsed: 0, surplusCandyValue: 1 },
+      { candyDemandMet: true, effectiveTargetReached: true, level: 60, expInLevel: 0, totalCandyUnitsUsed: 0, surplusCandyValue: 0 },
+    ];
+
+    expect(__levelPlannerTestHooks.compareSyntheticStatesForTest(zeroAtMax, smallerTotal, 'surplusGateFirst')).toBeGreaterThan(0);
+  });
+
+  /**
+   * LvMAX のリザードンを余り0にすると、残る万能アメで足りないカメックスが余り3になる。
+   * - 案X: リザードン 万能S1（余り0）/ カメックス 万能M1（余り3） … LvMAX余り0が1、ゲート外の余り3
+   * - 案Y: リザードン 炎タイプS1（余り1）/ カメックス 万能S6（余り1） … 全行余り0〜2
+   * 供給内訳では、バランスも EXP最大も LvMAX余り0 を各行余り0〜2より先に見るので X。
+   */
+  function lvMaxZeroSurplusConflict() {
+    const rows = [
+      demandRow('charizard', 6, 'fire', 3, { reachedLv: 70, preferZeroSurplus: true }),
+      demandRow('blastoise', 9, 'water', 17),
+    ];
+    const inventory: CandyInventory = {
+      species: {},
+      typeCandy: { fire: { s: 1, m: 0 } },
+      universal: { s: 6, m: 1, l: 0 },
+    };
+    return { rows, inventory };
+  }
+
+  it('供給内訳: バランスも EXP最大と同じく、LvMAX余り0 を各行余り0〜2より先に取る', () => {
+    const { rows, inventory } = lvMaxZeroSurplusConflict();
+    const supplies = (mode: SolverItemCompareMode) => {
+      const result = solveFeasibilityForFixedRows(rows, inventory, { ...noBoost, itemCompareMode: mode });
+      expectFeasible(result);
+      return result.witness.rows.map(row => row.supply);
+    };
+    const planX = [
+      { species: 0, typeS: 0, typeM: 0, universalS: 1, universalM: 0, universalL: 0 },
+      { species: 0, typeS: 0, typeM: 0, universalS: 0, universalM: 1, universalL: 0 },
+    ];
+
+    expect(supplies('surplusGateFirst')).toEqual(planX);
+    expect(supplies('legacyImproved')).toEqual(planX);
+  });
+
+  /**
+   * 上の競合に、炎タイプS1で賄う余り1の行（ピカチュウ）を足して refine へ渡す。
+   * 案Y（各行余り0〜2）を選んでいても余り合計が3になるので、refine の行ごとの余りの上限が3まで広がり、案X も探索に入る
+   */
+  function refineConflictRows(selectedSupplies: Array<{ typeS: number; universalS: number; universalM: number }>) {
+    const { rows, inventory } = lvMaxZeroSurplusConflict();
+    const refineRows = [...rows, demandRow('pikachu', 25, 'electric', 3)].map((row, index) => {
+      const selected = { species: 0, typeM: 0, universalL: 0, ...selectedSupplies[index] };
+      const supply = selected.typeS * CANDY_VALUES.type.s + selected.universalS * CANDY_VALUES.universal.s + selected.universalM * CANDY_VALUES.universal.m;
+      return {
+        id: row.pokemonId,
+        name: row.pokemonId,
+        pokedexId: row.pokedexId,
+        candyFamilyKey: row.candyFamilyKey,
+        type: row.type,
+        totalCandyCount: row.totalCandy,
+        fixedSpecies: 0,
+        legacyZeroSurplusPriority: row.preferZeroSurplus,
+        candyDemandMet: true,
+        selected: { ...selected, supply, surplus: supply - row.totalCandy },
+      };
+    });
+    const refineInventory: CandyInventory = {
+      ...inventory,
+      typeCandy: { ...inventory.typeCandy, electric: { s: 1, m: 0 } },
+    };
+    return (mode: SolverItemCompareMode) => {
+      const refined = refineExactSupply(refineRows, refineInventory, mode);
+      expect(refined.status, JSON.stringify(refined)).toBe('ok');
+      if (refined.status !== 'ok') throw new Error('unreachable');
+      return refined.bestRows.map(row => row.surplus);
+    };
+  }
+  const refineSelectedY = [{ typeS: 1, universalS: 0, universalM: 0 }, { typeS: 0, universalS: 6, universalM: 0 }, { typeS: 1, universalS: 0, universalM: 0 }];
+  const refineSelectedX = [{ typeS: 0, universalS: 1, universalM: 0 }, { typeS: 0, universalS: 0, universalM: 1 }, { typeS: 1, universalS: 0, universalM: 0 }];
+
+  it('refine: バランスも EXP最大も、選んだ内訳が全行余り0〜2でも LvMAX余り0 を先に取る（ゲート外の余りが出てよい）', () => {
+    for (const mode of ['surplusGateFirst', 'legacyImproved'] as const) {
+      expect(refineConflictRows(refineSelectedY)(mode), mode).toEqual([0, 3, 1]);
+      expect(refineConflictRows(refineSelectedX)(mode), mode).toEqual([0, 3, 1]);
+    }
+  });
+
+  it('計算機全体: バランスも EXP最大と同じく、LvMAX のリザードンを余り0にする（カメックスは余り3になる）', () => {
+    const row = (
+      id: string, pokedexId: number, type: string, priorityIndex: number, overrides: Partial<LevelPlannerInput['pokemonList'][number]>,
+    ): LevelPlannerInput['pokemonList'][number] => ({
+      pokemonId: id, pokedexId, candyFamilyKey: getCandyFamilyKey(pokedexId), name: id, type,
+      currentLevel: 10, currentExpInLevel: 0, targetLevel: 30, expType: 600, nature: 'normal',
+      requestedBoostCandy: 0, boostAllowed: true, priorityIndex,
+      ...overrides,
+    });
+    const input: LevelPlannerInput = {
+      pokemonList: [
+        // Lv69 から Lv70 までの残り 51EXP（アメ1個 25EXP なので3個）。届くと LvMAX になる
+        row('charizard', 6, 'fire', 0, { currentLevel: 69, currentExpInLevel: calcExp(69, 70, 600) - 51, targetLevel: 70 }),
+        row('blastoise', 9, 'water', 1, { candyTarget: { totalCandyUnits: 17, boostedCandyUnits: 0 } }),
+        row('pikachu', 25, 'electric', 2, { candyTarget: { totalCandyUnits: 3, boostedCandyUnits: 0 } }),
+      ],
+      dreamShards: 999_999_999,
+      boost: { kind: 'none', limit: 0 },
+      candyInventory: { species: {}, typeCandy: { fire: { s: 1, m: 0 }, electric: { s: 1, m: 0 } }, universal: { s: 6, m: 1, l: 0 } },
+    };
+    const surpluses = (itemCompareMode: SolverItemCompareMode) => {
+      const result = solveLevelPlan({ ...input, options: { itemCompareMode } });
+      expect(result.pokemonResults.map(pokemon => pokemon.reachableLine.candyDemandMet)).toEqual([true, true, true]);
+      expect(result.pokemonResults[0].reachableLine).toMatchObject({ level: 70, expInLevel: 0, totalCandyUnitsUsed: 3 });
+      return result.pokemonResults.map(pokemon => pokemon.reachableLine.surplusCandyValue);
+    };
+
+    expect(surpluses('surplusGateFirst')).toEqual([0, 3, 1]);
+    expect(surpluses('legacyImproved')).toEqual([0, 3, 1]);
+    // 余り最小は各行余り0〜2がハード制約なので、LvMAX余り0のためにカメックスを余り3にしない
+    expect(surpluses('surplusFirst')).toEqual([1, 1, 1]);
+  });
+
   it('validatorは供給値・余り・共有在庫・remainingを独立に検証する', () => {
     const rows = [demandRow('p1', 9001, 'alpha', 4)];
     const inventory: CandyInventory = {
@@ -1027,6 +1166,85 @@ describe('fbl01d feasibility witness', () => {
       ...options,
       maxReachedSurplus: 1,
     }));
+  });
+
+  it('境界の最大を直接求める処理（maxBoundaryTotal）は、判定（canSolve）で配れる最大と一致する', () => {
+    // EXP最大の境界の探索は、この処理の答えを二分探索で確かめ直さずに採る。上の行はヒトカゲ・ゼニガメ、境界の行は別の系統・タイプの
+    // ピカチュウ（同じ系統・タイプだとこの処理は null を返して使われない）
+    let seed = 20261111;
+    const rand = (n: number) => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return Math.floor(seed / 4294967296 * n);
+    };
+    const options = { ...noBoost, itemCompareMode: 'legacyImproved' as const };
+    for (let caseIndex = 0; caseIndex < 300; caseIndex++) {
+      const prefixRows = [demandRow('charmander', 4, 'fire', 5 + rand(60))];
+      if (caseIndex % 2 === 0) prefixRows.push(demandRow('squirtle', 7, 'water', 5 + rand(60)));
+      const inventory: CandyInventory = {
+        species: { [getCandyFamilyKey(4)]: rand(40), [getCandyFamilyKey(7)]: rand(40), [getCandyFamilyKey(25)]: rand(30) },
+        typeCandy: { fire: { s: rand(4), m: rand(3) }, water: { s: rand(4), m: rand(3) }, electric: { s: rand(4), m: rand(3) } },
+        universal: { s: rand(12), m: rand(4), l: rand(2) },
+      };
+      const cap = rand(200);
+      const boundaryRow = (totalCandy: number) => demandRow('pikachu', 25, 'electric', totalCandy, { candyDemandMet: false });
+      const session = createIndependentBoundaryFeasibilitySession(prefixRows, inventory, options);
+      if (!session) continue;
+      let expected = -1;
+      for (let total = cap; total >= 0; total--) {
+        if (session.canSolve(boundaryRow(total))?.status === 'feasible') {
+          expected = total;
+          break;
+        }
+      }
+      expect(session.maxBoundaryTotal(boundaryRow(cap), cap), `case=${caseIndex} cap=${cap} inventory=${JSON.stringify(inventory)}`).toBe(expected);
+    }
+  });
+
+  it('同じタイプの境界のセッションは、配れない個数を「分からない」でなく「配れない」と返す', () => {
+    // 上にドラゴンのミニリュウ、境界に別系統のドラゴンのラティアス。ドラゴンのタイプアメM1個は上の行が使う。
+    // 緩和（価値の合計）は通るが、境界の行に種族アメ3個より多くは配れない
+    const prefixRows = [demandRow('dratini', 147, 'dragon', 5)];
+    const inventory: CandyInventory = {
+      species: { [getCandyFamilyKey(380)]: 3 },
+      typeCandy: { dragon: { s: 0, m: 1 } },
+      universal: { s: 0, m: 0, l: 0 },
+    };
+    const boundaryRow = (totalCandy: number) => demandRow('latias', 380, 'dragon', totalCandy, { candyDemandMet: false });
+    const session = createIndependentBoundaryFeasibilitySession(prefixRows, inventory, noBoost);
+
+    expectFeasible(session!.solve(boundaryRow(3))!);
+    for (const totalCandy of [4, 5]) {
+      const result = session!.solve(boundaryRow(totalCandy));
+      expect(result?.status, `${totalCandy}個`).toBe('infeasible');
+      expect(solveFeasibilityForFixedRows([...prefixRows, boundaryRow(totalCandy)], inventory, noBoost).status).toBe('infeasible');
+    }
+  });
+
+  it('種族アメを上から使う候補が最適と証明できたときだけ答えを返し、証明できなければ null を返す', () => {
+    const options = { ...noBoost, itemCompareMode: 'legacyImproved' as const };
+    // 同じ系統が無い: 通常どおり解く
+    const independentRows = [demandRow('squirtle', 7, 'water', 5), demandRow('charmander', 4, 'fire', 3)];
+    const independentInventory: CandyInventory = { species: { '7': 5, '4': 3 }, typeCandy: {}, universal: { s: 0, m: 0, l: 0 } };
+    const independent = solveFeasibilityForFixedRowsIfTopDownCertified(independentRows, independentInventory, options);
+    const independentFull = solveFeasibilityForFixedRows(independentRows, independentInventory, options);
+    expectFeasible(independent!);
+    expectFeasible(independentFull);
+    expect(independent.witness).toEqual(independentFull.witness);
+
+    // 同じ系統（ゼニガメ・カメール）で、種族アメを上から使えば両方余り0: 候補が最適と証明できる
+    const certifiedRows = [demandRow('squirtle', 7, 'water', 5), demandRow('wartortle', 8, 'water', 3)];
+    const certifiedInventory: CandyInventory = { species: { [SHARED_SQUIRTLE_FAMILY]: 8 }, typeCandy: {}, universal: { s: 0, m: 0, l: 0 } };
+    const certified = solveFeasibilityForFixedRowsIfTopDownCertified(certifiedRows, certifiedInventory, options);
+    const certifiedFull = solveFeasibilityForFixedRows(certifiedRows, certifiedInventory, options);
+    expectFeasible(certified!);
+    expectFeasible(certifiedFull);
+    expect(certified.witness).toEqual(certifiedFull.witness);
+
+    // §6 の反例（需要25と4・種族4・水タイプM1個）: 上から使うとゼニガメが余り4になり証明できない。
+    // 分け方をすべて試せば、ゼニガメはタイプアメM、カメールは種族アメ4個で両方余り0にできる
+    const uncertifiedRows = [demandRow('squirtle', 7, 'water', 25), demandRow('wartortle', 8, 'water', 4)];
+    expect(solveFeasibilityForFixedRowsIfTopDownCertified(uncertifiedRows, sharedFamilyInventory(), options)).toBeNull();
+    expectFeasible(solveFeasibilityForFixedRows(uncertifiedRows, sharedFamilyInventory(), options));
   });
 
   it('緩和上界が不可行と判定したprefixをsolverがfeasibleにしない', () => {
