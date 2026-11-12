@@ -105,12 +105,19 @@ const SIDES: readonly Side[] = ["top", "right", "bottom", "left"];
 
 type InlineChange = { prop: string; value: string; previous: string };
 
+/**
+ * margin を書ける要素。並びの子には HTML の要素のほか、アイコンの `<svg>` も入る
+ * （SVG を数えないと、アイコンと文字の間の gap が付かない）。
+ * 並び（親）になるのは HTML の要素だけ（SVG は flex にならないので、isFlex で外れる）。
+ */
+type StyledElement = HTMLElement | SVGElement;
+
 /** 要素ごとに、この補正が書いた inline style と元の値。 */
-const changes = new Map<HTMLElement, InlineChange[]>();
+const changes = new Map<StyledElement, InlineChange[]>();
 /** 補正した親ごとに、margin を書いた子。 */
-const patchedChildren = new Map<HTMLElement, HTMLElement[]>();
+const patchedChildren = new Map<StyledElement, StyledElement[]>();
 /** 補正した親のうち折り返す並び。行分けは子孫の大きさで変わるので、子孫が変わったら付け直す。 */
-const wrapContainers = new Set<HTMLElement>();
+const wrapContainers = new Set<StyledElement>();
 
 function supportsFlexGap(): boolean {
   const box = document.createElement("div");
@@ -131,7 +138,7 @@ function isForced(): boolean {
   }
 }
 
-function writeInline(element: HTMLElement, prop: string, value: string): void {
+function writeInline(element: StyledElement, prop: string, value: string): void {
   let list = changes.get(element);
   if (!list) {
     list = [];
@@ -143,7 +150,7 @@ function writeInline(element: HTMLElement, prop: string, value: string): void {
   element.style.setProperty(prop, value);
 }
 
-function restoreInline(element: HTMLElement): void {
+function restoreInline(element: StyledElement): void {
   const list = changes.get(element);
   if (!list) return;
   changes.delete(element);
@@ -155,7 +162,7 @@ function restoreInline(element: HTMLElement): void {
   }
 }
 
-function restoreElement(element: HTMLElement): void {
+function restoreElement(element: StyledElement): void {
   restoreInline(element);
   const children = patchedChildren.get(element);
   if (children) children.forEach(restoreInline);
@@ -167,13 +174,13 @@ function restoreElement(element: HTMLElement): void {
  * margin を書き換える間は transition を止める。テーマによっては margin も動く（`transition: all` など）ため、
  * 止めないと、戻した直後の動いている途中の値を元の margin として読み、付け直すたびに間隔が膨らむ。
  */
-const suppressedTransitions = new Map<HTMLElement, string>();
+const suppressedTransitions = new Map<StyledElement, string>();
 
 /**
  * margin が動く transition か。transform だけを動かしている要素（FLIP の途中など）の transition まで止めると、
  * 動いている途中のアニメーションが打ち切られて最終位置へ飛ぶ。
  */
-function transitionsMargin(element: HTMLElement): boolean {
+function transitionsMargin(element: StyledElement): boolean {
   const style = getComputedStyle(element);
   const properties = style.transitionProperty.split(",");
   const durations = style.transitionDuration.split(",");
@@ -184,7 +191,7 @@ function transitionsMargin(element: HTMLElement): boolean {
   });
 }
 
-function suppressTransition(element: HTMLElement): void {
+function suppressTransition(element: StyledElement): void {
   if (suppressedTransitions.has(element) || !transitionsMargin(element)) return;
   suppressedTransitions.set(element, element.style.getPropertyValue("transition"));
   element.style.setProperty("transition", "none");
@@ -246,7 +253,7 @@ function collectAutoMarginSelectors(): Record<Side, string[]> {
   return out;
 }
 
-function readAutoSides(element: HTMLElement): AutoSides {
+function readAutoSides(element: StyledElement): AutoSides {
   if (!autoMarginSelectors) autoMarginSelectors = collectAutoMarginSelectors();
   const auto: AutoSides = {};
   for (const side of SIDES) {
@@ -265,8 +272,9 @@ function readAutoSides(element: HTMLElement): AutoSides {
   return auto;
 }
 
-function collectElements(roots: readonly Element[]): HTMLElement[] {
-  const seen = new Set<HTMLElement>();
+function collectElements(roots: readonly Element[]): StyledElement[] {
+  // 並び（親）を探すのは HTML の要素だけ。margin を書いた SVG の子は、下の patchedChildren からたどって入れる
+  const seen = new Set<StyledElement>();
   const add = (element: Element | null) => {
     if (element instanceof HTMLElement) seen.add(element);
   };
@@ -276,7 +284,7 @@ function collectElements(roots: readonly Element[]): HTMLElement[] {
     add(root.parentElement);
     // 中身（文字・class）が変わると大きさが変わり、祖先の折り返す並びの行分けが変わる。
     for (let ancestor = root.parentElement; ancestor; ancestor = ancestor.parentElement) {
-      if (wrapContainers.has(ancestor as HTMLElement)) add(ancestor);
+      if (wrapContainers.has(ancestor)) add(ancestor);
     }
     const all = root.getElementsByTagName("*");
     for (let i = 0; i < all.length; i++) add(all[i]);
@@ -284,7 +292,7 @@ function collectElements(roots: readonly Element[]): HTMLElement[] {
   // 親を付け直すと、その親が margin を書いた子の inline style も戻る（子自身が並びなら、その gap の補正も消える）。
   // 子も付け直す対象に含めて、子自身の補正を書き直す。子を戻すとさらにその子も戻るので、入れ子の奥までたどる。
   // 逆に、親が margin を書いた要素を戻すと、その margin も消える。親を付け直さないと margin が戻らないので、親も含める
-  // （中身の class が変わった要素の親の親など。2026-10-20 実例: テーマ選択を開くと、並びの間隔の margin が消えて左へずれた）。
+  // （中身の class が変わった要素の親の親など。親を付け直さないと、並びの間隔の margin が消えて左へずれる）。
   const queue = Array.from(seen);
   for (let i = 0; i < queue.length; i++) {
     const parent = queue[i].parentElement;
@@ -305,9 +313,9 @@ function collectElements(roots: readonly Element[]): HTMLElement[] {
 
 /** children と childMargins は items と同じ添字。地の文字の添字は null。 */
 type Plan = {
-  container: HTMLElement;
+  container: StyledElement;
   info: FlexContainerInfo;
-  children: (HTMLElement | null)[];
+  children: (StyledElement | null)[];
   childMargins: (Margins | null)[];
   items: FlexItem[];
 };
@@ -331,7 +339,7 @@ function run(roots: readonly Element[]): void {
     // 隠れている並びは大きさを測れない（折り返しを取り違える）。表示されたとき（style・class の変化）に付け直す。
     if (element.getClientRects().length === 0) continue;
     // 見た目の並び順は order で決まる（同じ order なら DOM の順）。::before は先頭、::after は末尾の DOM 位置。
-    const entries: { order: number; position: number; child: HTMLElement | null; margins: Margins | null; item: FlexItem }[] = [];
+    const entries: { order: number; position: number; child: StyledElement | null; margins: Margins | null; item: FlexItem }[] = [];
     const addPseudo = (pseudo: "::before" | "::after", position: number) => {
       const pseudoStyle = getComputedStyle(element, pseudo);
       const content = pseudoStyle.content;
@@ -347,7 +355,8 @@ function run(roots: readonly Element[]): void {
         entries.push({ order: 0, position: i, child: null, margins: null, item: { kind: "unpatchable" } });
         continue;
       }
-      if (!(node instanceof HTMLElement)) continue;
+      // アイコンの <svg> も1つの子として並ぶ（数えないと、アイコンと隣の要素の間の gap が抜ける）
+      if (!(node instanceof HTMLElement) && !(node instanceof SVGElement)) continue;
       const childStyle = getComputedStyle(node);
       if (childStyle.display === "none" || childStyle.position === "absolute" || childStyle.position === "fixed") continue;
       entries.push({
@@ -372,11 +381,11 @@ function run(roots: readonly Element[]): void {
   measureWrapLines(plans);
 
   // 同じ要素の同じ辺に2つの差分が付くこともあるので、合計してから書く。
-  const totals = new Map<HTMLElement, { base: Margins; delta: Partial<Margins> }>();
+  const totals = new Map<StyledElement, { base: Margins; delta: Partial<Margins> }>();
   for (const plan of plans) {
     writeInline(plan.container, "row-gap", "0px");
     writeInline(plan.container, "column-gap", "0px");
-    const touched: HTMLElement[] = [];
+    const touched: StyledElement[] = [];
     for (const patch of planFlexGapPatches(plan.info, plan.items)) {
       const child = plan.children[patch.target];
       const base = plan.childMargins[patch.target];
@@ -408,7 +417,7 @@ function run(roots: readonly Element[]): void {
 function measureWrapLines(plans: readonly Plan[]): void {
   const wrapPlans = plans.filter(plan => plan.info.wrap !== "nowrap");
   if (!wrapPlans.length) return;
-  const growStopped: HTMLElement[] = [];
+  const growStopped: StyledElement[] = [];
   for (const plan of wrapPlans) {
     for (const child of plan.children) {
       if (child && px(getComputedStyle(child).flexGrow) > 0) growStopped.push(child);

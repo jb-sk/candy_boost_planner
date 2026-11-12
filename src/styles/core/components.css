@@ -24,10 +24,12 @@
 @import "./components/SettingsOverlay.css";
 @import "./components/HelpOverlay.css";
 @import "./components/EventHistoryOverlay.css";
+@import "./components/FineTuneModal.css";
 @import "./components/LevelPicker.css";
 @import "./components/NumericKeypad.css";
 @import "./components/NatureSelect.css";
 @import "./components/SleepTargetSelect.css";
+@import "./components/SlotTabMenu.css";
 @import "./components/OnboardingTour.css";
 @import "../../components/DesignSwitcher.css";
 
@@ -78,7 +80,7 @@
 
 /*
  * 言語・使い方・イベント履歴の行。ボタンの形をしているのは言語の切り替えだけにして、
- * 使い方・イベント履歴は文字のリンクにする（同じ重さのボタンが並ぶと hero が騒がしい。2026-10-20 ユーザー指摘）。
+ * 使い方・イベント履歴は文字のリンクにする（同じ重さのボタンが並ぶと hero が騒がしい）。
  */
 .hero__bar {
   margin-top: 10px;
@@ -147,7 +149,7 @@
 /*
  * 支援とテーマ。名前は小さく横に添えて、1行に収める。
  * 名前（10.4px）とリンク・テーマ名（12px 前後）は文字の大きさが違うので、上下の中央ではなくベースラインでそろえる。
- * 中央だと大きい方の文字の下端が下がって見えた（2026-10-20 ユーザー指摘）。
+ * 中央だと大きい方の文字の下端が下がって見えた。
  */
 .heroMeta {
   display: flex;
@@ -477,7 +479,7 @@ select.field__input {
     box-shadow: none;
   }
 
-  /* ナビのすぐ下なので、見出しの上はパネルの余白だけにする（h2 の既定の余白でナビとの間が空きすぎた。2026-10-20 ユーザー指摘） */
+  /* ナビのすぐ下なので、見出しの上はパネルの余白だけにする（h2 の既定の余白でナビとの間が空きすぎた） */
   .dashboard > .panel .panel__title {
     margin: 0 0 12px;
   }

@@ -113,7 +113,7 @@ test.describe('07-level-planner-inventory', () => {
   });
 
   test('不足がある行では、目標Lvに届かなくても睡眠到達Lvを出す', async ({ page }) => {
-    // 不足があると睡眠のあとどこまで上がるのか読めないので、目標未満の着地点も出す（2026-10-13 ユーザー指示）。
+    // 不足があると睡眠のあとどこまで上がるのか読めないので、目標未満の着地点も出す。
     // 不足が無い行は従来どおり、目標を超えるときだけ出す（calcSleepReachLevel）
     await page.goto('/');
     const { calc, row } = await setupShardsLimitedRow(page);

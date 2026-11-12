@@ -296,7 +296,8 @@ function validateRow(value: unknown, path: string, sourceSchemaVersion: 1 | 2 | 
     : row.boostMinimizeRow === true
       ? true
       : fail(`${path}.boostMinimizeRow`, "must be true");
-  const boostMinimizeRow = boostOrExpAdjustment === undefined ? storedBoostMinimizeRow : undefined;
+  // 行単位の最小化の印は、アメブ個数と一緒に持てる（ON にしても元の個数を残し、在庫で届かないときに使う）
+  const boostMinimizeRow = storedBoostMinimizeRow;
   if (candyTarget === undefined && boostOrExpAdjustment === undefined && dstExpInLevel !== undefined && dstExpInLevel > 0) {
     fail(`${path}.dstExpInLevel`, "must be 0 without a candy-count anchor");
   }

@@ -216,6 +216,29 @@ test.describe('flex の gap の補正（書き換えへの追従）', () => {
     expect(await layout(true)).toEqual(native);
   });
 
+  // アイコンの <svg> も並びの子として数える。数えないと、アイコンと文字の間の gap が抜けて文字がアイコンにくっつく
+  // （2026-11-05 実例: シンプルのリセット・全体のLvを伸ばすのアイコン）。
+  test('アイコンの svg と文字の間にも gap の間隔が付く', async ({ page }) => {
+    const layout = async (polyfill: boolean) => {
+      await page.goto(polyfill ? '/?flexGapPolyfill=1' : '/');
+      await expect(page.locator('#app > *').first()).toBeVisible();
+      return page.evaluate(async () => {
+        const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const box = document.createElement('div');
+        box.style.cssText = 'display:inline-flex;align-items:center;gap:6px;position:absolute;left:0;top:0;font:16px monospace';
+        box.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14"><path d="M2 2h12v12H2z"/></svg><span>a</span>'
+          + '<svg viewBox="0 0 16 16" width="14" height="14"><path d="M2 2h12v12H2z"/></svg>';
+        document.body.appendChild(box);
+        await frame();
+        return Array.from(box.children).map((child) => Math.round(child.getBoundingClientRect().left * 10) / 10);
+      });
+    };
+    const native = await layout(false);
+    // 前提: 通常の表示では svg と文字の間に 6px ずつ空いている
+    expect(native[1] - (native[0] + 14)).toBeCloseTo(6, 0);
+    expect(await layout(true)).toEqual(native);
+  });
+
   // FLIP などは transform を transition で動かす。描画だけの書き換えで付け直さず、付け直しても transform の transition は止めない。
   test('transform のアニメーション中に付け直しても、アニメーションが打ち切られない', async ({ page }) => {
     await page.goto('/?flexGapPolyfill=1');

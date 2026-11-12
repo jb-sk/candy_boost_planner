@@ -47,7 +47,6 @@ type OracleMetrics = {
   shards: number;
   speciesLex: number;
   itemPriority: number[];
-  legacyItemPriority: number[];
 };
 
 type OraclePlan = {
@@ -68,10 +67,6 @@ type OracleCheckResult = 'checked-feasibility' | 'checked-refined' | 'skipped-to
 type SolverPlan = {
   plan: OraclePlan;
   result: LevelPlannerResult;
-};
-type OptimizationOraclePolicy = {
-  /** この集合に入った行だけ、将来のスライダーでアメブ・かけらを譲れる。 */
-  donorPokemonIds: Set<string>;
 };
 
 const modes: SolverItemCompareMode[] = ['surplusFirst', 'legacyImproved', 'surplusGateFirst'];
@@ -104,12 +99,27 @@ function compareNumbers(a: number[], b: number[]): number {
   return 0;
 }
 
+/**
+ * 使用優先度（3モード共通）。`level-planner-allocation-policy-spec.md` §6 の表から独立に書く:
+ * 個数あたりの重み タイプS +28・タイプM +25・万能S −3・万能M −40・万能L −800、
+ * タイブレークは `[スコア, タイプS, タイプM, 万能S, −万能M]`。大きいほど良い。
+ */
 function itemPriority(supply: CandySupplyBreakdown): number[] {
-  return [supply.type.s, supply.type.m, supply.universal.s, supply.universal.m, supply.universal.l];
+  const score = supply.type.s * 28 + supply.type.m * 25 - supply.universal.s * 3 - supply.universal.m * 40 - supply.universal.l * 800;
+  return [score, supply.type.s, supply.type.m, supply.universal.s, -supply.universal.m];
 }
 
-function legacyItemPriority(supply: CandySupplyBreakdown): number[] {
-  return [-supply.universal.l, -supply.universal.m, supply.type.s, supply.type.m];
+/** 各行余り0〜2に収まる方が良く、収まらない同士はゲート外の余り（3以上の行の余りの和）が小さい方が良い */
+function compareRowSurplusGate(a: OracleMetrics, b: OracleMetrics): number {
+  const acceptableA = a.normalizedSurplus === 0;
+  const acceptableB = b.normalizedSurplus === 0;
+  if (acceptableA !== acceptableB) return acceptableA ? 1 : -1;
+  if (!acceptableA && a.normalizedSurplus !== b.normalizedSurplus) return a.normalizedSurplus < b.normalizedSurplus ? 1 : -1;
+  return 0;
+}
+
+function compareZeroSurplus(a: OracleMetrics, b: OracleMetrics): number {
+  return a.zeroSurplusCount === b.zeroSurplusCount ? 0 : a.zeroSurplusCount > b.zeroSurplusCount ? 1 : -1;
 }
 
 function isLegacyLikeMode(mode: SolverItemCompareMode): boolean {
@@ -131,7 +141,6 @@ function emptyMetrics(): OracleMetrics {
     shards: 0,
     speciesLex: 0,
     itemPriority: [0, 0, 0, 0, 0],
-    legacyItemPriority: [0, 0, 0, 0],
   };
 }
 
@@ -192,7 +201,6 @@ function candidateAchievedZeroSurplusPriority(candidate: OracleCandidate, mode: 
 
 function appendMetrics(metrics: OracleMetrics, candidate: OracleCandidate, mode: SolverItemCompareMode): OracleMetrics {
   const priority = itemPriority(candidate.line.candySupply);
-  const legacyPriority = legacyItemPriority(candidate.line.candySupply);
   return {
     zeroSurplusCount: metrics.zeroSurplusCount + (candidateAchievedZeroSurplusPriority(candidate, mode) ? 1 : 0),
     speciesUsed: metrics.speciesUsed + candidate.line.candySupply.species,
@@ -203,7 +211,6 @@ function appendMetrics(metrics: OracleMetrics, candidate: OracleCandidate, mode:
     shards: metrics.shards + candidate.line.dreamShardsUsed,
     speciesLex: metrics.speciesLex - candidate.line.candySupply.species * candidate.pokemon.priorityIndex,
     itemPriority: metrics.itemPriority.map((value, index) => value + priority[index]),
-    legacyItemPriority: metrics.legacyItemPriority.map((value, index) => value + legacyPriority[index]),
   };
 }
 
@@ -256,91 +263,88 @@ function compareLevel(a: { level: number; expInLevel: number }, b: { level: numb
   return a.level - b.level || a.expInLevel - b.expInLevel;
 }
 
-function compareCoreAllocationPlan(a: OraclePlan, b: OraclePlan, mode: SolverItemCompareMode): number {
+/** 境界の Lv+EXP（境界が無い = 全行到達の方が良い） */
+function compareBoundaryProgress(a: OraclePlan, b: OraclePlan): number {
+  if (a.boundary && b.boundary) {
+    const boundary = compareLevel(a.boundary.line, b.boundary.line);
+    return boundary ? boundary > 0 ? 1 : -1 : 0;
+  }
+  if (!a.boundary && b.boundary) return 1;
+  if (a.boundary && !b.boundary) return -1;
+  return 0;
+}
+
+/**
+ * 到達 prefix・境界まわりの比較（§6 の比較タプルの前半）。
+ * - 余り最小: 到達 prefix > 到達済み上位の余り合計 > 境界Lv+EXP > LvMAX余り0 > 余り合計（境界の余り）
+ * - バランス: 到達 prefix > 各行余り0〜2 > ゲート外の余り > 境界Lv+EXP
+ * - EXP最大: 到達 prefix > 境界Lv+EXP
+ */
+function compareFeasibilityPlan(a: OraclePlan, b: OraclePlan, mode: SolverItemCompareMode): number {
+  if (a.reachedPrefixCount !== b.reachedPrefixCount) return a.reachedPrefixCount > b.reachedPrefixCount ? 1 : -1;
   if (mode === 'surplusFirst') {
-    if (a.reachedPrefixCount !== b.reachedPrefixCount) return a.reachedPrefixCount > b.reachedPrefixCount ? 1 : -1;
     if (a.metrics.reachedSurplus !== b.metrics.reachedSurplus) return a.metrics.reachedSurplus < b.metrics.reachedSurplus ? 1 : -1;
-    if (a.boundary && b.boundary) {
-      const boundary = compareLevel(a.boundary.line, b.boundary.line);
-      if (boundary) return boundary > 0 ? 1 : -1;
-    } else if (!a.boundary && b.boundary) return 1;
-    else if (a.boundary && !b.boundary) return -1;
-    if (a.metrics.zeroSurplusCount !== b.metrics.zeroSurplusCount) return a.metrics.zeroSurplusCount > b.metrics.zeroSurplusCount ? 1 : -1;
+    const boundary = compareBoundaryProgress(a, b);
+    if (boundary) return boundary;
+    const zero = compareZeroSurplus(a.metrics, b.metrics);
+    if (zero) return zero;
     if (a.metrics.rawSurplus !== b.metrics.rawSurplus) return a.metrics.rawSurplus < b.metrics.rawSurplus ? 1 : -1;
-    const item = compareNumbers(a.metrics.itemPriority, b.metrics.itemPriority);
-    if (item) return item;
-    if (a.metrics.surplusExp !== b.metrics.surplusExp) return a.metrics.surplusExp < b.metrics.surplusExp ? 1 : -1;
-    if (a.metrics.shards !== b.metrics.shards) return a.metrics.shards < b.metrics.shards ? 1 : -1;
     return 0;
   }
-  if (a.reachedPrefixCount !== b.reachedPrefixCount) return a.reachedPrefixCount > b.reachedPrefixCount ? 1 : -1;
-  if (a.metrics.speciesUsed !== b.metrics.speciesUsed) return a.metrics.speciesUsed > b.metrics.speciesUsed ? 1 : -1;
-  if (usesZeroSurplusPriority(mode) && a.metrics.zeroSurplusCount !== b.metrics.zeroSurplusCount) {
-    return a.metrics.zeroSurplusCount > b.metrics.zeroSurplusCount ? 1 : -1;
+  if (mode === 'surplusGateFirst') {
+    const gate = compareRowSurplusGate(a.metrics, b.metrics);
+    if (gate) return gate;
   }
-  if (isLegacyLikeMode(mode)) {
-    const acceptableA = a.metrics.normalizedSurplus === 0;
-    const acceptableB = b.metrics.normalizedSurplus === 0;
-    if (acceptableA !== acceptableB) return acceptableA ? 1 : -1;
-    if (!acceptableA && a.metrics.normalizedSurplus !== b.metrics.normalizedSurplus) {
-      return a.metrics.normalizedSurplus < b.metrics.normalizedSurplus ? 1 : -1;
-    }
-    const legacyItem = compareNumbers(a.metrics.legacyItemPriority, b.metrics.legacyItemPriority);
-    if (legacyItem) return legacyItem;
-    if (a.metrics.rawSurplus !== b.metrics.rawSurplus) return a.metrics.rawSurplus < b.metrics.rawSurplus ? 1 : -1;
-  } else {
-    if (a.metrics.rawSurplus !== b.metrics.rawSurplus) return a.metrics.rawSurplus < b.metrics.rawSurplus ? 1 : -1;
-    const item = compareNumbers(a.metrics.itemPriority, b.metrics.itemPriority);
-    if (item) return item;
+  return compareBoundaryProgress(a, b);
+}
+
+/**
+ * 同じ到達・境界進捗での余りの比較（§6 の比較タプルの後半のうち、使用優先度より前）。
+ * - 余り最小: 到達済み上位の余り合計 > LvMAX余り0 > 余り合計
+ * - バランス・EXP最大: LvMAX余り0 > 各行余り0〜2 > ゲート外の余り（内訳では、バランスも LvMAX の行を余り0にするためなら
+ *   ほかの行が余り3以上になってよい）
+ */
+function compareSurplus(a: OracleMetrics, b: OracleMetrics, mode: SolverItemCompareMode): number {
+  if (mode === 'surplusFirst') {
+    if (a.reachedSurplus !== b.reachedSurplus) return a.reachedSurplus < b.reachedSurplus ? 1 : -1;
+    const zero = compareZeroSurplus(a, b);
+    if (zero) return zero;
+    if (a.rawSurplus !== b.rawSurplus) return a.rawSurplus < b.rawSurplus ? 1 : -1;
+    return 0;
   }
+  return compareZeroSurplus(a, b) || compareRowSurplusGate(a, b);
+}
+
+/** 使用優先度と、バランス・EXP最大の余り合計（余り0〜2を同等に扱った分を詰める） */
+function compareItems(a: OracleMetrics, b: OracleMetrics, mode: SolverItemCompareMode): number {
+  const item = compareNumbers(a.itemPriority, b.itemPriority);
+  if (item) return item;
+  if (mode !== 'surplusFirst' && a.rawSurplus !== b.rawSurplus) return a.rawSurplus < b.rawSurplus ? 1 : -1;
+  return 0;
+}
+
+/** §6 の比較タプル全体（到達・境界 → 余り → 使用優先度 → 余剰EXP → かけら）。比較キーの集計範囲の回帰テストが使う */
+function compareCoreAllocationPlan(a: OraclePlan, b: OraclePlan, mode: SolverItemCompareMode): number {
+  const feasibility = compareFeasibilityPlan(a, b, mode);
+  if (feasibility) return feasibility;
+  const surplus = compareSurplus(a.metrics, b.metrics, mode) || compareItems(a.metrics, b.metrics, mode);
+  if (surplus) return surplus;
   if (a.metrics.surplusExp !== b.metrics.surplusExp) return a.metrics.surplusExp < b.metrics.surplusExp ? 1 : -1;
   if (a.metrics.shards !== b.metrics.shards) return a.metrics.shards < b.metrics.shards ? 1 : -1;
   return 0;
 }
 
-function compareFeasibilityPlan(a: OraclePlan, b: OraclePlan, mode: SolverItemCompareMode): number {
-  if (mode === 'surplusFirst') {
-    if (a.reachedPrefixCount !== b.reachedPrefixCount) return a.reachedPrefixCount > b.reachedPrefixCount ? 1 : -1;
-    if (a.metrics.reachedSurplus !== b.metrics.reachedSurplus) return a.metrics.reachedSurplus < b.metrics.reachedSurplus ? 1 : -1;
-    if (a.boundary && b.boundary) {
-      const boundary = compareLevel(a.boundary.line, b.boundary.line);
-      if (boundary) return boundary > 0 ? 1 : -1;
-    } else if (!a.boundary && b.boundary) return 1;
-    else if (a.boundary && !b.boundary) return -1;
-    if (a.metrics.zeroSurplusCount !== b.metrics.zeroSurplusCount) return a.metrics.zeroSurplusCount > b.metrics.zeroSurplusCount ? 1 : -1;
-    if (a.metrics.rawSurplus !== b.metrics.rawSurplus) return a.metrics.rawSurplus < b.metrics.rawSurplus ? 1 : -1;
-    return 0;
-  }
-  if (a.reachedPrefixCount !== b.reachedPrefixCount) return a.reachedPrefixCount > b.reachedPrefixCount ? 1 : -1;
-  if (!a.boundary && !b.boundary) return 0;
-  if (!a.boundary) return -1;
-  if (!b.boundary) return 1;
-  return compareLevel(a.boundary.line, b.boundary.line);
-}
-
+/**
+ * 需要を固定した供給内訳の比較。種族アメは各系統で使い切る不変条件なので先に見る。
+ * 同じ系統の種族アメを上の行が先に使う配分（上位寄せ、`speciesLex`）は、余りの後・使用優先度の前に見る
+ * （§6。ソルバーの供給内訳と同じ位置。種族のトップダウン正規形をアイテムの好みより先に決める）
+ */
 function compareFixedDemandSupplyPlan(a: OraclePlan, b: OraclePlan, mode: SolverItemCompareMode): number {
   if (a.metrics.speciesUsed !== b.metrics.speciesUsed) return a.metrics.speciesUsed > b.metrics.speciesUsed ? 1 : -1;
-  if (mode === 'surplusFirst') {
-    if (a.metrics.reachedSurplus !== b.metrics.reachedSurplus) return a.metrics.reachedSurplus < b.metrics.reachedSurplus ? 1 : -1;
-    if (a.metrics.zeroSurplusCount !== b.metrics.zeroSurplusCount) return a.metrics.zeroSurplusCount > b.metrics.zeroSurplusCount ? 1 : -1;
-    if (a.metrics.rawSurplus !== b.metrics.rawSurplus) return a.metrics.rawSurplus < b.metrics.rawSurplus ? 1 : -1;
-  }
-  if (isLegacyLikeMode(mode)) {
-    if (a.metrics.zeroSurplusCount !== b.metrics.zeroSurplusCount) return a.metrics.zeroSurplusCount > b.metrics.zeroSurplusCount ? 1 : -1;
-    const acceptableA = a.metrics.normalizedSurplus === 0;
-    const acceptableB = b.metrics.normalizedSurplus === 0;
-    if (acceptableA !== acceptableB) return acceptableA ? 1 : -1;
-    if (!acceptableA && a.metrics.normalizedSurplus !== b.metrics.normalizedSurplus) {
-      return a.metrics.normalizedSurplus < b.metrics.normalizedSurplus ? 1 : -1;
-    }
-    const legacyItem = compareNumbers(a.metrics.legacyItemPriority, b.metrics.legacyItemPriority);
-    if (legacyItem) return legacyItem;
-    if (a.metrics.rawSurplus !== b.metrics.rawSurplus) return a.metrics.rawSurplus < b.metrics.rawSurplus ? 1 : -1;
-  }
-  const item = compareNumbers(a.metrics.itemPriority, b.metrics.itemPriority);
-  if (item) return item;
+  const surplus = compareSurplus(a.metrics, b.metrics, mode);
+  if (surplus) return surplus;
   if (a.metrics.speciesLex !== b.metrics.speciesLex) return a.metrics.speciesLex > b.metrics.speciesLex ? 1 : -1;
-  return 0;
+  return compareItems(a.metrics, b.metrics, mode);
 }
 
 function simulate(
@@ -713,93 +717,6 @@ function enumerateCandidates(
   return candidates;
 }
 
-function enumerateOptimizationPreviewCandidates(
-  pokemon: OracleCandidate['pokemon'],
-  input: LevelPlannerInput,
-  usage: OracleUsage,
-  policy: OptimizationOraclePolicy,
-): OracleCandidate[] {
-  const inventory = remainingInventory(input, usage);
-  const remainingBoost = Math.max(0, input.boost.limit - usage.boost);
-  const remainingShards = Math.max(0, input.dreamShards - usage.shards);
-  const maxBoost = maxBoostFor(pokemon, input, remainingBoost);
-  const boostValues = policy.donorPokemonIds.has(pokemon.pokemonId)
-    ? Array.from({ length: maxBoost + 1 }, (_, value) => value)
-    : [maxBoost];
-  const candidates: OracleCandidate[] = [];
-  for (const boostBudget of boostValues) {
-    const target = targetMixed(pokemon, input.boost.kind, boostBudget);
-    if (pokemon.candyTarget) {
-      const totalBudget = Math.min(pokemon.candyTarget.totalCandyUnits, Math.max(0, inventoryValueFor(pokemon, inventory)));
-      const reached = simulateCandyBudget(pokemon, Math.min(boostBudget, totalBudget), totalBudget, remainingShards, input.boost.kind);
-      const total = reached.boostUsed + reached.normalUsed;
-      for (const supply of enumerateSupplies(total, pokemon, inventory)) {
-        candidates.push({ pokemon, line: makeCandyTargetLine(pokemon, input, Math.min(boostBudget, totalBudget), totalBudget, remainingShards, supply) });
-      }
-      continue;
-    }
-    const targetTotal = target.boostCandy + target.normalCandy;
-    const maxCandyBudget = Math.min(
-      targetTotal,
-      Math.max(0, inventoryValueFor(pokemon, inventory)),
-    );
-    const byUse = new Map<string, { boostBudget: number; normalBudget: number; total: number }>();
-    for (let normalBudget = 0; normalBudget <= maxCandyBudget; normalBudget++) {
-      const reached = simulate(pokemon, boostBudget, normalBudget, remainingShards, pokemon.effectiveLevel, pokemon.effectiveExp, input.boost.kind);
-      const total = reached.boostUsed + reached.normalUsed;
-      const key = `${reached.level}/${reached.expInLevel}/${reached.boostUsed}/${reached.normalUsed}/${reached.shards}`;
-      if (!byUse.has(key)) byUse.set(key, { boostBudget, normalBudget, total });
-    }
-    for (const option of byUse.values()) {
-      for (const supply of enumerateSupplies(option.total, pokemon, inventory)) {
-        candidates.push({ pokemon, line: makeLine(pokemon, input, option.boostBudget, option.normalBudget, remainingShards, supply) });
-      }
-    }
-  }
-  return candidates;
-}
-
-function compareOptimizationPreviewPlan(a: OraclePlan, b: OraclePlan, mode: SolverItemCompareMode): number {
-  if (a.reachedPrefixCount !== b.reachedPrefixCount) return a.reachedPrefixCount > b.reachedPrefixCount ? 1 : -1;
-  if (a.boundary && b.boundary) {
-    const boundary = compareLevel(a.boundary.line, b.boundary.line);
-    if (boundary) return boundary;
-  }
-  return compareCoreAllocationPlan(a, b, mode);
-}
-
-function solveByCoreAllocationOracle(rawInput: LevelPlannerInput, mode: SolverItemCompareMode, label = ''): OracleResult {
-  const input = {
-    ...rawInput,
-    boost: { ...rawInput.boost, limit: rawInput.boost.kind === 'none' ? 0 : rawInput.boost.limit },
-    options: { ...(rawInput.options ?? {}), itemCompareMode: mode },
-  };
-  const pokemonList = normalizePokemon(input, mode);
-  const candidateCounts = Array.from({ length: pokemonList.length }, () => 0);
-  let best: OraclePlan | undefined;
-  let planCount = 0;
-  const visit = (index: number, choices: OracleCandidate[], usage: OracleUsage): void => {
-    if (index === pokemonList.length) {
-      const plan = buildPlan(choices, mode);
-      if (mode === 'surplusFirst' && !satisfiesSurplusFirstGate(plan)) return;
-      planCount++;
-      if (!best || compareCoreAllocationPlan(plan, best, mode) > 0) best = plan;
-      return;
-    }
-    const candidates = enumerateCandidates(pokemonList[index], input, usage);
-    candidateCounts[index] = Math.max(candidateCounts[index], candidates.length);
-    for (const candidate of candidates) {
-      const nextUsage = mergeUsage(usage, usageFrom(candidate.pokemon, candidate.line));
-      if (!canConsume(nextUsage, input)) continue;
-      if (planCount > MAX_ORACLE_PLANS) throw new Error(`full-plan oracle exploded: ${label}, ${planCount} plans, candidates=${candidateCounts.join(',')}`);
-      visit(index + 1, [...choices, candidate], nextUsage);
-    }
-  };
-  visit(0, [], emptyUsage());
-  if (!best) throw new Error(`full-plan oracle found no feasible plan: candidates=${candidateCounts.join(',')}`);
-  return { best, planCount, candidateCounts };
-}
-
 function solveByFeasibilityOracle(rawInput: LevelPlannerInput, mode: SolverItemCompareMode, label = ''): OracleResult {
   const input = {
     ...rawInput,
@@ -887,61 +804,56 @@ function solveByFixedDemandSupplyOracle(rawInput: LevelPlannerInput, mode: Solve
   return { best, planCount, candidateCounts };
 }
 
-function solveByOptimizationPreviewOracle(
-  rawInput: LevelPlannerInput,
-  mode: SolverItemCompareMode,
-  policy: OptimizationOraclePolicy,
-  label = '',
-): OracleResult {
-  const input = {
-    ...rawInput,
-    boost: { ...rawInput.boost, limit: rawInput.boost.kind === 'none' ? 0 : rawInput.boost.limit },
-    options: { ...(rawInput.options ?? {}), itemCompareMode: mode },
-  };
-  const pokemonList = normalizePokemon(input, mode);
-  const candidateCounts = Array.from({ length: pokemonList.length }, () => 0);
-  let best: OraclePlan | undefined;
-  let planCount = 0;
-  const visit = (index: number, choices: OracleCandidate[], usage: OracleUsage): void => {
-    if (index === pokemonList.length) {
-      const plan = buildPlan(choices, mode);
-      planCount++;
-      if (!best || compareOptimizationPreviewPlan(plan, best, mode) > 0) best = plan;
-      return;
-    }
-    const candidates = enumerateOptimizationPreviewCandidates(pokemonList[index], input, usage, policy);
-    candidateCounts[index] = Math.max(candidateCounts[index], candidates.length);
-    for (const candidate of candidates) {
-      const nextUsage = mergeUsage(usage, usageFrom(candidate.pokemon, candidate.line));
-      if (!canConsume(nextUsage, input)) continue;
-      if (planCount > MAX_ORACLE_PLANS) throw new Error(`optimization oracle exploded: ${label}, ${planCount} plans, candidates=${candidateCounts.join(',')}`);
-      visit(index + 1, [...choices, candidate], nextUsage);
-    }
-  };
-  visit(0, [], emptyUsage());
-  if (!best) throw new Error(`optimization oracle found no feasible plan: candidates=${candidateCounts.join(',')}`);
-  return { best, planCount, candidateCounts };
-}
-
-function planFromSolver(input: LevelPlannerInput, mode: SolverItemCompareMode): SolverPlan {
+function planFromSolver(input: LevelPlannerInput, mode: SolverItemCompareMode, planMode: SolverItemCompareMode = mode): SolverPlan {
   const result = solveLevelPlan({ ...input, options: { ...(input.options ?? {}), itemCompareMode: mode } });
-  const normalized = normalizePokemon(input, mode);
+  const normalized = normalizePokemon(input, planMode);
   const plan = buildPlan(result.pokemonResults.map((pokemonResult, index) => ({
     pokemon: normalized[index],
     line: pokemonResult.reachableLine,
-  })), mode);
+  })), planMode);
   return { plan, result };
 }
 
-function assertSolverMatchesOracle(input: LevelPlannerInput, mode: SolverItemCompareMode, label = ''): OracleCheckResult {
-  const feasibilityOracle = solveByFeasibilityOracle(input, mode, label);
-  const selected = planFromSolver(input, mode);
+/** 先頭から続く、アメを1個も要さない行（目標に届いている・個数指定が0個）の数 */
+function leadingNoCandyRowCount(input: LevelPlannerInput, mode: SolverItemCompareMode): number {
+  let count = 0;
+  for (const row of normalizePokemon(input, mode)) {
+    let total: number;
+    if (row.candyTarget) {
+      total = row.candyTarget.totalCandyUnits;
+    } else {
+      const reached = targetMixed(row, input.boost.kind, 0);
+      total = reached.boostCandy + reached.normalCandy;
+    }
+    if (total > 0) break;
+    count++;
+  }
+  return count;
+}
+
+/**
+ * 全プランoracleの最良と、比べるときの配分方針。
+ *
+ * 余り最小は、行が2つ以上で、各行余り0〜2のゲート内でアメを要する行が1匹も到達しないとき、バランスへ切り替えて
+ * 到達prefix・境界・供給内訳をすべてバランスで決める（fbl01d 設計書 §14.4.3。UI の案内「到達できるポケモンが
+ * 1匹もいない場合はバランスの配分に切り替えます」）。オラクルも同じ規則で切り替えて比べる
+ */
+function solveByFeasibilityOracleForMode(input: LevelPlannerInput, mode: SolverItemCompareMode, label = ''): { oracle: OracleResult; mode: SolverItemCompareMode } {
+  const oracle = solveByFeasibilityOracle(input, mode, label);
+  if (mode !== 'surplusFirst' || input.pokemonList.length <= 1) return { oracle, mode };
+  if (oracle.best.reachedPrefixCount > leadingNoCandyRowCount(input, mode)) return { oracle, mode };
+  return { oracle: solveByFeasibilityOracle(input, 'surplusGateFirst', label), mode: 'surplusGateFirst' };
+}
+
+function assertSolverMatchesOracle(input: LevelPlannerInput, requestedMode: SolverItemCompareMode, label = ''): OracleCheckResult {
+  const { oracle: feasibilityOracle, mode } = solveByFeasibilityOracleForMode(input, requestedMode, label);
+  const selected = planFromSolver(input, requestedMode, mode);
   const feasibilityComparison = compareFeasibilityPlan(selected.plan, feasibilityOracle.best, mode);
   expect(
     feasibilityComparison,
     [
       label ? `case=${label}` : '',
-      `mode=${mode}`,
+      mode === requestedMode ? `mode=${mode}` : `mode=${requestedMode}（到達0匹で ${mode} へ切り替え）`,
       `phase=feasibility`,
       `candidateCounts=${feasibilityOracle.candidateCounts.join(',')}`,
       `planCount=${feasibilityOracle.planCount}`,
@@ -1217,6 +1129,73 @@ function tinyThreePokemonCase(seed: number): LevelPlannerInput {
   };
 }
 
+/** かけら不足の入力に使う実在のポケモン（番号・タイプ・EXPタイプは pokemon-master.ts、系統は `pokemon()` が getCandyFamilyKey で付ける） */
+const shardShortPool = [
+  { pokedexId: 1, name: 'フシギダネ', type: 'grass', expType: 600 },
+  { pokedexId: 2, name: 'フシギソウ', type: 'grass', expType: 600 },
+  { pokedexId: 4, name: 'ヒトカゲ', type: 'fire', expType: 600 },
+  { pokedexId: 5, name: 'リザード', type: 'fire', expType: 600 },
+  { pokedexId: 7, name: 'ゼニガメ', type: 'water', expType: 600 },
+  { pokedexId: 133, name: 'イーブイ', type: 'normal', expType: 600 },
+  { pokedexId: 134, name: 'シャワーズ', type: 'water', expType: 600 },
+  { pokedexId: 147, name: 'ミニリュウ', type: 'dragon', expType: 900 },
+  { pokedexId: 148, name: 'ハクリュー', type: 'dragon', expType: 900 },
+] as const satisfies ReadonlyArray<{ pokedexId: number; name: string; type: string; expType: ExpType }>;
+
+/**
+ * かけらが足りない小さな入力。`smallRandomCase` はかけら不足が少ない（`seed % 7 === 0` のときだけ）ので、
+ * 目標までに要るかけらの 20〜90% にして、途中の行でかけらが尽きる形を作る。
+ * かけらで止まる行は境界で、到達prefixに入れずに境界の探索で配る個数を選ぶ（配分方針 §3-3・§4）。
+ * 同じ系統（フシギダネとフシギソウ、ヒトカゲとリザード）・同じ系統で別タイプ（イーブイとシャワーズ）・同じタイプで別系統も混ざる
+ */
+function shardShortRandomCase(seed: number): LevelPlannerInput {
+  const rng = createRng(seed);
+  const count = seed % 2 === 0 ? 3 : 2;
+  const boostKind = pick(rng, boostKinds);
+  const pokemonList: PokemonPlanInput[] = [];
+  for (let index = 0; index < count; index++) {
+    const entry = pick(rng, shardShortPool);
+    const currentLevel = int(rng, 2, 5);
+    pokemonList.push(pokemon(index, {
+      pokedexId: entry.pokedexId,
+      name: entry.name,
+      type: entry.type,
+      expType: entry.expType,
+      currentLevel,
+      currentExpInLevel: int(rng, 0, Math.floor(calcExp(currentLevel, currentLevel + 1, entry.expType) * 0.4)),
+      targetLevel: currentLevel + int(rng, 1, 2),
+      targetExpInLevel: 0,
+      nature: pick(rng, natures),
+      requestedBoostCandy: boostKind === 'none' ? 0 : int(rng, 0, 3),
+      boostAllowed: boostKind !== 'none',
+    }));
+  }
+  const species: Record<string, number> = {};
+  const typeCandy: CandyInventory['typeCandy'] = {};
+  for (const row of pokemonList) {
+    const key = speciesKey(row);
+    species[key] = (species[key] ?? 0) + int(rng, 0, 3);
+    const type = typeCandy[row.type] ?? { s: 0, m: 0 };
+    type.s += int(rng, 0, 2);
+    typeCandy[row.type] = type;
+  }
+  const requestedBoostTotal = pokemonList.reduce((sum, row) => sum + row.requestedBoostCandy, 0);
+  const base: LevelPlannerInput = {
+    pokemonList,
+    dreamShards: Number.MAX_SAFE_INTEGER,
+    boost: { kind: boostKind, limit: boostKind === 'none' ? 0 : requestedBoostTotal },
+    candyInventory: { species, typeCandy, universal: { s: int(rng, 2, 7), m: seed % 5 === 0 ? 1 : 0, l: 0 } },
+  };
+  let remainingBoost = base.boost.limit;
+  let neededShards = 0;
+  for (const row of normalizePokemon(base, 'surplusFirst')) {
+    const boost = maxBoostFor(row, base, remainingBoost);
+    remainingBoost -= boost;
+    neededShards += targetMixed(row, boostKind, boost).shards;
+  }
+  return { ...base, dreamShards: Math.floor(neededShards * (0.2 + 0.7 * rng())) };
+}
+
 function envInt(name: string, fallback: number): number {
   const value = Number.parseInt(process.env[name] ?? '', 10);
   return Number.isFinite(value) ? value : fallback;
@@ -1345,8 +1324,25 @@ describe('level planner full-plan oracle', () => {
     expect(fed.usage.shards).toBeGreaterThan(starved.usage.shards);
     for (const mode of modes) {
       expect(compareCoreAllocationPlan(fed, starved, mode), `mode=${mode}`).toBe(0);
-      expect(compareOptimizationPreviewPlan(fed, starved, mode), `mode=${mode}`).toBe(0);
     }
+  });
+
+  it('需要を固定した供給内訳の oracle は、種族アメの上位寄せ（speciesLex）を使用優先度より先に見る（ソルバーの供給内訳と同じ位置）', () => {
+    const metrics = (overrides: Partial<OracleMetrics>): OraclePlan => ({
+      choices: [],
+      usage: { boost: 0, shards: 0, species: {}, type: {}, universal: { s: 0, m: 0, l: 0 } },
+      reachedPrefixCount: 2,
+      metrics: { ...emptyMetrics(), speciesUsed: 4, ...overrides },
+    });
+    // 上の行が種族アメを先に使う方（speciesLex が大きい）が、使用優先度で劣っていても勝つ
+    const topDown = metrics({ speciesLex: 0, itemPriority: [-3, 0, 0, 1, 0] });
+    const betterItems = metrics({ speciesLex: -4, itemPriority: [28, 1, 0, 0, 0] });
+    for (const mode of modes) {
+      expect(compareFixedDemandSupplyPlan(topDown, betterItems, mode), `mode=${mode}`).toBeGreaterThan(0);
+    }
+    // 余りは上位寄せより先（余りの多い方は、上位寄せでも勝たない）
+    const surplusWorse = metrics({ speciesLex: 0, rawSurplus: 1, reachedSurplus: 1 });
+    expect(compareFixedDemandSupplyPlan(surplusWorse, metrics({ speciesLex: -4 }), 'surplusFirst')).toBeLessThan(0);
   });
 
   it.each(modes)('小さい固定ケースで計算機の結果が全プランoracleと一致する: %s', mode => {
@@ -1395,6 +1391,34 @@ describe('level planner full-plan oracle', () => {
     for (const input of cases) assertSolverMatchesOracle(input, mode);
   });
 
+  /**
+   * ヒトカゲはアメ1個で届く。万能S1（余り2）か炎タイプS1（余り3）で賄える。万能Sを使うと、万能Sしか使えない
+   * ゼニガメ（境界）が育たなくなる。
+   * - 余り最小・バランス: 同じ到達数なら各行余り0〜2が先なので、ヒトカゲに万能S、ゼニガメは万能S2個
+   * - EXP最大: 境界EXPが先なので、ヒトカゲに炎タイプS（余り3）、ゼニガメは万能S3個
+   */
+  it.each(modes)('同じ到達数で各行余り0〜2と境界EXPが競合する固定ケースで全プランoracleと一致する: %s', mode => {
+    const hitokage = pokemon(0, { pokedexId: 4, type: 'fire' });
+    hitokage.currentExpInLevel = calcExp(hitokage.currentLevel, hitokage.currentLevel + 1, hitokage.expType) - 1;
+    const input = caseInput({
+      pokemonList: [hitokage, pokemon(1, { pokedexId: 7, type: 'water', targetLevel: 10 })],
+      candyInventory: { species: {}, typeCandy: { fire: { s: 1, m: 0 } }, universal: { s: 3, m: 0, l: 0 } },
+    });
+
+    assertSolverMatchesOracle(input, mode, 'gate vs boundary');
+    const result = solveLevelPlan({ ...input, options: { itemCompareMode: mode } });
+    const [upper, boundary] = result.pokemonResults.map(row => row.reachableLine);
+    expect(upper.candyDemandMet).toBe(true);
+    expect(boundary.candyDemandMet).toBe(false);
+    if (mode === 'legacyImproved') {
+      expect(upper.candySupply).toMatchObject({ type: { s: 1, m: 0 }, universal: { s: 0, m: 0, l: 0 } });
+      expect(boundary.candySupply.universal.s).toBe(3);
+    } else {
+      expect(upper.candySupply).toMatchObject({ type: { s: 0, m: 0 }, universal: { s: 1, m: 0, l: 0 } });
+      expect(boundary.candySupply.universal.s).toBe(2);
+    }
+  });
+
   it.each(modes)('小さいランダムケースで計算機の退行を検出する: %s', mode => {
     for (const seed of [1, 2, 3, 4, 5, 6, 8, 10, 12, 15]) {
       assertSolverMatchesOracle(smallRandomCase(seed), mode, `smoke seed=${seed}`);
@@ -1408,6 +1432,24 @@ describe('level planner full-plan oracle', () => {
       if (result === 'checked-feasibility' || result === 'checked-refined') checked++;
     }
     expect(checked).toBeGreaterThanOrEqual(8);
+  });
+
+  it.each(modes)('かけらが足りない小さいランダムケースで計算機の結果が全プランoracleと一致する: %s', { timeout: 60_000 }, mode => {
+    let checked = 0;
+    let shardStopped = 0;
+    // 1〜30 に加え、届かない行を到達prefixに含めていたソルバーで落ちた seed（1〜300 を3方式で走査して見つけた6件）
+    const seeds = [...Array.from({ length: 30 }, (_, index) => index + 1), 48, 88, 172, 260, 298];
+    for (const seed of seeds) {
+      const input = shardShortRandomCase(seed);
+      const result = checkSolverMatchesOracle(input, mode, `shard short seed=${seed}`);
+      if (result === 'skipped-too-large') continue;
+      checked++;
+      const rows = solveLevelPlan({ ...input, options: { itemCompareMode: mode } }).pokemonResults;
+      if (rows.some(row => !row.reachableLine.candyDemandMet)) shardStopped++;
+    }
+    expect(checked).toBeGreaterThanOrEqual(20);
+    // 対照: かけらで止まる行が実際にある（無ければこのテストは境界の探索を通らない）
+    expect(shardStopped).toBeGreaterThanOrEqual(10);
   });
 
   it('検出されたseed 300で余り1の万能S候補を落とさない', () => {
@@ -1460,34 +1502,5 @@ describe('level planner full-plan oracle', () => {
     const checked = checkedFeasibility + checkedRefined;
     expect(checked, `oracle random detection checked=${checked}, refined=${checkedRefined}, skippedTooLarge=${skipped}`).toBeGreaterThanOrEqual(seeds.length);
     expect(checkedRefined, `oracle random detection refined=${checkedRefined}, feasibilityOnly=${checkedFeasibility}, skippedTooLarge=${skipped}`).toBeGreaterThan(0);
-  });
-});
-
-describe.skip('level planner optimization preview oracle', () => {
-  it('譲る指定された上位だけをデブーストし、境界Lv+EXP最大化を検証する', () => {
-    const input = caseInput({
-      pokemonList: [
-        pokemon(0, { pokemonId: 'donor', pokedexId: 30, type: 'grass', requestedBoostCandy: 2 }),
-        pokemon(1, { pokemonId: 'locked', pokedexId: 31, type: 'water', requestedBoostCandy: 2 }),
-        pokemon(2, { pokemonId: 'boundary', pokedexId: 32, type: 'electric', requestedBoostCandy: 2 }),
-      ],
-      boost: { kind: 'full', limit: 4 },
-      candyInventory: {
-        species: { '30': 4, '31': 4, '32': 4 },
-        typeCandy: { grass: { s: 2, m: 0 }, water: { s: 2, m: 0 }, electric: { s: 2, m: 0 } },
-        universal: { s: 8, m: 1, l: 0 },
-      },
-    });
-
-    const core = solveByCoreAllocationOracle(input, 'surplusFirst', 'optimization baseline');
-    const preview = solveByOptimizationPreviewOracle(
-      input,
-      'surplusFirst',
-      { donorPokemonIds: new Set(['donor']) },
-      'optimization donor-only',
-    );
-
-    expect(preview.best.choices[1].line.boostedCandyUnits).toBe(core.best.choices[1].line.boostedCandyUnits);
-    expect(compareOptimizationPreviewPlan(preview.best, core.best, 'surplusFirst')).toBeGreaterThanOrEqual(0);
   });
 });

@@ -61,6 +61,22 @@ describe("古い端末で効かない CSS を使わない", () => {
     expect(hits).toEqual([]);
   });
 
+  // ビルドの CSS の圧縮は、同じ規則の appearance / -webkit-appearance / -moz-appearance を1つの値にまとめる（最後の値が勝つ）。
+  // 値を混ぜると意図しない値になる（2026-11-05: none と -moz-appearance: textfield を並べたら、-webkit-appearance まで
+  // textfield になり、古い iOS の Safari で入力欄の上辺に灰色の影が出た）。違う値が要るときは @supports などで規則を分ける
+  it("同じ規則の appearance（接頭辞付きを含む）は同じ値にする（ビルドで1つの値にまとめられる）", () => {
+    const hits = FILES.flatMap((file) => {
+      const rules = stripComments(readFileSync(file, "utf8")).match(/[^{}]+\{[^{}]*\}/g) ?? [];
+      return rules
+        .filter((rule) => {
+          const values = [...rule.matchAll(/(?:^|[;{\s])(?:-webkit-|-moz-)?appearance\s*:\s*([^;}]+)/g)].map((m) => m[1]!.trim());
+          return new Set(values).size > 1;
+        })
+        .map((rule) => `${relative(ROOT, file)}: ${rule.split("{")[0]!.trim()}`);
+    });
+    expect(hits).toEqual([]);
+  });
+
   it("text-decoration-color / -style は -webkit- 付きと並べる（接頭辞なしは iOS 12.2 から）", () => {
     const hits = FILES.flatMap((file) => {
       const rules = stripComments(readFileSync(file, "utf8")).match(/[^{}]+\{[^{}]*\}/g) ?? [];
@@ -81,6 +97,30 @@ describe("古い端末で効かない CSS を使わない", () => {
           return parts.some((part) => part.includes(":focus-visible")) && parts.some((part) => !part.includes(":focus-visible"));
         })
         .map((selector) => `${relative(ROOT, file)}: ${selector.trim()}`);
+    });
+    expect(hits).toEqual([]);
+  });
+
+  // flex の gap が効かない端末（iOS 14.5・Chrome 84 より前）では flexGapPolyfill が子の要素に margin を足して補うが、
+  // 擬似要素（::before / ::after）と文字には足せないので、gap の並びに中身のある擬似要素を置くとその間が空かない
+  // （2026-11-11: シンプルの「●計算中…」の点と文字がくっついた）。擬似要素の側に margin を付けて空ける
+  it("flex の gap の並びに、中身のある ::before / ::after を置かない（古い端末の gap の補正は擬似要素を数えない）", () => {
+    const hits = FILES.flatMap((file) => {
+      const rules = [...stripComments(readFileSync(file, "utf8")).matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+      const selectorsOf = (raw: string) => raw.split(",").map((part) => part.trim());
+      const flexGap = new Set(
+        rules
+          .filter(([, , body]) => /(^|[;\s])display\s*:\s*(inline-)?flex\b/.test(body!) && /(^|[;\s])(column-)?gap\s*:/.test(body!))
+          .flatMap(([, selector]) => selectorsOf(selector!)),
+      );
+      return rules
+        .filter(([, , body]) => /(^|[;\s])content\s*:/.test(body!) && !/(^|[;\s])content\s*:\s*none\b/.test(body!))
+        .flatMap(([, selector]) => selectorsOf(selector!))
+        .filter((selector) => {
+          const host = /^(.*?)::?(before|after)$/.exec(selector);
+          return host !== null && flexGap.has(host[1]!.trim());
+        })
+        .map((selector) => `${relative(ROOT, file)}: ${selector}`);
     });
     expect(hits).toEqual([]);
   });

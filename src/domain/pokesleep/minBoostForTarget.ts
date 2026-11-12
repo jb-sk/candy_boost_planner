@@ -24,8 +24,8 @@ export type MinBoostForTargetParams = {
    *
    * 置換が正当なのは**最後の1個が出す余剰EXPが捨てられる**ときだけである。
    * 睡眠EXPが後ろに乗る行では `targetLevel + targetExpInLevel` がアメの担当終端 `T'` でしかなく、
-   * そこを超えたEXPは捨てられずに最終目標へ効く。まだ育成途中なので置換する意味がない
-   * （2026-07-30 ユーザー規則）。呼び出し側は `sleepExp > 0` のとき false を渡す。
+   * そこを超えたEXPは捨てられずに最終目標へ効く。まだ育成途中なので置換する意味がない。
+   * 呼び出し側は `sleepExp > 0` のとき false を渡す。
    */
   allowNormalSwap?: boolean;
 };

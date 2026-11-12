@@ -52,7 +52,7 @@
             チケットだけが名前の右に残り、アメ在庫が次の段へ落ちる。
           -->
           <span v-if="row.key === 'sleep' || row.key === 'nap'" class="sleepTargetSelect__checks">
-            <!-- おひるね島の行は「チケット → アメ在庫」の順（ユーザー指定）。閉じたときの絵文字・読み上げも同じ順にする -->
+            <!-- おひるね島の行は「チケット → アメ在庫」の順。閉じたときの絵文字・読み上げも同じ順にする -->
             <label v-if="row.key === 'nap'" class="sleepTargetSelect__check">
               <input
                 type="checkbox"

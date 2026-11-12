@@ -310,7 +310,7 @@ function clampPct(pct: number): number {
 function buildColumns(isBoostMode: boolean, t: ExportImageTranslate): ExportColumn[] {
   const cols: ExportColumn[] = [
     { key: "name", label: t("calc.export.colPokemon"), align: "left" },
-    // Lv は左寄せ（行ごとに「64 → 66 zzZ 67」の長さが違い、中央寄せだと先頭の現在Lvの位置がそろわない。2026-10-13 ユーザー指示）
+    // Lv は左寄せ（行ごとに「64 → 66 zzZ 67」の長さが違い、中央寄せだと先頭の現在Lvの位置がそろわない）
     { key: "lv", label: t("calc.export.colLv"), align: "left" },
   ];
   if (isBoostMode) {

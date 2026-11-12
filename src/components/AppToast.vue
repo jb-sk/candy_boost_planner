@@ -9,6 +9,7 @@
         v-for="toast in toasts"
         :key="toast.id"
         class="appToast"
+        :class="{ 'appToast--wrap': toast.wrap }"
         :data-testid="toast.testId"
       >
         {{ toast.message }}

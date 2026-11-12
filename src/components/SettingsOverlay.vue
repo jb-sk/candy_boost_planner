@@ -1,6 +1,6 @@
 <template>
   <div class="modal-overlay settings-overlay" data-testid="settings-overlay" @click.self="requestClose">
-    <div ref="settingsModalRef" class="modal" role="dialog" aria-modal="true" :aria-label="t('common.settings')" data-testid="settings-modal">
+    <div ref="settingsModalRef" class="modal" tabindex="-1" role="dialog" aria-modal="true" :aria-label="t('common.settings')" data-testid="settings-modal">
       <header class="modal__header">
         <div class="modalTabs" role="tablist" :aria-label="t('common.settings')" data-testid="settings-tabs">
           <button
@@ -620,6 +620,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import { useI18n } from "vue-i18n";
 import { vKeypad } from "../composables/useNumericKeypad";
 import { useDismissOnScroll } from "../composables/useDismissOnScroll";
+import { useFocusTrap } from "../composables/useFocusTrap";
 import { suppressNextClick } from "../utils/suppressNextClick";
 import { listenDocumentPress } from "../utils/listenDocumentPress";
 import type { CalcStore } from "../composables/useCalcStore";
@@ -646,6 +647,7 @@ const pokemonTypes = PokemonTypes;
 const calc = props.calc;
 
 const settingsModalRef = ref<HTMLElement | null>(null);
+useFocusTrap(settingsModalRef);
 const activeTab = ref<"inventory" | "backup">("inventory");
 const inventoryTabRef = ref<HTMLButtonElement | null>(null);
 const backupTabRef = ref<HTMLButtonElement | null>(null);

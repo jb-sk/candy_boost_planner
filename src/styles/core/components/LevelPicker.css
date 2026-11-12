@@ -50,6 +50,13 @@
   box-shadow: var(--shadow-lg);
 }
 
+/* body へ出して画面に固定する吹き出し（teleport。シンプルの表の目標Lv）。位置は JS が画面の座標で決める。
+   モーダル（.modal-overlay 1000）より上、テンキー（1100）より下 */
+.levelPick__popover.levelPick__popover--fixed {
+  position: fixed;
+  z-index: 1050;
+}
+
 /* ===== Popover Header ===== */
 .levelPick__top {
   display: flex;

@@ -170,77 +170,79 @@
       <button class="btn btn--primary" data-testid="calc-export-button" type="button" @click="calc.openExport()" :disabled="!calc.rowsView.value.length || calc.planResultPending.value || !calc.planResult.value" :title="t('calc.export.open')">
         {{ t("calc.export.openShort") }}
       </button>
-      <button v-if="calc.debugExportEnabled" class="btn btn--ghost" data-testid="calc-debug-export-button" type="button" @click="copyDebugExport()" :disabled="!calc.rowsView.value.length || calc.planResultPending.value || (!calc.planResult.value && calc.pokemonResultByRowId.value.size === 0)" title="検算用TSVをコピー">
-        検算TSV
-      </button>
-      <span v-if="debugExportStatus" class="calcActions__status" data-testid="calc-debug-export-status">{{ debugExportStatus }}</span>
-      <!-- 補助の操作は小さく薄いボタンにまとめ、設定・育成プランより目立たせない -->
-      <div class="calcActions__tools">
-        <div class="calcActions__group">
-          <button class="btn btn--soft" data-testid="calc-clear-button" type="button" @click="calc.clear()" :disabled="!calc.rowsView.value.length" :title="t('calc.clearPokemons')">
-            {{ t("calc.clearPokemonsShort") }}
-          </button>
-          <!-- 並べ替え・上位削除のあと「最初から考え直す」ための入口。破壊的な全体操作なので
-               クリアの隣に置く（コピー／ペーストのグループへは入れない）。
-               アメブなしの種別では配るものが無いので出さない。 -->
-          <button
-            v-if="calc.boostKind.value !== 'none'"
-            class="btn btn--soft"
-            data-testid="calc-reassign-boost-button"
-            type="button"
-            @click="calc.resetAllBoostCandy()"
-            :disabled="!calc.rowsView.value.length"
-            :title="t('calc.reassignBoostTitle')"
-          >
-            {{ t("calc.reassignBoost") }}
-          </button>
-        </div>
-        <div class="calcActions__group">
-          <button class="btn btn--soft" data-testid="calc-copy-slot-button" type="button" @click="calc.copySlot()" :disabled="!calc.canCopySlot.value" :title="t('calc.copySlotTitle')">
-            {{ t("calc.copySlot") }}
-          </button>
-          <button class="btn btn--soft" data-testid="calc-paste-slot-button" type="button" @click="calc.pasteSlot()" :disabled="!calc.canPasteSlot.value" :title="t('calc.pasteSlotTitle')">
-            {{ t("calc.pasteSlot") }}
-          </button>
-        </div>
-      </div>
-      <!-- ?perf=1 限定。睡眠EXPボーナスは日で変わるので、満月日やイベント期間へ
-           時計を進めて内訳を確かめるためのデバッグ用。未設定＝現在日時。
-           入力欄は見せず、ボタンの上に透明で重ねてタップを受けさせる。 -->
-      <div v-if="calc.debugNowEnabled" class="calcActions__group calcActions__debugNow">
+      <!-- 補助の操作は小さく薄いボタンにまとめ、設定・育成プランより目立たせない。
+           スロットへの操作（コピー・ペースト・クリア）は選択中のスロットタブのメニュー（SlotTabMenu）に置く。 -->
+      <div class="calcActions__group calcActions__tools">
+        <!-- 全体を見ながらアメブ・目標Lv・順番を試すモーダルの入口。対象にできる行が1行以上のときだけ出す。
+             アメブなしの種別でも出す（目標Lv・並べ替えは動かせる） -->
         <button
-          class="btn btn--ghost"
-          data-testid="calc-debug-now-button"
+          v-if="canFineTune"
+          class="btn btn--soft"
+          data-testid="fine-tune-open-button"
           type="button"
-          :title="calc.debugNowText.value ? '現在日時の上書きを解除' : 'デバッグ用に現在日時を上書きする'"
-          @click="calc.debugNowText.value = ''"
+          @click="$emit('open-fine-tune')"
+          :title="t('calc.fineTune.openTitle')"
         >
-          {{ calc.debugNowText.value ? "日時解除" : "日時変更" }}
+          {{ t("calc.fineTune.open") }}
         </button>
-        <!-- 未設定のあいだはこの入力欄がボタン全面を覆い、タップがそのままピッカーになる。
-             上書き中はボタン（解除）を前に出すため、pointer-events を落とす。 -->
-        <input
-          ref="debugNowInput"
-          class="calcActions__debugNowInput"
-          :class="{ 'calcActions__debugNowInput--inert': calc.debugNowText.value }"
-          data-testid="calc-debug-now-input"
-          type="datetime-local"
-          tabindex="-1"
-          aria-hidden="true"
-          :value="calc.debugNowText.value"
-          @click="openDebugNowPicker()"
-          @change="calc.debugNowText.value = ($event.target as HTMLInputElement).value"
-        />
-        <span v-if="calc.debugNowText.value" class="calcActions__status" data-testid="calc-debug-now-value">
-          {{ calc.debugNowText.value.replace("T", " ") }}
-        </span>
+        <!-- 並べ替え・上位削除のあと「最初から考え直す」ための入口。
+             アメブなしの種別では配るものが無いので出さない。 -->
+        <button
+          v-if="calc.boostKind.value !== 'none'"
+          class="btn btn--soft"
+          data-testid="calc-reassign-boost-button"
+          type="button"
+          @click="calc.resetAllBoostCandy()"
+          :disabled="!calc.rowsView.value.length"
+          :title="t('calc.reassignBoostTitle')"
+        >
+          {{ t("calc.reassignBoost") }}
+        </button>
+      </div>
+      <!-- ?perf=1 限定のデバッグ用ボタン。通常の操作と混ざらないよう改行して下の行にまとめる。 -->
+      <div v-if="calc.debugExportEnabled || calc.debugNowEnabled" class="calcActions__debug" data-testid="calc-debug-actions">
+        <button v-if="calc.debugExportEnabled" class="btn btn--ghost" data-testid="calc-debug-export-button" type="button" @click="copyDebugExport()" :disabled="!calc.rowsView.value.length || calc.planResultPending.value || (!calc.planResult.value && calc.pokemonResultByRowId.value.size === 0)" title="検算用TSVをコピー">
+          検算TSV
+        </button>
+        <span v-if="debugExportStatus" class="calcActions__status" data-testid="calc-debug-export-status">{{ debugExportStatus }}</span>
+        <!-- ?perf=1 限定。睡眠EXPボーナスは日で変わるので、満月日やイベント期間へ
+             時計を進めて内訳を確かめるためのデバッグ用。未設定＝現在日時。
+             入力欄は見せず、ボタンの上に透明で重ねてタップを受けさせる。 -->
+        <div v-if="calc.debugNowEnabled" class="calcActions__group calcActions__debugNow">
+          <button
+            class="btn btn--ghost"
+            data-testid="calc-debug-now-button"
+            type="button"
+            :title="calc.debugNowText.value ? '現在日時の上書きを解除' : 'デバッグ用に現在日時を上書きする'"
+            @click="calc.debugNowText.value = ''"
+          >
+            {{ calc.debugNowText.value ? "日時解除" : "日時変更" }}
+          </button>
+          <!-- 未設定のあいだはこの入力欄がボタン全面を覆い、タップがそのままピッカーになる。
+               上書き中はボタン（解除）を前に出すため、pointer-events を落とす。 -->
+          <input
+            ref="debugNowInput"
+            class="calcActions__debugNowInput"
+            :class="{ 'calcActions__debugNowInput--inert': calc.debugNowText.value }"
+            data-testid="calc-debug-now-input"
+            type="datetime-local"
+            tabindex="-1"
+            aria-hidden="true"
+            :value="calc.debugNowText.value"
+            @click="openDebugNowPicker()"
+            @change="calc.debugNowText.value = ($event.target as HTMLInputElement).value"
+          />
+          <span v-if="calc.debugNowText.value" class="calcActions__status" data-testid="calc-debug-now-value">
+            {{ calc.debugNowText.value.replace("T", " ") }}
+          </span>
+        </div>
       </div>
     </div>
 
     <div class="calcSlots">
       <div class="slotTabs" data-testid="calc-slot-tabs">
         <template v-for="i in 3" :key="i">
-          <!-- 選択中タブ: セレクター -->
+          <!-- 選択中タブ: アメブの種類とスロットへの操作のメニュー -->
           <div
             v-if="calc.activeSlotTab.value === i - 1"
             class="slotTab slotTab--active"
@@ -250,16 +252,16 @@
             @touchstart.passive="onTabPress(i - 1, $event)"
             @mousedown="onTabPress(i - 1, $event)"
           >
-            <select
-              class="slotTab__select"
-              data-testid="calc-boost-kind-select"
-              :value="calc.boostKind.value"
-              @change="calc.setSlotBoostKind(($event.target as HTMLSelectElement).value as BoostEvent)"
-            >
-              <option value="full">{{ calc.fullLabel.value }}</option>
-              <option value="mini">{{ calc.miniLabel.value }}</option>
-              <option value="none">{{ calc.noneLabel.value }}</option>
-            </select>
+            <SlotTabMenu
+              :boost-kind="calc.boostKind.value"
+              :kinds="boostKindOptions"
+              :row-count="calc.rowsView.value.length"
+              :paste-count="calc.slotClipboardRowCount.value"
+              @select-kind="calc.setSlotBoostKind($event)"
+              @copy="calc.copySlot()"
+              @paste="calc.pasteSlot()"
+              @clear="calc.clear()"
+            />
           </div>
           <!-- 非選択タブ: テキスト表示 -->
           <button
@@ -343,7 +345,7 @@
               @update:open="rowLevelPickerOpen = $event"
               keypad
               :model-value="r.srcLevel"
-              @update:model-value="calc.setSrcLevel(r.id, $event)"
+              @update:model-value="(lv, coalesce) => calc.setSrcLevel(r.id, lv, coalesce)"
               :label="`${t('calc.row.srcLevel')}: Lv${r.srcLevel}`"
               :max="r.dstLevel"
               :disabled="r.linkBroken"
@@ -381,7 +383,7 @@
               @update:open="rowLevelPickerOpen = $event"
               keypad
               :model-value="r.dstLevel"
-              @update:model-value="calc.setDstLevel(r.id, $event)"
+              @update:model-value="(lv, coalesce) => calc.setDstLevel(r.id, lv, coalesce)"
               :label="`${t('calc.row.dstLevel')}: Lv${r.dstLevel}`"
               :min="r.srcLevel"
               :max="MAX_LEVEL"
@@ -416,7 +418,7 @@
               @update:open="rowLevelPickerOpen = $event"
               keypad
               :model-value="r.ui.boostReachLevel"
-              @update:model-value="calc.setBoostLevel(r.id, $event)"
+              @update:model-value="(lv, coalesce) => calc.setBoostLevel(r.id, lv, coalesce)"
               :label="`${t('calc.row.boostReachLevel')}: Lv${r.ui.boostReachLevel}`"
               :min="r.srcLevel"
               :max="r.ui.boostReachLevelMax"
@@ -836,6 +838,14 @@
         <p v-if="hintBoostCapNote" class="hintPopover__note" data-testid="calc-hint-cap-note">{{ hintBoostCapNote }}</p>
         <p v-if="hintBoostCandyWarnings.minimizeFallback" class="hintPopover__warn" data-testid="calc-hint-minimize-fallback-note"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintBoostCandyWarnings.minimizeFallback }}</span></p>
         <p v-if="hintBoostCandyWarnings.minimizeSharedStock" class="hintPopover__warn" data-testid="calc-hint-minimize-shared-stock-note"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintBoostCandyWarnings.minimizeSharedStock }}</span></p>
+        <div v-if="hintBoostCandyWarnings.adviceReach && hintBoostAdvice?.reach" class="hintPopover__advice" data-testid="calc-hint-boost-advice-reach">
+          <p class="hintPopover__warn"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintBoostCandyWarnings.adviceReach }}</span></p>
+          <button type="button" class="btn btn--primary btn--xs" data-testid="calc-hint-boost-advice-reach-apply" @click="applyBoostAdvice(hintBoostAdvice.reach.boostCandy)">{{ t('calc.row.boostAdviceApply', { count: calc.fmtNum(hintBoostAdvice.reach.boostCandy) }) }}</button>
+        </div>
+        <div v-if="hintBoostCandyWarnings.adviceSurplus && hintBoostAdvice?.surplus" class="hintPopover__advice" data-testid="calc-hint-boost-advice-surplus">
+          <p class="hintPopover__warn"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintBoostCandyWarnings.adviceSurplus }}</span></p>
+          <button type="button" class="btn btn--primary btn--xs" data-testid="calc-hint-boost-advice-surplus-apply" @click="applyBoostAdvice(hintBoostAdvice.surplus.boostCandy)">{{ t('calc.row.boostAdviceApply', { count: calc.fmtNum(hintBoostAdvice.surplus.boostCandy) }) }}</button>
+        </div>
         <p v-if="hintAllSleepNote" class="hintPopover__warn" data-testid="calc-hint-all-sleep-note"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintAllSleepNote }}</span></p>
         <p v-if="hintRestCapacityNote" class="hintPopover__warn" data-testid="calc-hint-sleep-team-note"><span class="hintPopover__warnMark">⚠️</span><span>{{ hintRestCapacityNote }}</span></p>
         <p v-if="hintNapTicketHalfNote" class="hintPopover__note" data-testid="calc-hint-nap-ticket-half-note">{{ hintNapTicketHalfNote }}</p>
@@ -969,6 +979,7 @@ import { useSummaryFlip } from "../composables/useSummaryFlip";
 import { placeNearAnchor } from "../utils/anchoredPlacement";
 import NatureSelect from "./NatureSelect.vue";
 import SleepTargetSelect from "./SleepTargetSelect.vue";
+import SlotTabMenu from "./SlotTabMenu.vue";
 import type { CalcStore, CalcRowView, RestResource, RowRemainingTime } from "../composables/useCalcStore";
 import { NAP_ISLAND_TICKET_MINUTES } from "../domain/pokesleep/nap-island";
 import { sleepTargetChoiceOf, sleepTargetTraits } from "../domain/sleep-target";
@@ -1005,6 +1016,7 @@ const emit = defineEmits<{
   (e: "open-help"): void;
   (e: "open-settings"): void;
   (e: "open-add-modal"): void;
+  (e: "open-fine-tune"): void;
 }>();
 
 const props = defineProps<{
@@ -1013,6 +1025,9 @@ const props = defineProps<{
 
 const calc = props.calc;
 const { t, locale } = useI18n();
+
+/** シンプルモードの入口を出すか（ポケモンが1匹でもいれば出す） */
+const canFineTune = computed(() => calc.rows.value.length > 0);
 
 /** 行ごとの計画結果（テンプレートで getPokemonResult を繰り返さず Map を O(1) 参照） */
 function rowP(r: CalcRowView): PokemonPlanResult | null {
@@ -1182,6 +1197,13 @@ watch(() => calc.rowsView.value.map(row => row.id), ids => {
   bonusDetailsRows.value = new Set([...bonusDetailsRows.value].filter(id => valid.has(id)));
 });
 
+/** 選択中タブのメニューに並べるアメブの種類（倍率つきの名前） */
+const boostKindOptions = computed<{ value: BoostEvent; label: string }[]>(() => [
+  { value: "full", label: calc.fullLabel.value },
+  { value: "mini", label: calc.miniLabel.value },
+  { value: "none", label: calc.noneLabel.value },
+]);
+
 /**
  * スロットごとのアメブ種別ラベルを取得（非選択タブ用）
  */
@@ -1222,8 +1244,6 @@ const TAB_DRAG_THRESHOLD = 8; // px: これ以上動いたらドラッグ開始
 /** 押している指・ポインターの追跡（入力のまとめは trackPress.ts）。 */
 let tabPress: Press | null = null;
 let tabDragTabsEl: Element | null = null;
-// ドラッグ開始元の <select> 要素を記憶（ドラッグ確定時に操作を抑止するため）
-let tabDragSelectEl: HTMLSelectElement | null = null;
 
 function onTabPress(slotIndex: number, ev: Event) {
   if (tabPress) return;
@@ -1236,9 +1256,6 @@ function onTabPress(slotIndex: number, ev: Event) {
   tabDragFrom.value = slotIndex;
   tabDragging.value = false;
   tabDragTabsEl = (ev.currentTarget as HTMLElement).closest(".slotTabs");
-  // <select> 上で始まった場合を記憶
-  const target = ev.target instanceof Element ? ev.target : null;
-  tabDragSelectEl = target?.closest("select") ?? null;
 }
 
 /** 動かした。ドラッグが始まっていれば true（指ではページのスクロールを止める）。 */
@@ -1254,8 +1271,6 @@ function moveTabDrag(x: number, y: number): boolean {
       return false;
     }
     tabDragging.value = true;
-    // ドラッグ確定: <select> のネイティブ操作を抑止
-    if (tabDragSelectEl) tabDragSelectEl.style.pointerEvents = "none";
   }
   // 指・マウスの位置からどのタブの上にいるか判定
   const tabs = tabDragTabsEl?.querySelectorAll<HTMLElement>(".slotTab") ?? [];
@@ -1276,12 +1291,8 @@ function endTabDrag(commit: boolean) {
   if (commit && tabDragging.value && from !== null && to !== null && from !== to) {
     calc.swapSlots(from, to);
   }
-  // ドラッグした後の click は1回だけ捨てる（離した位置のタブへ切り替わらないように）。次の操作の始まりで解除する
+  // ドラッグした後の click は1回だけ捨てる（離した位置のタブへ切り替わらない・メニューが開かないように）。次の操作の始まりで解除する
   if (tabDragging.value) suppressNextClick(tabPress?.touch ? "touchstart" : "mousedown");
-  if (tabDragSelectEl) {
-    tabDragSelectEl.style.pointerEvents = "";
-    tabDragSelectEl = null;
-  }
   tabPress?.stop();
   tabPress = null;
   tabDragTabsEl = null;
@@ -1311,8 +1322,12 @@ const candyTargetDraftByRowId = reactive<Record<string, string>>({});
 const rowLevelPickerOpen = ref(false);
 const boostCandyDraftByRowId = reactive<Record<string, string>>({});
 
+/**
+ * 保存したアメブ個数。最小化が届いて最小値を使っている行は、個数が残っていても空欄にし、最小値をプレースホルダで出す
+ * （このポケモンだけ ON の行は元の個数を残し、在庫で届かないときに使う）
+ */
 function displayBoostCandy(r: CalcRowView): string {
-  return r.boostOrExpAdjustment === undefined ? "" : String(r.boostOrExpAdjustment);
+  return r.boostOrExpAdjustment === undefined || r.ui.boostMinimized ? "" : String(r.boostOrExpAdjustment);
 }
 
 function boostCandyInputValue(r: CalcRowView): string {
@@ -1325,7 +1340,7 @@ function boostCandyInputValue(r: CalcRowView): string {
  * リセット後の値を出す（`ui.boostCandyInput` はその明示個数なので、消しても同じ数が薄く出てしまう）。
  */
 function boostCandyPlaceholder(r: CalcRowView): string {
-  const afterReset = r.boostOrExpAdjustment !== undefined ? boostCandyAfterResetByRowId.value[r.id] : undefined;
+  const afterReset = r.boostOrExpAdjustment !== undefined && !r.ui.boostMinimized ? boostCandyAfterResetByRowId.value[r.id] : undefined;
   return String(afterReset ?? r.ui.boostCandyInput);
 }
 
@@ -1485,7 +1500,7 @@ type ReachLevelView = { testid: string; labelKey: string; text: string };
  * 同じ単位（これから寝る時間）を並べて読み分けられるようにする（§3.11）。
  * 島は隣の「おひるね島 〇日〇時間〇分」と同じ時点なので括弧は付けない。
  *
- * **アメ不足・かけら不足がある行は、目標に届かなくても着地点を出す**（2026-10-13 ユーザー指示）。
+ * **アメ不足・かけら不足がある行は、目標に届かなくても着地点を出す**。
  * 不足で目標まで届かないとき、睡眠（・島）のあとどこまで上がるのかが画面から読めないため。
  * 不足の判定は不足チップと同じ律速要因（`rowShortage` の `limiting`）。
  */
@@ -1791,14 +1806,13 @@ function boostCapHint(r: CalcRowView): string | undefined {
  *
  * 既定のアメブ目標Lvが目標Lvと同じだと、睡眠目標のある行では必ず T' を超えて頭打ちになる。
  * 「目標までアメブ」が「T' までアメブ」になるだけで意図どおりなので、赤枠・⚠️ にはしない
- * （2026-09-26 ユーザー決定。睡眠EXPだけで目標へ届く行も同じ）。破線（boostSleepCapped）は
+ * （睡眠EXPだけで目標へ届く行も同じ）。破線（boostSleepCapped）は
  * 「それ以上上げられない」ことを表すので、こちらでも出す。
  * ピッカーで選んだ行・アメブ個数を手入力した行は、自分で選んだ値が頭打ちになっているので警告のまま（従来どおり）。
  */
 function isBoostCapNoteOnly(r: CalcRowView): boolean {
   return r.ui.boostCapActive
-    && r.boostReachAuto !== false
-    && r.boostOrExpAdjustment === undefined;
+    && ((r.boostReachAuto !== false && r.boostOrExpAdjustment === undefined) || r.ui.boostMinimized);
 }
 
 /**
@@ -1829,6 +1843,8 @@ type BoostCandyHintWarnings = {
   cap?: string;
   minimizeFallback?: string;
   minimizeSharedStock?: string;
+  adviceSurplus?: string;
+  adviceReach?: string;
 };
 
 /**
@@ -1838,8 +1854,10 @@ type BoostCandyHintWarnings = {
  * - quota: アメブ枠の超過。このヒントの中から上限そのものを変えられるので、打ち手の1つとして併記する
  * - cap: 睡眠の頭打ち（アメブ側の話なので、アメ個数指定のヒントには出さない）。
  *   アメブ目標Lvが自動の行では警告にしない（isBoostCapNoteOnly。注記は hintBoostCapNote）
- * - minimizeFallback: アメブ最小化（設定、またはこのポケモンだけ）が ON なのに、この行に回るアメ在庫で目標Lvに届かず既定のアメブ目標Lvへ戻った
+ * - minimizeFallback: アメブ最小化（設定、またはこのポケモンだけ）が ON なのに、この行に回るアメ在庫で目標Lvに届かず元のアメブ個数・アメブ目標Lvを使っている
  * - minimizeSharedStock: 上に同じアメを使う行があり、在庫をそちらが先に使った（minimizeFallback の補足。単独では出ない）
+ * - adviceSurplus / adviceReach: 境界の行で、アメブを減らすと余りが減る・目標Lvに届く（計算機はアメブを余りの都合で減らさないので、
+ *   おすすめとして知らせる。`PokemonPlanResult.boostAdvice`。境界修正設計書 §9.3）
  *
  * 「すべて睡眠」の案内は含めない。ユーザーが選んだモードで欄が無効になっている理由の説明で、
  * 直すべき問題ではない（赤くすると入力エラーのように見える）。
@@ -1852,7 +1870,38 @@ function boostCandyHintWarnings(r: CalcRowView): BoostCandyHintWarnings {
       ? t('calc.row.boostMinimizeFallbackHint', { count: calc.fmtNum(r.ui.boostMinimizeFallbackNeededCandy ?? 0) })
       : undefined,
     minimizeSharedStock: r.ui.boostMinimizeFallbackSharedStock ? t('calc.row.boostMinimizeSharedStockHint') : undefined,
+    ...boostAdviceWarnings(r),
   };
+}
+
+/** アメブを減らすと得なときのおすすめの文言（境界の行だけ。ソルバーが求めた `boostAdvice`） */
+function boostAdviceWarnings(r: CalcRowView): Pick<BoostCandyHintWarnings, 'adviceSurplus' | 'adviceReach'> {
+  const advice = rowP(r)?.boostAdvice;
+  return {
+    adviceSurplus: advice?.surplus
+      ? t('calc.row.boostAdviceSurplusHint', {
+        count: calc.fmtNum(advice.surplus.boostCandy),
+        before: calc.fmtNum(advice.surplus.surplusBefore),
+        after: calc.fmtNum(advice.surplus.surplusAfter),
+        level: advice.surplus.levelAfter,
+      })
+      : undefined,
+    adviceReach: advice?.reach ? t('calc.row.boostAdviceReachHint', { count: calc.fmtNum(advice.reach.boostCandy) }) : undefined,
+  };
+}
+
+/** ヒントを開いている行のおすすめ（「{n}個にする」ボタン用） */
+const hintBoostAdvice = computed(() => {
+  const row = hintRow.value;
+  return hintState.value.kind === 'boostCandy' && row ? rowP(row)?.boostAdvice ?? null : null;
+});
+
+/** おすすめのアメブ個数をその行のアメブ個数に入れる（アメブ個数欄へ入れたのと同じ） */
+function applyBoostAdvice(count: number): void {
+  const row = hintRow.value;
+  if (!row) return;
+  delete boostCandyDraftByRowId[row.id];
+  calc.onRowBoostCandy(row.id, String(count));
 }
 
 /** ? の中に警告がある行（読み上げのラベル用）。行ごとにテンプレートから引くので、まとめて1回だけ求める。 */
@@ -1863,7 +1912,7 @@ const boostCandyHintWarningRowIds = computed(() => new Set(
 ));
 
 /**
- * ? を赤枠にする行。睡眠の頭打ち（cap）だけでは赤くしない（2026-09-26 ユーザー決定）。
+ * ? を赤枠にする行。睡眠の頭打ち（cap）だけでは赤くしない。
  * 睡眠目標を入れると頭打ちになるのは設定どおりの結果で、直すべき入力の誤りではないため。
  * 警告文（ポップオーバーの ⚠️）は残す。
  */

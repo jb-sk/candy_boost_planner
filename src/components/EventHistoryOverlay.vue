@@ -1,6 +1,6 @@
 <template>
   <div class="modal-overlay eventHistory-overlay" @click.self="$emit('close')">
-    <div class="modal eventHistoryModal" role="dialog" aria-modal="true" :aria-label="t('eventHistory.title')">
+    <div ref="modalRef" class="modal eventHistoryModal" tabindex="-1" role="dialog" aria-modal="true" :aria-label="t('eventHistory.title')">
       <header class="modal__header">
         <h2 class="modal__title">{{ t("eventHistory.title") }}</h2>
         <button class="modal__close" type="button" @click="$emit('close')" :aria-label="t('common.close')">×</button>
@@ -69,14 +69,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { useFocusTrap } from "../composables/useFocusTrap";
 import { eventHistory, sleepExpEventFlowers, wikiKnownThrough } from "../domain/pokesleep/_generated/sleep-exp-events";
 import type { GameDate } from "../domain/pokesleep/game-date";
 import { normalizeLocale } from "../i18n";
 import { buildEventHistoryView } from "../utils/eventHistoryView";
 
 const { t, locale } = useI18n();
+
+const modalRef = ref<HTMLElement | null>(null);
+useFocusTrap(modalRef);
 
 /** 表示モデルの組み立ては `eventHistoryView.ts`（純関数）。ここは生成物を渡して描くだけ */
 const view = computed(() =>

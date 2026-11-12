@@ -307,12 +307,26 @@
 }
 
 /* ===== Calc Actions ===== */
+/*
+ * 狭い画面では、設定・育成プラン・シンプル・アメブ再割当を1行に収めるため、横の間隔とボタンの左右の余白を少し詰める
+ * （英語の「Settings / Plan / Simple / Reassign Boost」で幅 375px に収まる量）。680px 以上では元に戻す。
+ */
 .calcActions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 10px 6px;
   flex-wrap: wrap;
   margin-top: 10px;
+}
+
+.calcActions > .btn {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.calcActions .btn.btn--soft {
+  padding-left: 10px;
+  padding-right: 10px;
 }
 
 .calcActions__group {
@@ -321,8 +335,10 @@
   gap: 4px;
 }
 
-.calcActions__tools {
+/* ?perf=1 のデバッグ用ボタン（検算TSV・日時変更）。通常の操作の下へ改行して並べる（PC幅は同じ行。下の 1400px 以上） */
+.calcActions__debug {
   display: flex;
+  flex-basis: 100%;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 10px;
@@ -381,7 +397,7 @@
 }
 
 /*
- * 選んでいないタブは枠を付けず、薄い色の札にする（灰色の箱が並ぶと重く見えた。2026-10-20 ユーザー指摘）。
+ * 選んでいないタブは枠を付けず、薄い色の札にする（灰色の箱が並ぶと重く見えた）。
  * 選択中のタブだけが枠を持ち、下の計算機の枠とつながる。
  */
 .slotTab {
@@ -419,34 +435,45 @@
   }
 }
 
+/*
+ * 選択中のタブの中身はメニュー（SlotTabMenu.vue）。メニューの一覧をタブの下へはみ出して出すので隠さず、
+ * はみ出しを見せると幅の下限が種類名の幅になってほかのタブを押し縮めるので、下限を 0 に戻す。
+ * 枠は border ではなく ::before で描き、一覧と同じくタブの箱の端からずらさずに置く。border にすると、表示倍率が
+ * 100% 以外の Chrome は線の太さだけを画素に丸める（2px → 1.6px）ので、線の 2px でずらした一覧と 1px ずれる。
+ * 線の 2px は余白に足して、選んでいないタブと同じ大きさ（6px 8px + 線 2px）に保つ。
+ */
 .slotTab--active {
   background: var(--paper);
   color: var(--accent);
-  border: 2px solid var(--accent);
-  border-bottom: 2px solid var(--paper);
+  border: 0;
+  padding: 8px 10px;
   flex: 1.8;
+  min-width: 0;
+  overflow: visible;
 }
 
-/* Select dropdown inside active tab */
-.slotTab__select {
-  -webkit-appearance: none;
-  appearance: none;
-  /* テーマが入力欄に付ける影（Blue・Vivid の内側の影）を付けない。タブの面にそのまま文字を置く */
-  box-shadow: none;
-  width: 100%;
-  padding: 2px 20px 2px 4px;
-  font-family: var(--font-body);
-  font-weight: 700;
-  font-size: 12px;
-  color: var(--accent);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  text-align: center;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 6px center;
-  background-size: 12px;
+/*
+ * タブの枠（上と左右）。押すと下のメニューのボタンに届く。重なりは一覧と同じ高さにして、開いたときのボタンの紙の色より上に描く。
+ * 下端は計算機の枠の上端（タブの下端の 2px 上。タブは top: 2px で下げてある）で止め、そこから下は計算機の枠の線か一覧の線が続ける。
+ * 下端まで伸ばすと、枠の線が細く描かれる倍率で左右の線が枠の下へはみ出す。
+ */
+.slotTab--active::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 2px;
+  left: 0;
+  z-index: 10;
+  border: 2px solid var(--accent);
+  border-bottom: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* メニューはタブの余白の上まで広げ、タブのどこを押しても開くようにする（余白の分はメニューのボタンが持つ） */
+.slotTab--active > .slotTabMenu {
+  margin: -8px -10px;
 }
 
 /* Slot tab drag states */
@@ -1555,6 +1582,15 @@ body.calcRowReordering * {
   color: var(--danger);
 }
 
+/* アメブのおすすめ（境界の行）。案内文の下に「{n}個にする」ボタンを置く。 */
+.hintPopover__advice {
+  margin: 0 0 10px;
+}
+
+.hintPopover__advice .hintPopover__warn {
+  margin-bottom: 6px;
+}
+
 /* 本文がこの1段落だけのヒント（睡眠チームの警告など）では下の余白を残さない。 */
 .hintPopover__warn:only-child {
   margin-bottom: 0;
@@ -1703,7 +1739,22 @@ body.calcRowReordering * {
     font-size: 13px;
   }
 
-  /* 補助の操作は右へ寄せ、設定・育成プランと分ける（狭い画面では折り返した行の左から並べる） */
+  /* 幅に余裕があるので、狭い画面で詰めた間隔と余白を元に戻す */
+  .calcActions {
+    column-gap: 10px;
+  }
+
+  .calcActions > .btn {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .calcActions .btn.btn--soft {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  /* 補助の操作は右へ寄せ、設定・育成プランと分ける */
   .calcActions__tools {
     margin-left: auto;
   }
@@ -1740,6 +1791,18 @@ body.calcRowReordering * {
 /* ===== PC desktop Summary enlargement (≥ 1400px) ===== */
 @media (min-width: 1400px) {
   /*
+   * ?perf=1 のデバッグ用ボタン（検算TSV・日時変更）は、PC幅では設定・育成プランの右に同じ行で並べる
+   * （右へ寄せた補助の操作より前に出す）。タブレット・スマホ幅は今までどおり下の行
+   */
+  .calcActions__debug {
+    flex-basis: auto;
+  }
+
+  .calcActions__tools {
+    order: 1;
+  }
+
+  /*
    * 2列表示では、stickyサマリーの開閉で左列だけが伸縮する。左列内をブラウザの
    * スクロールアンカーにすると、その要素を画面内へ留めるためdocumentがスクロールし、
    * 文書位置の変わらない右列（ポケモンボックス）だけが上下して見える。
@@ -1752,7 +1815,7 @@ body.calcRowReordering * {
     /* document scroll has no padded scrollport to offset; keep the full
        summary, including its top padding, inside the viewport. */
     top: 0;
-    /* 左右は下のボタンの左端（パネルの余白 16px）にそろえる。項目名を数字の上に置いて幅に余裕ができたので詰めない（2026-10-20 ユーザー指摘） */
+    /* 左右は下のボタンの左端（パネルの余白 16px）にそろえる。項目名を数字の上に置いて幅に余裕ができたので詰めない */
     padding: 12px 16px;
   }
 
@@ -1776,7 +1839,7 @@ body.calcRowReordering * {
   }
 
   /*
-   * 項目名は数字の上に小さく置く（数字の横に2行で添えると窮屈に見えた。2026-10-20 ユーザー指摘）。
+   * 項目名は数字の上に小さく置く（数字の横に2行で添えると窮屈に見えた）。
    * 項目の幅は「名前と数字の広い方」になり、横に並べるより細いので、結果で数字が変わっても行数が変わりにくい。
    * 数字の幅を取っておく最小幅は、名前の下に置くと間が空くので外す（位置の変化は FLIP で滑らかに見せる）。
    */

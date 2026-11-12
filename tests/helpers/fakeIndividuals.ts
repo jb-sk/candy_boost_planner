@@ -49,6 +49,9 @@ export function createFakeIndividuals(history: History): FakeIndividuals {
 
   return {
     individualById,
+    // 偽ポートは種族名を持たないので、生の名前と表示名を同じにする（空なら空のまま。行の title は「(no name)」）
+    nicknameOf: (boxId) => individualById.value.get(boxId)?.label,
+    displayNameFor: (boxId, nickname) => (individualById.value.has(boxId) ? nickname : undefined),
     set(boxId, patch) {
       const next = new Map(individualById.value);
       next.set(boxId, individualWith(patch, individualById.value.get(boxId)));
@@ -78,7 +81,7 @@ export function createFakeIndividuals(history: History): FakeIndividuals {
         { ...current, expRemaining: 0 },
       );
       if (JSON.stringify(next) === JSON.stringify(current)) return;
-      history.record(opts.label, INDIVIDUAL_EDIT_SCOPES, opts.coalesceKey === undefined ? {} : { coalesceKey: opts.coalesceKey });
+      history.record(opts.label, INDIVIDUAL_EDIT_SCOPES, { coalesceKey: opts.coalesceKey, coalesceWindowMs: opts.coalesceWindowMs });
       const map = new Map(individualById.value);
       map.set(boxId, next);
       replace(map);

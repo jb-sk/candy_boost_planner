@@ -73,7 +73,7 @@ export function calcSleepReachLevel(params: SleepReachLevelParams): SleepReachLe
  * 睡眠EXPが 0 のときだけ出さない。
  *
  * 使うのは、目標に届かない行でも着地点を見せたい所だけ:
- * - 計算画面で、アメ不足・かけら不足がある行（睡眠のあとどこまで届くかを見せる。2026-10-13 ユーザー指示）
+ * - 計算画面で、アメ不足・かけら不足がある行（睡眠のあとどこまで届くかを見せる）
  * - 育成プランの CSV / TSV（データなので、目標ちょうどの行も埋める。同上）
  */
 export function calcSleepLandingLevel(

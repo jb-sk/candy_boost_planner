@@ -1,6 +1,6 @@
 <template>
   <div class="modal-overlay addModal-overlay" @click.self="$emit('close')">
-    <div class="modal addModal" role="dialog" :aria-label="t('addModal.title')" @keydown.esc="$emit('close')">
+    <div ref="modalRef" class="modal addModal" tabindex="-1" role="dialog" :aria-label="t('addModal.title')" @keydown.esc="$emit('close')">
       <div class="addModal__head">
         <h2 class="addModal__title">{{ t("addModal.title") }}</h2>
         <div class="addModal__headRight">
@@ -189,7 +189,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from "vue";
+import { ref, computed, watch, onUnmounted, nextTick } from "vue";
 import { useI18n } from "vue-i18n";
 import LevelPicker from "./LevelPicker.vue";
 import { isTouchDevice, vKeypad } from "../composables/useNumericKeypad";
@@ -199,6 +199,7 @@ import { maxLevel as MAX_LEVEL } from "../domain/pokesleep/tables";
 import type { useBoxStore } from "../composables/useBoxStore";
 import type { CalcStore } from "../composables/useCalcStore";
 import { useCandyStore } from "../composables/useCandyStore";
+import { useFocusTrap } from "../composables/useFocusTrap";
 
 const emit = defineEmits<{
   (e: "close"): void;
@@ -236,6 +237,9 @@ const newTagName = ref("");
 const tagError = ref("");
 
 const nameInputRef = ref<HTMLInputElement | null>(null);
+const modalRef = ref<HTMLElement | null>(null);
+// 開いたときは名前欄へフォーカスする（今までの動き。閉じ込めの初期フォーカスの先として渡す）
+useFocusTrap(modalRef, { initialFocus: () => nameInputRef.value });
 
 // 追加成功フィードバック（インポート成功／反映ボタンのリアクションに倣い一定時間だけ表示）
 const justAdded = ref(false);
@@ -344,7 +348,7 @@ function onSubmit(ev?: MouseEvent) {
   resetForm();
 
   // 続けて追加しやすいよう名前欄へフォーカスする。タッチ端末ではしない: キーボードが出て画面が上へずれ、
-  // 「追加しました」が見えなくなる（2026-10-20 ユーザー指摘）
+  // 「追加しました」が見えなくなる
   if (!isTouchDevice()) {
     nextTick(() => {
       nameInputRef.value?.focus();
@@ -366,11 +370,4 @@ function resetForm() {
   newTagName.value = "";
   tagError.value = "";
 }
-
-// Focus name input on mount
-onMounted(() => {
-  nextTick(() => {
-    nameInputRef.value?.focus();
-  });
-});
 </script>

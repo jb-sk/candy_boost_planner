@@ -600,7 +600,7 @@ test.describe('responsive panel tabs', () => {
     await expect(calc.slotTabs.nth(0)).toHaveAttribute('data-testid', 'calc-slot-tab-active');
   });
 
-  test('iOS では小さい文字の選択欄（テーマ・スロットタブ）のフォーカスで拡大しないよう、viewport に maximum-scale=1 を足す', async ({ page }) => {
+  test('iOS では小さい文字の選択欄（ボックスの並べ替え・絞り込み）のフォーカスで拡大しないよう、viewport に maximum-scale=1 を足す', async ({ page }) => {
     // この project は iPhone の UA（devices['iPhone 13']）
     expect(await page.evaluate(() => navigator.userAgent)).toMatch(/iPhone/);
     await expect(page.locator('meta[name="viewport"]')).toHaveAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1');

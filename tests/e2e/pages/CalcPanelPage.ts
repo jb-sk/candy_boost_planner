@@ -26,18 +26,21 @@ export class CalcPanelPage {
 
   // === アクションボタン ===
   readonly exportButton: Locator;
-  readonly clearButton: Locator;
   readonly undoButton: Locator;
   readonly redoButton: Locator;
   readonly settingsButton: Locator;
-  readonly copySlotButton: Locator;
-  readonly pasteSlotButton: Locator;
   readonly reassignBoostButton: Locator;
 
   // === スロットタブ ===
   readonly slotTabs: Locator;
   readonly activeSlotTab: Locator;
-  readonly boostKindSelect: Locator;
+  // 選択中のタブのメニュー（アメブの種類・コピー・ペースト・クリア）。行は開いている間だけある
+  readonly slotMenuTrigger: Locator;
+  readonly slotMenu: Locator;
+  readonly slotMenuKinds: Locator;
+  readonly slotMenuCopy: Locator;
+  readonly slotMenuPaste: Locator;
+  readonly slotMenuClear: Locator;
 
   // === 計算行 ===
   readonly calcRows: Locator;
@@ -71,19 +74,21 @@ export class CalcPanelPage {
 
     // アクションボタン
     this.exportButton = page.getByTestId('calc-export-button');
-    this.clearButton = page.getByTestId('calc-clear-button');
     // 元に戻す・やり直すはスマホ・タブレットは上部のナビ、PC は画面下中央の帯にある。見えている方を使う
     this.undoButton = page.getByTestId('history-undo-button').filter({ visible: true });
     this.redoButton = page.getByTestId('history-redo-button').filter({ visible: true });
     this.settingsButton = page.getByTestId('settings-open-button-desktop');
-    this.copySlotButton = page.getByTestId('calc-copy-slot-button');
-    this.pasteSlotButton = page.getByTestId('calc-paste-slot-button');
     this.reassignBoostButton = page.getByTestId('calc-reassign-boost-button');
 
     // スロットタブ（アクティブ＋非アクティブの両方を含む）
     this.slotTabs = page.getByTestId('calc-slot-tabs').locator('.slotTab');
     this.activeSlotTab = page.getByTestId('calc-slot-tab-active');
-    this.boostKindSelect = page.getByTestId('calc-boost-kind-select');
+    this.slotMenuTrigger = page.getByTestId('calc-slot-menu-trigger');
+    this.slotMenu = page.getByTestId('calc-slot-menu');
+    this.slotMenuKinds = page.getByTestId('calc-slot-menu-kind');
+    this.slotMenuCopy = page.getByTestId('calc-slot-menu-copy');
+    this.slotMenuPaste = page.getByTestId('calc-slot-menu-paste');
+    this.slotMenuClear = page.getByTestId('calc-slot-menu-clear');
 
     // 計算行
     this.calcRows = page.getByTestId('calc-row');
@@ -306,6 +311,15 @@ export class CalcPanelPage {
     return row.getByTestId('hintBtn');
   }
 
+  /** アメブ個数の ? を開き、このポケモンだけの「目標Lvに届く最小限のアメブ個数にする」を入れる／外して閉じる */
+  async setRowMinimizeBoost(row: Locator, on: boolean): Promise<void> {
+    await this.getRowHintButton(row).click();
+    await this.expectHintVisible();
+    await this.hintPopover.getByTestId('row-minimize-boost-checkbox').setChecked(on);
+    await this.hintOverlay.click({ position: { x: 5, y: 5 } });
+    await this.expectHintHidden();
+  }
+
   // === 結果行 ===
   getRowRequiredRow(row: Locator): Locator {
     return row.getByTestId('resultRowRequired');
@@ -416,12 +430,30 @@ export class CalcPanelPage {
     await this.slotTabs.nth(index).click();
   }
 
+  /** 選択中のタブのメニューを開く（開いていればそのまま） */
+  async openSlotMenu(): Promise<void> {
+    if (!(await this.slotMenu.isVisible())) await this.slotMenuTrigger.click();
+    await expect(this.slotMenu).toBeVisible();
+  }
+
+  async closeSlotMenu(): Promise<void> {
+    if (await this.slotMenu.isVisible()) await this.slotMenuTrigger.press('Escape');
+    await expect(this.slotMenu).toHaveCount(0);
+  }
+
+  slotMenuKind(kind: 'full' | 'mini' | 'none'): Locator {
+    return this.slotMenu.locator(`[data-testid="calc-slot-menu-kind"][data-value="${kind}"]`);
+  }
+
   async setBoostKind(kind: 'full' | 'mini' | 'none'): Promise<void> {
-    await this.boostKindSelect.selectOption(kind);
+    await this.openSlotMenu();
+    await this.slotMenuKind(kind).click();
+    await expect(this.slotMenu).toHaveCount(0);
+    await expect(this.slotMenuTrigger).toHaveAttribute('data-value', kind);
   }
 
   async getBoostKind(): Promise<string> {
-    return await this.boostKindSelect.inputValue();
+    return (await this.slotMenuTrigger.getAttribute('data-value')) ?? '';
   }
 
   // === アクション操作 ===
@@ -432,12 +464,11 @@ export class CalcPanelPage {
     await this.exportButton.click();
   }
 
+  /** 選択中のタブのメニューからクリアする（確認は出ない。元に戻すで戻せる） */
   async clickClear(): Promise<void> {
-    await this.clearButton.click();
-    // 確認ダイアログが表示される場合
-    this.page.on('dialog', async dialog => {
-      await dialog.accept();
-    });
+    await this.openSlotMenu();
+    await this.slotMenuClear.click();
+    await expect(this.slotMenu).toHaveCount(0);
   }
 
   async clickUndo(): Promise<void> {
@@ -453,11 +484,15 @@ export class CalcPanelPage {
   }
 
   async clickCopySlot(): Promise<void> {
-    await this.copySlotButton.click();
+    await this.openSlotMenu();
+    await this.slotMenuCopy.click();
+    await expect(this.slotMenu).toHaveCount(0);
   }
 
   async clickPasteSlot(): Promise<void> {
-    await this.pasteSlotButton.click();
+    await this.openSlotMenu();
+    await this.slotMenuPaste.click();
+    await expect(this.slotMenu).toHaveCount(0);
   }
 
   // === 行操作 ===

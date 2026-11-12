@@ -126,8 +126,6 @@ export type FeasibilitySolverOptions = {
   logPerformance?: boolean;
   /** 検索用の安全なゲート。指定時は各行の供給余りがこの値を超える行候補を除外する。 */
   maxRowSurplus?: number;
-  /** 検索用の安全なゲート。指定時は全行合計の供給余りがこの値を超える状態を除外する。 */
-  maxTotalSurplus?: number;
   /** 検索用の安全なゲート。指定時は目標到達行の余り合計がこの値を超える状態を除外する。 */
   maxReachedSurplus?: number;
 };
@@ -341,6 +339,20 @@ export type PokemonPlanResult = {
   shortage: PokemonShortage;
   constraintDiagnosis: PokemonConstraintDiagnosis;
   role: 'upper' | 'boundary' | 'lower';
+  /** 境界の行で、アメブを減らすと得なときのおすすめ（計算機はアメブを余りの都合で減らさない。境界修正設計書 §9.2） */
+  boostAdvice?: PokemonBoostAdvice;
+};
+
+/**
+ * アメブ個数を減らすと得なときのおすすめ。出すのは境界の行（最初の届かない行）だけ。
+ * - `surplus`: 余りが減る（余り最小・バランス）。アメブ個数を `boostCandy` にすると、余りが `surplusBefore` → `surplusAfter`、
+ *   到達は `levelAfter`・`expInLevelAfter`
+ * - `reach`: 目標Lvに届く（3方式）。アメブ個数を `boostCandy` にすると、浮いたかけらで通常アメを使えて届く。`boostCandy` はかけらで届く
+ *   アメブの最大で、在庫で配れることを確かめてある。それより少ないアメブは要るアメが増えるので、在庫で届くとは限らない
+ */
+export type PokemonBoostAdvice = {
+  surplus?: { boostCandy: number; surplusBefore: number; surplusAfter: number; levelAfter: number; expInLevelAfter: number };
+  reach?: { boostCandy: number };
 };
 
 export type BoostUsageSummary = {
@@ -464,7 +476,7 @@ export type LevelPlannerResult = {
       boundaryIndex: number;
       targetTotalCandy: number;
       maxFeasibleTotalCandy: number;
-      maxFeasibleScope: 'unrestricted' | 'rowSurplusGate' | 'totalSurplusGate' | 'unknown';
+      maxFeasibleScope: 'unrestricted' | 'rowSurplusGate' | 'unknown';
       selectedTotalCandy: number;
       checkedLowerTotals: number;
       feasibleLowerTotals: number;
@@ -477,7 +489,7 @@ export type LevelPlannerResult = {
       selectedNormalizedSurplus: number;
       selectedBoundaryLevel: number;
       selectedBoundaryExpInLevel: number;
-      stoppedReason: 'exp_first' | 'first_zero_raw_surplus' | 'first_acceptable_surplus' | 'row_surplus_bound' | 'exhausted' | 'inconclusive';
+      stoppedReason: 'exp_first' | 'first_zero_raw_surplus' | 'first_acceptable_surplus' | 'boundary_surplus_ungated' | 'row_surplus_bound' | 'exhausted' | 'inconclusive';
       rawSurplusTrend: 'not_checked' | 'flat' | 'nonincreasing' | 'nondecreasing' | 'mixed';
       samplesTruncated: boolean;
       samples: Array<{

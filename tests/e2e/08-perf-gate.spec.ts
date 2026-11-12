@@ -38,6 +38,34 @@ test.describe('runtime performance gate', () => {
     expect(perfLogs.length).toBeGreaterThan(0);
   });
 
+  test('?perf=1のデバッグ用ボタンは、PC幅では育成プランの右に同じ行、タブレット・スマホ幅では下の行に並ぶ', async ({ page, isMobile }) => {
+    test.skip(isMobile, '幅は viewport を変えて確かめる');
+    await page.goto('/?perf=1');
+    const plan = page.getByTestId('calc-export-button');
+    const debug = page.getByTestId('calc-debug-export-button');
+    const tools = page.getByTestId('calc-reassign-boost-button');
+    await expect(debug).toBeVisible();
+
+    const centerY = async (locator: typeof plan) => {
+      const box = (await locator.boundingBox())!;
+      return box.y + box.height / 2;
+    };
+    // PC幅（1400px 以上）: 同じ行で、育成プラン → 検算TSV → 補助の操作（右寄せ）の順
+    await page.setViewportSize({ width: 1440, height: 900 });
+    expect(Math.abs(await centerY(debug) - await centerY(plan))).toBeLessThan(4);
+    const planBox = (await plan.boundingBox())!;
+    const debugBox = (await debug.boundingBox())!;
+    expect(debugBox.x).toBeGreaterThan(planBox.x + planBox.width);
+    expect((await tools.boundingBox())!.x).toBeGreaterThan(debugBox.x + debugBox.width);
+
+    // タブレット幅・スマホ幅: 下の行
+    for (const width of [1024, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      if (width < 680) await page.getByTestId('mobile-nav-calc').click();
+      expect(await centerY(debug), `${width}px`).toBeGreaterThan(await centerY(plan) + 20);
+    }
+  });
+
   test('デバッグ用の現在日時はURLへ保存され、解除で消える', async ({ page }) => {
     const button = page.locator('[data-testid="calc-debug-now-button"]');
     const value = page.locator('[data-testid="calc-debug-now-value"]');

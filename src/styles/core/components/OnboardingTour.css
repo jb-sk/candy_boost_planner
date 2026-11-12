@@ -12,6 +12,11 @@
   background: transparent;
 }
 
+/* Focus container for useFocusTrap — no focus ring */
+.onboarding-backdrop:focus {
+  outline: none;
+}
+
 /* Spotlight: transparent cutout over the target element.
    Positioned via transform (GPU-composited) instead of top/left for perf. */
 .onboarding-spotlight {

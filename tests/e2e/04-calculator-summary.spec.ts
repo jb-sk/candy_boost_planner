@@ -328,10 +328,19 @@ test.describe('04-calculator A. 初期状態', () => {
     await page.mouse.up();
   });
 
-  test('4i. 全テーマで計算機の補助ボタンは枠なしの薄い塗りになる（テーマの .btn の装飾を受けない）', async ({ page }) => {
-    // Booklet の `.btn` が同じ詳細度で後から勝ち、塗りと墨の枠が付いていた
-    const clear = page.getByTestId('calc-clear-button');
-    const look = () => clear.evaluate((el) => {
+  test('4i. 全テーマで計算機の補助ボタン（アメブ再割当・シンプルモード）は枠なしの薄い塗りになる（テーマの .btn の装飾を受けない）', async ({ page }) => {
+    // Booklet の `.btn` が同じ詳細度で後から勝ち、塗りと墨の枠が付いていた。
+    // シンプルモードの入口は対象にできる行があるときだけ出るので、1匹を計算機に足してから巡回する
+    const box = new BoxPanelPage(page);
+    await box.openImportPanel();
+    await box.fillImportText(testConfig.importData.singlePokemon);
+    await box.clickImport();
+    await box.selectBoxTile(0);
+    await box.clickApplyToCalc();
+    await new CalcPanelPage(page).expectRowCount(1);
+
+    const buttons = [page.getByTestId('calc-reassign-boost-button'), page.getByTestId('fine-tune-open-button')];
+    const look = (button: Locator) => button.evaluate((el) => {
       const style = getComputedStyle(el);
       const alpha = /rgba\([^)]*,\s*([\d.]+)\)/.exec(style.backgroundColor);
       return { border: style.borderTopColor, backgroundAlpha: alpha ? Number(alpha[1]) : 1 };
@@ -343,9 +352,12 @@ test.describe('04-calculator A. 初期状態', () => {
       await page.evaluate((id) => localStorage.setItem('candy-boost-planner:design', id), theme);
       await page.reload();
       await themePicker.expectValue(theme);
-      const { border, backgroundAlpha } = await look();
-      expect({ theme, border }).toEqual({ theme, border: 'rgba(0, 0, 0, 0)' });
-      expect(backgroundAlpha, theme).toBeLessThan(0.5);
+      for (const button of buttons) {
+        await expect(button).toBeVisible();
+        const { border, backgroundAlpha } = await look(button);
+        expect({ theme, border }).toEqual({ theme, border: 'rgba(0, 0, 0, 0)' });
+        expect(backgroundAlpha, `${theme} ${await button.getAttribute('data-testid')}`).toBeLessThan(0.5);
+      }
     }
   });
 
@@ -353,7 +365,8 @@ test.describe('04-calculator A. 初期状態', () => {
     const calc = new CalcPanelPage(page);
 
     await expect(calc.exportButton).toBeDisabled();
-    await expect(calc.clearButton).toBeDisabled();
+    await calc.openSlotMenu();
+    await expect(calc.slotMenuClear).toBeDisabled();
   });
 });
 
@@ -523,7 +536,7 @@ test.describe('04-calculator B. ポケモン追加・基本操作', () => {
     await expect(trigger.locator('.natureSelect__symbol--normal')).toBeVisible();
     const tapBox = await trigger.boundingBox();
     expect(tapBox).not.toBeNull();
-    // 幅は行タイトルを圧迫しないよう 34px まで意図的に詰めてある（2026-07-29・ユーザー指示）。
+    // 幅は行タイトルを圧迫しないよう 34px まで意図的に詰めてある。
     // **高さ 40px は詰めない。** ここを緩めるとタップ標的が確保できなくなる。
     expect(tapBox!.width).toBeGreaterThanOrEqual(32);
     expect(tapBox!.height).toBeGreaterThanOrEqual(40);
@@ -561,12 +574,7 @@ test.describe('04-calculator B. ポケモン追加・基本操作', () => {
     await box.clickApplyToCalc();
     await calc.expectRowCount(1);
 
-    // ダイアログを受け入れる設定
-    page.on('dialog', async dialog => {
-      await dialog.accept();
-    });
-
-    await calc.clearButton.click();
+    await calc.clickClear();
     await calc.expectRowCount(0);
     await calc.expectEmptyStateVisible();
   });
@@ -833,6 +841,35 @@ test.describe('04-calculator C. 元に戻す/やり直し', () => {
     await expect(calc.undoButton).toBeDisabled();
     await expect(calc.redoButton).toHaveAttribute('title', /^やり直す：インポート \(/);
   });
+
+  test('16b. Lvピッカーのスライダーを1回ドラッグした分は、元に戻す1回でまとめて戻る（1歩ずつ履歴を使わない）', async ({ page }) => {
+    const box = new BoxPanelPage(page);
+    const calc = new CalcPanelPage(page);
+    await box.selectBoxTile(0);
+    await box.clickApplyToCalc();
+    await calc.expectRowCount(1);
+    const row = calc.getRow(0);
+    const dst = calc.getRowDstLevelInput(row);
+    const before = await dst.inputValue();
+
+    const picker = row.getByTestId('dstLevel');
+    await picker.getByTestId('level-picker-chevron').click();
+    const range = picker.locator('input[type="range"]');
+    const box0 = (await range.boundingBox())!;
+    const y = box0.y + box0.height / 2;
+    // 左端から右端まで、何段にも分けて動かす（Lv が何度も変わる）
+    await page.mouse.move(box0.x + 4, y);
+    await page.mouse.down();
+    for (let i = 1; i <= 20; i += 1) await page.mouse.move(box0.x + 4 + ((box0.width - 8) * i) / 20, y);
+    await page.mouse.up();
+    await expect(dst).toHaveValue('70');
+    await picker.getByTestId('level-picker-chevron').click();
+
+    await calc.clickUndo();
+    await expect(dst).toHaveValue(before);
+    // 戻したのはドラッグだけ（その前の「計算機へ追加」は残る）
+    await calc.expectRowCount(1);
+  });
 });
 
 // ============================================================
@@ -914,9 +951,95 @@ test.describe('04-calculator D. スロットタブ操作', () => {
     await page.waitForTimeout(100);
   });
 
-  test('16. アクティブタブにブースト種別セレクトが表示される', async ({ page }) => {
+  test('16. アクティブタブにブースト種別のメニューが表示される', async ({ page }) => {
     const calc = new CalcPanelPage(page);
-    await expect(calc.boostKindSelect).toBeVisible();
+    await expect(calc.slotMenuTrigger).toBeVisible();
+    // 倍率はイベントの設定で変わるので、種類の名前だけ見る
+    await expect(calc.slotMenuTrigger).toHaveText(/^ミニブ（/);
+  });
+
+  test('16c. スロットのメニューはキーボードで開いて種類を選べる（開くと選んでいる種類にフォーカスが入る）', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    await calc.slotMenuTrigger.focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(calc.slotMenu).toBeVisible();
+    await expect(calc.slotMenuKind('mini')).toBeFocused();
+    await page.keyboard.press('ArrowUp');
+    await expect(calc.slotMenuKind('full')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(calc.slotMenu).toHaveCount(0);
+    await expect(calc.slotMenuTrigger).toHaveAttribute('data-value', 'full');
+    await expect(calc.slotMenuTrigger).toBeFocused();
+
+    // 押せない行（空のスロットのクリア）にも止まるが、Enter では何も起きず閉じない。Escape で閉じてボタンへ戻る
+    await page.keyboard.press('ArrowDown');
+    await expect(calc.slotMenuKind('full')).toBeFocused();
+    await page.keyboard.press('End');
+    await expect(calc.slotMenuClear).toBeFocused();
+    await expect(calc.slotMenuClear).toBeDisabled();
+    await page.keyboard.press('Enter');
+    await expect(calc.slotMenu).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(calc.slotMenu).toHaveCount(0);
+    await expect(calc.slotMenuTrigger).toBeFocused();
+  });
+
+  test('16d. スロットのメニューは外側を押すと閉じる。一覧の上で押して横へ動かしても、タブは並べ替わらない', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const [second, third] = await prepareDistinctSlots(calc);
+    await calc.openSlotMenu();
+    const item = (await calc.slotMenuKind('none').boundingBox())!;
+    const to = (await calc.slotTabs.nth(2).boundingBox())!;
+    const y = item.y + item.height / 2;
+    await page.mouse.move(item.x + item.width / 2, y);
+    await page.mouse.down();
+    await page.mouse.move(to.x + to.width / 2, y, { steps: 5 });
+    await page.mouse.up();
+    await expect(calc.slotTabs.nth(0)).toHaveAttribute('data-testid', 'calc-slot-tab-active');
+    await expect(calc.slotTabs.nth(1)).toHaveText(second);
+    await expect(calc.slotTabs.nth(2)).toHaveText(third);
+    // 押した行の外で離したので、種類は変わらず、メニューも開いたまま
+    await expect(calc.slotMenu).toBeVisible();
+    expect(await calc.getBoostKind()).toBe('mini');
+
+    await calc.panelTitle.click();
+    await expect(calc.slotMenu).toHaveCount(0);
+  });
+
+  test('16e. 選択中のタブを横にドラッグして離しても、メニューは開かない（ドラッグの後の click を捨てる）', async ({ page }) => {
+    const calc = new CalcPanelPage(page);
+    const tab = (await calc.activeSlotTab.boundingBox())!;
+    const x = tab.x + tab.width / 2;
+    const y = tab.y + tab.height / 2;
+    // 選択中のタブの中で動かして戻す（並べ替わらず、離したときの click はメニューのボタンへ届く位置）
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + 40, y, { steps: 5 });
+    await page.mouse.up();
+    await expect(calc.slotTabs.nth(0)).toHaveAttribute('data-testid', 'calc-slot-tab-active');
+    await expect(calc.slotMenu).toHaveCount(0);
+    // 次に押したときは普通に開く
+    await calc.slotMenuTrigger.click();
+    await expect(calc.slotMenu).toBeVisible();
+  });
+
+  test('16f. 表示倍率が 100% 以外の Chrome でも、メニューの一覧はタブと同じ幅で、下の計算機の枠の線を隠す', async ({ page }) => {
+    // Chrome の拡大・表示倍率（125% など）と同じく、線の太さが画素に丸められる状態にする（2px → 1.6px）。
+    // 一覧を線の太さでずらして置くと、ここで左右に 0.5px 広がり、上端も下がる（縦線のずれと細い横線）
+    const calc = new CalcPanelPage(page);
+    await page.evaluate(() => { document.documentElement.style.zoom = '1.25'; });
+    await calc.openSlotMenu();
+    const r = await page.evaluate(() => {
+      const rect = (testId: string) => document.querySelector(`[data-testid="${testId}"]`)!.getBoundingClientRect();
+      const tab = rect('calc-slot-tab-active');
+      const list = rect('calc-slot-menu');
+      // タブの並びの下端 = 計算機の枠の上端（タブは top: 2px で枠の線に重ねてある）
+      const tabs = rect('calc-slot-tabs');
+      return { tabLeft: tab.left, tabRight: tab.right, listLeft: list.left, listRight: list.right, listTop: list.top, boxTop: tabs.bottom };
+    });
+    expect(r.listLeft).toBeCloseTo(r.tabLeft, 2);
+    expect(r.listRight).toBeCloseTo(r.tabRight, 2);
+    expect(r.listTop).toBeCloseTo(r.boxTop, 2);
   });
 
   test('17. ブースト種別を「フル」に変更できる', async ({ page }) => {
@@ -2987,11 +3110,12 @@ test.describe('04-calculator K. スロットのコピー/ペースト', () => {
 
   test('53. 空状態ではコピー・ペーストが無効', async ({ page }) => {
     const calc = new CalcPanelPage(page);
-    await expect(calc.copySlotButton).toBeDisabled();
-    await expect(calc.pasteSlotButton).toBeDisabled();
+    await calc.openSlotMenu();
+    await expect(calc.slotMenuCopy).toBeDisabled();
+    await expect(calc.slotMenuPaste).toBeDisabled();
   });
 
-  test('54. コピーするとペーストが有効になる', async ({ page }) => {
+  test('54. コピーするとペーストが有効になり、貼り付ける体数が出る', async ({ page }) => {
     const box = new BoxPanelPage(page);
     const calc = new CalcPanelPage(page);
 
@@ -3003,13 +3127,23 @@ test.describe('04-calculator K. スロットのコピー/ペースト', () => {
     await box.clickApplyToCalc();
     await calc.expectRowCount(1);
 
-    // コピー前はペースト無効
-    await expect(calc.copySlotButton).toBeEnabled();
-    await expect(calc.pasteSlotButton).toBeDisabled();
+    // コピー前はペースト無効（薄い字の「ペースト」。押しても閉じない）
+    await calc.openSlotMenu();
+    await expect(calc.slotMenuCopy).toBeEnabled();
+    await expect(calc.slotMenuPaste).toBeDisabled();
+    await expect(calc.slotMenuPaste).toHaveText('ペースト');
+    expect(Number(await calc.slotMenuPaste.evaluate((el) => getComputedStyle(el).opacity))).toBeLessThan(1);
+    // Playwright は aria-disabled の要素を押さないので、押せない行を押したときを force で再現する
+    await calc.slotMenuPaste.click({ force: true });
+    await expect(calc.slotMenu).toBeVisible();
+    await calc.closeSlotMenu();
 
-    // コピー後はペースト有効
+    // コピー後はペースト有効で、貼り付ける体数を添える
     await calc.clickCopySlot();
-    await expect(calc.pasteSlotButton).toBeEnabled();
+    await calc.openSlotMenu();
+    await expect(calc.slotMenuPaste).toBeEnabled();
+    await expect(calc.slotMenuPaste).toHaveText('ペースト（1体）');
+    expect(Number(await calc.slotMenuPaste.evaluate((el) => getComputedStyle(el).opacity))).toBe(1);
   });
 
   test('54b. 別スロットへペーストすると行・アメブ種別が複製される', async ({ page }) => {
@@ -3691,11 +3825,11 @@ test.describe('04-calculator N. アメブ再割当と枠超過', () => {
     await dstLevel.fill('70');
     await dstLevel.blur();
 
-    // 在庫はあるが目標Lvに届かない → 既定のアメブ目標Lvへ戻り、? が赤枠
+    // 在庫はあるが目標Lvに届かない → 元のアメブ目標Lv（この行は自動なので既定の値）を使い、? が赤枠
     await calc.setRowSpeciesCandy(row, 1);
     await expect(hintBtn).toHaveClass(/hintIcon--warn/);
     await hintBtn.click();
-    await expect(page.getByTestId('calc-hint-minimize-fallback-note')).toContainText(/[0-9][0-9,]*個以上のアメが必要です。現在は既定のアメブ目標Lvを使用しています。/);
+    await expect(page.getByTestId('calc-hint-minimize-fallback-note')).toContainText(/[0-9][0-9,]*個以上のアメが必要です。現在は元のアメブ個数・アメブ目標Lvを使用しています。/);
     // 上に同じアメを使う行が無いので、在庫の取り合いの案内は出さない
     await expect(page.getByTestId('calc-hint-minimize-shared-stock-note')).toHaveCount(0);
     await page.getByTestId('calc-hint-overlay').click({ position: { x: 5, y: 5 } });
@@ -4283,5 +4417,53 @@ test.describe('04-calculator Q. おひるね島', () => {
     await expect(trigger).toHaveText('おひるね島🎫🍬');
     await calc.clickUndo();
     await expect(trigger).toHaveText('未設定');
+  });
+});
+
+test.describe('04-calculator J. アメブのおすすめ（境界の行）', () => {
+  // ヒトカゲ1匹（Lv10→60）。種族アメ300・万能アメL30・かけら100万。かけらで使えるのはアメブ802個まで。
+  // 計算機はアメブを余りの都合で減らさず802個（余り98）を配り、減らすと得なことをアメブ個数のヒントで知らせる
+  test('アメブを減らすと余りが減る・目標Lvに届くときは、? を赤くしておすすめを出し、ボタンでアメブ個数を変えられる', async ({ page }) => {
+    await page.goto('/');
+    const box = new BoxPanelPage(page);
+    const calc = new CalcPanelPage(page);
+    const settings = new SettingsModalPage(page);
+    await calc.setBoostKind('full');
+    await calc.clickSettings();
+    await settings.setUniversalCandy('L', 30);
+    await settings.setTotalShards('1000000');
+    await settings.setBoostCandyRemaining('3000');
+    await settings.closeByButton();
+    await box.openAddNewPanel();
+    await box.fillPokemonName('ヒトカゲ');
+    await box.confirmPokemonName();
+    await box.clickAddToBox();
+    const row = calc.getRow(0);
+    await calc.setRowSrcLevel(row, 10);
+    await calc.setRowDstLevel(row, 60);
+    await calc.setRowSpeciesCandy(row, '300');
+    await calc.waitForPlannerResult();
+
+    const hintBtn = row.getByTestId('hintBtn');
+    await expect(hintBtn).toHaveClass(/hintIcon--warn/);
+    await expect(hintBtn).toHaveAttribute('aria-label', 'アメブ個数のヒント（警告あり）');
+    await hintBtn.click();
+    await expect(page.getByTestId('calc-hint-boost-advice-reach')).toContainText('アメブを699個にすると、浮いたかけらで目標Lvに届きます。');
+    await expect(page.getByTestId('calc-hint-boost-advice-surplus')).toContainText('アメブを800個にすると、余りが98→0になります（到達Lv57）。');
+
+    // 余りのおすすめを押すと、アメブ個数が800になる。アメブ800個なら余り0なので、余りのおすすめは消える（届くおすすめは残る）
+    await page.getByTestId('calc-hint-boost-advice-surplus-apply').click();
+    await expect(calc.getRowBoostCandyInput(row)).toHaveValue('800');
+    await calc.waitForPlannerResult();
+    await expect(page.getByTestId('calc-hint-boost-advice-surplus')).toHaveCount(0);
+    await expect(page.getByTestId('calc-hint-boost-advice-reach')).toBeVisible();
+
+    // 届くおすすめを押すと、アメブ個数が699になり、目標Lvに届くのでおすすめは無くなる
+    await page.getByTestId('calc-hint-boost-advice-reach-apply').click();
+    await expect(calc.getRowBoostCandyInput(row)).toHaveValue('699');
+    await calc.waitForPlannerResult();
+    await expect(page.getByTestId('calc-hint-boost-advice-reach')).toHaveCount(0);
+    await page.getByTestId('calc-hint-overlay').click({ position: { x: 5, y: 5 } });
+    await expect(hintBtn).not.toHaveClass(/hintIcon--warn/);
   });
 });

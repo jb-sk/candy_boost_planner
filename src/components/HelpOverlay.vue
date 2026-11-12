@@ -1,6 +1,6 @@
 <template>
   <div class="modal-overlay help-overlay" @click.self="$emit('close')">
-    <div class="modal" role="dialog" aria-modal="true" :aria-label="t('help.title')">
+    <div ref="modalRef" class="modal" tabindex="-1" role="dialog" aria-modal="true" :aria-label="t('help.title')">
       <header class="modal__header">
         <h2 class="modal__title">{{ t("help.title") }}</h2>
         <button class="modal__close" type="button" @click="$emit('close')" :aria-label="t('common.close')">×</button>
@@ -140,9 +140,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { useFocusTrap } from "../composables/useFocusTrap";
 const { t, locale } = useI18n();
+
+const modalRef = ref<HTMLElement | null>(null);
+useFocusTrap(modalRef);
 
 // 参照元の全一覧はREADMEにしかない。日本語UIでは日本語版READMEへ送る。
 const readmeUrl = computed(() => (
