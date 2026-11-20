@@ -56,7 +56,7 @@ describe("update:all operational workflow", () => {
     ).toThrow("--pokesleep-tool にパスを指定してください");
   });
 
-  it("verifies forms after the interactive update and regenerates from canonical mappings", () => {
+  it("runs staged pre/post form verification inside generate-master before updating English names and final read-only checks", () => {
     const steps = buildUpdateAllSteps(toolPath, "pnpm.cjs");
     const scripts = steps
       .flatMap(step => step.args)
@@ -65,14 +65,13 @@ describe("update:all operational workflow", () => {
 
     expect(scripts).toEqual([
       "generate-master.mjs",
-      "verify-form-mapping.mjs",
-      "generate-pokemon-master.mjs",
       "generate-pokemon-en-names.mjs",
+      "verify-form-mapping.mjs",
       "check-ingredient-labels.mjs",
     ]);
     expect(steps[0].args).toContain("--pokesleep-tool");
-    expect(steps[1].args).toContain("--pokesleep-tool");
-    expect(steps[2].args).not.toContain("--pokesleep-tool");
+    expect(steps[2].args).toContain("--pokesleep-tool");
+    expect(steps[2].args).toContain("--verify-generated");
     expect(steps.at(-1)?.args).toEqual(["pnpm.cjs", "run", "build"]);
   });
 

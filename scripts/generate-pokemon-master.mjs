@@ -5,9 +5,28 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import {
   assertNoUnknownFormLabels,
+  assertValidFormJaToNumberMap,
   collectUnknownFormLabels,
   splitPokemonNameAndForm,
 } from "./pokemon-form-resolution.mjs";
+import {
+  MAX_DEX_NO,
+  MAX_FORM_NO,
+  encodeIdForm,
+  isValidDexNo,
+  isValidFormNo,
+  parsePokemonMasterEntriesFromTs,
+  sanitizeSingleLineComment,
+  validatePokemonDbPayload,
+} from "./pokemon-db-validation.mjs";
+import {
+  KNOWN_INGREDIENT_KEYS,
+  assertNoIngredientMappingIssues,
+  isIngredientsNullPokemon,
+  loadIngredientsNullSet,
+  resolveIngredientSlot,
+} from "./pokemon-ingredient-resolution.mjs";
+import { acquirePublishLocks } from "./publish-lock.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,6 +42,7 @@ const DEFAULT_FORM_ALIASES = path.join(__dirname, "./form-aliases.json");
 const DEFAULT_OUT_FORM_LABEL_TS = path.join(__dirname, "../src/domain/pokesleep/_generated/form-label-ja-to-en.ts");
 const DEFAULT_OUT_MASTER = path.join(__dirname, "../src/domain/pokesleep/pokemon-master.ts");
 const DEFAULT_OUT_INDEX = path.join(__dirname, "../src/domain/pokesleep/pokemon-names.ts");
+const DEFAULT_TEST_CONFIG = path.join(__dirname, "../tests/fixtures/test-config.json");
 
 
 function parseArgs(argv) {
@@ -30,36 +50,61 @@ function parseArgs(argv) {
     dbJson: DEFAULT_DB_JSON,
     overrides: DEFAULT_OVERRIDES,
     known: DEFAULT_KNOWN,
+    ingCNullKnown: DEFAULT_ING_C_NULL_KNOWN,
+    formJaToNumber: DEFAULT_FORM_JA_TO_NUMBER,
+    formLabelJaToEn: DEFAULT_FORM_LABEL_JA_TO_EN,
+    formAliases: DEFAULT_FORM_ALIASES,
+    outFormLabelTs: DEFAULT_OUT_FORM_LABEL_TS,
     outMaster: DEFAULT_OUT_MASTER,
     outIndex: DEFAULT_OUT_INDEX,
+    testConfig: null,
     interactive: process.stdin.isTTY && process.stdout.isTTY,
     dryRun: false,
   };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--db" && argv[i + 1]) {
-      out.dbJson = argv[i + 1];
-      i++;
+      out.dbJson = argv[++i];
       continue;
     }
     if (a === "--overrides" && argv[i + 1]) {
-      out.overrides = argv[i + 1];
-      i++;
+      out.overrides = argv[++i];
       continue;
     }
     if (a === "--known" && argv[i + 1]) {
-      out.known = argv[i + 1];
-      i++;
+      out.known = argv[++i];
+      continue;
+    }
+    if (a === "--ing-c-null-known" && argv[i + 1]) {
+      out.ingCNullKnown = argv[++i];
+      continue;
+    }
+    if (a === "--form-ja-to-number" && argv[i + 1]) {
+      out.formJaToNumber = argv[++i];
+      continue;
+    }
+    if (a === "--form-label-ja-to-en" && argv[i + 1]) {
+      out.formLabelJaToEn = argv[++i];
+      continue;
+    }
+    if (a === "--form-aliases" && argv[i + 1]) {
+      out.formAliases = argv[++i];
+      continue;
+    }
+    if (a === "--out-form-label-ts" && argv[i + 1]) {
+      out.outFormLabelTs = argv[++i];
       continue;
     }
     if (a === "--out-master" && argv[i + 1]) {
-      out.outMaster = argv[i + 1];
-      i++;
+      out.outMaster = argv[++i];
       continue;
     }
     if (a === "--out-index" && argv[i + 1]) {
-      out.outIndex = argv[i + 1];
-      i++;
+      out.outIndex = argv[++i];
+      continue;
+    }
+    if (a === "--test-config" && argv[i + 1]) {
+      out.testConfig = argv[++i];
       continue;
     }
     if (a === "--interactive") {
@@ -84,15 +129,18 @@ function readJson(p) {
   return JSON.parse(fs.readFileSync(p, "utf8"));
 }
 
+function hasFileContentChanged(p, content) {
+  if (!fs.existsSync(p)) return true;
+  const prev = fs.readFileSync(p, "utf8");
+  // 改行コード（CRLF/LF）を正規化して比較
+  const normalizedPrev = prev.replace(/\r\n/g, "\n");
+  const normalizedContent = content.replace(/\r\n/g, "\n");
+  return normalizedPrev !== normalizedContent;
+}
+
 function writeTextIfChanged(p, content) {
   fs.mkdirSync(path.dirname(p), { recursive: true });
-  if (fs.existsSync(p)) {
-    const prev = fs.readFileSync(p, "utf8");
-    // 改行コード（CRLF/LF）を正規化して比較
-    const normalizedPrev = prev.replace(/\r\n/g, "\n");
-    const normalizedContent = content.replace(/\r\n/g, "\n");
-    if (normalizedPrev === normalizedContent) return false;
-  }
+  if (!hasFileContentChanged(p, content)) return false;
   // dryRun モードでは書き込みをスキップ
   if (args.dryRun) {
     return true; // 変更があることは報告
@@ -103,20 +151,7 @@ function writeTextIfChanged(p, content) {
 
 
 function normalize(s) {
-  return String(s ?? "").replace(/\s+/g, " ").trim();
-}
-
-function normalizeIngredientLabel(s) {
-  const t0 = normalize(s);
-  if (!t0) return null;
-  // Wikiの表セルで「空」を表すプレースホルダ
-  if (/^spacer(\.gif)?$/i.test(t0)) return null;
-  // 画像ファイル名が混ざることがあるので拡張子は落とす
-  const t = t0.replace(/\.(png|gif|jpg|jpeg|webp)$/i, "");
-  if (!t) return null;
-  // 「ひらめきのたね」はスキル変化アイテムであり食材ではない（Wikiが食材セルに画像だけ載せる誤表記を無視）
-  if (t.includes("ひらめきのたね")) return null;
-  return t;
+  return String(s ?? "").normalize("NFKC").replace(/\s+/g, " ").trim();
 }
 
 function normalizeBerryLabel(s) {
@@ -188,50 +223,8 @@ const typeToJa = {
 };
 
 // Wikiの日本語名から form を推定（idForm互換の番号に寄せる）
-// 外部JSONから読み込み
-const formJaToNumberPath = path.resolve(DEFAULT_FORM_JA_TO_NUMBER);
-const formJaToNumber = fs.existsSync(formJaToNumberPath) ? readJson(formJaToNumberPath) : {};
-let formJaToNumberChanged = false;
-
-// フォーム名の英訳（外部JSONから読み込み）
-const formLabelJaToEnPath = path.resolve(DEFAULT_FORM_LABEL_JA_TO_EN);
-const formLabelJaToEn = fs.existsSync(formLabelJaToEnPath) ? readJson(formLabelJaToEnPath) : {};
-let formLabelJaToEnChanged = false;
-
 function toIdForm(pokedexId, form) {
-  return (pokedexId | 0) + ((form | 0) << 12);
-}
-
-// 食材名（Wiki日本語）→ ingredient key
-function ingredientKeyFromWikiJa(s) {
-  const t = normalize(s);
-  if (!t) return null;
-  if (t.includes("ひらめきのたね")) return null;
-  // ねぎ表記ゆれ（例: ふといながねぎ）
-  if (t.includes("ネギ") || t.includes("ねぎ")) return "leek";
-  if (t.includes("キノコ")) return "mushroom";
-  if (t.includes("タマゴ") || t.includes("エッグ")) return "egg";
-  if (t.includes("ポテト")) return "potato";
-  if (t.includes("リンゴ")) return "apple";
-  if (t.includes("ハーブ")) return "herb";
-  // Wiki表記「マメミート」= 内部キー sausage
-  if (t.includes("マメミート")) return "sausage";
-  if (t.includes("ソーセージ")) return "sausage";
-  if (t.includes("ミルク")) return "milk";
-  if (t.includes("ミツ") || t.includes("ハチミツ")) return "honey";
-  if (t.includes("オイル")) return "oil";
-  if (t.includes("ショウガ") || t.includes("ジンジャー")) return "ginger";
-  if (t.includes("トマト")) return "tomato";
-  if (t.includes("カカオ")) return "cacao";
-  // しっぽ表記ゆれ（例: おいしいシッポ）
-  if (t.includes("しっぽ") || t.includes("シッポ")) return "tail";
-  if (t.includes("大豆")) return "soy";
-  if (t.includes("コーン") || t.includes("とうもろこし")) return "corn";
-  if (t.includes("コーヒー")) return "coffee";
-  // かぼちゃ表記ゆれ（例: ずっしりカボチャ）
-  if (t.includes("かぼちゃ") || t.includes("カボチャ")) return "pumpkin";
-  if (t.includes("アボカド")) return "avocado";
-  return null;
+  return encodeIdForm(pokedexId, form);
 }
 
 function parseOverrides(obj) {
@@ -315,8 +308,76 @@ async function resolveExpTypeForDexNo({ dexNo, nameJa, overrides, interactive, n
   }
 }
 
-const db = readJson(path.resolve(args.dbJson));
-const items = Array.isArray(db.items) ? db.items : [];
+function compareUsedFields(a, b) {
+  const fields = [
+    "nameJa",
+    "baseNameJa",
+    "formLabelJa",
+    "specialty",
+    "type",
+    "typeJa",
+    "expType",
+    "ingredients",
+  ];
+  const diffs = [];
+  for (const field of fields) {
+    if (JSON.stringify(a[field]) !== JSON.stringify(b[field])) {
+      diffs.push(`${field}: ${JSON.stringify(a[field])} !== ${JSON.stringify(b[field])}`);
+    }
+  }
+  return diffs;
+}
+
+// 通常実行時は、入力ソース（DB・対応表・エイリアス）と公開先ファイル群に対して
+// 初回読み込み前から書き込み完了まで共通排他ロックを保持する（verify:forms 等との競合・巻き戻し防止）
+const masterOutResolved = path.resolve(args.outMaster);
+const testConfigResolved = args.testConfig
+  ? path.resolve(args.testConfig)
+  : path.resolve(DEFAULT_TEST_CONFIG);
+const canUpdateTestConfig =
+  Boolean(args.testConfig) || masterOutResolved === path.resolve(DEFAULT_OUT_MASTER);
+const masterLockTargets = args.dryRun
+  ? []
+  : [
+      path.resolve(args.dbJson),
+      masterOutResolved,
+      path.resolve(args.outIndex),
+      path.resolve(args.outFormLabelTs),
+      path.resolve(args.known),
+      path.resolve(args.overrides),
+      path.resolve(args.ingCNullKnown),
+      path.resolve(args.formJaToNumber),
+      path.resolve(args.formLabelJaToEn),
+      path.resolve(args.formAliases),
+      ...(canUpdateTestConfig ? [testConfigResolved] : []),
+    ];
+const releaseMasterLocks = masterLockTargets.length > 0 ? acquirePublishLocks(masterLockTargets) : () => {};
+function exitWithUnlock(code) {
+  releaseMasterLocks();
+  process.exit(code);
+}
+
+try {
+// 外部JSONから読み込み
+const formJaToNumberPath = path.resolve(args.formJaToNumber);
+const formJaToNumber = fs.existsSync(formJaToNumberPath) ? readJson(formJaToNumberPath) : {};
+assertValidFormJaToNumberMap(formJaToNumber, formJaToNumberPath);
+let formJaToNumberChanged = false;
+
+// フォーム名の英訳（外部JSONから読み込み）
+const formLabelJaToEnPath = path.resolve(args.formLabelJaToEn);
+const formLabelJaToEn = fs.existsSync(formLabelJaToEnPath) ? readJson(formLabelJaToEnPath) : {};
+let formLabelJaToEnChanged = false;
+
+const dbPath = path.resolve(args.dbJson);
+let db;
+try {
+  db = validatePokemonDbPayload(readJson(dbPath), dbPath);
+} catch (err) {
+  console.error(`\n[ERROR] 入力 DB が不正です: ${err instanceof Error ? err.message : String(err)}\n`);
+  exitWithUnlock(1);
+}
+const items = db.items;
 
 const overridesPath = path.resolve(args.overrides);
 const overridesObj = fs.existsSync(overridesPath) ? readJson(overridesPath) : {};
@@ -351,7 +412,7 @@ if (preUnknownFormLabels.size > 0 && !(args.interactive && process.stdin.isTTY &
     console.error(`  "${label}" → form=0 にフォールバック中 (例: ${examples})`);
   }
   console.error(``);
-  process.exit(1);
+  exitWithUnlock(1);
 }
 
 if (preUnknownFormLabels.size > 0 && args.interactive && process.stdin.isTTY && process.stdout.isTTY) {
@@ -423,6 +484,18 @@ if (preUnknownFormLabels.size > 0 && args.interactive && process.stdin.isTTY && 
 // 対話で登録しなかった場合を含め、未知フォームを残したまま生成へ進ませない。
 assertNoUnknownFormLabels(items, formJaToNumber);
 
+// 食材 null（A/B 任意選択の幻ポケモン等）の許可リスト（単一情報源）
+const ingNullKnownPath = path.resolve(DEFAULT_ING_NULL_KNOWN);
+const ingNullKnownSet = loadIngredientsNullSet(ingNullKnownPath);
+
+// 未知の食材名・複数候補・A/B 欠損があると ingredients=null に落ちてしまうため、生成前に中断する。
+try {
+  assertNoIngredientMappingIssues(items, formJaToNumber, ingNullKnownSet);
+} catch (err) {
+  console.error(`\n[ERROR] ${err instanceof Error ? err.message : String(err)}\n`);
+  exitWithUnlock(1);
+}
+
 const master = [];
 const nameJaByIdForm = {};
 const expTypeByIdForm = {};
@@ -431,7 +504,9 @@ const ingredientsByIdForm = {};
 const typeByIdForm = {};
 const typeJaByIdForm = {};
 const idFormsByNameJa = {};
-const ingredientIssues = []; // {dexNo,nameJa,ingAJa,ingBJa,ingCJa,ingAKey,ingBKey,ingCKey}
+const seenByIdForm = new Map();
+const duplicateConflicts = [];
+let deduplicatedCount = 0;
 
 for (const it of items) {
   const dexNo = Number(it.dexNo);
@@ -439,6 +514,10 @@ for (const it of items) {
   const nameJa = normalize(it.nameJa);
   if (!nameJa) continue;
   const { form, formLabelJa, baseNameJa } = splitPokemonNameAndForm(nameJa, formJaToNumber);
+  if (form === null) {
+    console.error(`\n[ERROR] 未知フォームが未解決です: #${dexNo} ${nameJa}\n`);
+    exitWithUnlock(1);
+  }
   const idForm = toIdForm(dexNo, form);
 
   const specialty = normalizeSpecialtyJa(it.specialtyJa);
@@ -459,40 +538,24 @@ for (const it of items) {
     overridesChanged = true;
   }
 
-  const ingAJa0 = Array.isArray(it.ingAJa) ? normalizeIngredientLabel(it.ingAJa[0]) : null;
-  const ingBJa0 = Array.isArray(it.ingBJa) ? normalizeIngredientLabel(it.ingBJa[0]) : null;
-  const ingCJa0 = Array.isArray(it.ingCJa) ? normalizeIngredientLabel(it.ingCJa[0]) : null;
-  let ingAKey = ingAJa0 ? ingredientKeyFromWikiJa(ingAJa0) : null;
-  let ingBKey = ingBJa0 ? ingredientKeyFromWikiJa(ingBJa0) : null;
-  let ingCKey = ingCJa0 ? ingredientKeyFromWikiJa(ingCJa0) : null;
+  let ingAKey = resolveIngredientSlot(it.ingAJa).key;
+  let ingBKey = resolveIngredientSlot(it.ingBJa).key;
+  let ingCKey = resolveIngredientSlot(it.ingCJa).key;
 
   const berryJa0 = Array.isArray(it.berryJa) ? normalizeBerryLabel(it.berryJa[0]) : null;
   const type = berryJa0 ? (berryJaToType[berryJa0] ?? "unknown") : "unknown";
   const typeJa = typeToJa[type] ?? "不明";
 
-  // 食材A/B/Cの割り当てをユーザーが自由に変更できる特殊仕様のポケモン（Darkrai, Mew等）
+  // 食材A/B/Cの割り当てをユーザーが自由に変更できる特殊仕様のポケモン（ing-null-known.json）
   // 人によってA/B/Cが異なるため、Wikiに食材データがあっても ingredients=null に固定する
-  const isIngredientsNull = (dexNo === 491 && form === 0) || (dexNo === 151 && form === 0);
+  const isIngredientsNull = isIngredientsNullPokemon(dexNo, form, ingNullKnownSet);
   if (isIngredientsNull) {
     ingAKey = null;
     ingBKey = null;
     ingCKey = null;
   }
 
-  if (!isIngredientsNull && (!ingAKey || !ingBKey || (ingCJa0 && !ingCKey))) {
-    ingredientIssues.push({
-      dexNo,
-      nameJa,
-      ingAJa: ingAJa0,
-      ingBJa: ingBJa0,
-      ingCJa: ingCJa0,
-      ingAKey,
-      ingBKey,
-      ingCKey,
-    });
-  }
-
-  master.push({
+  const entry = {
     dexNo,
     pokedexId: dexNo,
     form,
@@ -505,7 +568,28 @@ for (const it of items) {
     expType,
     ingredients: ingAKey && ingBKey ? { a: ingAKey, b: ingBKey, c: ingCKey } : null,
     link: it.link ? String(it.link) : null,
-  });
+  };
+
+  // 同一 idForm の重複行は利用フィールドが完全一致する場合のみ重複排除し、食い違えば停止する。
+  // link は片方のみ有効 URL なら保持し、異なる有効 URL が複数ある場合は矛盾として停止する。
+  const prevEntry = seenByIdForm.get(idForm);
+  if (prevEntry) {
+    const diffs = compareUsedFields(prevEntry, entry);
+    if (prevEntry.link && entry.link && prevEntry.link !== entry.link) {
+      diffs.push(`link: ${JSON.stringify(prevEntry.link)} !== ${JSON.stringify(entry.link)}`);
+    } else if (!prevEntry.link && entry.link) {
+      prevEntry.link = entry.link;
+    }
+    if (diffs.length > 0) {
+      duplicateConflicts.push({ idForm, dexNo, nameJa, diffs });
+    } else {
+      deduplicatedCount++;
+    }
+    continue;
+  }
+  seenByIdForm.set(idForm, entry);
+
+  master.push(entry);
 
   nameJaByIdForm[String(idForm)] = nameJa;
   expTypeByIdForm[String(idForm)] = expType;
@@ -520,18 +604,41 @@ for (const it of items) {
   idFormsByNameJa[nameJa].push(idForm);
 }
 
+if (duplicateConflicts.length > 0) {
+  console.error(`\n[ERROR] 同一 idForm の重複 Wiki 行でフィールドが食い違っています (${duplicateConflicts.length}件):`);
+  for (const c of duplicateConflicts) {
+    console.error(`  - idForm=${c.idForm} (#${c.dexNo} ${c.nameJa}): ${c.diffs.join(" / ")}`);
+  }
+  console.error("  Wiki の記載またはフォームマッピングを確認してください。\n");
+  exitWithUnlock(1);
+}
+
 // --- フォームエイリアス：にとよんツール側のform番号とWiki/master側が異なるポケモンの補完 ---
-// form-aliases.json: { "dexNo:nitoyonForm": masterForm, ... }
-const formAliasesPath = path.resolve(DEFAULT_FORM_ALIASES);
+// form-aliases.json: { "dexNo:nitoyonForm": masterForm, "_ingredientOverrides": { "25:6": { a, b, c } | null }, ... }
+const formAliasesPath = path.resolve(args.formAliases);
 const formAliasesRaw = fs.existsSync(formAliasesPath) ? readJson(formAliasesPath) : {};
+const ingredientOverridesRaw =
+  formAliasesRaw._ingredientOverrides &&
+  typeof formAliasesRaw._ingredientOverrides === "object" &&
+  !Array.isArray(formAliasesRaw._ingredientOverrides)
+    ? formAliasesRaw._ingredientOverrides
+    : {};
+const knownIngredientKeySet = new Set(KNOWN_INGREDIENT_KEYS);
 let formAliasCount = 0;
+
 for (const [key, canonicalForm] of Object.entries(formAliasesRaw)) {
-  if (key.startsWith("_")) continue; // _comment 等をスキップ
-  const [dexNoStr, aliasFormStr] = key.split(":");
-  const dexNo = Number(dexNoStr);
-  const aliasForm = Number(aliasFormStr);
-  const canonical = Number(canonicalForm);
-  if (!Number.isFinite(dexNo) || !Number.isFinite(aliasForm) || !Number.isFinite(canonical)) continue;
+  if (key.startsWith("_")) continue; // _comment / _normalFallbackReasons / _ingredientOverrides 等をスキップ
+  const parts = key.split(":");
+  const dexNo = parts.length === 2 && /^\d+$/.test(parts[0]) ? Number(parts[0]) : NaN;
+  const aliasForm = parts.length === 2 && /^\d+$/.test(parts[1]) ? Number(parts[1]) : NaN;
+  const canonical = typeof canonicalForm === "number" ? canonicalForm : NaN;
+  if (!isValidDexNo(dexNo) || !isValidFormNo(aliasForm) || !isValidFormNo(canonical)) {
+    console.error(
+      `\n[ERROR] form-aliases.json のエントリ "${key}": ${JSON.stringify(canonicalForm)} が不正です` +
+      `（dexNo は 1..${MAX_DEX_NO}、form は 0..${MAX_FORM_NO} の整数である必要があります）。\n`,
+    );
+    exitWithUnlock(1);
+  }
   if (aliasForm === canonical) continue; // 同じなら不要
 
   const canonicalIdForm = toIdForm(dexNo, canonical);
@@ -539,16 +646,52 @@ for (const [key, canonicalForm] of Object.entries(formAliasesRaw)) {
   const ck = String(canonicalIdForm);
   const ak = String(aliasIdForm);
 
+  // 直接行がすでに存在する idForm に旧エイリアスが残っている場合は、
+  // 上書きによる不整合を防ぐためエラー停止して整理を促す（verify-form-mapping と同一規則）。
+  if (Object.hasOwn(nameJaByIdForm, ak)) {
+    console.error(
+      `\n[ERROR] 直接行が存在する idForm=${ak} (form-aliases.json の "${key}": ${canonical}) に旧エイリアスが残っています。\n` +
+      `  scripts/form-aliases.json から "${key}" と付随する _ingredientOverrides / _normalFallbackReasons を削除してください。\n`,
+    );
+    exitWithUnlock(1);
+  }
+
   // canonical側のデータが存在する場合のみエイリアスを登録
   if (nameJaByIdForm[ck]) {
-    if (!nameJaByIdForm[ak]) nameJaByIdForm[ak] = nameJaByIdForm[ck];
-    if (!expTypeByIdForm[ak]) expTypeByIdForm[ak] = expTypeByIdForm[ck];
-    if (!specialtyByIdForm[ak]) specialtyByIdForm[ak] = specialtyByIdForm[ck];
-    if (!typeByIdForm[ak]) typeByIdForm[ak] = typeByIdForm[ck];
-    if (!typeJaByIdForm[ak]) typeJaByIdForm[ak] = typeJaByIdForm[ck];
-    if (ingredientsByIdForm[ck] && !ingredientsByIdForm[ak]) {
+    nameJaByIdForm[ak] = nameJaByIdForm[ck];
+    expTypeByIdForm[ak] = expTypeByIdForm[ck];
+    specialtyByIdForm[ak] = specialtyByIdForm[ck];
+    typeByIdForm[ak] = typeByIdForm[ck];
+    typeJaByIdForm[ak] = typeJaByIdForm[ck];
+
+    if (Object.hasOwn(ingredientOverridesRaw, key)) {
+      const overrideVal = ingredientOverridesRaw[key];
+      if (overrideVal === null) {
+        // 明示的に食材未解決扱いとする（ingredientsByIdForm[ak] を設定しない）
+      } else if (
+        overrideVal &&
+        typeof overrideVal === "object" &&
+        !Array.isArray(overrideVal) &&
+        typeof overrideVal.a === "string" &&
+        typeof overrideVal.b === "string" &&
+        (overrideVal.c === null || overrideVal.c === undefined || typeof overrideVal.c === "string") &&
+        knownIngredientKeySet.has(overrideVal.a) &&
+        knownIngredientKeySet.has(overrideVal.b) &&
+        (overrideVal.c === null || overrideVal.c === undefined || knownIngredientKeySet.has(overrideVal.c))
+      ) {
+        ingredientsByIdForm[ak] = {
+          a: overrideVal.a,
+          b: overrideVal.b,
+          c: overrideVal.c ?? null,
+        };
+      } else {
+        console.error(`\n[ERROR] form-aliases.json の _ingredientOverrides["${key}"] が不正です: ${JSON.stringify(overrideVal)}\n`);
+        exitWithUnlock(1);
+      }
+    } else if (ingredientsByIdForm[ck]) {
       ingredientsByIdForm[ak] = ingredientsByIdForm[ck];
     }
+
     // idFormsByNameJa にもエイリアスのidFormを追加
     const name = nameJaByIdForm[ck];
     if (idFormsByNameJa[name] && !idFormsByNameJa[name].includes(aliasIdForm)) {
@@ -563,31 +706,18 @@ if (formAliasCount > 0) {
   console.log(`[generate-pokemon-master] form aliases applied: ${formAliasCount}`);
 }
 
-// --- 差分検出：既存のMasterDBと比較 ---
-function readExistingIdForms() {
+// --- 差分検出：既存のMasterDBと比較（verify-form-mapping と共通の AST 読み取りを使用） ---
+const readExistingIdForms = () => {
   const masterPath = path.resolve(args.outMaster);
   if (!fs.existsSync(masterPath)) return new Set();
   const txt = fs.readFileSync(masterPath, "utf8");
-
-  // pokemon-master.ts の構造:
-  // export const pokemonMaster: PokemonMasterEntry[] = [...] as const;
-  // "] = [" を探して代入式の配列開始位置を特定（型定義の [] を避ける）
-  const assignmentIndex = txt.indexOf("] = [");
-  if (assignmentIndex < 0) return new Set();
-
-  const jsonStart = assignmentIndex + 4; // "[" の位置
-  const jsonEnd = txt.lastIndexOf("]");
-  if (jsonStart >= jsonEnd) return new Set();
-
-  const jsonStr = txt.slice(jsonStart, jsonEnd + 1);
   try {
-    const data = JSON.parse(jsonStr);
-    return new Set(data.map(x => toIdForm(x.dexNo ?? x.pokedexId, x.form ?? 0)));
+    return new Set(parsePokemonMasterEntriesFromTs(txt, masterPath).map((e) => e.idForm));
   } catch (e) {
-    console.warn("[readExistingIdForms] パース失敗:", e.message);
-    return new Set();
+    console.error(`\n[ERROR] 既存の ${masterPath} の読み込みに失敗しました: ${e instanceof Error ? e.message : String(e)}\n`);
+    exitWithUnlock(1);
   }
-}
+};
 
 const existingIdForms = readExistingIdForms();
 const newIdForms = new Set(master.map(x => toIdForm(x.dexNo, x.form)));
@@ -595,160 +725,17 @@ const newIdForms = new Set(master.map(x => toIdForm(x.dexNo, x.form)));
 const addedEntries = master.filter(x => !existingIdForms.has(toIdForm(x.dexNo, x.form)));
 const removedIdForms = [...existingIdForms].filter(id => !newIdForms.has(id));
 
-// --- preflight summary / confirm (write前に運用者確認) ---
-// 食材null（A/B取得不可）の既知リストを読み込む
-const ingNullKnownPath = path.resolve(DEFAULT_ING_NULL_KNOWN);
-const ingNullKnownArr = fs.existsSync(ingNullKnownPath) ? readJson(ingNullKnownPath) : [];
-const ingNullKnownSet = new Set(Array.isArray(ingNullKnownArr) ? ingNullKnownArr.map(Number).filter(Number.isFinite) : []);
-
-// 食材C未実装の既知リストを読み込む
-const ingCNullKnownPath = path.resolve(DEFAULT_ING_C_NULL_KNOWN);
-const ingCNullKnownArr = fs.existsSync(ingCNullKnownPath) ? readJson(ingCNullKnownPath) : [];
-const ingCNullKnownSet = new Set(Array.isArray(ingCNullKnownArr) ? ingCNullKnownArr.map(Number).filter(Number.isFinite) : []);
-
-const ingredientsNullAll = master.filter((x) => x.ingredients === null);
-const ingredientsNullKnown = ingredientsNullAll.filter((x) => ingNullKnownSet.has(x.dexNo));
-const ingredientsNullNew = ingredientsNullAll.filter((x) => !ingNullKnownSet.has(x.dexNo));
-const ingredientCNullAll = master.filter((x) => x.ingredients && x.ingredients.c === null);
-const ingredientCNullKnown = ingredientCNullAll.filter((x) => ingCNullKnownSet.has(x.dexNo));
-const ingredientCNullNew = ingredientCNullAll.filter((x) => !ingCNullKnownSet.has(x.dexNo));
-const linkNullCount = master.filter((x) => x.link === null).length;
-const issuesAB = ingredientIssues.filter((x) => !x.ingAKey || !x.ingBKey);
-const issuesC = ingredientIssues.filter((x) => x.ingAKey && x.ingBKey && x.ingCJa && !x.ingCKey);
-
-let details = "";
-if (args.dryRun) {
-  details += `[ドライランモード: ファイルは書き込まれません]\n\n`;
-}
-// 重複エントリ数を計算
-const duplicateCount = master.length - newIdForms.size;
-details += `- Wikiエントリ: ${master.length} (うち重複: ${duplicateCount})\n`;
-details += `- ユニーク種類: ${newIdForms.size} (既存: ${existingIdForms.size})\n`;
-details += `- 追加: ${addedEntries.length}\n`;
-details += `- 削除: ${removedIdForms.length}\n`;
-details += `- ingredients:null (既知): ${ingredientsNullKnown.length}${ingredientsNullKnown.length ? " (" + ingredientsNullKnown.map(x => `#${x.dexNo} ${x.nameJa}`).join(", ") + ")" : ""}\n`;
-details += `- ingredients:null (新規): ${ingredientsNullNew.length}${ingredientsNullNew.length ? " (" + ingredientsNullNew.map(x => `#${x.dexNo} ${x.nameJa}`).join(", ") + ")" : ""}\n`;
-details += `- ingredients.c:null (既知): ${ingredientCNullKnown.length}\n`;
-details += `- ingredients.c:null (新規): ${ingredientCNullNew.length}\n`;
-details += `- link:null: ${linkNullCount}\n`;
-details += `- ingredient mapping issues (A/B missing): ${issuesAB.length}\n`;
-details += `- ingredient mapping issues (C unknown but present): ${issuesC.length}\n`;
-details += `- unknown form labels (解決済み): ${preUnknownFormLabels.size}\n`;
-if (formAliasCount > 0) {
-  details += `- form aliases applied: ${formAliasCount}\n`;
-}
-
-// 追加されたポケモンを表示
-if (addedEntries.length) {
-  details += `\n[追加されるポケモン] ${addedEntries.length}件\n`;
-  for (const x of addedEntries.slice(0, 15)) {
-    details += `  + #${x.dexNo} ${x.nameJa}\n`;
-  }
-  if (addedEntries.length > 15) details += `  ... +${addedEntries.length - 15} more\n`;
-}
-
-// 削除されるポケモンを表示
-if (removedIdForms.length) {
-  details += `\n[削除されるポケモン] ${removedIdForms.length}件\n`;
-  for (const idForm of removedIdForms.slice(0, 10)) {
-    details += `  - idForm=${idForm}\n`;
-  }
-  if (removedIdForms.length > 10) details += `  ... +${removedIdForms.length - 10} more\n`;
-}
-
-if (ingredientCNullNew.length) {
-  details += `\n[食材C未実装 (新規)]\n`;
-  for (const x of ingredientCNullNew.slice(0, 10)) {
-    details += `- #${x.dexNo} ${x.nameJa}\n`;
-  }
-  if (ingredientCNullNew.length > 10) details += `... +${ingredientCNullNew.length - 10} more\n`;
-}
-if (issuesAB.length) {
-  details += `\n[A/B missing examples]\n`;
-  for (const x of issuesAB.slice(0, 12)) {
-    details += `- #${x.dexNo} ${x.nameJa}: A=${x.ingAJa ?? "-"} (${x.ingAKey ?? "?"}) / B=${x.ingBJa ?? "-"} (${x.ingBKey ?? "?"}) / C=${x.ingCJa ?? "-"} (${x.ingCKey ?? "?"})\n`;
-  }
-  if (issuesAB.length > 12) details += `... +${issuesAB.length - 12} more\n`;
-}
-if (issuesC.length) {
-  details += `\n[C unknown examples]\n`;
-  for (const x of issuesC.slice(0, 8)) {
-    details += `- #${x.dexNo} ${x.nameJa}: C=${x.ingCJa ?? "-"} (key: ?)\n`;
-  }
-  if (issuesC.length > 8) details += `... +${issuesC.length - 8} more\n`;
-}
-
-// 変更・警告がすべてゼロなら確認をスキップ
-const hasChanges = addedEntries.length > 0 || removedIdForms.length > 0 ||
-  ingredientsNullNew.length > 0 || ingredientCNullNew.length > 0 ||
-  issuesAB.length > 0 || issuesC.length > 0;
-
-// CI用の機械可読サマリー行
-console.log(`[SUMMARY] has_changes=${hasChanges} 追加: ${addedEntries.length} 削除: ${removedIdForms.length}`);
-
-if (hasChanges) {
-  await confirmOrAbort({
-    interactive: args.interactive,
-    title: "generate-pokemon-master",
-    details,
-  });
-} else if (args.interactive && process.stdin.isTTY) {
-  // 変更なし: サマリーだけ表示してスキップ
-  console.log(`\n[confirm] generate-pokemon-master\n${details}`);
-  console.log("変更なし: 確認をスキップして終了します。");
-}
-
-// 新規の食材C未実装を既知リストに追加するか確認
-let ingCNullKnownChanged = false;
-if (ingredientCNullNew.length > 0 && args.interactive && process.stdin.isTTY && process.stdout.isTTY) {
-  const ask = createAsk();
-  try {
-    console.log(`\n[食材C未実装 (新規)] ${ingredientCNullNew.length}件`);
-    for (const x of ingredientCNullNew) {
-      console.log(`  #${x.dexNo} ${x.nameJa}`);
-    }
-    while (true) {
-      const ans = normalize(
-        await ask.question(`\nこれらを既知リスト (ing-c-null-known.json) に追加しますか？ [y/n]\n> `)
-      ).toLowerCase();
-      if (ans === "y" || ans === "yes") {
-        for (const x of ingredientCNullNew) {
-          ingCNullKnownSet.add(x.dexNo);
-        }
-        ingCNullKnownChanged = true;
-        console.log(`[generate-pokemon-master] ${ingredientCNullNew.length}件を既知リストに追加します`);
-        break;
-      }
-      if (ans === "n" || ans === "no") {
-        // 確認警告
-        const confirm = normalize(
-          await ask.question(`⚠️  本当にスキップしますか？ 例外処理がある場合、後で scripts/ing-c-null-known.json の手動更新が必要です [y/n]\n> `)
-        ).toLowerCase();
-        if (confirm === "y" || confirm === "yes") {
-          console.log(`[generate-pokemon-master] スキップしました`);
-          break;
-        }
-        // n なら最初の質問に戻る
-        continue;
-      }
-      console.log("入力が必要です。y または n を入力してください。");
-    }
-  } finally {
-    ask.close();
-  }
-}
-
+// 出力順序を確定してから生成予定コンテンツと現行ファイルの差分を判定する
 master.sort((a, b) => (a.dexNo - b.dexNo) || (a.form - b.form) || a.nameJa.localeCompare(b.nameJa, "ja"));
 
 for (const k of Object.keys(idFormsByNameJa)) {
   idFormsByNameJa[k] = [...new Set(idFormsByNameJa[k])].sort((a, b) => a - b);
 }
 
-// Master DB
 const masterOut = path.resolve(args.outMaster);
 const masterContent =
   `// This file is auto-generated by scripts/generate-pokemon-master.mjs\n` +
-  `// Source: ${db.source ?? "(unknown)"}\n\n` +
+  `// Source: ${sanitizeSingleLineComment(db.source)}\n\n` +
   `export type PokemonSpecialty = "Berries" | "Ingredients" | "Skills" | "All" | "unknown";\n` +
   `export type PokemonType =\n` +
   `  | "Normal"\n` +
@@ -787,9 +774,7 @@ const masterContent =
   `  link: string | null;\n` +
   `};\n\n` +
   `export const pokemonMaster: PokemonMasterEntry[] = ${JSON.stringify(master, null, 2)} as const;\n`;
-const wroteMaster = writeTextIfChanged(masterOut, masterContent);
 
-// Fast index (existing API surface)
 const indexOut = path.resolve(args.outIndex);
 const indexContent =
   `// This file is auto-generated by scripts/generate-pokemon-master.mjs\n\n` +
@@ -876,17 +861,172 @@ const indexContent =
   `  const form = idForm >> 12;\n` +
   `  const expType = getPokemonExpType(pokedexId, form);\n` +
   `  return { pokedexId, form, expType };\n` +
-  `}\n`
-  ;
+  `}\n`;
+
+const formLabelTsOut = path.resolve(args.outFormLabelTs);
+const formLabelTsContent =
+  `// This file is auto-generated by scripts/generate-pokemon-master.mjs\n` +
+  `// Source: scripts/form-label-ja-to-en.json\n\n` +
+  `export const formLabelJaToEn: Record<string, string> = ${JSON.stringify(formLabelJaToEn, null, 2)};\n`;
+
+const knownContent = JSON.stringify([...knownDexNos].sort((a, b) => a - b), null, 2) + "\n";
+const overridesContent = JSON.stringify(overridesToJson(overrides), null, 2) + "\n";
+
+const changedGeneratedFiles = [];
+if (hasFileContentChanged(masterOut, masterContent)) changedGeneratedFiles.push(path.basename(masterOut));
+if (hasFileContentChanged(indexOut, indexContent)) changedGeneratedFiles.push(path.basename(indexOut));
+if (hasFileContentChanged(formLabelTsOut, formLabelTsContent)) changedGeneratedFiles.push(path.basename(formLabelTsOut));
+if (hasFileContentChanged(knownPath, knownContent)) changedGeneratedFiles.push(path.basename(knownPath));
+if (overridesChanged && hasFileContentChanged(overridesPath, overridesContent)) {
+  changedGeneratedFiles.push(path.basename(overridesPath));
+}
+
+// --- preflight summary / confirm (write前に運用者確認) ---
+// 食材C未実装の既知リストを読み込む
+const ingCNullKnownPath = path.resolve(args.ingCNullKnown);
+const ingCNullKnownArr = fs.existsSync(ingCNullKnownPath) ? readJson(ingCNullKnownPath) : [];
+const ingCNullKnownSet = new Set(Array.isArray(ingCNullKnownArr) ? ingCNullKnownArr.map(Number).filter(Number.isFinite) : []);
+
+const ingredientsNullKnown = master.filter((x) => x.ingredients === null);
+const ingredientCNullAll = master.filter((x) => x.ingredients && x.ingredients.c === null);
+const ingredientCNullKnown = ingredientCNullAll.filter((x) => ingCNullKnownSet.has(x.dexNo));
+const ingredientCNullNew = ingredientCNullAll.filter((x) => !ingCNullKnownSet.has(x.dexNo));
+const linkNullCount = master.filter((x) => x.link === null).length;
+
+let details = "";
+if (args.dryRun) {
+  details += `[ドライランモード: ファイルは書き込まれません]\n\n`;
+}
+details += `- Wikiエントリ: ${items.length} (同一idForm重複排除: ${deduplicatedCount})\n`;
+details += `- ユニーク種類: ${newIdForms.size} (既存: ${existingIdForms.size})\n`;
+details += `- 追加: ${addedEntries.length}\n`;
+details += `- 削除: ${removedIdForms.length}\n`;
+details += `- 内容変更ファイル: ${changedGeneratedFiles.length}${changedGeneratedFiles.length ? " (" + changedGeneratedFiles.join(", ") + ")" : ""}\n`;
+details += `- ingredients:null (既知): ${ingredientsNullKnown.length}${ingredientsNullKnown.length ? " (" + ingredientsNullKnown.map(x => `#${x.dexNo} ${x.nameJa}`).join(", ") + ")" : ""}\n`;
+details += `- ingredients.c:null (既知): ${ingredientCNullKnown.length}\n`;
+details += `- ingredients.c:null (新規): ${ingredientCNullNew.length}\n`;
+details += `- link:null: ${linkNullCount}\n`;
+details += `- unknown form labels (解決済み): ${preUnknownFormLabels.size}\n`;
+if (formAliasCount > 0) {
+  details += `- form aliases applied: ${formAliasCount}\n`;
+}
+
+// 追加されたポケモンを表示
+if (addedEntries.length) {
+  details += `\n[追加されるポケモン] ${addedEntries.length}件\n`;
+  for (const x of addedEntries.slice(0, 15)) {
+    details += `  + #${x.dexNo} ${x.nameJa}\n`;
+  }
+  if (addedEntries.length > 15) details += `  ... +${addedEntries.length - 15} more\n`;
+}
+
+// 削除されるポケモンを表示
+if (removedIdForms.length) {
+  details += `\n[削除されるポケモン] ${removedIdForms.length}件\n`;
+  for (const idForm of removedIdForms.slice(0, 10)) {
+    details += `  - idForm=${idForm}\n`;
+  }
+  if (removedIdForms.length > 10) details += `  ... +${removedIdForms.length - 10} more\n`;
+}
+
+if (changedGeneratedFiles.length && addedEntries.length === 0 && removedIdForms.length === 0) {
+  details += `\n[内容変更されるファイル] ${changedGeneratedFiles.length}件\n`;
+  for (const f of changedGeneratedFiles) {
+    details += `  ~ ${f}\n`;
+  }
+}
+
+if (ingredientCNullNew.length) {
+  details += `\n[食材C未実装 (新規)]\n`;
+  for (const x of ingredientCNullNew.slice(0, 10)) {
+    details += `- #${x.dexNo} ${x.nameJa}\n`;
+  }
+  if (ingredientCNullNew.length > 10) details += `... +${ingredientCNullNew.length - 10} more\n`;
+}
+
+// ID増減だけでなく、既存ポケモンの食材・エイリアス・英訳等の内容差分も変更ありとして扱う
+const hasChanges =
+  changedGeneratedFiles.length > 0 ||
+  addedEntries.length > 0 ||
+  removedIdForms.length > 0 ||
+  ingredientCNullNew.length > 0 ||
+  formJaToNumberChanged ||
+  formLabelJaToEnChanged;
+
+// CI用の機械可読サマリー行
+console.log(
+  `[SUMMARY] has_changes=${hasChanges} 追加: ${addedEntries.length} 削除: ${removedIdForms.length} 内容変更: ${changedGeneratedFiles.length}`,
+);
+
+if (hasChanges) {
+  await confirmOrAbort({
+    interactive: args.interactive,
+    title: "generate-pokemon-master",
+    details,
+  });
+} else if (args.interactive && process.stdin.isTTY) {
+  // 変更なし: サマリーだけ表示してスキップ
+  console.log(`\n[confirm] generate-pokemon-master\n${details}`);
+  console.log("変更なし: 確認をスキップして終了します。");
+}
+
+// 新規の食材C未実装を既知リストに追加するか確認
+let ingCNullKnownChanged = false;
+if (ingredientCNullNew.length > 0 && args.interactive && process.stdin.isTTY && process.stdout.isTTY) {
+  const ask = createAsk();
+  try {
+    console.log(`\n[食材C未実装 (新規)] ${ingredientCNullNew.length}件`);
+    for (const x of ingredientCNullNew) {
+      console.log(`  #${x.dexNo} ${x.nameJa}`);
+    }
+    while (true) {
+      const ans = normalize(
+        await ask.question(`\nこれらを既知リスト (ing-c-null-known.json) に追加しますか？ [y/n]\n> `)
+      ).toLowerCase();
+      if (ans === "y" || ans === "yes") {
+        for (const x of ingredientCNullNew) {
+          ingCNullKnownSet.add(x.dexNo);
+        }
+        ingCNullKnownChanged = true;
+        console.log(`[generate-pokemon-master] ${ingredientCNullNew.length}件を既知リストに追加します`);
+        break;
+      }
+      if (ans === "n" || ans === "no") {
+        // 確認警告
+        const confirm = normalize(
+          await ask.question(`⚠️  本当にスキップしますか？ 例外処理がある場合、後で scripts/ing-c-null-known.json の手動更新が必要です [y/n]\n> `)
+        ).toLowerCase();
+        if (confirm === "y" || confirm === "yes") {
+          console.log(`[generate-pokemon-master] スキップしました`);
+          break;
+        }
+        // n なら最初の質問に戻る
+        continue;
+      }
+      console.log("入力が必要です。y または n を入力してください。");
+    }
+  } finally {
+    ask.close();
+  }
+}
+
+// E2Eテスト設定の最新ポケモン名を更新（明示指定または既定出力先の更新時のみ）
+const testConfigPath = testConfigResolved;
+const shouldUpdateTestConfig =
+  addedEntries.length > 0 &&
+  !args.dryRun &&
+  canUpdateTestConfig;
+
+const wroteMaster = writeTextIfChanged(masterOut, masterContent);
 const wroteIndex = writeTextIfChanged(indexOut, indexContent);
 
 if (overridesChanged) {
-  const wroteOverrides = writeTextIfChanged(overridesPath, JSON.stringify(overridesToJson(overrides), null, 2) + "\n");
+  const wroteOverrides = writeTextIfChanged(overridesPath, overridesContent);
   if (wroteOverrides) console.log(`[generate-pokemon-master] updated overrides: ${overridesPath}`);
 }
 
 // 既知dexNoリストを保存（昇順）
-const wroteKnown = writeTextIfChanged(knownPath, JSON.stringify([...knownDexNos].sort((a, b) => a - b), null, 2) + "\n");
+const wroteKnown = writeTextIfChanged(knownPath, knownContent);
 if (wroteKnown) console.log(`[generate-pokemon-master] wrote known: ${knownPath}`);
 
 // 食材C未実装の既知リストを保存（昇順）
@@ -908,20 +1048,13 @@ if (formLabelJaToEnChanged) {
 }
 
 // フォーム英訳TSファイルを生成（常に最新の状態を反映）
-const formLabelTsOut = path.resolve(DEFAULT_OUT_FORM_LABEL_TS);
-const formLabelTsContent =
-  `// This file is auto-generated by scripts/generate-pokemon-master.mjs\n` +
-  `// Source: scripts/form-label-ja-to-en.json\n\n` +
-  `export const formLabelJaToEn: Record<string, string> = ${JSON.stringify(formLabelJaToEn, null, 2)};\n`;
 const wroteFormLabelTs = writeTextIfChanged(formLabelTsOut, formLabelTsContent);
 if (wroteFormLabelTs) console.log(`[generate-pokemon-master] wrote form-label-ja-to-en.ts: ${formLabelTsOut}`);
 
 if (wroteMaster) console.log(`[generate-pokemon-master] wrote master: ${masterOut}`);
 if (wroteIndex) console.log(`[generate-pokemon-master] wrote index: ${indexOut}`);
 
-// E2Eテスト設定の最新ポケモン名を更新
-const testConfigPath = path.resolve(__dirname, "../tests/fixtures/test-config.json");
-if (addedEntries.length > 0 && !args.dryRun) {
+if (shouldUpdateTestConfig) {
   // 追加されたポケモンの中から最後のもの（最新実装）を取得
   const latestAdded = addedEntries[addedEntries.length - 1];
   const latestPokemonName = latestAdded.nameJa;
@@ -945,4 +1078,7 @@ if (addedEntries.length > 0 && !args.dryRun) {
   } else {
     console.log(`[generate-pokemon-master] ℹ️ テスト設定ファイルがありません: ${testConfigPath}`);
   }
+}
+} finally {
+  releaseMasterLocks();
 }

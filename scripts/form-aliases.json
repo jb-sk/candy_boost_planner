@@ -1,5 +1,17 @@
 {
   "_comment": "にとよんツール側のform番号とWiki/master側のform番号が異なるポケモンのエイリアス。キー: 'dexNo:nitoyonForm', 値: masterのform番号。lookup時にnitoyonFormで引けなければこのマップでcanonical formに変換する。",
+  "_normalFallbackReasons": {
+    "25:6": "Pikachu (Low Key) は Wiki のポケモンの一覧に独立したフォーム行がないため、名前・タイプ・とくいは通常フォーム(0)を参照し、食材は _ingredientOverrides のにとよんツール由来値を使用"
+  },
+  "_ingredientOverrides": {
+    "25:6": {
+      "a": "apple",
+      "b": "cacao",
+      "c": "honey"
+    }
+  },
   "980:4": 0,
-  "25:6": 0
+  "25:6": 0,
+  "25:12": 1,
+  "133:12": 1
 }

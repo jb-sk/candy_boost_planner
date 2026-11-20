@@ -367,24 +367,6 @@ export const pokemonMaster: PokemonMasterEntry[] = [
   {
     "dexNo": 25,
     "pokedexId": 25,
-    "form": 1,
-    "formLabelJa": "ハロウィン",
-    "nameJa": "ピカチュウ(ハロウィン)",
-    "baseNameJa": "ピカチュウ",
-    "specialty": "Berries",
-    "type": "Electric",
-    "typeJa": "でんき",
-    "expType": 600,
-    "ingredients": {
-      "a": "apple",
-      "b": "ginger",
-      "c": "egg"
-    },
-    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%94%E3%82%AB%E3%83%81%E3%83%A5%E3%82%A6%28%E3%83%8F%E3%83%AD%E3%82%A6%E3%82%A3%E3%83%B3%29"
-  },
-  {
-    "dexNo": 25,
-    "pokedexId": 25,
     "form": 2,
     "formLabelJa": "ホリデー",
     "nameJa": "ピカチュウ(ホリデー)",
@@ -1245,24 +1227,6 @@ export const pokemonMaster: PokemonMasterEntry[] = [
       "c": "sausage"
     },
     "link": "https://wikiwiki.jp/poke_sleep/%E3%82%A4%E3%83%BC%E3%83%96%E3%82%A4"
-  },
-  {
-    "dexNo": 133,
-    "pokedexId": 133,
-    "form": 1,
-    "formLabelJa": "ハロウィン",
-    "nameJa": "イーブイ(ハロウィン)",
-    "baseNameJa": "イーブイ",
-    "specialty": "Skills",
-    "type": "Normal",
-    "typeJa": "ノーマル",
-    "expType": 600,
-    "ingredients": {
-      "a": "pumpkin",
-      "b": "cacao",
-      "c": "milk"
-    },
-    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%A4%E3%83%BC%E3%83%96%E3%82%A4%28%E3%83%8F%E3%83%AD%E3%82%A6%E3%82%A3%E3%83%B3%29"
   },
   {
     "dexNo": 133,
@@ -3613,6 +3577,42 @@ export const pokemonMaster: PokemonMasterEntry[] = [
       "c": "coffee"
     },
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A0%E3%82%B7%E3%83%A3%E3%83%BC%E3%83%8A"
+  },
+  {
+    "dexNo": 546,
+    "pokedexId": 546,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "モンメン",
+    "baseNameJa": "モンメン",
+    "specialty": "Ingredients",
+    "type": "Fairy",
+    "typeJa": "フェアリー",
+    "expType": 600,
+    "ingredients": {
+      "a": "nuts",
+      "b": "avocado",
+      "c": "tomato"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A2%E3%83%B3%E3%83%A1%E3%83%B3"
+  },
+  {
+    "dexNo": 547,
+    "pokedexId": 547,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "エルフーン",
+    "baseNameJa": "エルフーン",
+    "specialty": "Ingredients",
+    "type": "Fairy",
+    "typeJa": "フェアリー",
+    "expType": 600,
+    "ingredients": {
+      "a": "nuts",
+      "b": "avocado",
+      "c": "tomato"
+    },
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%A8%E3%83%AB%E3%83%95%E3%83%BC%E3%83%B3"
   },
   {
     "dexNo": 557,

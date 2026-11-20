@@ -4396,6 +4396,50 @@ export const pokemonDb: PokemonDbEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A0%E3%82%B7%E3%83%A3%E3%83%BC%E3%83%8A"
   },
   {
+    "dexNo": 546,
+    "nameJa": "モンメン",
+    "specialtyJa": "食材",
+    "sleepTypeJa": "すやすや",
+    "berryJa": [
+      "モモンのみ"
+    ],
+    "ingAJa": [
+      "ひとくちナッツ"
+    ],
+    "ingBJa": [
+      "つやつやアボカド"
+    ],
+    "ingCJa": [
+      "あんみんトマト"
+    ],
+    "mainSkillJa": "げんきチャージS",
+    "fp": 5,
+    "helpSeconds": 4600,
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A2%E3%83%B3%E3%83%A1%E3%83%B3"
+  },
+  {
+    "dexNo": 547,
+    "nameJa": "エルフーン",
+    "specialtyJa": "食材",
+    "sleepTypeJa": "すやすや",
+    "berryJa": [
+      "モモンのみ"
+    ],
+    "ingAJa": [
+      "ひとくちナッツ"
+    ],
+    "ingBJa": [
+      "つやつやアボカド"
+    ],
+    "ingCJa": [
+      "あんみんトマト"
+    ],
+    "mainSkillJa": "げんきチャージS",
+    "fp": 20,
+    "helpSeconds": 2400,
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%A8%E3%83%AB%E3%83%95%E3%83%BC%E3%83%B3"
+  },
+  {
     "dexNo": 557,
     "nameJa": "イシズマイ",
     "specialtyJa": "スキル",

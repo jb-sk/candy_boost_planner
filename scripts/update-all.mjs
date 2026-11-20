@@ -35,7 +35,7 @@ export function parseUpdateAllArgs(
 export function buildUpdateAllSteps(toolRoot, packageManagerCli) {
   return [
     {
-      label: "マスターデータを対話更新",
+      label: "事前フォーム検証・マスター対話更新・生成後検証（一括公開）",
       command: process.execPath,
       args: [
         path.join(__dirname, "generate-master.mjs"),
@@ -45,27 +45,19 @@ export function buildUpdateAllSteps(toolRoot, packageManagerCli) {
       ],
     },
     {
-      label: "フォーム番号を突合",
+      label: "英語名を更新",
+      command: process.execPath,
+      args: [path.join(__dirname, "generate-pokemon-en-names.mjs")],
+    },
+    {
+      label: "公開済みフォーム索引を読み取り専用で最終検証",
       command: process.execPath,
       args: [
         path.join(__dirname, "verify-form-mapping.mjs"),
         "--pokesleep-tool",
         toolRoot,
+        "--verify-generated",
       ],
-    },
-    {
-      label: "突合後の正規マッピングからマスターを再生成",
-      command: process.execPath,
-      // フォーム番号だけを再適用する。candy family はdexNoキーなので再生成不要。
-      args: [
-        path.join(__dirname, "generate-pokemon-master.mjs"),
-        "--non-interactive",
-      ],
-    },
-    {
-      label: "英語名を更新",
-      command: process.execPath,
-      args: [path.join(__dirname, "generate-pokemon-en-names.mjs")],
     },
     {
       label: "食材表示名を検証",
