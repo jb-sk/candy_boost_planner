@@ -1,5 +1,7 @@
 {
   "_comment": "にとよんツール側のform番号とWiki/master側のform番号が異なるポケモンのエイリアス。キー: 'dexNo:nitoyonForm', 値: masterのform番号。lookup時にnitoyonFormで引けなければこのマップでcanonical formに変換する。",
   "980:4": 0,
-  "25:6": 0
+  "25:6": 0,
+  "25:12": 0,
+  "133:12": 0
 }

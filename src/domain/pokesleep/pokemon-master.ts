@@ -3615,6 +3615,34 @@ export const pokemonMaster: PokemonMasterEntry[] = [
     "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A0%E3%82%B7%E3%83%A3%E3%83%BC%E3%83%8A"
   },
   {
+    "dexNo": 546,
+    "pokedexId": 546,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "モンメン",
+    "baseNameJa": "モンメン",
+    "specialty": "Ingredients",
+    "type": "Fairy",
+    "typeJa": "フェアリー",
+    "expType": 600,
+    "ingredients": null,
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%83%A2%E3%83%B3%E3%83%A1%E3%83%B3"
+  },
+  {
+    "dexNo": 547,
+    "pokedexId": 547,
+    "form": 0,
+    "formLabelJa": null,
+    "nameJa": "エルフーン",
+    "baseNameJa": "エルフーン",
+    "specialty": "Ingredients",
+    "type": "Fairy",
+    "typeJa": "フェアリー",
+    "expType": 600,
+    "ingredients": null,
+    "link": "https://wikiwiki.jp/poke_sleep/%E3%82%A8%E3%83%AB%E3%83%95%E3%83%BC%E3%83%B3"
+  },
+  {
     "dexNo": 557,
     "pokedexId": 557,
     "form": 0,
