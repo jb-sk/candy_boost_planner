@@ -190,6 +190,8 @@ export const pokemonNameEnByDexNo: Record<number, string> = {
   491: "Darkrai",
   517: "Munna",
   518: "Musharna",
+  546: "Cottonee",
+  547: "Whimsicott",
   557: "Dwebble",
   558: "Crustle",
   590: "Foongus",

@@ -3,6 +3,11 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import * as cheerio from "cheerio";
+import {
+  parseExportedJsonObjectsFromTs,
+  parsePokemonMasterEntriesFromTs,
+} from "./pokemon-db-validation.mjs";
+import { acquirePublishLocks } from "./publish-lock.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,8 +22,8 @@ function parseArgs(argv) {
     master: DEFAULT_MASTER,
     output: DEFAULT_OUTPUT,
     overrides: DEFAULT_OVERRIDES,
-    pokesleepTool: process.env.POKESLEEP_TOOL_PATH
-      ? path.resolve(process.env.POKESLEEP_TOOL_PATH)
+    pokesleepTool: process.env.POKESLEEP_TOOL_PATH?.trim()
+      ? path.resolve(process.env.POKESLEEP_TOOL_PATH.trim())
       : null,
     dryRun: false,
     verify: false,
@@ -40,31 +45,14 @@ function parseArgs(argv) {
   return args;
 }
 
-function extractJsonAssignment(source, exportName) {
-  const marker = `export const ${exportName}`;
-  const markerIndex = source.indexOf(marker);
-  if (markerIndex < 0) throw new Error(`${exportName} not found`);
-  const start = source.indexOf("{", markerIndex);
-  const endMarker = source.indexOf(" as const", start);
-  if (start < 0 || endMarker < 0) throw new Error(`${exportName} is not a JSON object assignment`);
-  return JSON.parse(source.slice(start, endMarker).trim());
-}
-
 function readMaster(masterPath) {
   const source = fs.readFileSync(masterPath, "utf8");
-  const assignment = source.indexOf("] = [");
-  if (assignment < 0) throw new Error(`pokemonMaster assignment not found: ${masterPath}`);
-  const start = source.indexOf("[", assignment + 4);
-  const end = source.indexOf("] as const", start);
-  if (start < 0 || end < 0) throw new Error(`pokemonMaster JSON not found: ${masterPath}`);
-  const rows = JSON.parse(source.slice(start, end + 1));
+  const entries = parsePokemonMasterEntriesFromTs(source, masterPath);
   const byId = new Map();
-  for (const row of rows) {
-    const id = Number(row.pokedexId);
-    if (!Number.isSafeInteger(id) || id <= 0) throw new Error(`Invalid master pokedexId: ${row.pokedexId}`);
-    const entries = byId.get(id) ?? [];
-    entries.push(row);
-    byId.set(id, entries);
+  for (const { dexNo, row } of entries) {
+    const list = byId.get(dexNo) ?? [];
+    list.push(row);
+    byId.set(dexNo, list);
   }
   return byId;
 }
@@ -72,10 +60,16 @@ function readMaster(masterPath) {
 function readExisting(outputPath) {
   if (!fs.existsSync(outputPath)) return { family: {}, ancestor: {} };
   const source = fs.readFileSync(outputPath, "utf8");
-  return {
-    family: extractJsonAssignment(source, "candyFamilyByPokedexId"),
-    ancestor: extractJsonAssignment(source, "candyFamilyAncestorByPokedexId"),
-  };
+  const maps = parseExportedJsonObjectsFromTs(
+    source,
+    ["candyFamilyByPokedexId", "candyFamilyAncestorByPokedexId"],
+    outputPath,
+  );
+  const family = maps.get("candyFamilyByPokedexId");
+  const ancestor = maps.get("candyFamilyAncestorByPokedexId");
+  if (!family) throw new Error(`${outputPath}: candyFamilyByPokedexId が見つからないか不正です`);
+  if (!ancestor) throw new Error(`${outputPath}: candyFamilyAncestorByPokedexId が見つからないか不正です`);
+  return { family, ancestor };
 }
 
 function readOverrides(overridesPath) {
@@ -256,73 +250,79 @@ function generatedContent(family, ancestor, metadata) {
 
 async function main() {
   const args = parseArgs(process.argv);
-  const masterById = readMaster(args.master);
-  const overrides = readOverrides(args.overrides);
-  const existing = readExisting(args.output);
-  const nitoyon = readNitoyonData(args.pokesleepTool);
+  const needsLock = !args.verify && !args.dryRun;
+  const releaseLock = needsLock ? acquirePublishLocks([args.master, args.output]) : () => {};
+  try {
+    const masterById = readMaster(args.master);
+    const overrides = readOverrides(args.overrides);
+    const existing = readExisting(args.output);
+    const nitoyon = readNitoyonData(args.pokesleepTool);
 
-  if (args.verify) {
-    assertComplete(masterById, existing.family, existing.ancestor);
-    const recomputed = familyMapFromAncestors(masterById, existing.ancestor);
-    if (JSON.stringify(recomputed) !== JSON.stringify(existing.family)) {
-      throw new Error("family representatives do not match the generated ancestor map");
+    if (args.verify) {
+      assertComplete(masterById, existing.family, existing.ancestor);
+      const recomputed = familyMapFromAncestors(masterById, existing.ancestor);
+      if (JSON.stringify(recomputed) !== JSON.stringify(existing.family)) {
+        throw new Error("family representatives do not match the generated ancestor map");
+      }
+      console.log(`[SUMMARY] verified=true ids=${masterById.size} families=${new Set(Object.values(existing.family)).size}`);
+      return;
     }
-    console.log(`[SUMMARY] verified=true ids=${masterById.size} families=${new Set(Object.values(existing.family)).size}`);
-    return;
-  }
 
-  let ancestor = {};
-  if (args.refresh) {
-    const nameToIds = masterNameToIds(masterById);
-    for (const [id, rows] of masterById) {
-      ancestor[String(id)] = await fetchAncestorsForId(id, rows, nameToIds, overrides.get(id));
-    }
-  } else {
-    for (const id of masterById.keys()) {
-      const existingAncestor = Number(existing.ancestor[String(id)]);
-      if (Number.isSafeInteger(existingAncestor) && existingAncestor > 0) ancestor[String(id)] = existingAncestor;
-    }
-    if (Object.keys(ancestor).length === 0 && nitoyon) {
-      ancestor = ancestorMapFromNitoyon(masterById, nitoyon, overrides);
-    } else {
+    let ancestor = {};
+    if (args.refresh) {
       const nameToIds = masterNameToIds(masterById);
       for (const [id, rows] of masterById) {
-        if (ancestor[String(id)] !== undefined) continue;
         ancestor[String(id)] = await fetchAncestorsForId(id, rows, nameToIds, overrides.get(id));
       }
-    }
-  }
-
-  ancestor = Object.fromEntries(Object.entries(ancestor).sort(([a], [b]) => Number(a) - Number(b)));
-  const family = familyMapFromAncestors(masterById, ancestor);
-  assertComplete(masterById, family, ancestor);
-
-  if (nitoyon) {
-    for (const id of masterById.keys()) {
-      const external = nitoyon.byId.get(id);
-      if (!external) continue;
-      const expected = overrides.get(id) ?? validateSingleAncestor(id, external, "pokesleep-tool");
-      if (Number(ancestor[String(id)]) !== expected) {
-        throw new Error(`Wiki/generated ancestor disagrees with pokesleep-tool: #${id}: ${ancestor[String(id)]} != ${expected}`);
+    } else {
+      for (const id of masterById.keys()) {
+        const existingAncestor = Number(existing.ancestor[String(id)]);
+        if (Number.isSafeInteger(existingAncestor) && existingAncestor > 0) ancestor[String(id)] = existingAncestor;
+      }
+      if (Object.keys(ancestor).length === 0 && nitoyon) {
+        ancestor = ancestorMapFromNitoyon(masterById, nitoyon, overrides);
+      } else {
+        const nameToIds = masterNameToIds(masterById);
+        for (const [id, rows] of masterById) {
+          if (ancestor[String(id)] !== undefined) continue;
+          ancestor[String(id)] = await fetchAncestorsForId(id, rows, nameToIds, overrides.get(id));
+        }
       }
     }
+
+    ancestor = Object.fromEntries(Object.entries(ancestor).sort(([a], [b]) => Number(a) - Number(b)));
+    const family = familyMapFromAncestors(masterById, ancestor);
+    assertComplete(masterById, family, ancestor);
+
+    if (nitoyon) {
+      for (const id of masterById.keys()) {
+        const external = nitoyon.byId.get(id);
+        if (!external) continue;
+        const expected = overrides.get(id) ?? validateSingleAncestor(id, external, "pokesleep-tool");
+        if (Number(ancestor[String(id)]) !== expected) {
+          throw new Error(`Wiki/generated ancestor disagrees with pokesleep-tool: #${id}: ${ancestor[String(id)]} != ${expected}`);
+        }
+      }
+    }
+
+    const semanticChanged = JSON.stringify(existing.family) !== JSON.stringify(family)
+      || JSON.stringify(existing.ancestor) !== JSON.stringify(ancestor);
+    console.log(`[SUMMARY] has_changes=${semanticChanged} ids=${masterById.size} families=${new Set(Object.values(family)).size}`);
+    if (!semanticChanged) return;
+    printMapDiff("FAMILY", existing.family, family);
+    printMapDiff("ANCESTOR", existing.ancestor, ancestor);
+    if (args.dryRun) return;
+
+    const content = generatedContent(family, ancestor, {
+      commit: nitoyon?.commit,
+      generatedOn: new Date().toISOString().slice(0, 10),
+    });
+    fs.mkdirSync(path.dirname(args.output), { recursive: true });
+    fs.writeFileSync(args.output, content, "utf8");
+    console.log(`[generate-candy-families] wrote ${args.output}`);
+  } finally {
+    releaseLock();
   }
-
-  const semanticChanged = JSON.stringify(existing.family) !== JSON.stringify(family)
-    || JSON.stringify(existing.ancestor) !== JSON.stringify(ancestor);
-  console.log(`[SUMMARY] has_changes=${semanticChanged} ids=${masterById.size} families=${new Set(Object.values(family)).size}`);
-  if (!semanticChanged) return;
-  printMapDiff("FAMILY", existing.family, family);
-  printMapDiff("ANCESTOR", existing.ancestor, ancestor);
-  if (args.dryRun) return;
-
-  const content = generatedContent(family, ancestor, {
-    commit: nitoyon?.commit,
-    generatedOn: new Date().toISOString().slice(0, 10),
-  });
-  fs.mkdirSync(path.dirname(args.output), { recursive: true });
-  fs.writeFileSync(args.output, content, "utf8");
-  console.log(`[generate-candy-families] wrote ${args.output}`);
 }
 
 main().catch(error => {

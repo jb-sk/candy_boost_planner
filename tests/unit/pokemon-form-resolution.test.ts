@@ -35,7 +35,22 @@ describe('pokemon form resolution', () => {
 
     expect(normal).toEqual({ baseNameJa: 'ピカチュウ', form: 0, formLabelJa: null });
     expect(captain).toEqual({ baseNameJa: 'ピカチュウ', form: 11, formLabelJa: 'キャプテン' });
-    expect(toIdForm(25, normal.form)).toBe(25);
-    expect(toIdForm(25, captain.form)).toBe(45081);
+    expect(normal.form).not.toBeNull();
+    expect(captain.form).not.toBeNull();
+    expect(toIdForm(25, normal.form!)).toBe(25);
+    expect(toIdForm(25, captain.form!)).toBe(45081);
+  });
+
+  it('未登録フォームは通常フォーム(0)へ丸めず form: null を返し、半角カナも NFKC で正規化する', () => {
+    expect(splitPokemonNameAndForm('ピカチュウ(未登録)', {})).toEqual({
+      baseNameJa: 'ピカチュウ',
+      form: null,
+      formLabelJa: '未登録',
+    });
+    expect(splitPokemonNameAndForm('イーブイ(ﾊﾛｳｨﾝ)', { ハロウィン: 1 })).toEqual({
+      baseNameJa: 'イーブイ',
+      form: 1,
+      formLabelJa: 'ハロウィン',
+    });
   });
 });

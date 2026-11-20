@@ -1538,6 +1538,7 @@ export function useBoxStore(opts: {
     coffee: "コーヒー",
     pumpkin: "カボチャ",
     avocado: "アボカド",
+    nuts: "ナッツ",
   };
 
   const ingredientEn: Record<string, string> = {
@@ -1560,6 +1561,7 @@ export function useBoxStore(opts: {
     coffee: "Coffee",
     pumpkin: "Pumpkin",
     avocado: "Avocado",
+    nuts: "Nuts",
   };
 
   // The template uses the "favorite-only" chip and tile stars; keep this as a helper.
